@@ -27,7 +27,7 @@ the tables below give 43 of 60 (72 %) on 2026-11-07.
 
 A construct is covered when its probe verifies: a DuckDB SQL query that the
 lift reads and the checker accepts, and, where the Ibis API has the same
-construct, the case of the README's coverage table. The targets and their
+construct, the case of [the Ibis coverage table](coverage.md). The targets and their
 probes live in
 [`sverify_dev/coverage_targets/`](../python/tools/sverify_dev/coverage_targets/),
 one file per area, and
@@ -50,7 +50,7 @@ Real queries decide what is in. The sources, measured on 2026-11-05:
   (`generate_series`), `dbt-unpivot-longer` (`UNNEST`) and
   `ts-local-day-revenue` (`AT TIME ZONE`).
 - The Ibis API (epic [#60](https://github.com/AlexanderNenninger/substrait-lean/issues/60)):
-  184 of 211 probed operations verify (the README's coverage table).
+  184 of 211 probed operations verify ([the Ibis coverage table](coverage.md)).
 - dbt: the cross-database macros of dbt and dbt_utils (`date_spine`,
   `unpivot`, `generate_surrogate_key`, `split_part`, `listagg`, `bool_or`,
   `any_value`, `dateadd`), and the shop example, whose
@@ -276,7 +276,7 @@ different functions (`_Lift`'s sources, and `_AGGREGATES` and `_RANKING`).
 
 | Batch | Area | Issues | Files |
 |---|---|---|---|
-| 1 | relations: lift rewrites | [#803](https://github.com/AlexanderNenninger/substrait-lean/issues/803) VALUES, [#319](https://github.com/AlexanderNenninger/substrait-lean/issues/319) DISTINCT ON, GROUP BY ALL and ORDER BY ALL, [#804](https://github.com/AlexanderNenninger/substrait-lean/issues/804) UNPIVOT, [#805](https://github.com/AlexanderNenninger/substrait-lean/issues/805) ASOF JOIN | `sql_lift/relations.py`, `_base.py` (`_Lift`), `tests/test_sql_lift.py` |
+| 1 | relations: lift rewrites | [#803](https://github.com/AlexanderNenninger/substrait-lean/issues/803) VALUES, [#319](https://github.com/AlexanderNenninger/substrait-lean/issues/319) DISTINCT ON, GROUP BY ALL and ORDER BY ALL, [#804](https://github.com/AlexanderNenninger/substrait-lean/issues/804) UNPIVOT, [#805](https://github.com/AlexanderNenninger/substrait-lean/issues/805) ASOF JOIN | `sql_lift/relations.py`, `_base.py` (`_Lift`), `tests/test_sql_lift_relations.py` |
 | 2 | relations: new inputs and decorrelation | [#321](https://github.com/AlexanderNenninger/substrait-lean/issues/321) `range` and `generate_series`, [#345](https://github.com/AlexanderNenninger/substrait-lean/issues/345) correlated `EXISTS` and `NOT EXISTS` | `sql_lift/relations.py`, `Parse.lean` (virtual tables), the catalogue's date spine |
 | 3 | casts | [#346](https://github.com/AlexanderNenninger/substrait-lean/issues/346) to VARCHAR, [#806](https://github.com/AlexanderNenninger/substrait-lean/issues/806) from VARCHAR, [#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322) rounding casts, [#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27) decimal rescale and `round`, [#807](https://github.com/AlexanderNenninger/substrait-lean/issues/807) DATE as TIMESTAMP | `sql_lift/casts.py`, the casts in `Expr.lean` and `Parse.lean`, the writers' casts |
 | 4 | strings | [#808](https://github.com/AlexanderNenninger/substrait-lean/issues/808), and the aliases of [#328](https://github.com/AlexanderNenninger/substrait-lean/issues/328) (`if`, `len`, `substr`, `arbitrary`) | `sql_lift/strings.py`, `_functions.py`, `tests/test_sql_lift_strings.py` |

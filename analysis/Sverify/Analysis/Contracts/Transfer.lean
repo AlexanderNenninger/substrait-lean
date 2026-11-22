@@ -559,9 +559,6 @@ argument is in its domain: some double. -/
 def FMath.safeB (f : FMath) (ob : Option Bound) : Bool :=
   ob.all fun b => f.lo?.all b.allGe && f.hi?.all b.allLe
 
-/-- An integer in `[lo, hi]`. -/
-def AVal.intIn (null : Bool) (b : Bound) : AVal := { null := null, int := some b, nk := some .int }
-
 /-! ### Lists and structs (#925) -/
 
 /-- Field `i` of a struct in `a`: in its description, `NULL` where the

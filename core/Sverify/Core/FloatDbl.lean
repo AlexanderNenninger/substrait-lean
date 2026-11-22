@@ -74,6 +74,51 @@ theorem dbl_ofExactDiv (v : Int) (n : Nat) : Dbl (ofExactDiv v n) := by
 
 theorem dbl_ofExact (v : Int) : Dbl (ofExact v) := dbl_ofExactDiv v 1
 
+/-- A magnitude of at most `p` significant bits rounds to itself. -/
+theorem roundMagDiv_of_magDbl {m : Nat} (h : fp64.magDbl m = true) : roundMagDiv m 1 = m := by
+  simp only [FloatFormat.magDbl, beq_iff_eq] at h
+  generalize hs : m.log2 + 1 - fp64.p = s at h
+  have hm : m = m / 2 ^ s * 2 ^ s := (Nat.div_mul_cancel (Nat.dvd_of_mod_eq_zero h)).symm
+  have hlt : m / 2 ^ s < 2 ^ 53 := by
+    rw [Nat.div_lt_iff_lt_mul (Nat.two_pow_pos _), ← Nat.pow_add]
+    have := Nat.lt_log2_self (n := m)
+    exact Nat.lt_of_lt_of_le this (Nat.pow_le_pow_right (by decide) (by
+      show m.log2 + 1 ≤ 53 + s; rw [← hs]; show m.log2 + 1 ≤ 53 + (m.log2 + 1 - 53); omega))
+  conv => lhs; rw [hm]
+  rw [roundMagDiv_exact hlt, ← hm]
+
+/-- **A double's code rounds to itself**: the finite `Dbl` codes are the
+codes `ofExact` gives of their own values (ruling 268). -/
+theorem Dbl.ofExact_scaled {x : Int} (hd : Dbl x) (hf : IsFin x) : ofExact (scaled x) = x := by
+  have := posInf_eq; have := negInf_eq; have := negZero_eq'; have := negNan_eq'; have := nan_eq
+  obtain ⟨h1, h2⟩ := hf
+  simp only [Dbl, FloatFormat.Dbl, FloatFormat.dbl, Bool.or_eq_true, beq_iff_eq, Bool.and_eq_true,
+    decide_eq_true_eq] at hd
+  by_cases hx0 : x = 0
+  · subst hx0; exact ofExactDiv_zero 1
+  have hodd : x.natAbs % 2 = 1 ∧ 0 < (x.natAbs - 1) / 2 ∧ (x.natAbs - 1) / 2 ≤ maxMag ∧
+      fp64.magDbl ((x.natAbs - 1) / 2) = true := by
+    have hne := (show IsFin x from ⟨h1, h2⟩).ne
+    rcases hd with ((((((h | h) | h) | h) | h) | h) | h)
+    all_goals first
+      | exact absurd h hx0 | exact absurd h hne.1 | exact absurd h hne.2.1
+      | exact absurd h hne.2.2.1 | exact absurd h hne.2.2.2.1 | exact absurd h hne.2.2.2.2
+      | (simp only [and_assoc] at h; exact h)
+  obtain ⟨hod, hpos, hle, hdbl⟩ := hodd
+  generalize hmd : (x.natAbs - 1) / 2 = m at hpos hle hdbl
+  have hr := roundMagDiv_of_magDbl hdbl
+  have hx : x.natAbs = 2 * m + 1 := by omega
+  unfold scaled ofExact ofExactDiv
+  by_cases hneg : x < 0
+  · simp only [hneg, ↓reduceIte, hmd, Int.natAbs_neg, Int.natAbs_natCast]
+    have : -(m : Int) < 0 := by omega
+    simp only [this, ↓reduceIte, hr, posCode_of_le hle, show m ≠ 0 by omega]
+    omega
+  · simp only [hneg, ↓reduceIte, hmd, Int.natAbs_natCast]
+    have : ¬ (m : Int) < 0 := by omega
+    simp only [this, ↓reduceIte, hr, posCode_of_le hle, show m ≠ 0 by omega]
+    omega
+
 theorem dbl_rnd (v : Int) (n : Nat) : Dbl (rnd v n) := by
   unfold rnd; dsimp only; split
   · exact dbl_negZero

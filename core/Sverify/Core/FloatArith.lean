@@ -823,4 +823,69 @@ theorem fmul_lower {i j la lb : Int} (hla : 0 ≤ la) (hlb : 0 ≤ lb)
         · rw [canon_rnd, hs1, hs2]
           exact ofExactDiv_mono hK hprod
 
+/-! ### A quotient by a nonzero integer (#1787)
+
+`x / CAST(n AS DOUBLE)` with `n` a nonzero integer: `|n| ≥ 1`, so the
+quotient is at most `|x|` in magnitude, and rounding keeps a finite `x`'s
+quotient finite. -/
+
+set_option exponentiation.threshold 2200 in
+theorem maxMag_le_2098 : maxMag ≤ 2 ^ 2098 := by rw [maxMag_def]; omega
+
+/-- A finite double's magnitude is at most the largest one. -/
+theorem IsFin.scaled_le {c : Int} (h : IsFin c) : (scaled c).natAbs ≤ maxMag := by
+  have := posInf_eq; have := negInf_eq
+  obtain ⟨h1, h2⟩ := h
+  unfold scaled; split <;> omega
+
+set_option exponentiation.threshold 2200 in
+/-- A finite double divided by a nonzero integer, as a double, is finite. -/
+theorem fdiv_ofInt_fin {a k : Int} (ha : IsFin a) (hk : k ≠ 0) : IsFin (canon (fdiv a (ofInt k))) := by
+  have hb : IsFin (ofInt k) := ofInt_bounds k
+  have hsa := ha.scaled_le
+  have hu : (unitK : Int) = 2 ^ 1074 := rfl
+  -- `|scaled (ofInt k)| ≥ 2¹⁰⁷⁴`, and `≥ 2¹⁰⁷⁵` unless `k = ±1`.
+  have hone : ∀ j : Int, j.natAbs ≤ 2 ^ 53 → scaled (ofInt j) = j * (unitK : Int) := fun j hj => by
+    rw [ofInt_exact hj, scaled_exactCode]
+  have hsb : k.natAbs = 1 ∨ 2 * (unitK : Int) ≤ (scaled (ofInt k)).natAbs := by
+    rcases Int.lt_or_gt_of_ne hk with hneg | hpos
+    · by_cases h1 : k = -1
+      · exact .inl (by subst h1; rfl)
+      · right
+        have := scaled_mono (ofInt_mono (show k ≤ -2 by omega))
+        rw [hone (-2) (by decide)] at this
+        omega
+    · by_cases h1 : k = 1
+      · exact .inl (by subst h1; rfl)
+      · right
+        have := scaled_mono (ofInt_mono (show 2 ≤ k by omega))
+        rw [hone 2 (by decide)] at this
+        omega
+  have hb0 : scaled (ofInt k) ≠ 0 := by
+    rcases hsb with h1 | h2
+    · rcases Int.natAbs_eq k with e | e <;> rw [e, h1] <;>
+        (rw [hone _ (by decide)]; decide)
+    · intro e; rw [e] at h2; simp [hu] at h2
+  rw [fdiv_fin ha hb hb0]
+  rcases hsb with h1 | h2
+  · -- `k = ±1`: the quotient is `±a`, exactly.
+    have hk1 : k = 1 ∨ k = -1 := by omega
+    have hs : (scaled (ofInt k)).natAbs = unitK := by
+      rcases hk1 with rfl | rfl <;> rw [hone _ (by decide)] <;> rfl
+    rw [hs, Int.mul_comm, ofExactDiv_mul _ unitK_pos]
+    exact ofExact_fin_of_le (by split <;> (try rw [Int.natAbs_neg]) <;> exact hsa)
+  · apply ofExactDiv_fin (Int.natAbs_pos.2 hb0)
+    have hv : ((if scaled (ofInt k) < 0 then -scaled a else scaled a) * (unitK : Int)).natAbs =
+        (scaled a).natAbs * unitK := by
+      rw [Int.natAbs_mul]; split <;> simp only [Int.natAbs_neg, Int.natAbs_natCast]
+    rw [hv]
+    have h2' : 2 * unitK ≤ (scaled (ofInt k)).natAbs := by exact_mod_cast h2
+    have hmax : maxMag ≤ 2 * 2 ^ 2097 := by
+      have := maxMag_le_2098; rw [show (2 : Nat) ^ 2098 = 2 * 2 ^ 2097 from Nat.pow_succ' ..] at this
+      exact this
+    generalize (2 : Nat) ^ 2097 = P at hmax ⊢
+    calc (scaled a).natAbs * unitK ≤ 2 * P * unitK := Nat.mul_le_mul_right _ (Nat.le_trans hsa hmax)
+      _ = 2 * unitK * P := Nat.mul_right_comm 2 P unitK
+      _ ≤ (scaled (ofInt k)).natAbs * P := Nat.mul_le_mul_right _ h2'
+
 end Substrait.FloatCode

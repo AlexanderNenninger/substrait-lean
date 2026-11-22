@@ -407,10 +407,6 @@ class VersionedSource(Protocol):
         ...
 
 
-Source = VersionedSource
-"""The name the pipeline's internals use for `VersionedSource`."""
-
-
 class SchemaError(SverifyError):
     """A source's new schema cannot be read in the old one, and a node
     reading it has a contract that was proved against the old one.
