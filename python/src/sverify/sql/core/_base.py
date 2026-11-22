@@ -1191,7 +1191,7 @@ def _timestamp_text(micros: int) -> str:
 
 
 def _decimal_text(unscaled: int, scale: int) -> str:
-    """`decText false` (D72): the digits of `unscaled / 10 ** scale`, `scale` of them after the
+    """`decText` (D72): the digits of `unscaled / 10 ** scale`, `scale` of them after the
     point, with a `-` for a negative value."""
     sign = "-" if unscaled < 0 else ""
     digits = str(abs(unscaled))

@@ -421,16 +421,15 @@ unscaled value (`Parse.decimalCall` brings both to one scale first). -/
   | _ => none
 
 /-- The text of the decimal `i / 10 ^ s` (D72): `-` for a negative value, the integer part with
-at least one digit, then `.` and exactly `s` digits (none for `s = 0`). `omitZero` drops an
-integer part of `0` instead (`.500`); the reference keeps it. -/
-def decText (omitZero : Bool) (s : Nat) (i : Int) : String :=
+at least one digit, then `.` and exactly `s` digits (none for `s = 0`). -/
+def decText (s : Nat) (i : Int) : String :=
   let sign := if i < 0 then "-" else ""
   let a := i.natAbs
   if s = 0 then sign ++ toString a
   else
     let whole := a / 10 ^ s
     let frac := toString (a % 10 ^ s)
-    sign ++ (if omitZero && whole == 0 then "" else toString whole) ++ "." ++
+    sign ++ toString whole ++ "." ++
       "".pushn '0' (s - frac.length) ++ frac
 
 def UnFn.apply : UnFn → Value → Value
@@ -458,7 +457,7 @@ def UnFn.apply : UnFn → Value → Value
   | .narrowOrNull n, .int i => if fitsBits n i then .int i else .null
   | .wrap _, v => v
   | .itos, .int i => .str (toString i)
-  | .dtext, .dec s i | .dtextFull, .dec s i => .str (decText false s i)
+  | .dtext, .dec s i | .dtextFull, .dec s i => .str (decText s i)
   | .dwiden, v => v
   | .widen, v => v
   | .atUtc _, v => v

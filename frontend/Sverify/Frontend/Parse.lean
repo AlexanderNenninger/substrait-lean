@@ -744,7 +744,7 @@ def castConst (ty : Json) (c : Const) : J Const := do
     | .str s => return .str s
     | .bool b => return .str (if b then "true" else "false")
     | .date d => return .str (Time.strftime "%Y-%m-%d" (d * Time.usPerDay))
-    | .dec m _ s => return .str (decText false s m)
+    | .dec m _ s => return .str (decText s m)
     | _ => throw "casts of this value to strings are not supported"
   | .tod =>
     match c with
