@@ -20,8 +20,9 @@ the model on random tables.
   sort orders its result. Lenses with `rows="sequence"` carry the
   model's row order in an ordinal column on DuckDB and refuses on Snowflake
   and Spark.
-* Strings count characters (code points, whatever their bytes) in lengths,
-  positions and `substring`; `LIKE` names its escape character.
+* Strings count characters, Unicode code points whatever their bytes
+  ([reference semantics](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/reference-semantics.md#strings)),
+  in lengths, positions and `substring`; `LIKE` names its escape character.
 * Time: timestamps are microseconds without a time zone (`TIMESTAMP_NTZ`
   on Snowflake and Spark); `date_part` and `date_trunc` follow the model's
   calendar (ISO weeks), not the session's week start.

@@ -20,7 +20,7 @@ preconditions, the data that happened to be there among them.
 ## Install
 
 ```bash
-pip install sverify                       # core: DuckDB, contracts, views
+pip install 'sverify[duckdb]'             # DuckDB runs plans; contracts, views
 pip install 'sverify[all]'                # Polars, Spark, Delta, Iceberg, Flight and the rest
 ```
 
@@ -63,7 +63,8 @@ big.refresh()
 assert big.to_arrow().to_pylist() == [{"id": 1, "doubled": 60}]
 report = big_orders.report
 assert report.verdict == sv.Verdict.PROVED
-print(report.facts["doubled"])  # what Lean established about the column
+print(report.facts["doubled"])  # what Lean established about the column, in words
+report.facts["doubled"].lower  # the same as data: nullable, lower, upper
 ```
 
 * Conditions are Ibis expressions over the output (`_.doubled >= 22`) or SQL
@@ -76,8 +77,8 @@ print(report.facts["doubled"])  # what Lean established about the column
   (`sverify.errors.PreconditionError`), or proved from table metadata.
 * Transforms compose: `revenue(paid(orders))` proves each link from the
   upstream contract (`sverify.errors.CompositionError` names a broken one).
-* Called on Ibis tables, a transform returns an Ibis expression, which checks
-  a contract without data.
+* Called on Ibis tables, a transform returns an Ibis expression, and the
+  checker proves its contract without data.
 
 ## Read the report, and fix what isn't proved
 
@@ -117,7 +118,7 @@ transformation no longer needs it (filter those rows first, or a CASE);
 `on_inferred="warn"` or `"ignore"` assumes it and checks it on the data, and
 `on_inferred="off"` infers and assumes nothing. For the rest, the `hint:` lines of
 `str(report)` name the bound to add, and an unproved comparison with a constant comes with
-the precondition that proves it (`report.suggestions`). An integer `SUM` that
+the precondition that proves it (`needs` of its entry in `report.ensures`). An integer `SUM` that
 may overflow is listed in `report.assumed` and checked at run time (an error
 with `on_inferred="off"`); a row cap (`sv.max_rows(n)`) proves it fits. Guard a divisor with
 `NULLIF`/`ifelse`, or bound it in `requires`.
@@ -195,7 +196,7 @@ test_doubles_are_big()
 * Windows need a key for facts about order: `LAG`, `LEAD` and
   `ROW_NUMBER` depend on how ties break unless `requires` has a key on the
   partition and order columns (`sv.unique("device_id", "ts")`). Without it
-  `verify` proves only what holds for every order of the ties (D24),
+  `verify` proves only what holds for every order of the ties,
   `report.deterministic` is False and `str(report)` names the window;
   a rerun that must give the same rows refuses the plan.
 * SQL strings are DuckDB's SQL, read by sverify's lift, which covers a

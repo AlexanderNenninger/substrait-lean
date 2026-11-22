@@ -77,8 +77,8 @@ report.facts["doubled"].lower  # the same as data: nullable, lower, upper
   (`sverify.errors.PreconditionError`), or proved from table metadata.
 * Transforms compose: `revenue(paid(orders))` proves each link from the
   upstream contract (`sverify.errors.CompositionError` names a broken one).
-* Called on Ibis tables, a transform returns an Ibis expression, which checks
-  a contract without data.
+* Called on Ibis tables, a transform returns an Ibis expression, and the
+  checker proves its contract without data.
 
 ## Read the report, and fix what isn't proved
 

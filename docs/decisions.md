@@ -464,7 +464,7 @@ so it runs natively.
 
 `Rel.eval` computes one allowed order: a stable sort (`List.mergeSort`) and
 rows in list order (`Rel.eval_orderAllowed`). Determinism is a property of a
-plan, which the checker proves: a plan is determined when every
+plan, which the checker proves, and no profile states it: a plan is determined when every
 result the reference allows is `Rel.eval`'s up to row order (`Rel.detPlan`). A
 consumer that needs a rerun to give the same rows asks for it, through
 `run(reproducible=sv.equivalent())` or a sink's `reproducible=`
