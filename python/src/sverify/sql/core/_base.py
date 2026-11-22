@@ -9,7 +9,7 @@ import math
 import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 from sverify import _case_tables, _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
 from sverify._support import DUCKDB_ONLY, ISSUE_271
-from sverify._unsupported import ISSUE_1725
+from sverify._unsupported import DECIMAL_38_38, ISSUE_1725
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify.black_box import BlackBox
 
@@ -6461,3 +6461,28 @@ def to_sql(
     items = [f"{w.ref(a, w.c(i))} AS {dialect.quote(name)}" for i, name in enumerate(names)]
     rest = f"ORDER BY {w.asc(w.ordinal(a))}" if ordered else ""
     return w.select(items, dialect.subquery(w.rel(p.root, ordered), a), rest)
+
+
+def _decimal_text_38(node: Any) -> bool:
+    """Does the core term `node` cast a `DECIMAL(38, 38)` to a string?"""
+    if isinstance(node, Un) and node.op == "dtext" and node.digits == 38 and node.param == "38":
+        return True
+    if is_dataclass(node) and not isinstance(node, type):
+        return any(_decimal_text_38(getattr(node, f.name)) for f in fields(node))
+    if isinstance(node, (list, tuple)):
+        return any(_decimal_text_38(x) for x in node)
+    return False
+
+
+def check_decimal_text(plan: Any, engine: str, err: type[Exception] = ValueError) -> None:
+    """Raise `err` for a plan that casts a `DECIMAL(38, 38)` to a string on DuckDB: its writer
+    has no wider decimal to print it from (D72, ruling 245, E6). The route check calls this, so
+    `verify` reports it before anything runs. A plan the writer cannot read is not refused here."""
+    if engine.lower() != "duckdb" or not isinstance(plan, dict):
+        return
+    try:
+        root = parse_plan(plan).root
+    except Unsupported:
+        return
+    if _decimal_text_38(root):
+        raise err(DECIMAL_38_38)

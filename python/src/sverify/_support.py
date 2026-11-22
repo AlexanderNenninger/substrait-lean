@@ -15,7 +15,6 @@ from typing import Any
 
 from sverify import _plan_read, black_box
 from sverify._unsupported import (  # noqa: F401  (re-exported)
-    DECIMAL_38_38,
     DUCKDB_ONLY,
     ISSUE_271,
     MIN_MOD_GUARD,
@@ -177,34 +176,3 @@ def check(plan: Any, engine: str, err: type[Exception] = ValueError) -> None:
                 walk(v)
 
     walk(plan.get("relations", []) if isinstance(plan, dict) else plan)
-
-
-def _decimal_text_38(node: Any) -> bool:
-    """Does the core term `node` cast a `DECIMAL(38, 38)` to a string?"""
-    from dataclasses import fields, is_dataclass
-
-    from sverify.sql.core._base import Un
-
-    if isinstance(node, Un) and node.op == "dtext" and node.digits == 38 and node.param == "38":
-        return True
-    if is_dataclass(node) and not isinstance(node, type):
-        return any(_decimal_text_38(getattr(node, f.name)) for f in fields(node))
-    if isinstance(node, (list, tuple)):
-        return any(_decimal_text_38(x) for x in node)
-    return False
-
-
-def check_decimal_text(plan: Any, engine: str, err: type[Exception] = ValueError) -> None:
-    """Raise `err` for a plan that casts a `DECIMAL(38, 38)` to a string on DuckDB: its writer
-    has no wider decimal to print it from (D72, ruling 245, E6). The route check calls this, so
-    `verify` reports it before anything runs."""
-    from sverify.sql.core._base import WriterUnsupported, parse_plan
-
-    if engine.lower() != "duckdb" or not isinstance(plan, dict):
-        return
-    try:
-        root = parse_plan(plan).root
-    except WriterUnsupported:
-        return
-    if _decimal_text_38(root):
-        raise err(DECIMAL_38_38)
