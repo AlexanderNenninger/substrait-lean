@@ -227,71 +227,88 @@ theorem aggregateEval_congr {I J : Impl} {gs : List Expr} {ms : List Measure} {r
     exact congrArg (k ++ ·) (List.map_congr_left fun m hmm =>
       hm m hmm _ fun _ hr => (List.mem_filter.mp hr).1)
 
+/-- `Rel.eval_congr_ok` where `I` gives the profile's values only on the plan's
+own expressions (`Q`), as for an engine's functions that differ from its
+profile at calls no lowered plan makes (`Polars.impl`). -/
+theorem Rel.eval_congr_ok_on {p : Profile} {I : Impl} {Q : Expr → Prop}
+    (hI : ∀ {e : Expr} {row : Row} {v : Value}, Q e → e.evalP p row = .ok v → e.eval row I = v)
+    {cat : Catalog} : ∀ {r : Rel}, (∀ e ∈ r.mappedExprs, Q e) → ¬r.Raises p cat →
+      r.eval cat I = r.eval cat p.impl
+  | .read _, _, _ | .values _ _, _, _ => rfl
+  | .filter r c, hQ, h => by
+    simp only [Raises, not_or, not_exists, not_and] at h
+    have ih := eval_congr_ok_on hI (r := r) (fun e he => hQ e (List.mem_cons_of_mem _ he)) h.1
+    simp only [eval, ih]
+    exact List.filter_congr fun row hr => by
+      obtain ⟨v, hv⟩ := Expr.ok_of_not_raises (h.2 row hr)
+      rw [hI (hQ c (List.mem_cons_self ..)) hv, Expr.evalI_of_evalP hv]
+  | .project r es, hQ, h => by
+    simp only [Raises, not_or, not_exists, not_and] at h
+    have ih := eval_congr_ok_on hI (r := r) (fun e he => hQ e (List.mem_append_right _ he)) h.1
+    simp only [eval, ih]
+    exact List.map_congr_left fun row hr => congrArg (row ++ ·) (List.map_congr_left fun e he => by
+      obtain ⟨v, hv⟩ := Expr.ok_of_not_raises (h.2 row hr e he)
+      rw [hI (hQ e (List.mem_append_left _ he)) hv, Expr.evalI_of_evalP hv])
+  | .emit r _, hQ, h | .orderBy r _, hQ, h | .distinct r, hQ, h | .unnest r _, hQ, h
+  | .window r _ _ _, hQ, h => by
+    simp only [Raises] at h
+    simp only [eval, eval_congr_ok_on hI (r := r) (fun e he => hQ e he) h]
+  | .fetch r _ cnt, hQ, h => by
+    simp only [Raises] at h
+    have ih := eval_congr_ok_on hI (r := r) (fun e he => hQ e he) h
+    cases cnt <;> simp only [eval, ih]
+  | .cross a b, hQ, h | .unionAll a b, hQ, h => by
+    simp only [Raises, not_or] at h
+    simp only [eval, eval_congr_ok_on hI (r := a) (fun e he => hQ e (List.mem_append_left _ he)) h.1,
+      eval_congr_ok_on hI (r := b) (fun e he => hQ e (List.mem_append_right _ he)) h.2]
+  | .join a b .inner on, hQ, h => by
+    simp only [Raises, not_or, not_exists, not_and] at h
+    have iha := eval_congr_ok_on hI (r := a)
+      (fun e he => hQ e (List.mem_cons_of_mem _ (List.mem_append_left _ he))) h.1
+    have ihb := eval_congr_ok_on hI (r := b)
+      (fun e he => hQ e (List.mem_cons_of_mem _ (List.mem_append_right _ he))) h.2.1
+    simp only [eval, iha, ihb]
+    exact List.filter_congr fun row hr => by
+      obtain ⟨x, hx', y, hy, rfl⟩ := mem_crossRows.mp hr
+      obtain ⟨v, hv⟩ := Expr.ok_of_not_raises (h.2.2 x hx' y hy)
+      rw [hI (hQ on (List.mem_cons_self ..)) hv, Expr.evalI_of_evalP hv]
+  | .join a b .left on, hQ, h => by
+    simp only [Raises, not_or, not_exists, not_and] at h
+    have iha := eval_congr_ok_on hI (r := a)
+      (fun e he => hQ e (List.mem_cons_of_mem _ (List.mem_append_left _ he))) h.1
+    have ihb := eval_congr_ok_on hI (r := b)
+      (fun e he => hQ e (List.mem_cons_of_mem _ (List.mem_append_right _ he))) h.2.1
+    simp only [eval, iha, ihb]
+    exact flatMap_congr fun x hx' => leftJoinRow_congr fun y hy => by
+      obtain ⟨v, hv⟩ := Expr.ok_of_not_raises (h.2.2 x hx' y hy)
+      rw [hI (hQ on (List.mem_cons_self ..)) hv, Expr.evalI_of_evalP hv]
+  | .semi a b _ on, hQ, h => by
+    simp only [Raises, not_or, not_exists, not_and] at h
+    have iha := eval_congr_ok_on hI (r := a)
+      (fun e he => hQ e (List.mem_cons_of_mem _ (List.mem_append_left _ he))) h.1
+    have ihb := eval_congr_ok_on hI (r := b)
+      (fun e he => hQ e (List.mem_cons_of_mem _ (List.mem_append_right _ he))) h.2.1
+    simp only [eval, iha, ihb]
+    exact List.filter_congr fun x hx' => by
+      rw [hasMatch_congr fun y hy => by
+        obtain ⟨v, hv⟩ := Expr.ok_of_not_raises (h.2.2 x hx' y hy)
+        exact (hI (hQ on (List.mem_cons_self ..)) hv).trans (Expr.evalI_of_evalP hv).symm]
+  | .aggregate r gs ms, hQ, h => by
+    simp only [Raises, not_or, not_exists, not_and] at h
+    have ih := eval_congr_ok_on hI (r := r) (fun e he => hQ e (List.mem_append_right _ he)) h.1
+    simp only [eval, ih]
+    exact aggregateEval_congr fun row hr e he => by
+      obtain ⟨v, hv⟩ := Expr.ok_of_not_raises (h.2 row hr e he)
+      rw [hI (hQ e (List.mem_append_left _ he)) hv, Expr.evalI_of_evalP hv]
+
 /-- **A plan that does not raise computes the same rows with any functions
 that agree with `p` where it does not raise.** `Rel.Raises` names the calls
 whose value `Rel.eval` uses: a `CASE` evaluates only the branch it takes
 (`Expr.evalP`), so a discarded branch's call need not agree. -/
 theorem Rel.eval_congr_ok {p : Profile} {I : Impl}
     (hI : ∀ {e : Expr} {row : Row} {v : Value}, e.evalP p row = .ok v → e.eval row I = v)
-    {cat : Catalog} : ∀ {r : Rel}, ¬r.Raises p cat → r.eval cat I = r.eval cat p.impl
-  | .read _, _ | .values _ _, _ => rfl
-  | .filter r c, h => by
-    simp only [Raises, not_or, not_exists, not_and] at h
-    have ih := eval_congr_ok hI (r := r) h.1
-    simp only [eval, ih]
-    exact List.filter_congr fun row hr => by
-      obtain ⟨v, hv⟩ := Expr.ok_of_not_raises (h.2 row hr)
-      rw [hI hv, Expr.evalI_of_evalP hv]
-  | .project r es, h => by
-    simp only [Raises, not_or, not_exists, not_and] at h
-    have ih := eval_congr_ok hI (r := r) h.1
-    simp only [eval, ih]
-    exact List.map_congr_left fun row hr => congrArg (row ++ ·) (List.map_congr_left fun e he => by
-      obtain ⟨v, hv⟩ := Expr.ok_of_not_raises (h.2 row hr e he)
-      rw [hI hv, Expr.evalI_of_evalP hv])
-  | .emit r _, h | .orderBy r _, h | .distinct r, h | .unnest r _, h | .window r _ _ _, h => by
-    simp only [Raises] at h
-    simp only [eval, eval_congr_ok hI (r := r) h]
-  | .fetch r _ cnt, h => by
-    simp only [Raises] at h
-    have ih := eval_congr_ok hI (r := r) h
-    cases cnt <;> simp only [eval, ih]
-  | .cross a b, h | .unionAll a b, h => by
-    simp only [Raises, not_or] at h
-    simp only [eval, eval_congr_ok hI (r := a) h.1, eval_congr_ok hI (r := b) h.2]
-  | .join a b .inner on, h => by
-    simp only [Raises, not_or, not_exists, not_and] at h
-    have iha := eval_congr_ok hI (r := a) h.1
-    have ihb := eval_congr_ok hI (r := b) h.2.1
-    simp only [eval, iha, ihb]
-    exact List.filter_congr fun row hr => by
-      obtain ⟨x, hx', y, hy, rfl⟩ := mem_crossRows.mp hr
-      obtain ⟨v, hv⟩ := Expr.ok_of_not_raises (h.2.2 x hx' y hy)
-      rw [hI hv, Expr.evalI_of_evalP hv]
-  | .join a b .left on, h => by
-    simp only [Raises, not_or, not_exists, not_and] at h
-    have iha := eval_congr_ok hI (r := a) h.1
-    have ihb := eval_congr_ok hI (r := b) h.2.1
-    simp only [eval, iha, ihb]
-    exact flatMap_congr fun x hx' => leftJoinRow_congr fun y hy => by
-      obtain ⟨v, hv⟩ := Expr.ok_of_not_raises (h.2.2 x hx' y hy)
-      rw [hI hv, Expr.evalI_of_evalP hv]
-  | .semi a b _ on, h => by
-    simp only [Raises, not_or, not_exists, not_and] at h
-    have iha := eval_congr_ok hI (r := a) h.1
-    have ihb := eval_congr_ok hI (r := b) h.2.1
-    simp only [eval, iha, ihb]
-    exact List.filter_congr fun x hx' => by
-      rw [hasMatch_congr fun y hy => by
-        obtain ⟨v, hv⟩ := Expr.ok_of_not_raises (h.2.2 x hx' y hy)
-        exact (hI hv).trans (Expr.evalI_of_evalP hv).symm]
-  | .aggregate r gs ms, h => by
-    simp only [Raises, not_or, not_exists, not_and] at h
-    have ih := eval_congr_ok hI (r := r) h.1
-    simp only [eval, ih]
-    exact aggregateEval_congr fun row hr e he => by
-      obtain ⟨v, hv⟩ := Expr.ok_of_not_raises (h.2 row hr e he)
-      rw [hI hv, Expr.evalI_of_evalP hv]
+    {cat : Catalog} {r : Rel} (h : ¬r.Raises p cat) : r.eval cat I = r.eval cat p.impl :=
+  Rel.eval_congr_ok_on (Q := fun _ => True) (fun _ hv => hI hv) (fun _ _ => trivial) h
 
 /-- **`okImpl` is the engine's run where nothing raises** (#900): on a plan
 that does not raise under `p` (no call whose value `Rel.eval` uses raises,

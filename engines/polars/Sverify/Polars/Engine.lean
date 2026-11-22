@@ -59,10 +59,30 @@ def errImpl : Impl := ⟨UnFn.apply, errBin⟩
 
 end Polars
 
+/-- The functions at which `Polars.impl` is not `Profile.polars`'s value
+(ruling 259): `%` of doubles. Polars computes it as `x - y * floor(x / y)`
+(polars-double-modulus, `Profile.polars_fmod`), which rounds twice where the
+reference's `fmod` is exact, and no option of `fp.mod` allows that; Polars's
+lowering refuses it (`Lowering.polars_no_fmod`), so no run calls it. -/
+def Polars.implExceptions : List BinFn := [.fmod]
+
 /-- **Polars's functions**: `Profile.polars`'s value wherever the profile gives
 one, Polars's own (`Polars.errImpl`) where it raises (ruling 255). The value
-side is stated once, in the profile. -/
-def Polars.impl : Impl := Profile.polars.okImplOr Polars.errImpl
+side is stated once, in the profile. At `Polars.implExceptions` the value is
+the reference's, for a call no lowered plan makes (ruling 259). -/
+def Polars.impl : Impl :=
+  ⟨(Profile.polars.okImplOr Polars.errImpl).un, fun f v w =>
+    if f ∈ Polars.implExceptions then f.apply v w
+    else (Profile.polars.okImplOr Polars.errImpl).bin f v w⟩
+
+/-- `Polars.impl` is the profile's functions with Polars's error side, at every
+call but `Polars.implExceptions`'. -/
+theorem Polars.impl_agreeOn {cs : List Functions.Ctor}
+    (h : ∀ f ∈ Polars.implExceptions, Functions.Ctor.bin f ∉ cs) :
+    Impl.AgreeOn cs Polars.impl (Profile.polars.okImplOr Polars.errImpl) := by
+  refine ⟨fun _ _ _ => rfl, fun f hf v w => ?_⟩
+  have : f ∉ Polars.implExceptions := fun hx => h f hx hf
+  simp only [Polars.impl, this, ↓reduceIte]
 
 /-- **Polars's own results on the error side are within its table**: wrapping
 `+ - *` past 64 bits (`overflow`), `//` and `%` by zero
@@ -254,8 +274,8 @@ theorem Polars.floor_or_differs {a b : Int} (h : floorDiffers [.int a, .int b] =
 /-- **`Profile.polars`'s binary functions are within Polars's table** (S1,
 ruling 235): the reference's, but the floored `//` and `%` of integers whose
 signs differ (`division_type`, `FLOOR`). -/
-theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polars.bin f v w = .ok x) :
-    x = f.apply v w ∨ CallExtra Profile.polars.table (.bin f) [v, w] := by
+theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polars.bin f v w = .ok x)
+    (hf : f ≠ .fmod) : x = f.apply v w ∨ CallExtra Profile.polars.table (.bin f) [v, w] := by
   cases hf : f.polarsTmpl with
   | none => simp only [Profile.polars, hf] at h; exact .inl (raiseIf_ok h)
   | some t =>
@@ -263,6 +283,8 @@ theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polar
     have hfc : f = .idiv ∨ f = .imod ∨ f = .fmod := by
       cases f <;> simp only [BinFn.polarsTmpl, reduceCtorEq] at hf <;> simp
     rcases hfc with rfl | rfl | rfl
+    rotate_left 2
+    · exact absurd rfl hf
     · simp only [BinFn.polarsTmpl, Option.some.injEq] at hf; subst hf
       cases v
       case int a =>
@@ -303,7 +325,28 @@ theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polar
       all_goals
         rw [Polars.polars_imod_notInt (.inl fun _ h => by cases h)] at h
         exact .inl (raiseIf_ok h)
-    · sorry
+
+/-! ## Polars's lowering calls no `%` of doubles (ruling 259, R1) -/
+
+theorem Lowering.polars_un_tmpl (f : UnFn) (en : UnEntry Profile.polars f)
+    (h : Lowering.polars.un f = some en) : Functions.Ctor.bin .fmod ∉ en.tmpl.ctors := by
+  cases f <;> simp only [Lowering.polars, polarsOn, Option.some.injEq] at h <;> subst h <;>
+    simp [UnEntry.native, UnEntry.ofAgree, Expr.ctors, Lowering.froundTemplate,
+      Lowering.fceilTemplate, Lowering.zeroTemplate]
+
+theorem Lowering.polars_bin_tmpl (f : BinFn) (en : BinEntry Profile.polars f)
+    (h : Lowering.polars.bin f = some en) : Functions.Ctor.bin .fmod ∉ en.tmpl.ctors := by
+  cases f <;> simp only [Lowering.polars, polarsOn, Option.some.injEq, reduceCtorEq] at h <;>
+    subst h <;>
+    simp [BinEntry.native, BinEntry.ofAgree, Expr.ctors, Polars.idivTemplate, Polars.imodTemplate]
+
+/-- **Polars's lowering calls no `%` of doubles** (R1): the table has no entry
+for it (`refusing`), and no template calls it, so no expression of a plan it
+lowers does. -/
+theorem Lowering.polars_no_fmod {r r' : Rel} (hr : Lowering.polars.lowerRel? r = .ok r') :
+    ∀ e ∈ r'.mappedExprs, Functions.Ctor.bin .fmod ∉ e.ctors := fun e' he' => by
+  obtain ⟨e, t, ht, rfl⟩ := Lowering.mem_lowerRel? hr he'
+  exact Lowering.lower_not_mem_ctors (Lowering.polars_un_tmpl) (Lowering.polars_bin_tmpl) ht
 
 /-- **`Polars.impl` is within Polars's table**: where the profile gives a
 value, the profile's (`Profile.polars_un_within`, `Profile.polars_bin_within`),
@@ -314,9 +357,12 @@ theorem Polars.impl_within : Polars.impl.Within Profile.polars.table := by
     cases hu : Profile.polars.un f v with
     | ok w => exact Profile.polars_un_within f v w hu
     | error _ => exact .inl rfl
-  · show (match Profile.polars.bin f v w with | .ok x => x | .error _ => Polars.errBin f v w) = _ ∨ _
+  · by_cases hx : f ∈ Polars.implExceptions
+    · simp only [Polars.impl, hx, ↓reduceIte]; exact .inl rfl
+    simp only [Polars.impl, hx, ↓reduceIte]
+    show (match Profile.polars.bin f v w with | .ok x => x | .error _ => Polars.errBin f v w) = _ ∨ _
     cases hb : Profile.polars.bin f v w with
-    | ok x => exact Profile.polars_bin_within f v w x hb
+    | ok x => exact Profile.polars_bin_within f v w x hb (by simpa [Polars.implExceptions] using hx)
     | error _ => exact Polars.errBin_within f v w
 
 /-- **A verified plan runs on Polars.** When `Rel.mayIssues` reports nothing
@@ -338,7 +384,13 @@ theorem Rel.polars_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AV
   have h0 := Rel.not_raises_of_assumed hcat hA hF hT hwf hsmall hs hm
   have h1 : ¬r'.Raises Profile.polars cat := fun h =>
     h0 (Lowering.lowerRel?_raises Lowering.polars_allExact Lowering.polars_noneOnDbl hr h)
-  rw [Rel.eval_congr_ok Expr.evalOkOr_of_evalP h1]
+  have hI : ∀ {e : Expr} {row : Row} {v : Value}, Functions.Ctor.bin .fmod ∉ e.ctors →
+      e.evalP Profile.polars row = .ok v → e.eval row Polars.impl = v := fun he hv => by
+    rw [Expr.evalI_congr (Polars.impl_agreeOn fun f hf => by
+      simp only [Polars.implExceptions, List.mem_singleton] at hf; subst hf; exact he)]
+    exact Expr.evalOkOr_of_evalP hv
+  rw [Rel.eval_congr_ok_on (Q := fun e => Functions.Ctor.bin .fmod ∉ e.ctors) hI
+    (Lowering.polars_no_fmod hr) h1]
   exact Lowering.lowerRel?_sound Lowering.polars_noneOnDbl hr h1
 
 /-- Polars: the plan lowered by `Lowering.polars`, run with `Polars.impl`. -/
