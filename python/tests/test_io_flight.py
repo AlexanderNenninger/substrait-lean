@@ -298,7 +298,8 @@ def test_a_restarted_log_is_another_log(server):
         # refuses, where it used to skip batch 3 of the new log.
         with pytest.raises(ValueError, match="now serves the log") as e:
             src.read(recorded)
-        assert old in str(e.value) and new.id in str(e.value) and "new sink" in str(e.value)
+        assert str(old) in str(e.value) and str(new.id) in str(e.value)
+        assert "new sink" in str(e.value)
         # So does a source restored at the cursor a sink recorded.
         with pytest.raises(ValueError, match="now serves the log"):
             FlightSource(location(new), "samples", schema=SAMPLES).restore(recorded)
