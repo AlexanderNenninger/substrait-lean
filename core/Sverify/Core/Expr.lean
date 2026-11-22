@@ -422,7 +422,7 @@ unscaled value (`Parse.decimalCall` brings both to one scale first). -/
 
 /-- The text of the decimal `i / 10 ^ s` (D72): `-` for a negative value, the integer part with
 at least one digit, then `.` and exactly `s` digits (none for `s = 0`). `omitZero` drops an
-integer part of `0` instead, as DuckDB prints a `DECIMAL(p, p)` (`.500`). -/
+integer part of `0` instead (`.500`); the reference keeps it. -/
 def decText (omitZero : Bool) (s : Nat) (i : Int) : String :=
   let sign := if i < 0 then "-" else ""
   let a := i.natAbs
