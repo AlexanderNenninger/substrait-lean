@@ -11,12 +11,12 @@ import sverify
 
 from sverify_dbt import formats
 from sverify_dbt.cli import BUDGET, main
-from sverify_dbt.result import CheckResult, ContractIssue, ModelResult, TestResult
+from sverify_dbt.result import CheckResult, ContractIssue, ModelResult, Status, TestResult
 
 
 def _result() -> CheckResult:
     def t(
-        label: str, status: str, why: str | None = None, counterexample: str | None = None
+        label: str, status: Status, why: str | None = None, counterexample: str | None = None
     ) -> TestResult:
         return TestResult(
             test=None,

@@ -7,10 +7,10 @@ from sverify.errors import UnsupportedError
 
 from sverify_dbt import cli
 from sverify_dbt.cli import main
-from sverify_dbt.result import CheckResult, ContractIssue, ModelResult, TestResult
+from sverify_dbt.result import CheckResult, ContractIssue, ModelResult, Status, TestResult
 
 
-def _t(label: str, status: str, kind: str = "test") -> TestResult:
+def _t(label: str, status: Status, kind: str = "test") -> TestResult:
     return TestResult(test=None, name=None, label=label, kind=kind, status=status)
 
 
