@@ -470,7 +470,10 @@ def lift_reason(query: str, schemas: dict[str, Any]) -> str:
         sql = sg.transpile(query, read="mysql", write="duckdb")[0]
     except sg.errors.SqlglotError:
         return "SQLGlot cannot read it as MySQL"
-    read = {full_name(t) for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
+    try:
+        read = {full_name(t) for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
+    except sg.errors.SqlglotError:
+        return "SQLGlot cannot read its own DuckDB text"
     bad = {n: s for n, s in schemas.items() if isinstance(s, str) and full_name(n) in read}
     if bad:
         return f"schema: {next(iter(bad.values()))}"
@@ -499,6 +502,33 @@ def _pairs_of(
             yield r["pair"][0], r["pair"][1], json_schemas(r["schema"], r.get("constraint"))
 
 
+#: Seconds a query may take to lift before it counts as refused ("timeout"),
+#: so one query that hangs the lift cannot stall a run over 25,000 pairs.
+LIFT_SECONDS = 10
+
+
+class _Timeout(BaseException):  # past `lift_reason`'s `except Exception`
+    pass
+
+
+def _timed(query: str, schemas: dict[str, Any]) -> str:
+    """`lift_reason`, "timeout" past `LIFT_SECONDS`."""
+    import signal
+
+    def stop(*_: object) -> None:
+        raise _Timeout
+
+    old = signal.signal(signal.SIGALRM, stop)
+    signal.alarm(LIFT_SECONDS)
+    try:
+        return lift_reason(query, schemas)
+    except _Timeout:
+        return "timeout"
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+
 def lift_pairs(root: Path, limit: int | None = None) -> list[PairSet]:
     """Each of `PAIR_SETS` found under `root`, lifted pair by pair (the
     first `limit` pairs of each where given)."""
@@ -511,7 +541,7 @@ def lift_pairs(root: Path, limit: int | None = None) -> list[PairSet]:
         for i, (a, b, tables) in enumerate(_pairs_of(root, file, schema)):
             if limit is not None and i >= limit:
                 break
-            reasons = [lift_reason(a, tables), lift_reason(b, tables)]
+            reasons = [_timed(a, tables), _timed(b, tables)]
             why.update(r for r in reasons if r)
             s.pairs += 1
             ok = sum(not r for r in reasons)
@@ -520,6 +550,7 @@ def lift_pairs(root: Path, limit: int | None = None) -> list[PairSet]:
             s.neither += ok == 0
         s.why = dict(why.most_common())
         out.append(s)
+        print(f"{name}: {s.both} of {s.pairs} lift", file=sys.stderr, flush=True)
     return out
 
 
