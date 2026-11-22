@@ -138,6 +138,12 @@ CLASSES = (
 )
 
 
+def _word(status: str) -> str:
+    """A test status as one word, `not_proved`: sverify-dbt spells it with a
+    space before its 0.x renames and with an underscore after."""
+    return status.replace(" ", "_")
+
+
 def classify(refusal: str | None) -> str:
     """The class of a model's refusal, by its root cause: a model that reads
     a refused model is refused for that model's reason."""
@@ -222,7 +228,7 @@ def measure(
     test_classes: collections.Counter[str] = collections.Counter()
     for m in models:
         for t in m.tests:
-            test_classes[classes[m.unique_id] if m.refused else f"read, {t.status}"] += 1
+            test_classes[classes[m.unique_id] if m.refused else f"read, {_word(t.status)}"] += 1
     skippable = {t.name for t in result.skippable if t.name}
     test_ids = list(proj.tests)
     declared = len(test_ids)
@@ -250,8 +256,12 @@ def measure(
             "on_sources_or_seeds": declared - sum(test_classes.values()),
             "proved": len(result.proved_tests),
             "skippable": len(skippable),
-            "not_proved": sum(1 for m in models for t in m.tests if t.status == "not proved"),
-            "not_checked": sum(1 for m in models for t in m.tests if t.status == "not checked"),
+            "not_proved": sum(
+                1 for m in models for t in m.tests if _word(t.status) == "not_proved"
+            ),
+            "not_checked": sum(
+                1 for m in models for t in m.tests if _word(t.status) == "not_checked"
+            ),
             "dbt_failed": sum(1 for s in statuses.values() if s in ("fail", "error")),
         },
         "savings": {
