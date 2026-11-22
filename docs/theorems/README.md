@@ -16,3 +16,5 @@ over (`eval`, `OrderAllowed`, `Allowed`, `AllowedP`, `Near`) and its axioms.
 | [`Rel.polars_sound`](polars_sound.md) | … on Polars, after the shims |
 | [`Rel.spark_sound`](spark_sound.md) | … on Spark under ANSI |
 | [`Rel.keys_sound`](keys_sound.md) | A derived key holds on the output: no two rows share its columns |
+| [`Refresh.no_corruption`](refresh_no_corruption.md) | A sink's table never holds a change applied to a table it was not computed from |
+| [`Refresh.record_describes_table`](refresh_record_describes_table.md) | When the node's commit is the newest, the table is the state its record names |
