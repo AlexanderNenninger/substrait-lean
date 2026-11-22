@@ -22,7 +22,7 @@ When asked for a pipeline or a change to one:
 3. Register it in `pipelines.toml`: a `[[pipeline]]` with the file and the
    nodes to refresh (the last stored node of each chain), and a
    `[table.<name>]` with a title, a description, the source and a chart.
-4. Run `sverify check pipelines/<name>.py --json`. Exit 0 means proved.
+4. Run `sverify check pipelines/<name>.py --format json`. Exit 0 means proved.
    Otherwise read each finding's `code` (`sverify explain <code>`):
    - `needs`: run `sverify check pipelines/<name>.py --fix`, which adds
      the preconditions the proof needs to `requires=`. Keep only those the

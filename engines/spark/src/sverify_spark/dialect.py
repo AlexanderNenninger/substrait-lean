@@ -128,6 +128,8 @@ class SparkDialect(Dialect):
     # A `MIN` or `MAX` of mixed zeros depends on order and partitioning
     # (spark-zero-order); its keys are canonical already.
     canonical_zero_reps: ClassVar[frozenset[str]] = frozenset({"extreme"})
+    # NaN equals NaN and sorts above `+inf` (spark-nan-order, spark-nan-equality).
+    nan_orders: ClassVar[bool] = True
 
     def quote(self, ident: str) -> str:
         return "`" + ident.replace("`", "``") + "`"
@@ -252,12 +254,6 @@ class SparkDialect(Dialect):
 
     def is_nan(self, x: str) -> str:
         return f"isnan({x})"
-
-    def float_eq(self, a: str, b: str) -> str:
-        return f"({a} = {b})"
-
-    def float_lt(self, a: str, b: str) -> str:
-        return f"({a} < {b})"
 
     # Temporal
 

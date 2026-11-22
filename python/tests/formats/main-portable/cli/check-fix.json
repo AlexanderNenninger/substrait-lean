@@ -1,0 +1,449 @@
+{
+  "format": 1,
+  "sverify": "0.9.0.dev0",
+  "command": "check",
+  "exit": 1,
+  "status": "not_proved",
+  "file": "fix.py",
+  "target": null,
+  "items": [
+    {
+      "name": "doubled",
+      "nodes": [
+        "d"
+      ],
+      "status": "not_proved",
+      "relaxations": [],
+      "summary": {
+        "guarantees": [],
+        "checks": [],
+        "not_proved": [
+          "(_.amount >= -2**62) and (_.amount < 2**62) on orders, inferred from `amount * 2` (overflow otherwise): declare them in requires (each run then checks them on the data), or rewrite so no row needs them (`orders.filter((_.amount >= -2**62) & (_.amount < 2**62))` first, or a CASE); on_inferred='warn' assumes them instead"
+        ]
+      },
+      "links": [],
+      "report": {
+        "assumed": [],
+        "black_boxes": [],
+        "checker": {
+          "generated_proofs": false
+        },
+        "class_places": [],
+        "depends": [
+          {
+            "behaviours": [
+              "ERROR"
+            ],
+            "group": "int.arith",
+            "option": "overflow",
+            "stated": false
+          }
+        ],
+        "deterministic": true,
+        "deterministic_exact": true,
+        "dialect": "ibis",
+        "dialect_differences": [],
+        "engine_version": null,
+        "engines": {
+          "duckdb": {
+            "class": "exact",
+            "class_basis": "computed",
+            "epsilon": {},
+            "evidence": "proved",
+            "facts": [
+              "duckdb-R1",
+              "duckdb-R15-int-arith",
+              "duckdb-R1-min",
+              "duckdb-R15-int-modulus"
+            ],
+            "guard_free_theorem": null,
+            "issues": [],
+            "marks_theorem": "Rel.duckdb_marks_written",
+            "observed": [],
+            "problems": [],
+            "profile": true,
+            "proved_facts": [
+              "duckdb-R1",
+              "duckdb-R15-int-arith",
+              "duckdb-R1-min",
+              "duckdb-R15-int-modulus"
+            ],
+            "rows": 1,
+            "shims": [],
+            "tested_because": [],
+            "theorems": [
+              "Lowering.duckdb_exact"
+            ],
+            "transfer": {
+              "polars": {
+                "failures": [
+                  {
+                    "facts": [
+                      "duckdb-R1",
+                      "duckdb-R15-int-arith",
+                      "duckdb-R1-min",
+                      "duckdb-R15-int-modulus"
+                    ],
+                    "from": [
+                      "SILENT"
+                    ],
+                    "group": "int.arith",
+                    "option": "overflow",
+                    "preferences": [],
+                    "to": [
+                      "ERROR"
+                    ]
+                  }
+                ],
+                "ok": false
+              },
+              "spark": {
+                "failures": [],
+                "ok": true
+              },
+              "substrait": {
+                "failures": [],
+                "ok": true
+              }
+            },
+            "translated_evidence": "proved",
+            "version": "2.0.0",
+            "without_row": []
+          },
+          "polars": {
+            "class": "exact",
+            "class_basis": "computed",
+            "epsilon": {},
+            "evidence": "proved",
+            "facts": [
+              "polars-int-arith",
+              "polars-int-divide"
+            ],
+            "guard_free_theorem": "Rel.polars_sound",
+            "issues": [],
+            "marks_theorem": null,
+            "observed": [],
+            "problems": [],
+            "profile": true,
+            "proved_facts": [
+              "polars-int-arith",
+              "polars-int-divide"
+            ],
+            "rows": 1,
+            "shims": [],
+            "tested_because": [],
+            "theorems": [
+              "Rel.polars_sound"
+            ],
+            "transfer": {
+              "duckdb": {
+                "failures": [
+                  {
+                    "facts": [
+                      "polars-int-arith",
+                      "polars-int-divide"
+                    ],
+                    "from": [
+                      "ERROR"
+                    ],
+                    "group": "int.arith",
+                    "option": "overflow",
+                    "preferences": [],
+                    "to": [
+                      "SILENT"
+                    ]
+                  }
+                ],
+                "ok": false
+              },
+              "spark": {
+                "failures": [
+                  {
+                    "facts": [
+                      "polars-int-arith",
+                      "polars-int-divide"
+                    ],
+                    "from": [
+                      "ERROR"
+                    ],
+                    "group": "int.arith",
+                    "option": "overflow",
+                    "preferences": [],
+                    "to": [
+                      "SILENT"
+                    ]
+                  }
+                ],
+                "ok": false
+              },
+              "substrait": {
+                "failures": [],
+                "ok": true
+              }
+            },
+            "translated_evidence": "proved",
+            "version": "2.1.0",
+            "without_row": []
+          },
+          "spark": {
+            "class": "exact",
+            "class_basis": "computed",
+            "epsilon": {},
+            "evidence": "proved",
+            "facts": [
+              "spark-int-arith",
+              "spark-int-abs"
+            ],
+            "guard_free_theorem": null,
+            "issues": [],
+            "marks_theorem": null,
+            "observed": [],
+            "problems": [],
+            "profile": true,
+            "proved_facts": [
+              "spark-int-arith",
+              "spark-int-abs"
+            ],
+            "rows": 1,
+            "shims": [],
+            "tested_because": [],
+            "theorems": [
+              "Rel.spark_sound"
+            ],
+            "transfer": {
+              "duckdb": {
+                "failures": [],
+                "ok": true
+              },
+              "polars": {
+                "failures": [
+                  {
+                    "facts": [
+                      "spark-int-arith",
+                      "spark-int-abs"
+                    ],
+                    "from": [
+                      "SILENT"
+                    ],
+                    "group": "int.arith",
+                    "option": "overflow",
+                    "preferences": [],
+                    "to": [
+                      "ERROR"
+                    ]
+                  }
+                ],
+                "ok": false
+              },
+              "substrait": {
+                "failures": [],
+                "ok": true
+              }
+            },
+            "translated_evidence": "proved",
+            "version": "4.3.0",
+            "without_row": []
+          }
+        },
+        "ensures": [],
+        "facts": {
+          "doubled": {
+            "lower": null,
+            "nullable": true,
+            "text": "any integer or NULL",
+            "upper": null
+          },
+          "id": {
+            "lower": null,
+            "nullable": true,
+            "text": "any integer or NULL",
+            "upper": null
+          }
+        },
+        "floats_on": {},
+        "format": 4,
+        "implied": {},
+        "inferred": {
+          "orders": [
+            {
+              "column": "amount",
+              "label": "(_.amount >= -2**62)",
+              "sql": "\"amount\" IS NULL OR \"amount\" >= -4611686018427387904"
+            },
+            {
+              "column": "amount",
+              "label": "(_.amount < 2**62)",
+              "sql": "\"amount\" IS NULL OR \"amount\" < 4611686018427387904"
+            }
+          ]
+        },
+        "issues": [],
+        "lenses": {
+          "components": {
+            "decimals": "exact",
+            "elements": "multiset",
+            "errors": "exact",
+            "floats": "plan",
+            "rows": "multiset",
+            "strings": "exact",
+            "timestamps": "ns",
+            "zeros": "canon"
+          },
+          "text": "equivalent(elements='multiset', floats=plan, zeros='canon')"
+        },
+        "needs": [
+          {
+            "code": "_.amount >= -2**62",
+            "column": "amount",
+            "issue": {
+              "kind": "fail",
+              "level": "error",
+              "message": {
+                "text": "overflow: amount * 2"
+              },
+              "properties": {
+                "column": null,
+                "constant": false,
+                "hint": "state `(_.amount >= -2**62)`, `(_.amount < 2**62)` in the requires of 'orders'",
+                "needs": [
+                  {
+                    "label": "(_.amount >= -2**62)",
+                    "table": "orders"
+                  },
+                  {
+                    "label": "(_.amount < 2**62)",
+                    "table": "orders"
+                  }
+                ],
+                "shown": "amount * 2",
+                "under_and_or": false
+              },
+              "ruleId": "overflow"
+            },
+            "label": "(_.amount >= -2**62)",
+            "op": ">=",
+            "sql": "\"amount\" IS NULL OR \"amount\" >= -4611686018427387904",
+            "table": "orders",
+            "value": "-4611686018427387904"
+          },
+          {
+            "code": "_.amount < 2**62",
+            "column": "amount",
+            "issue": {
+              "kind": "fail",
+              "level": "error",
+              "message": {
+                "text": "overflow: amount * 2"
+              },
+              "properties": {
+                "column": null,
+                "constant": false,
+                "hint": "state `(_.amount >= -2**62)`, `(_.amount < 2**62)` in the requires of 'orders'",
+                "needs": [
+                  {
+                    "label": "(_.amount >= -2**62)",
+                    "table": "orders"
+                  },
+                  {
+                    "label": "(_.amount < 2**62)",
+                    "table": "orders"
+                  }
+                ],
+                "shown": "amount * 2",
+                "under_and_or": false
+              },
+              "ruleId": "overflow"
+            },
+            "label": "(_.amount < 2**62)",
+            "op": "<",
+            "sql": "\"amount\" IS NULL OR \"amount\" < 4611686018427387904",
+            "table": "orders",
+            "value": "4611686018427387904"
+          }
+        ],
+        "not_null": [],
+        "on_inferred": "error",
+        "output": {
+          "doubled": "int64",
+          "id": "int64"
+        },
+        "params": [],
+        "proved": false,
+        "requires": {
+          "orders": [
+            "(_.amount >= -2**62)",
+            "(_.amount < 2**62)"
+          ]
+        },
+        "rewrites": [],
+        "routes": {},
+        "rows": null,
+        "run_checks": {
+          "asof": [],
+          "asof_max_pairs": null,
+          "margin": []
+        },
+        "run_gate": "no_rewrite",
+        "semantics": "portable",
+        "sequence_determined": false,
+        "sorted": false,
+        "summary": "NOT proved: 2 preconditions needed",
+        "sverify": "0.9.0.dev0",
+        "ties": {
+          "needs": [],
+          "places": []
+        },
+        "transfer": null,
+        "verdict": "unproved"
+      }
+    }
+  ],
+  "findings": [
+    {
+      "code": "needs",
+      "level": "error",
+      "message": "needs _.amount >= -2**62 on orders (else overflow in amount * 2)",
+      "item": "doubled",
+      "nodes": [
+        "d"
+      ],
+      "line": 12,
+      "table": "orders",
+      "condition": "(_.amount >= -2**62)"
+    },
+    {
+      "code": "needs",
+      "level": "error",
+      "message": "needs _.amount < 2**62 on orders (else overflow in amount * 2)",
+      "item": "doubled",
+      "nodes": [
+        "d"
+      ],
+      "line": 12,
+      "table": "orders",
+      "condition": "(_.amount < 2**62)"
+    }
+  ],
+  "unchecked": [],
+  "credentials": [],
+  "error": null,
+  "budget": {
+    "timeout": 30.0,
+    "elapsed": 1.593
+  },
+  "fixes": [
+    {
+      "transform": "doubled",
+      "requires": {
+        "orders": [
+          "_.amount.isnull() | (_.amount >= -2**62)",
+          "_.amount.isnull() | (_.amount < 2**62)"
+        ]
+      },
+      "placed": false,
+      "reason": "requires= is not a literal dict or list: add the conditions by hand"
+    }
+  ],
+  "diff": "",
+  "applied": false
+}

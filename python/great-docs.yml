@@ -75,11 +75,11 @@ reference:
     contents:
       - types.Issue
       - types.Needed
-      - types.CheckedCondition
+      - types.Postcondition
       - types.Discharged
       - types.Counterexample
       - types.ColumnFacts
-      - types.Observation
+      - types.Lenses
       - types.Within
       - types.Route
       - types.DialectDifference
@@ -231,7 +231,7 @@ reference:
       - odcs.export
       - odcs.write
       - odcs.read
-      - odcs.OdcsContract
+      - odcs.ODCSContract
       - odcs.Unread
       - odcs.UnreadRuleWarning
 
@@ -266,7 +266,7 @@ reference:
       - errors.NotIncrementalError
       - errors.ConcurrentWriteError
       - errors.UnsupportedError
-      - errors.SqlError
+      - errors.SQLError
       - errors.ExportError
       - errors.MemoryLimitError
       - errors.CheckerVersionError

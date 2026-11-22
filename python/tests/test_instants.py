@@ -414,7 +414,7 @@ def test_an_incremental_cursor_on_an_instant_column(tmp_path):
     assert recorded is not None and "payments" in recorded.cursors
     rows.append({"id": 2, "ts": U(2026, 11, 3, 12, 1), "amount": 40})
     w = job().refresh().writes[0]
-    assert (w.mode, w.inserted) == ("merge", 1)
+    assert (w.mode, w.inserts) == ("merge", 1)
 
 
 @pytest.mark.parametrize(
