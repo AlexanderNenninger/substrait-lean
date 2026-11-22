@@ -599,6 +599,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .ffloor, a => monoAbs .float .float FloatCode.floor a
   | .fceil, a => monoAbs .float .float FloatCode.ceil a
   | .fround, a => monoAbs .float .float FloatCode.round a
+  | .froundEven, a => monoAbs .float .float FloatCode.roundEven a
   | .ftoi, a => ftoiAbs a
   | .narrow n, a => narrowAbs n a
   -- `ftoi`'s value, or NULL where the cast fails (#58).
@@ -1137,6 +1138,7 @@ macro "canon_tac" : tactic => `(tactic| first
   | exact (FloatCode.canon_floor_canon _).symm
   | exact (FloatCode.canon_ceil_canon _).symm
   | exact (FloatCode.canon_round_canon _).symm
+  | exact (FloatCode.canon_roundEven_canon _).symm
   | exact (FloatCode.canon_negI_canon _).symm
   | exact (FloatCode.fadd_canon _ _).symm
   | exact (FloatCode.fsub_canon _ _).symm

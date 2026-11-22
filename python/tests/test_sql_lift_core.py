@@ -96,7 +96,6 @@ def test_the_profiles_differ_only_in_what_functions_do():
     assert {f for f in fields if getattr(DUCKDB, f) != getattr(PORTABLE, f)} == {
         "name",
         "min_mod_neg_one",
-        "float_to_int",
         "domain_error",
         "log_zero",
         "corr_degenerate",

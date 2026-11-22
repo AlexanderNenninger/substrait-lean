@@ -414,6 +414,8 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
     ``DuckDBSQL.ref_fround_null, ``DuckDBSQL.ref_fceil_float, ``DuckDBSQL.ref_fceil_null,
     ``DuckDBSQL.ref_rounded_float, ``DuckDBSQL.ref_rounded_null, ``DuckDBSQL.duck_rounded_float,
     ``DuckDBSQL.duck_rounded_null, ``DuckDBSQL.ref_rounded_null_duckCast, ``IntRound.code,
+    ``DuckDBSQL.ref_froundEven_float, ``DuckDBSQL.ref_froundEven_null,
+    ``DuckDBSQL.duckCast_eq_castOut_roundEven, ``DuckDBSQL.duckCast_null,
     ``Outcome.agree_refl] ++ extra)
   let fin ← simpArgs (#[``Outcome.Agree, ``Issue.isError, ``DuckDBSQL.fdiv_of_canon_zero, ``ieeeDivZero] ++ extra)
   -- A double is canonical, `-0.0` or the negative NaN: three cases.

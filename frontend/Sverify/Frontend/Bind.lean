@@ -116,7 +116,7 @@ for overflow. -/
 
 /-- About how often the SQL writers write a function's argument. -/
 def UnFn.copies : UnFn → Nat
-  | .ffloor | .fceil | .fround | .froundTo _ | .ftoi | .narrow _ | .fmath _ | .fneg => 5
+  | .ffloor | .fceil | .fround | .froundEven | .froundTo _ | .ftoi | .narrow _ | .fmath _ | .fneg => 5
   | .dateTrunc _ | .dayTrunc _ | .addMonths _ _ | .bucket _ _ | .dayPart _ | .strftime _ => 6
   | .neg | .upper | .lower | .reverse | .ascii | .timeOfDay | .datePart _ => 3
   | _ => 1

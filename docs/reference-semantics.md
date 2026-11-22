@@ -369,9 +369,9 @@ those inputs. Where the reference gives another value, the lift refuses the
 construct or lists it:
 
 - `float_to_int`: `CAST(x AS BIGINT)` of a double rounds half to even on DuckDB
-  and truncates in the reference (R9), so the lift refuses it until #322. The
-  hint names `CAST(round(x) AS BIGINT)`, `floor` and `ceil`, which mean the same
-  on both.
+  and truncates in the reference (R9). The lift reads it, under both semantics,
+  as the cast of `round(x, rounding: TIE_TO_EVEN)` (D55, #322). Narrower integer
+  targets are refused; the hint names `CAST(x AS BIGINT)` and `CAST(round(x) AS the type)`.
 - A cast of a decimal to an integer rounds half away from zero on DuckDB. The
   lift reads it, under both semantics, as the rescale to scale 0 (which rounds
   half away from zero) and the exact cast (#322).
