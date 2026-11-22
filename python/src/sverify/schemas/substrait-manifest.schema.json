@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/AlexanderNenninger/substrait-lean/python/src/sverify/schemas/substrait-manifest.schema.json",
   "title": "sverify Substrait contract manifest",
-  "description": "The `manifest` of the `io.sverify.substrait.v1.Contract` message that Report.to_substrait attaches to an exported plan (substrait_contract.proto), as protobuf's JSON form of its google.protobuf.Struct: every number is a double. Format 3: format 1 (before 1.0) said profile, observation and observation_components, and format 2 equivalence and equivalence_components, which a reader maps. Within 1.x the manifest only gains optional keys, and readers ignore keys they do not know (docs/stability.md). docs/guide.md, \"Exporting to Substrait\", says what each key holds.",
+  "description": "The `manifest` of the `io.sverify.substrait.v1.Contract` message that Report.to_substrait attaches to an exported plan (substrait_contract.proto), as protobuf's JSON form of its google.protobuf.Struct: every number is a double. Format 3: format 1 (before 1.0) said profile, observation and observation_components, and format 2 equivalence and equivalence_components, which a reader maps. Within 1.x the manifest only gains optional keys, and readers ignore keys they do not know (docs/stability.md). docs/how-to-export.md, \"Exporting to Substrait\", says what each key holds.",
   "type": "object",
   "required": ["format", "sverify", "substrait", "extension_urns", "semantics", "class", "lenses"],
   "properties": {

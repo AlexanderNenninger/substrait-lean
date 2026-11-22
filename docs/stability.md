@@ -95,7 +95,7 @@ which keep old readers and old data working:
   neither is used again.
 - The manifest, a `google.protobuf.Struct`, follows the rules of the JSON
   formats above. Its keys are in
-  [the guide](tasks.md#exporting-to-substrait).
+  [the guide](how-to-export.md#exporting-to-substrait).
 - `sv.Report.from_substrait` reads every earlier 1.x export and proves its contract
   again; for an export of a proved plan the report is proved. It proves each
   postcondition over the exported plan, shims included (#1484). An export whose
@@ -208,7 +208,7 @@ pages link here. The reference is Lean's reference profile
 ([reference semantics](reference-semantics.md)), one of the profiles that
 refine the core ([core, profiles and engines](core-and-profiles.md)), and an engine runs a plan
 by a route that the checker justifies against it
-([routes, classes and profiles](tasks.md#routes-classes-and-profiles)).
+([routes, classes and profiles](how-to-engines-and-sql.md#routes-classes-and-profiles)).
 
 | Engine | Runs plans | Writes its SQL | Profile (`semantics=`) | Run proved sound | In the 1.x promise |
 |---|---|---|---|---|---|
@@ -238,3 +238,7 @@ model stays the reference.
 Each release is checked against these rules: the format fixtures, the "Breaking changes"
 section and its migration notes, and the facts or upstream records of each
 soundness fix.
+
+## Status
+
+Sverify is a working prototype of a pipeline tool: it proves contracts and runs the checked plan. Production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. A name that goes is gone in that release, with no alias, and [the changelog](../CHANGELOG.md) lists each move and what replaces it ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)). It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.

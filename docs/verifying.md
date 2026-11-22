@@ -93,7 +93,7 @@ and says why it fails.
   `semantics` would carry over:
   `verify with semantics='portable' to run on duckdb`.
 
-[How to, Routes, classes and profiles](tasks.md#routes-classes-and-profiles)
+[How to, Routes, classes and profiles](how-to-engines-and-sql.md#routes-classes-and-profiles)
 has the details and what to do about a refusal;
 [reference-semantics.md](reference-semantics.md) states what each option
 does under the reference.

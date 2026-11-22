@@ -643,7 +643,7 @@ def _(mo):
 
     Some operations can fail. The reference raises on each of these, and
     the report lists every one a plan may hit
-    ([Runtime errors](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#runtime-errors)).
+    ([Runtime errors](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-guards.md#runtime-errors)).
 
     * Integer `/` or `%` by zero, and `-9223372036854775808 / -1`, which
       does not fit in 64 bits.
@@ -734,7 +734,7 @@ def _(mo):
       closes it.
     * The same `AND` is no guard: DuckDB and Polars evaluate both operands,
       so `qty % n` runs on the `n = 0` row
-      ([eager AND and OR](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#guards)). The report flags the error inside the
+      ([eager AND and OR](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-guards.md#guards)). The report flags the error inside the
       `AND` and suggests guarding the operation itself with the `CASE` above.
     * An earlier filter is no guard either. An optimizer may merge the two
       filters into one `AND`. Lean models that (`Rel.loose`) and reports

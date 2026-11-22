@@ -152,7 +152,7 @@ def _(mo):
     command has an exit code per outcome (3 for a refusal, 4 for a time
     budget, which `SVERIFY_TIMEOUT` sets), `--format github` annotates the
     pull request's lines, and `--format sarif` feeds code scanning
-    ([the command line](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#the-command-line)).
+    ([the command line](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-command-line.md#the-command-line)).
 
     ## 2. A test for CI
 
@@ -195,7 +195,7 @@ def _(mo):
     `assert_engines_agree(node, data)` runs the same rows on every installed
     engine, and `cases(node)` draws inputs that meet the preconditions for
     Hypothesis
-    ([testing with pytest](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#testing-with-pytest)).
+    ([testing with pytest](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-production.md#testing-with-pytest)).
 
     ## 3. Credentials by name
 
@@ -227,7 +227,7 @@ def _(mo):
     `node.credentials()` lists the names a node uses before it runs, and
     `sverify check` warns when a sink lies outside what its credential may
     write
-    ([credentials](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#credentials)).
+    ([credentials](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-credentials.md#credentials)).
 
     ## 4. Tell the next team what it gets
 
@@ -394,7 +394,7 @@ def _(mo):
     checked against. The next chapter,
     [Engines](?file=07_engines.py), runs one proved plan on DuckDB, Polars and
     Spark and shows what an engine's refusal tells you. The
-    [guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md)
+    [guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md)
     covers every feature in more detail, and
     [how it works](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md)
     goes under the hood: the checker, the producers and engines, and what

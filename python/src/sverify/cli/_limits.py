@@ -1,7 +1,8 @@
 """Time and memory budgets of a CLI call (#744, #783).
 
 The time budget bounds proof, planning and checking only: an alarm raises
-`BudgetExceeded` in the main thread, which stops the checker between
+`BudgetExceeded` in the main thread (where there is no SIGALRM, as on
+Windows, a timer interrupts the main thread through SIGINT instead), which stops the checker between
 requests and is never caught by user code that catches `Exception`. A
 watchdog thread ends the process if the main thread does not get back to
 Python in time (a long native call). The memory budget is DuckDB's
@@ -18,6 +19,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from typing import Any
 
 #: The default time budget of every command, in seconds (#744).
 DEFAULT_TIMEOUT = 30.0
@@ -77,6 +79,8 @@ class Budget:
         self.start = time.monotonic()
         self._deadline: float | None = None
         self._watchdog: threading.Timer | None = None
+        self._timer: threading.Timer | None = None
+        self._fired = False
         self.exceeded = False
 
     @property
@@ -93,31 +97,52 @@ class Budget:
         left = self.seconds - self.elapsed
         if left <= 0:
             self._exceed()
-        use_alarm = hasattr(signal, "SIGALRM")
-        previous: object = None
-        if use_alarm:
-            previous = signal.signal(signal.SIGALRM, self._alarm)
+        # A real SIGALRM also interrupts a blocking read (the checker's pipe);
+        # a simulated SIGINT runs its handler at the next bytecode.
+        sig = signal.SIGALRM if hasattr(signal, "SIGALRM") else signal.SIGINT
+        self._previous = signal.signal(sig, self._alarm)
+        if sig == signal.SIGINT:
+            self._fired = False
+            self._timer = threading.Timer(left, self._interrupt)
+            self._timer.daemon = True
+            self._timer.start()
+        else:
             signal.setitimer(signal.ITIMER_REAL, left)
-        self._watchdog = threading.Timer(left + (GRACE if use_alarm else 0), self._hard_stop)
+        self._watchdog = threading.Timer(left + GRACE, self._hard_stop)
         self._watchdog.daemon = True
         self._watchdog.start()
         try:
             yield
         finally:
             self.disarm()
-            if use_alarm:
-                signal.signal(signal.SIGALRM, previous)  # type: ignore[arg-type]
+            signal.signal(sig, self._previous)
 
     def disarm(self) -> None:
         """Stop the budget: what runs after it is not bounded."""
         if hasattr(signal, "SIGALRM"):
             signal.setitimer(signal.ITIMER_REAL, 0)
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
         if self._watchdog is not None:
             self._watchdog.cancel()
             self._watchdog = None
 
-    def _alarm(self, signum: int, frame: object) -> None:
+    def _alarm(self, signum: int, frame: Any) -> None:
+        if signum == signal.SIGINT and not self._fired:  # Ctrl-C, not the budget's timer
+            if callable(self._previous):
+                self._previous(signum, frame)
+                return
+            raise KeyboardInterrupt
         self._exceed()
+
+    def _interrupt(self) -> None:
+        """The timer's end where there is no SIGALRM: the main thread gets a
+        SIGINT, which `_alarm` turns into `BudgetExceeded`. A raised signal
+        goes through the C handler, which on Windows also wakes a sleep that
+        `_thread.interrupt_main` would leave to the watchdog."""
+        self._fired = True
+        signal.raise_signal(signal.SIGINT)
 
     def _exceed(self) -> None:
         self.exceeded = True

@@ -24,12 +24,13 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import time
 import uuid
 from collections.abc import Iterable, Iterator, Mapping
 from datetime import timedelta
 from decimal import Decimal
-from pathlib import PurePosixPath
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, Literal
 from urllib.parse import unquote, urlparse
 
@@ -226,15 +227,21 @@ def _is_catalog(uri: str) -> bool:
     return urlparse(uri).scheme.lower() == "uc"
 
 
+#: A Windows path: a drive letter (`C:\\`, `C:/`) or a UNC share (`\\\\server`).
+_WINDOWS_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\)")
+
+
 def _basename(uri: str) -> str:
     """The default name of the table at `uri`: the last part of the path,
     with dots replaced by underscores, or the table's own name for
     `uc://catalog.schema.table`. Plans name a table by its dotted parts
     (catalog.schema.table), so a dot in the name would make DuckDB look for
     a table in another schema (#451). Userinfo and a query string are no
-    part of it (`public_uri`)."""
+    part of it (`public_uri`). A Windows path (`C:\\lake\\orders`, a UNC
+    `\\\\server\\share\\orders`) is split at either slash."""
     uri = public_uri(uri)
-    base = PurePosixPath(uri.rstrip("/")).name or uri
+    path = PureWindowsPath(uri) if _WINDOWS_PATH.match(uri) else PurePosixPath(uri.rstrip("/"))
+    base = path.name or uri
     if _is_catalog(uri):
         return base.rsplit(".", 1)[-1]
     return base.replace(".", "_")
