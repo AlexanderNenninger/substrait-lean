@@ -179,6 +179,13 @@ def intTagFor (n : Nat) : String := ((intTags.find? fun (_, b) => n ≤ b).map (
 carried and never read. -/
 def opaqueTypes : List String := ["binary", "fixedBinary", "map", "uuid", "userDefined"]
 
+/-- A type that is a struct, or a list of a type that holds one. -/
+partial def typeHasStruct (ty : Json) : Bool :=
+  (ty.getObjVal? "struct").toOption.isSome ||
+    match (ty.getObjVal? "list").toOption.bind (·.getObjVal? "type" |>.toOption) with
+    | some t => typeHasStruct t
+    | none => false
+
 /-- A type's kind. A type the model does not read is opaque (D67), and so is a
 list or struct that holds one, as a whole (K5); a timestamp at a precision other
 than microseconds or nanoseconds (D61), and a time at one other than
@@ -2309,6 +2316,12 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       let b := Expr.ifThen e (bit 1) (.ifThen (.un .not e) (bit 0) (.lit .null))
       let n := intBits ty
       return if target == .int && n < 64 then .un (.narrow n) b else b
+    -- A cast to a type holding a struct is refused (#2376): the core's struct kind carries no
+    -- field names, so a target of the same field kinds in another order or under other names
+    -- would read as the identity, where DuckDB and Polars pair the fields by name and Spark by
+    -- position. Until the model pairs them, even a cast to the source's own type is refused.
+    if typeHasStruct (← field c "type") then
+      throw "casts of structs are not supported: sverify cannot build a struct value yet; cast its fields"
     -- A list casts element by element (#1919): `transform(l, x -> CAST(x AS t))`.
     if let .list ek := k then
       if target != k then
