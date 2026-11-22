@@ -56,11 +56,11 @@ Conditions are Ibis expressions (`_.amount >= 0`, or a function of the table)
 or SQL snippets (`"amount >= 0"`). SQL snippets are DuckDB's SQL, compiled to
 Substrait by sverify's lift (`sverify.sql_lift`).
 
-Runtime checks run through Ibis, on the connection the tables are bound to
-(`sverify.connect()`), by default; naming an engine (`engine="duckdb"`,
-or `"polars"`, see `sverify.engines.run`) runs each
-condition's plan, as Lean wrote it, there instead, so such conditions must be
-inside the Lean model. `unique` checks always run through Ibis.
+Runtime checks run each condition's plan, as Lean wrote it, on the engine of
+the connection the tables are bound to (`sverify.connect()`), or on the
+engine named (`check_engine="polars"`, see `sverify.engines.run`), so the
+conditions must be inside the Lean model (F219). A table of another Ibis
+backend is checked by Ibis there.
 """
 
 from __future__ import annotations
@@ -195,6 +195,7 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     render_fact,
     tie_places,
     violating_rows,
+    violation_counts,
     violations,
 )
 
@@ -2660,8 +2661,12 @@ def discharge(
                 if label(c) in proved
             ]
             todo = [c for c in todo if label(c) not in proved]
-    for c in todo:
-        if n := violations(table, c, engine):
+    # One plan counts them all (`violation_counts`); a condition whose check
+    # raised runs alone, so the engine's own error is the one raised.
+    for c, n, error in violation_counts(table, todo, engine) if todo else []:
+        if error is not None:
+            n = violations(table, c, engine)
+        if n:
             raise PreconditionError(
                 f"{n} {what} violate {label(c)}",
                 source=name,
@@ -3438,10 +3443,11 @@ def transform(
             inputs at call time. Default True. False with an
             `on_violation` other than `"error"` raises `ValueError`: that
             setting acts on those checks.
-        check_engine: Where checks on data run: `"duckdb"` or `"polars"` run each
-            condition's plan as Lean wrote it; None
-            (the default) runs them through Ibis on the inputs' connection.
-            `refresh(engine=)` says where a node's plan runs.
+        check_engine: Where checks on data run, each condition's plan as
+            Lean wrote it: `"duckdb"`, `"polars"` or `"spark"`, or None (the
+            default) for the engine of the inputs' `sverify.connect()`
+            connection. A table of another Ibis backend is checked by Ibis
+            there. `refresh(engine=)` says where a node's plan runs.
         semantics: What the contract's SQL conditions mean in its proofs,
             as `verify`'s: `"portable"` (the default) or `"duckdb"`.
         on_inferred: What a precondition sverify infers does, as

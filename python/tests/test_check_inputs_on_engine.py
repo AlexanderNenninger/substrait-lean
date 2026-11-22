@@ -128,3 +128,26 @@ def test_polars_checks_the_assumed_sum_on_the_guard_free_route_too(monkeypatch):
     assert routes == ["guard_free"]
     with pytest.raises(PreconditionError, match="assumed precondition"):
         report.run(_con([10**18] * 10), "polars")
+
+
+def test_a_check_with_no_engine_named_runs_the_proved_plan(monkeypatch):
+    """F219 (#2342): with `check_engine=None`, a transform's `requires` on a
+    bound input run as the checker's plan on the connection's engine, all of
+    one table's conditions in one plan, and a violation still refuses it."""
+    runs: list[str] = []
+    real = report_module._run_conditions
+
+    def spy(con, table, conds, engine):
+        runs.append(engine)
+        return real(con, table, conds, engine)
+
+    monkeypatch.setattr(report_module, "_run_conditions", spy)
+
+    @sv.transform(requires={"t": [_.x >= 0, _.x < 100]})
+    def plus_one(t):
+        return t.select(y=t.x + 1)
+
+    assert plus_one(_con([0, 5]).table("t")).to_pyarrow().num_rows == 2
+    assert runs == ["duckdb"]
+    with pytest.raises(PreconditionError, match=r"1 row\(s\) of t violate"):
+        plus_one(_con([0, -1]).table("t"))
