@@ -816,7 +816,7 @@ class Report:
             ValueError: The plan carries no sverify contract, or the
                 checker rejects the plan.
         """
-        return _hooks.export().recheck(data)
+        return _hooks.export()._recheck(data)
 
     @overload
     def to_substrait(
