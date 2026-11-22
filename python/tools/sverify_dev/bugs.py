@@ -1,6 +1,7 @@
 """Upstream bugs (`upstream/bugs/*.json`) and the lift's backlog of tests
 (`python/tests/lift_backlog.json`): records people and agents edit by hand,
-one entry each, checked here.
+one entry each, checked here; and the refusals of the dbt replay's ledgers
+(`dbt/replay/`), each naming an issue or a design reason.
 
 Maintainer tooling (`sverify_dev`): not in the wheel, and not part of sverify's
 API.
@@ -39,6 +40,8 @@ REPO = Path(__file__).resolve().parents[3]
 ROOT = REPO / "upstream"
 SCHEMA = ROOT / "bug.schema.json"
 BACKLOG = REPO / "python" / "tests" / "lift_backlog.json"
+#: The dbt replay's ledgers (`sverify_dbt.replay`, #859), one per source.
+DBT_REPLAY = REPO / "dbt" / "replay"
 REPORT = ROOT / "REPORT.md"
 
 
@@ -310,12 +313,32 @@ def validate_backlog(path: Path = BACKLOG) -> list[str]:
     return problems
 
 
+def validate_dbt_ledgers(folder: Path = DBT_REPLAY) -> list[str]:
+    """Each refusal in the dbt replay's ledgers names what it waits on: an
+    issue (`issue`, a number) or a design reason (`design`), as
+    `constructs.json` maps them. Whether the issue is still open needs `gh`,
+    which `python -m sverify_dbt.replay --check` asks (#859)."""
+    problems = []
+    for path in sorted(folder.glob("*.json")):
+        if path.name == "constructs.json":
+            continue
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        for key, entry in doc.get("results", {}).items():
+            if entry.get("outcome") != "refused":
+                continue
+            if not isinstance(entry.get("issue"), int) and not entry.get("design"):
+                problems.append(f"{path.name}: {key}: a refusal with no issue or design reason")
+    return problems
+
+
 def main(argv: list[str]) -> None:
     docs = load()
-    problems = validate(docs) + validate_backlog()
+    problems = validate(docs) + validate_backlog() + validate_dbt_ledgers()
     if problems:
         sys.exit("\n".join(problems))
-    print(f"{len(docs)} upstream bugs and the lift's backlog, well-formed")
+    print(
+        f"{len(docs)} upstream bugs, the lift's backlog and the dbt replay's ledgers, well-formed"
+    )
     if "--write" in argv:
         REPORT.write_text(render(docs))
     if "--stale" in argv:
