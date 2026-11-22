@@ -337,3 +337,36 @@ def test_a_restarted_job_is_refused_by_the_log_it_did_not_read(server, tmp_path)
         assert stored_ts(path) == [1, 2]  # nothing of the new log was written
     finally:
         new.shutdown()
+
+
+def test_a_server_that_names_no_log_is_read_as_before(server):
+    """A server of another make names no log: its cursors carry none, and a
+    cursor with or without one reads and restores."""
+    server.id = None
+    put(server, "samples", [sample("a", 1, 0.5)], [sample("a", 2, 0.6)])
+    src = FlightSource(location(server), "samples")
+    batch = read(src, None)
+    assert batch.cursor == {"seq": 2, "floor": 1}
+    put(server, "samples", [sample("a", 3, 0.7)])
+    resumed = FlightSource(location(server), "samples", schema=SAMPLES)
+    assert resumed.restore(batch.cursor).num_rows == 2
+    assert read(resumed, batch.cursor).cursor == {"seq": 3, "floor": 1}
+    # A cursor an earlier run recorded against a log that named one reads too.
+    named = {"seq": 2, "floor": 1, "log": "an-earlier-log"}
+    assert resumed.restore(named).num_rows == 2
+    assert read(resumed, named).table.to_pylist() == [sample("a", 3, 0.7)]
+    assert resumed.reread(named).num_rows == 2
+
+
+def test_the_audit_refuses_a_restarted_log(server, tmp_path):
+    put(server, "samples", [sample("a", 1, 0.5)], [sample("a", 2, 0.6)])
+    src = FlightSource(location(server), "samples")
+    node = busy(src)
+    node.refresh()
+    new = restarted(server)
+    try:
+        put(new, "samples", [sample("b", 1, 0.5)], [sample("b", 2, 0.6)], [sample("b", 3, 0.7)])
+        with pytest.raises(ValueError, match="now serves the log"):
+            node.refresh(audit=True)
+    finally:
+        new.shutdown()

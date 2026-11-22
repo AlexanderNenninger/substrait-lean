@@ -267,7 +267,8 @@ class FlightLog(fl.FlightServerBase):
     Attributes:
         port: The port it listens on.
         id: The identity of this log, chosen when it starts: a server that
-            numbers its batches from 1 again is another log.
+            numbers its batches from 1 again is another log. None for a log
+            that names none, as a server of another make.
         keep: The batches each table keeps, or None for all of them.
         seq: The number of the last batch stored, over every table.
         tables: Each table's schema and its numbered batches, oldest first.
@@ -276,7 +277,7 @@ class FlightLog(fl.FlightServerBase):
     def __init__(self, location: str = "grpc://127.0.0.1:0", *, keep: int | None = None, **kwargs):
         super().__init__(location, **kwargs)
         self.keep = keep
-        self.id = uuid.uuid4().hex
+        self.id: str | None = uuid.uuid4().hex
         self.seq = 0
         self.tables: dict[str, tuple[pa.Schema, list[tuple[int, pa.RecordBatch]]]] = {}
         self._lock = threading.Lock()
@@ -335,6 +336,7 @@ class FlightLog(fl.FlightServerBase):
             for s, b in picked:
                 yield b, _meta(s)
 
-        return fl.GeneratorStream(
-            schema.with_metadata({"floor": str(floor), "log": self.id}), stream()
-        )
+        meta = {"floor": str(floor)}
+        if self.id is not None:
+            meta["log"] = self.id
+        return fl.GeneratorStream(schema.with_metadata(meta), stream())
