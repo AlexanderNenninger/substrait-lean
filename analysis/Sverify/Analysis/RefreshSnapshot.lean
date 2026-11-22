@@ -955,6 +955,386 @@ theorem resok_reachable {s : World} (h : Reachable s) : ResOK s := by
   | init => intro i r hp; simp at hp
   | step hr hst ih => exact resok_step (inv_reachable hr) ih hst
 
+
+/-! ## The quiet regime
+
+Once the environment is quiet (no source change, deploy, foreign commit, crash,
+lost acknowledgement or late write of a crashed process), the processes' own
+steps reach the deployed plan's state of the source and keep it. This is the
+safety half of the TLA+ model's `Converges`; the fairness that makes the
+processes take these steps is not stated here. -/
+
+/-- A step of a process, as against a step of the environment. -/
+inductive PStep : World → World → Prop where
+  | start (s : World) (i : Nat) : (s.ws i).phase = .down → PStep s (s.start i)
+  | stop (s : World) (i : Nat) : (s.ws i).phase = .idle → (s.ws i).plan ≠ s.deployed →
+      PStep s (s.stop i)
+  | refresh (s : World) (i : Nat) : (s.ws i).phase = .idle → PStep s (s.refresh i)
+  | prepare (s : World) (i : Nat) : (s.ws i).phase = .ready → PStep s (s.prepare i)
+  | land (s : World) (i : Nat) (o : Out) : (s.ws i).phase = .writing o →
+      s.log.length = o.head →
+      PStep s { s.commit o with
+        ws := upd s.ws i { s.ws i with phase := .idle, written := o.key.tbl,
+                                       last := some o.key, pend := none } }
+  | conflict (s : World) (i : Nat) (o : Out) : (s.ws i).phase = .writing o →
+      s.log.length ≠ o.head →
+      PStep s { s with ws := upd s.ws i { s.ws i with phase := .idle, written := .none,
+                                                      pend := none } }
+
+theorem PStep.step {s t : World} (h : PStep s t) : Step s t := by
+  cases h with
+  | start i h => exact .start _ i h
+  | stop i h1 h2 => exact .stop _ i h1 h2
+  | refresh i h => exact .refresh _ i h
+  | prepare i h => exact .prepare _ i h
+  | land i o h1 h2 => exact .land _ i o h1 h2
+  | conflict i o h1 h2 => exact .conflict _ i o h1 h2
+
+theorem PStep.env {s t : World} (h : PStep s t) :
+    t.src = s.src ∧ t.deployed = s.deployed ∧ t.zombies = s.zombies := by
+  cases h <;> first | exact ⟨rfl, rfl, rfl⟩ | (simp only [World.prepare]; split <;> exact ⟨rfl, rfl, rfl⟩)
+
+/-- Finitely many process steps. -/
+inductive PReach : World → World → Prop where
+  | refl (s : World) : PReach s s
+  | step {s t u : World} : PStep s t → PReach t u → PReach s u
+
+theorem PReach.trans {s t u : World} (h : PReach s t) (h' : PReach t u) : PReach s u := by
+  induction h with
+  | refl => exact h'
+  | step hst _ ih => exact .step hst (ih h')
+
+theorem PReach.reachable {s t : World} (h : PReach s t) (hs : Reachable s) : Reachable t := by
+  induction h with
+  | refl => exact hs
+  | step hst _ ih => exact ih (hs.step hst.step)
+
+theorem PReach.env {s t : World} (h : PReach s t) :
+    t.src = s.src ∧ t.deployed = s.deployed ∧ t.zombies = s.zombies := by
+  induction h with
+  | refl => exact ⟨rfl, rfl, rfl⟩
+  | step hst _ ih =>
+    obtain ⟨a, b, c⟩ := hst.env
+    obtain ⟨a', b', c'⟩ := ih
+    exact ⟨a'.trans a, b'.trans b, c'.trans c⟩
+
+/-- Only finitely many slots have a process. -/
+def FinSupp (s : World) : Prop := ∃ N, ∀ i, N ≤ i → (s.ws i).phase = .down
+
+theorem finsupp_of_upd {s t : World} {i : Nat} {w : Writer} (hs : FinSupp s)
+    (hws : t.ws = upd s.ws i w) : FinSupp t := by
+  obtain ⟨N, hN⟩ := hs
+  refine ⟨max N (i + 1), fun j hj => ?_⟩
+  rw [hws, upd_other _ _ (by omega)]
+  exact hN j (by omega)
+
+theorem finsupp_of_same {s t : World} (hs : FinSupp s) (hws : t.ws = s.ws) : FinSupp t := by
+  obtain ⟨N, hN⟩ := hs
+  exact ⟨N, fun j hj => by rw [hws]; exact hN j hj⟩
+
+theorem finsupp_step {s t : World} (hs : FinSupp s) (h : Step s t) : FinSupp t := by
+  cases h with
+  | start i _ => exact finsupp_of_upd hs rfl
+  | stop i _ _ => exact finsupp_of_upd hs rfl
+  | refresh i _ => exact finsupp_of_upd hs rfl
+  | prepare i _ =>
+    cases hnext : next (record s.log) (kept s.log) (s.ws i) with
+    | skip v wr l => simp only [World.prepare, hnext]; exact finsupp_of_upd hs rfl
+    | write m v wr l => simp only [World.prepare, hnext]; exact finsupp_of_upd hs rfl
+  | land i o _ _ => exact finsupp_of_upd hs rfl
+  | landLostAck i o _ _ => exact finsupp_of_upd hs rfl
+  | fail i o _ => exact finsupp_of_upd hs rfl
+  | conflict i o _ _ => exact finsupp_of_upd hs rfl
+  | crash i _ => exact finsupp_of_upd (t := s.crash i) hs rfl
+  | zombieLands o _ _ => exact finsupp_of_same hs rfl
+  | sourceChanges => exact finsupp_of_same hs rfl
+  | foreignWrite => exact finsupp_of_same hs rfl
+  | deploy => exact finsupp_of_same hs rfl
+
+theorem finsupp_reachable {s : World} (h : Reachable s) : FinSupp s := by
+  induction h with
+  | init => exact ⟨0, fun _ _ => rfl⟩
+  | step _ hst ih => exact finsupp_step ih hst
+
+/-- How far a process is from rest: a process of the deployed plan is at rest
+between refreshes; one of an old plan is stopped there. -/
+def rank (s : World) (i : Nat) : Nat :=
+  match (s.ws i).phase with
+  | .down => 0
+  | .idle => if (s.ws i).plan = s.deployed then 0 else 1
+  | .writing _ => 2
+  | .ready => 3
+
+def mu (s : World) : Nat → Nat
+  | 0 => 0
+  | n + 1 => mu s n + rank s n
+
+/-- Every process is down, or idle and of the deployed plan. -/
+def Quiescent (s : World) : Prop :=
+  ∀ i, (s.ws i).phase = .down ∨ ((s.ws i).phase = .idle ∧ (s.ws i).plan = s.deployed)
+
+theorem mu_congr {s t : World} {N : Nat} (h : ∀ j, j < N → rank t j = rank s j) :
+    mu t N = mu s N := by
+  induction N with
+  | zero => rfl
+  | succ n ih => simp only [mu]; rw [ih (fun j hj => h j (by omega)), h n (by omega)]
+
+theorem mu_lt {s t : World} {N i : Nat} (hi : i < N)
+    (hother : ∀ j, j ≠ i → rank t j = rank s j) (hlt : rank t i < rank s i) :
+    mu t N < mu s N := by
+  induction N with
+  | zero => omega
+  | succ n ih =>
+    simp only [mu]
+    by_cases hin : i = n
+    · subst hin
+      rw [mu_congr (fun j hj => hother j (by omega))]
+      omega
+    · have := ih (by omega)
+      rw [hother n (Ne.symm hin)]
+      omega
+
+theorem rank_upd {s t : World} {i j : Nat} {w : Writer} (hws : t.ws = upd s.ws i w)
+    (hdep : t.deployed = s.deployed) (hj : j ≠ i) : rank t j = rank s j := by
+  unfold rank
+  rw [hws, upd_other _ _ hj, hdep]
+
+/-- The processes' own steps bring every process to rest. -/
+theorem drain (N : Nat) (n : Nat) : ∀ s : World, mu s N = n → Reachable s → s.zombies = [] →
+    (∀ i, N ≤ i → (s.ws i).phase = .down) →
+    ∃ t, PReach s t ∧ Reachable t ∧ t.zombies = [] ∧ (∀ i, N ≤ i → (t.ws i).phase = .down) ∧
+      Quiescent t := by
+  induction n using Nat.strongRecOn with
+  | _ n ih =>
+  intro s hmu hr hz hN
+  by_cases hall : ∀ i, i < N → rank s i = 0
+  · refine ⟨s, .refl s, hr, hz, hN, fun i => ?_⟩
+    by_cases hi : i < N
+    · have h0 := hall i hi
+      unfold rank at h0
+      cases hph : (s.ws i).phase with
+      | down => exact Or.inl rfl
+      | idle =>
+        rw [hph] at h0
+        simp only at h0
+        split at h0
+        · next hp => exact Or.inr ⟨rfl, hp⟩
+        · cases h0
+      | writing o => rw [hph] at h0; cases h0
+      | ready => rw [hph] at h0; cases h0
+    · exact Or.inl (hN i (by omega))
+  · obtain ⟨i, hi⟩ := Classical.not_forall.mp hall
+    have hiN : i < N := by
+      by_cases h : i < N
+      · exact h
+      · exact absurd (fun h' => absurd h' h) hi
+    have hpos : rank s i ≠ 0 := fun h0 => hi (fun _ => h0)
+    have key : ∀ t, PStep s t → (∃ w, t.ws = upd s.ws i w) → rank t i < rank s i →
+        ∃ t', PReach s t' ∧ Reachable t' ∧ t'.zombies = [] ∧
+          (∀ i, N ≤ i → (t'.ws i).phase = .down) ∧ Quiescent t' := by
+      intro t hst ⟨w, hws⟩ hlt
+      obtain ⟨_, hdep, hzomb⟩ := hst.env
+      have hmu' : mu t N < n := by
+        rw [← hmu]; exact mu_lt hiN (fun j hj => rank_upd hws hdep hj) hlt
+      obtain ⟨t', h1, h2, h3, h4, h5⟩ := ih (mu t N) hmu' t rfl (hr.step hst.step)
+        (hzomb ▸ hz) (fun j hj => by rw [hws, upd_other _ _ (by omega)]; exact hN j hj)
+      exact ⟨t', .step hst h1, h2, h3, h4, h5⟩
+    cases hph : (s.ws i).phase with
+    | down => unfold rank at hpos; rw [hph] at hpos; exact absurd rfl hpos
+    | idle =>
+      have hp : (s.ws i).plan ≠ s.deployed := by
+        intro hp; apply hpos; unfold rank; rw [hph]; simp [hp]
+      refine key (s.stop i) (.stop s i hph hp) ⟨{}, rfl⟩ ?_
+      show rank { s with ws := upd s.ws i {} } i < rank s i
+      unfold rank
+      simp only [upd_same, hph]
+      simp [hp]
+    | ready =>
+      cases hnext : next (record s.log) (kept s.log) (s.ws i) with
+      | skip v wr l =>
+        refine key (s.prepare i) (.prepare s i hph)
+          (by simp only [World.prepare, hnext]; exact ⟨_, rfl⟩) ?_
+        simp only [World.prepare, hnext]
+        unfold rank
+        simp only [upd_same, hph]
+        split <;> omega
+      | write m v wr l =>
+        refine key (s.prepare i) (.prepare s i hph)
+          (by simp only [World.prepare, hnext]; exact ⟨_, rfl⟩) ?_
+        simp only [World.prepare, hnext]
+        unfold rank
+        simp only [upd_same, hph]
+        omega
+    | writing o =>
+      by_cases hc : s.log.length = o.head
+      · refine key _ (.land s i o hph hc) ⟨_, rfl⟩ ?_
+        unfold rank
+        simp only [upd_same, hph]
+        split <;> omega
+      · refine key _ (.conflict s i o hph hc) ⟨_, rfl⟩ ?_
+        unfold rank
+        simp only [upd_same, hph]
+        split <;> omega
+
+/-- The sink's record is the newest commit, of the deployed plan and of the
+source's contents, and every process rests or is about to prepare, under the
+deployed plan, having read the source as it is. -/
+def Conv (s : World) : Prop :=
+  kept s.log = true ∧ (∃ r, record s.log = some r ∧ r.plan = s.deployed ∧ r.dig = s.src) ∧
+    ∀ i, (s.ws i).phase = .down ∨
+      ((s.ws i).phase = .idle ∧ (s.ws i).plan = s.deployed) ∨
+      ((s.ws i).phase = .ready ∧ (s.ws i).plan = s.deployed ∧ (s.ws i).c = s.src)
+
+theorem next_same {r : Key} {w : Writer} (hp : r.plan = w.plan) (hd : r.dig = w.c) :
+    ∃ v wr l, next (some r) true w = .skip v wr l := by
+  refine ⟨r.ver, Key.tbl ⟨w.plan, 0, w.c⟩, some r, ?_⟩
+  simp [next, sameOf, hp, hd]
+
+theorem conv_of_upd {s t : World} {i : Nat} {w : Writer} (hc : Conv s)
+    (hlog : t.log = s.log) (hsrc : t.src = s.src) (hdep : t.deployed = s.deployed)
+    (hws : t.ws = upd s.ws i w)
+    (hw : w.phase = .down ∨ (w.phase = .idle ∧ w.plan = s.deployed) ∨
+      (w.phase = .ready ∧ w.plan = s.deployed ∧ w.c = s.src)) : Conv t := by
+  obtain ⟨hk, ⟨r, hrec, hrp, hrv⟩, hall⟩ := hc
+  refine ⟨by rw [hlog]; exact hk, ⟨r, by rw [hlog]; exact hrec, by rw [hdep]; exact hrp,
+    by rw [hsrc]; exact hrv⟩, fun j => ?_⟩
+  rw [hws, hdep, hsrc]
+  by_cases hji : j = i
+  · subst hji; rw [upd_same]; exact hw
+  · rw [upd_other _ _ hji]; exact hall j
+
+theorem conv_step {s t : World} (hc : Conv s) (h : PStep s t) : Conv t := by
+  obtain ⟨hk, ⟨r, hrec, hrp, hrv⟩, hall⟩ := hc
+  have hc : Conv s := ⟨hk, ⟨r, hrec, hrp, hrv⟩, hall⟩
+  cases h with
+  | start i _ => exact conv_of_upd hc rfl rfl rfl rfl (Or.inr (Or.inl ⟨rfl, rfl⟩))
+  | stop i _ _ => exact conv_of_upd hc rfl rfl rfl rfl (Or.inl rfl)
+  | refresh i hi =>
+    rcases hall i with h | ⟨_, hp⟩ | ⟨h, _⟩
+    · rw [h] at hi; cases hi
+    · exact conv_of_upd hc rfl rfl rfl rfl (Or.inr (Or.inr ⟨rfl, hp, rfl⟩))
+    · rw [h] at hi; cases hi
+  | prepare i hi =>
+    rcases hall i with h | ⟨h, _⟩ | ⟨_, hp, hcs⟩
+    · rw [h] at hi; cases hi
+    · rw [h] at hi; cases hi
+    · obtain ⟨v, wr, l, hnext⟩ := next_same (r := r) (w := s.ws i) (by rw [hrp, hp])
+        (by rw [hrv, hcs])
+      have hn : next (record s.log) (kept s.log) (s.ws i) = .skip v wr l := by
+        rw [hrec, hk]; exact hnext
+      simp only [World.prepare, hn]
+      exact conv_of_upd hc rfl rfl rfl rfl (Or.inr (Or.inl ⟨rfl, hp⟩))
+  | land i o hw _ =>
+    rcases hall i with h | ⟨h, _⟩ | ⟨h, _⟩ <;> rw [h] at hw <;> cases hw
+  | conflict i o hw _ =>
+    rcases hall i with h | ⟨h, _⟩ | ⟨h, _⟩ <;> rw [h] at hw <;> cases hw
+
+theorem conv_reach {s t : World} (hr : Reachable s) (hc : Conv s) (h : PReach s t) : Conv t := by
+  induction h with
+  | refl => exact hc
+  | step hst _ ih => exact ih (hr.step hst.step) (conv_step hc hst)
+
+
+/-- A skip is on a record of the writer's plan: of its contents, or at a version
+not below its own. -/
+theorem next_skip_facts {rec : Option Key} {k : Bool} {w : Writer} {v : Nat} {wr : Tbl}
+    {l : Option Key} (h : next rec k w = .skip v wr l) :
+    ∃ r, rec = some r ∧ k = true ∧ r.plan = w.plan ∧
+      (r.dig = w.c ∨ (r.dig ≠ w.c ∧ w.ver ≤ r.ver)) := by
+  cases rec with
+  | none => simp only [next] at h; split at h <;> cases h
+  | some r =>
+    simp only [next] at h
+    split at h
+    · next hs =>
+      obtain ⟨h1, h2, h3⟩ := sameOf_iff.mp hs
+      exact ⟨r, rfl, h2, h1, Or.inl h3⟩
+    · next hs =>
+      split at h
+      · next hs2 =>
+        have hs2' := hs2
+        simp only [skip2Of, Bool.and_eq_true, Bool.not_eq_true', decide_eq_true_eq,
+          beq_iff_eq] at hs2'
+        obtain ⟨⟨⟨hp, hk⟩, hc⟩, hv⟩ := hs2'
+        refine ⟨r, rfl, hk, hp, Or.inr ⟨fun hd => hs (sameOf_iff.mpr ⟨hp, hk, hd⟩), ?_⟩⟩
+        simpa [verOf, hc] using hv
+      · cases h
+
+/-- One process, started after the others have come to rest, brings the sink to
+the deployed plan's state of the source. -/
+theorem fresh {s : World} (N : Nat) (hq : Quiescent s)
+    (hN : ∀ i, N ≤ i → (s.ws i).phase = .down) : ∃ t, PReach s t ∧ Conv t := by
+  have h1 : PStep s (s.start N) := .start s N (hN N (Nat.le_refl _))
+  have hw1 : (s.start N).ws N = { phase := .idle, plan := s.deployed } := by
+    simp [World.start, upd_same]
+  have h2 : PStep (s.start N) ((s.start N).refresh N) := .refresh _ N (by rw [hw1])
+  have hw2 : (((s.start N).refresh N).ws N).phase = .ready ∧
+      (((s.start N).refresh N).ws N).plan = s.deployed ∧
+      (((s.start N).refresh N).ws N).c = s.src ∧
+      (((s.start N).refresh N).ws N).ver =
+        (match record s.log with
+          | some r => if r.dig == s.src then r.ver else r.ver + 1
+          | none => 1) :=
+    ⟨by simp [World.refresh, World.refreshW, upd_same, hw1],
+     by simp [World.refresh, World.refreshW, upd_same, hw1],
+     by simp [World.refresh, World.refreshW, upd_same, hw1] <;> rfl,
+     by simp [World.refresh, World.refreshW, upd_same, hw1] <;> rfl⟩
+  have h3 : PStep ((s.start N).refresh N) (((s.start N).refresh N).prepare N) :=
+    .prepare _ N hw2.1
+  cases hn : next (record ((s.start N).refresh N).log) (kept ((s.start N).refresh N).log)
+      (((s.start N).refresh N).ws N) with
+  | skip v wr l =>
+    obtain ⟨r, hrec, hkt, hrp, hdisj⟩ := next_skip_facts hn
+    have hrec : record s.log = some r := hrec
+    have hkt : kept s.log = true := hkt
+    have hdig : r.dig = s.src := by
+      rcases hdisj with hd | ⟨hd, hv⟩
+      · rw [hd, hw2.2.2.1]
+      · exfalso
+        rw [hw2.2.2.2, hrec] at hv
+        have : (r.dig == s.src) = false := by
+          simpa using (fun h => hd (h.trans hw2.2.2.1.symm))
+        simp [this] at hv
+        omega
+    refine ⟨_, .step h1 (.step h2 (.step h3 (.refl _))), ?_⟩
+    simp only [World.prepare, hn]
+    refine ⟨hkt, ⟨r, hrec, hrp.trans hw2.2.1, hdig⟩, fun j => ?_⟩
+    by_cases hj : j = N
+    · subst hj
+      right; left
+      simp [upd_same, hw2.2.1] <;> rfl
+    · simp only [World.start, World.refresh] at *
+      rw [upd_other _ _ hj, upd_other _ _ hj, upd_other _ _ hj]
+      rcases hq j with h | ⟨h, hp⟩
+      · exact Or.inl h
+      · exact Or.inr (Or.inl ⟨h, hp⟩)
+  | write m v wr l =>
+    let o : Out := ⟨⟨(((s.start N).refresh N).ws N).plan, v, (((s.start N).refresh N).ws N).c⟩,
+      m, wr, ((s.start N).refresh N).log.length⟩
+    have hph : ((((s.start N).refresh N).prepare N).ws N).phase = .writing o := by
+      simp only [World.prepare, hn]
+      simp [upd_same, o]
+    have h4 : PStep (((s.start N).refresh N).prepare N)
+        { (((s.start N).refresh N).prepare N).commit o with
+          ws := upd (((s.start N).refresh N).prepare N).ws N
+            { (((s.start N).refresh N).prepare N).ws N with
+              phase := .idle, written := o.key.tbl, last := some o.key, pend := none } } :=
+      .land _ N o hph (by simp only [World.prepare, hn, o])
+    refine ⟨_, .step h1 (.step h2 (.step h3 (.step h4 (.refl _)))), ?_⟩
+    refine ⟨rfl, ⟨o.key, ?_, ?_, ?_⟩, fun j => ?_⟩
+    · exact record_cons rfl
+    · simp only [World.prepare, hn, o]; exact hw2.2.1
+    · simp only [World.prepare, hn, o]; exact hw2.2.2.1
+    · by_cases hj : j = N
+      · subst hj
+        right; left
+        simp [upd_same, World.prepare, hn] <;> first | rfl | exact hw2.2.1
+      · simp only [World.prepare, hn, World.start, World.refresh, World.commit] at *
+        rw [upd_other _ _ hj, upd_other _ _ hj, upd_other _ _ hj, upd_other _ _ hj]
+        rcases hq j with h | ⟨h, hp⟩
+        · exact Or.inl h
+        · exact Or.inr (Or.inl ⟨h, hp⟩)
+
 end RefreshSnap
 
 open RefreshSnap
@@ -1003,5 +1383,28 @@ theorem RefreshSnap.no_needless_rewrite {s : World} (h : Reachable s) {i : Nat} 
   obtain ⟨hw, hl, hp, hv, hd⟩ := resok_reachable h i r hph hres
   rw [hrec, hk]
   exact next_resumes hp hl hw hv hd v wr l
+
+/-- From every reachable state with no write of a crashed process in flight, the
+processes' own steps, with no source change, deploy, foreign commit, crash or
+lost acknowledgement, bring the sink's table to the deployed plan's state of
+the source, and every further process step leaves it there (#933: the safety
+half of `Converges`, for a source that cannot restore). -/
+theorem RefreshSnap.quiet {s : World} (h : Reachable s) (hz : s.zombies = []) :
+    ∃ t, PReach s t ∧ ∀ t', PReach t t' → t'.tbl = .rows s.deployed s.src := by
+  obtain ⟨N, hN⟩ := finsupp_reachable h
+  obtain ⟨d, hd, hdr, hdz, hdN, hdq⟩ := drain N _ s rfl h hz hN
+  obtain ⟨t, ht, hc⟩ := fresh N hdq hdN
+  refine ⟨t, hd.trans ht, fun t' ht' => ?_⟩
+  have hrt := ht.reachable hdr
+  have hrt' := ht'.reachable hrt
+  have hc' := conv_reach hrt hc ht'
+  obtain ⟨hk, ⟨r, hrec, hrp, hrd⟩, _⟩ := hc'
+  obtain ⟨r', hr', htbl⟩ := RefreshSnap.record_describes_table hrt' hk
+  rw [hrec] at hr'
+  simp only [Option.some.injEq] at hr'
+  subst hr'
+  obtain ⟨e1, e2, _⟩ := ((hd.trans ht).trans ht').env
+  rw [htbl]
+  simp [Key.tbl, hrp, hrd, e1, e2]
 
 end Substrait
