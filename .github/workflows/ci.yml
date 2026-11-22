@@ -83,21 +83,33 @@ permissions:
 # otherwise ubuntu-latest. The repository variable `AWS_RUNNERS` set to `off`
 # skips the probe, so every job runs on GitHub's runners (`gh variable set
 # AWS_RUNNERS --body off`; delete it, or set it to anything else, to use AWS
-# again): with no runners left, the probe would queue for good. `changes`, `qa`, the Spark tests, `bench` (its budgets assume
+# again): with no runners left, the probe would queue for good.
+#
+# The longest jobs (`lean`, `evidence`, `dbt`, `outside-repo`) may run on the
+# fixed Hetzner host instead (agentic-tools/hetzner-runner: a few slots of
+# 4 vCPU, a fresh container per job, label `hetzner`), when the repository
+# variable `HETZNER_RUNNERS` is `on` and `hetzner-probe` starts within the
+# same 3 minutes; otherwise they go where the other jobs go. Only those four:
+# a whole run would take every slot of the host at once. `gh variable set
+# HETZNER_RUNNERS --body on` turns it on, `off` (or deleting it) off.
+#
+# `changes`, `qa`, the Spark tests, `bench` (its budgets assume
 # GitHub's CPUs), `float-bounds` and `refresh-model` always run on GitHub's
 # runners.
 jobs:
   # Where the jobs below run (see the header): GitHub's runners, or the
-  # self-hosted AWS runners when one picks `aws-probe` up in time. `light` is
-  # a JSON `runs-on`; every job that may run on AWS takes it from here. This job never
-  # fails: any doubt answers GitHub's runners.
+  # self-hosted AWS runners when one picks `aws-probe` up in time (`runner`),
+  # and for the four longest jobs the Hetzner host when it picks
+  # `hetzner-probe` up in time (`heavy`, else the same as `runner`). Both are
+  # a JSON `runs-on`. This job never fails: any doubt answers GitHub's runners.
   route:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      actions: read # to read `aws-probe`'s status
+      actions: read # to read the probes' status
     outputs:
       runner: ${{ steps.pick.outputs.runner }}
+      heavy: ${{ steps.pick.outputs.heavy }}
     steps:
       - id: pick
         continue-on-error: true
@@ -105,24 +117,39 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # GitHub's runners unless the loop below finds an AWS one.
+          # GitHub's runners unless the loop below finds a self-hosted one.
           echo 'runner="ubuntu-latest"' >> "$GITHUB_OUTPUT"
-          # `aws-probe` runs only for this repository's own pull requests (it is
-          # skipped for forks, batch branches and other events). Spot launch and boot
-          # take about a minute; past 3 minutes the probe is still queued
-          # (no capacity, runners busy with other runs) and GitHub's runners
-          # take the light jobs.
+          echo 'heavy="ubuntu-latest"' >> "$GITHUB_OUTPUT"
+          # The probes run only for this repository's own pull requests (they
+          # are skipped for forks, batch branches and other events, and when
+          # their repository variable is off). Spot launch and boot take about
+          # a minute; past 3 minutes a probe is still queued (no capacity,
+          # runners busy with other runs) and GitHub's runners take its jobs.
           url="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs"
-          for _ in $(seq 36); do
-            st=$(gh api "$url" --jq '.jobs[]|select(.name=="aws-probe")|.status+" "+(.conclusion//"")') || st=
-            case "$st" in
-              "in_progress "*|"completed success") echo "AWS runner picked up the probe."
-                echo 'runner=["self-hosted","linux","x64","aws"]' >> "$GITHUB_OUTPUT"; exit 0;;
-              "completed "*) echo "Probe skipped or failed ($st): GitHub's runners."; exit 0;;
+          state() { # up, no or wait for probe $1, from $jobs
+            case "$(sed -n "s/^$1 //p" <<<"$jobs")" in
+              "in_progress "*|"completed success") echo up;;
+              "completed "*) echo no;;
+              *) echo wait;;
             esac
+          }
+          aws=wait hz=wait
+          for _ in $(seq 36); do
+            jobs=$(gh api "$url" --jq '.jobs[]|select(.name=="aws-probe" or .name=="hetzner-probe")|.name+" "+.status+" "+(.conclusion//"")') || jobs=
+            [ "$aws" = wait ] && aws=$(state aws-probe)
+            [ "$hz" = wait ] && hz=$(state hetzner-probe)
+            [ "$aws" != wait ] && [ "$hz" != wait ] && break
             sleep 5
           done
-          echo "::warning::No AWS runner picked up the probe in 3 minutes: those jobs run on GitHub's runners."
+          echo "AWS probe: $aws; Hetzner probe: $hz."
+          light='"ubuntu-latest"'
+          [ "$aws" = up ] && light='["self-hosted","linux","x64","aws"]'
+          heavy=$light
+          [ "$hz" = up ] && heavy='["self-hosted","linux","x64","hetzner"]'
+          echo "runner=$light" >> "$GITHUB_OUTPUT"
+          echo "heavy=$heavy" >> "$GITHUB_OUTPUT"
+          [ "$aws" != wait ] || echo "::warning::No AWS runner picked up the probe in 3 minutes: those jobs run on GitHub's runners."
+          [ "$hz" != wait ] || echo "::warning::No Hetzner runner picked up the probe in 3 minutes: the long jobs run on $light."
 
   # Starts an AWS runner (ephemeral: one job each) so `route` can tell whether
   # one is available; it queues until one starts, and a run with no runner
@@ -134,6 +161,16 @@ jobs:
     timeout-minutes: 2
     steps:
       - run: echo "AWS runner $(hostname) is up"
+
+  # The same for the Hetzner host (fixed slots, each job in a fresh
+  # container): it queues until a slot is free. Off unless the repository
+  # variable `HETZNER_RUNNERS` is `on`.
+  hetzner-probe:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'batch/') && vars.HETZNER_RUNNERS == 'on'
+    runs-on: [self-hosted, linux, x64, hetzner]
+    timeout-minutes: 2
+    steps:
+      - run: echo "Hetzner runner $(hostname) is up"
 
   changes:
     runs-on: ubuntu-latest
@@ -376,7 +413,7 @@ jobs:
   lean:
     needs: [route, changes]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.proofs == 'true'
-    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    runs-on: ${{ fromJSON(needs.route.outputs.heavy) }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -627,7 +664,7 @@ jobs:
   outside-repo:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.python == 'true'
-    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    runs-on: ${{ fromJSON(needs.route.outputs.heavy) }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -842,7 +879,7 @@ jobs:
   evidence:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true'
-    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    runs-on: ${{ fromJSON(needs.route.outputs.heavy) }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -945,7 +982,7 @@ jobs:
   dbt:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.dbt == 'true'
-    runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
+    runs-on: ${{ fromJSON(needs.route.outputs.heavy) }}
     timeout-minutes: 30
     permissions:
       contents: read
