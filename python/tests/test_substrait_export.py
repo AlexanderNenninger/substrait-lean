@@ -94,7 +94,7 @@ def test_manifest() -> None:
     m = read(report.to_substrait()).manifest
     assert m["format"] == se.FORMAT
     assert m["substrait"] == "0.106.0"
-    assert m["semantics"] == "reference"
+    assert m["semantics"] == "portable"
     assert m["class"] == "exact"
     assert m["shims_mode"] == "apply"
     assert m["extension_urns"] == ["extension:io.substrait:functions_arithmetic"]
@@ -193,7 +193,7 @@ def test_unproved_plan_is_refused() -> None:
 
 def test_engine_profile_is_refused() -> None:
     report = sv.verify("SELECT id FROM orders", tables={"orders": orders}, semantics="duckdb")
-    with pytest.raises(ExportError, match="semantics='reference'"):
+    with pytest.raises(ExportError, match="semantics='portable'"):
         report.to_substrait()
 
 

@@ -3,7 +3,7 @@
 `engines/duckdb/facts/` judges DuckDB and the Lean model against
 Substrait's semantics. Each test here pins what `Rel.eval` and `verify` do
 for one of its findings (R1…R14), on the plan sverify's lift writes for DuckDB's
-SQL with the reference's semantics (`semantics="reference"`), and checks the
+SQL with the reference's semantics (`semantics="portable"`), and checks the
 value against DuckDB where it agrees with the reference.
 """
 
@@ -50,7 +50,7 @@ TABLES = {
 
 def substrait_json(con, sql: str) -> str:
     """The plan of `sql` with the reference's semantics."""
-    return lift_json(con, sql, "reference")
+    return lift_json(con, sql, "portable")
 
 
 def verify(sql: str, tables: dict, requires: list | None = None) -> sv.Report:
@@ -58,7 +58,7 @@ def verify(sql: str, tables: dict, requires: list | None = None) -> sv.Report:
     preconditions: the errors the model reports."""
     inputs = {n: ibis.table(s, name=n) for n, s in tables.items()}
     return sv.verify(
-        sv.sql(sql, semantics="reference", **inputs),
+        sv.sql(sql, semantics="portable", **inputs),
         requires={n: requires or [] for n in tables},
         on_inferred="off",
     )
@@ -163,7 +163,7 @@ def test_the_frontends_write_sverify_fmod():
     t = ibis.table({"x": "float64", "i": "int64"}, name="t")
     assert "sverify_fmod" in declared(to_substrait_json(t.select(m=t.x % 2.5)))
     assert "sverify_fmod" not in declared(to_substrait_json(t.select(m=t.i % 2)))
-    lifted = lift("SELECT x % 2.5 AS m FROM t", {"t": t.schema()}, "reference")
+    lifted = lift("SELECT x % 2.5 AS m FROM t", {"t": t.schema()}, "portable")
     assert "sverify_fmod" in declared(json.dumps(lifted.plan))
 
 
@@ -293,7 +293,7 @@ def test_double_division_by_zero_may_fail():
     f = ibis.table({"x": "float64", "y": "float64"}, name="f")
 
     def ref(sql: str) -> ibis.Table:
-        return sv.sql(sql, semantics="reference", f=f)
+        return sv.sql(sql, semantics="portable", f=f)
 
     report = sv.verify(ref("SELECT x / y AS q FROM f"), on_inferred="off")
     assert [str(i) for i in report.errors] == [
@@ -795,7 +795,7 @@ def test_overflow_to_infinity_is_the_references_precondition(engine):
     assert duck.verdict == sv.Verdict.PROVED
     if engine == "polars":
         # A DuckDB proof reaches Polars by a re-check, which waits for #271.
-        with pytest.raises(RouteError, match="semantics='reference'"):
+        with pytest.raises(RouteError, match="semantics='portable'"):
             duck.run(con, engine)
     else:
         assert duck.run(con, engine).column("v").to_pylist() == [INF, 2.0]

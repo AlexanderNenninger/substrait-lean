@@ -608,5 +608,5 @@ def why(components: Sequence[str]) -> str:
             f"depends on {' and '.join(names[c] for c in opened)}, which the plan leaves open"
         )
     if ignored:
-        parts.append(f"depends on {', '.join(ignored)}, which the observation ignores")
+        parts.append(f"depends on {', '.join(ignored)}, which the lenses ignore")
     return "; ".join(parts)

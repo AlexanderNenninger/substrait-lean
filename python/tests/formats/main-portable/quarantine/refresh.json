@@ -19,11 +19,11 @@
           "released": 0,
           "retracted": 0,
           "source": "orders",
-          "table": "tests/formats/main-lenses/quarantine/doubled_quarantine",
+          "table": "tests/formats/main-portable/quarantine/doubled_quarantine",
           "total": 3
         }
       ],
-      "quarantine_table": "tests/formats/main-lenses/quarantine/doubled_quarantine",
+      "quarantine_table": "tests/formats/main-portable/quarantine/doubled_quarantine",
       "quarantined": 3,
       "record_changes": {},
       "sources": [],

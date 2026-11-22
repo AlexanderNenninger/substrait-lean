@@ -25,30 +25,39 @@
       "class": "exact",
       "class_basis": "computed",
       "epsilon": {},
-      "evidence": "tested",
+      "evidence": "proved",
       "facts": [
         "duckdb-R1",
-        "duckdb-R15-int-arith"
+        "duckdb-R15-int-arith",
+        "duckdb-R1-min",
+        "duckdb-R15-int-modulus"
       ],
       "guard_free_theorem": null,
-      "issues": [
-        241
-      ],
+      "issues": [],
       "observed": [],
       "problems": [],
       "profile": true,
-      "proved_facts": [],
+      "proved_facts": [
+        "duckdb-R1",
+        "duckdb-R15-int-arith",
+        "duckdb-R1-min",
+        "duckdb-R15-int-modulus"
+      ],
       "rows": 1,
       "shims": [],
       "tested_because": [],
-      "theorems": [],
+      "theorems": [
+        "Lowering.duckdb_exact"
+      ],
       "transfer": {
         "polars": {
           "failures": [
             {
               "facts": [
                 "duckdb-R1",
-                "duckdb-R15-int-arith"
+                "duckdb-R15-int-arith",
+                "duckdb-R1-min",
+                "duckdb-R15-int-modulus"
               ],
               "from": [
                 "SILENT"
@@ -72,7 +81,7 @@
           "ok": true
         }
       },
-      "translated_evidence": "tested",
+      "translated_evidence": "proved",
       "version": "2.0.0",
       "without_row": []
     },
@@ -267,31 +276,45 @@
       "class": "exact",
       "deterministic": true,
       "engine": "duckdb",
-      "evidence": "tested",
+      "evidence": "proved",
       "facts": [
         "duckdb-R1",
-        "duckdb-R15-int-arith"
+        "duckdb-R15-int-arith",
+        "duckdb-R1-min",
+        "duckdb-R15-int-modulus"
       ],
       "failures": [],
       "fallbacks": [],
-      "issues": [
-        241
-      ],
       "kind": "translated",
       "lenses": null,
       "needs": [],
-      "reason": "verified under the reference; the translation to duckdb is sverify's DuckDB lowering, proved for every plan, and its SQL writer",
+      "proved_facts": [
+        "duckdb-R1",
+        "duckdb-R15-int-arith",
+        "duckdb-R1-min",
+        "duckdb-R15-int-modulus"
+      ],
+      "reason": "verified under semantics=\"portable\"; the translation to duckdb is sverify's DuckDB lowering, proved for every plan, and its SQL writer",
       "reproducible": null,
       "rerun_evidence": null,
-      "semantics": "reference",
+      "semantics": "portable",
       "shims": [],
+      "theorems": [
+        "Lowering.duckdb_exact"
+      ],
       "version": "2.0.0",
       "warnings": []
     }
   },
   "rows": null,
+  "run_checks": {
+    "asof": [],
+    "asof_max_pairs": null,
+    "margin": []
+  },
   "run_gate": "no_rewrite",
-  "semantics": "reference",
+  "semantics": "portable",
+  "sequence_determined": false,
   "sorted": false,
   "summary": "proved",
   "sverify": "0.9.0.dev0",

@@ -85,7 +85,7 @@ without a search:
   list with their evidence.
 
 ```text
-semantics: reference
+semantics: portable
 evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6; ...)
 evidence: polars exact, proved by ... on polars's model (facts polars-sum-int)
 evidence: spark shim, proved by ... on spark's model (facts spark-sum-int, spark-exec-parallel)

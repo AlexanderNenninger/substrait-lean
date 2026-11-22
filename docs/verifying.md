@@ -11,7 +11,7 @@ one a run took.
 
 ## Under the reference
 
-`sv.verify(plan)`, `@sv.transform(...)` and `semantics="reference"` prove
+`sv.verify(plan)`, `@sv.transform(...)` and `semantics="portable"` prove
 the plan under the reference profile
 ([The core and the profiles](core-and-profiles.md)):
 
@@ -66,7 +66,7 @@ DuckDB computes it.
 
 | You want | `semantics=` | Route on the engine |
 |---|---|---|
-| One proof for every engine | `"reference"` (the default) | `translated` |
+| One proof for every engine | `"portable"` (the default) | `translated` |
 | What DuckDB computes, on DuckDB | `"duckdb"` | `native` |
 | The same plan on a second engine | either | `transfer` or `recheck`, else refused |
 | What any Substrait consumer may compute | `"substrait"` | no engine route: the plan is certified against the spec, exported like any plan |
@@ -81,7 +81,7 @@ and says why it fails.
 - `report.semantics` names the profile the proof is under.
 - `report.routes[engine]` records the route a run took, with its class:
   `exact` (every result the engine gives is one the proof covers),
-  `observed` (equal to one up to the report's observation, such as doubles
+  `observed` (equal to one up to the report's lenses, such as doubles
   within the plan's bound), `shim` (either, after a proved fix) or
   `refused`.
 - `route.evidence` says whether each step rests on a Lean proof (`proved`)
@@ -91,7 +91,7 @@ and says why it fails.
   options where the engine's choices differ, with the facts that record
   them. A plan verified under one engine and run on another says which
   `semantics` would carry over:
-  `verify with semantics='reference' to run on duckdb`.
+  `verify with semantics='portable' to run on duckdb`.
 
 [How to, Routes, classes and profiles](tasks.md#routes-classes-and-profiles)
 has the details and what to do about a refusal;

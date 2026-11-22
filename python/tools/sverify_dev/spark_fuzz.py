@@ -2364,7 +2364,7 @@ def _lean(t: Target, e: Expr, rows: list[tuple]) -> list[Any] | None:
     try:
         names = list(t.ibis)
         lifted = lift(
-            f"SELECT {e.duckdb} AS r FROM t", {"t": ibis.schema(t.ibis)}, semantics="reference"
+            f"SELECT {e.duckdb} AS r FROM t", {"t": ibis.schema(t.ibis)}, semantics="portable"
         )
         plan = inline_tables(copy.deepcopy(lifted.plan), {"t": [r[: len(names)] for r in rows]})
         return [v[0] for v in lean_values(json.dumps(plan))]

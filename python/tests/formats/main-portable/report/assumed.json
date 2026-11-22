@@ -59,7 +59,7 @@
       ],
       "guard_free_theorem": null,
       "issues": [
-        241
+        1985
       ],
       "observed": [],
       "problems": [],
@@ -359,10 +359,16 @@
   "rewrites": [],
   "routes": {},
   "rows": 1,
+  "run_checks": {
+    "asof": [],
+    "asof_max_pairs": null,
+    "margin": []
+  },
   "run_gate": "no_rewrite",
-  "semantics": "reference",
+  "semantics": "portable",
+  "sequence_determined": false,
   "sorted": false,
-  "summary": "proved with checks: 1 assumption",
+  "summary": "proved with checks: 1 run-time check",
   "sverify": "0.9.0.dev0",
   "ties": {
     "needs": [],

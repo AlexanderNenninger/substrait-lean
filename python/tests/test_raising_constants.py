@@ -59,14 +59,14 @@ def test_duckdb_raises_on_the_issues_query_on_any_data(rows):
     native.register("t", t)
     con = connect()
     put_table(con, "t", t)
-    plan = written_plan(substrait_json(con, LATER_WHEN, "reference"))
+    plan = written_plan(substrait_json(con, LATER_WHEN, "portable"))
     if tuple(map(int, duckdb.__version__.split(".")[:3])) < (2, 0, 1):
         with pytest.raises(Exception, match="(?i)division by zero"):
             native.sql(LATER_WHEN).fetchall()
         with pytest.raises(Exception, match="(?i)division by zero"):
             run_plan(con, plan, "duckdb")
     else:
-        # DD-7 is fixed upstream in 2.0.1: the `CASE` is lazy. The reference still raises
+        # DD-7 is fixed upstream in 2.0.1: the `CASE` is lazy. The portable semantics still raises
         # (D21), so a plan with such a constant is never verified.
         assert native.sql(LATER_WHEN).fetchall() == [(1,)] * len(rows)
         assert len(run_plan(con, plan, "duckdb").to_pylist()) == len(rows)
