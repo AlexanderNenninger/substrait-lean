@@ -183,7 +183,9 @@ contract added are not compared: the sink's record does not store them.
   edits `check --fix` makes to its `requires=`, as byte ranges of the file.
 
 The codes are snake case (`may_be_false`), as the report's `reason` and
-issue `kind` write them; `explain` reads kebab case too. The exit codes are:
+issue `kind` write them; `explain` reads kebab case too. The exit codes
+(`sverify.cli.ExitCode`) run from the best to the worst, so the worst of
+several runs is their maximum:
 
 | Code | Meaning |
 |------|---------|
@@ -191,13 +193,13 @@ issue `kind` write them; `explain` reads kebab case too. The exit codes are:
 | 1 | not proved |
 | 2 | usage error: a flag, a missing file, a node the file lacks |
 | 3 | unsupported: a construct outside sverify's model (`sverify.errors.UnsupportedError`) |
-| 4 | time or memory budget exceeded |
-| 5 | a refresh committed with rows quarantined |
-| 6 | error: the file raised outside a run-time check, I/O, a crash |
-| 7 | refused: no route takes a proved node to the engine |
-| 8 | a refresh held a node: a condition failed on the batch, or a run-time check fired, and the node committed nothing |
+| 4 | refused: no route takes a proved node to the engine |
+| 5 | time or memory budget exceeded |
+| 6 | a refresh committed with rows quarantined |
+| 7 | a refresh held a node: a condition failed on the batch, or a run-time check fired, and the node committed nothing |
+| 8 | error: the file raised outside a run-time check, I/O, a crash |
 
-With 5 or 8, `refresh` prints `Refresh.alert()` after the summary, and its
+With 6 or 7, `refresh` prints `Refresh.alert()` after the summary, and its
 JSON has `"outcome"` and `"alert"` ([bad rows](how-to-quarantine.md#bad-rows-quarantine-and-hold)).
 `--examples` adds the rows that broke a condition to both, rows of your
 data that otherwise stay out of CI artifacts and issues.

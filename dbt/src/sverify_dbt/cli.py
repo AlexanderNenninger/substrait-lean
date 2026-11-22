@@ -10,6 +10,7 @@ from importlib.metadata import version as _version
 from pathlib import Path
 
 from sverify._duckdb import memory_limit_error
+from sverify.cli import ExitCode
 from sverify.errors import MemoryLimitError, UnsupportedError
 
 from sverify_dbt import formats
@@ -17,9 +18,15 @@ from sverify_dbt.check import check
 from sverify_dbt.manifest import ProjectError
 from sverify_dbt.result import CheckResult
 
-#: The exit codes of `sverify check`: 0 holds, 1 not proved, 2 usage, 3 a model
-#: refused (`--fail-on refused`) or the check unsupported, 4 a budget, 6 an error.
-NOT_PROVED, USAGE, REFUSED, BUDGET, ERROR = 1, 2, 3, 4, 6
+#: The exit codes of `sverify check` (`sverify.cli.ExitCode`), those a dbt check
+#: gives: a model refused (`--fail-on refused`) or the check unsupported is 3.
+NOT_PROVED, USAGE, REFUSED, BUDGET, ERROR = (
+    ExitCode.NOT_PROVED,
+    ExitCode.USAGE,
+    ExitCode.UNSUPPORTED,
+    ExitCode.BUDGET,
+    ExitCode.ERROR,
+)
 
 
 def _hard_stop() -> None:
