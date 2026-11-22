@@ -52,7 +52,7 @@ def main() -> int:
         "peak_process": name,
         "exit": proc.returncode,
     }
-    with open(args.out, "w") as f:
+    with open(args.out, "w", encoding="utf-8") as f:
         json.dump(result, f)
     print(json.dumps(result))
     return proc.returncode
