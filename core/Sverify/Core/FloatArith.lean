@@ -877,6 +877,23 @@ theorem fmul_fin_of_le_one {a b : Int} (ha : IsFin a) (hb : IsFin b)
   · rw [Nat.mul_comm, Nat.mul_comm unitK]; exact Nat.mul_le_mul hb.scaled_le h
   · rw [Nat.mul_comm unitK]; exact Nat.mul_le_mul ha.scaled_le h
 
+/-- A finite double plus or minus a zero is finite: the sum is the other operand. -/
+theorem fadd_fin_of_zero {a b : Int} (ha : IsFin a) (hb : IsFin b)
+    (h0 : scaled a = 0 ∨ scaled b = 0) : IsFin (canon (fadd a b)) := by
+  rw [fadd_fin ha hb]
+  apply ofExact_fin_of_le
+  rcases h0 with h | h <;> rw [h]
+  · simpa using hb.scaled_le
+  · simpa using ha.scaled_le
+
+theorem fsub_fin_of_zero {a b : Int} (ha : IsFin a) (hb : IsFin b)
+    (h0 : scaled a = 0 ∨ scaled b = 0) : IsFin (canon (fsub a b)) := by
+  rw [fsub_fin ha hb]
+  apply ofExact_fin_of_le
+  rcases h0 with h | h <;> rw [h]
+  · simpa [Int.natAbs_neg] using hb.scaled_le
+  · simpa using ha.scaled_le
+
 /-- A finite double divided by a nonzero integer, as a double, is finite. -/
 theorem fdiv_ofInt_fin {a k : Int} (ha : IsFin a) (hk : k ≠ 0) : IsFin (canon (fdiv a (ofInt k))) := by
   apply fdiv_fin_of_one_le ha (ofInt_bounds k)
