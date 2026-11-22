@@ -273,7 +273,7 @@ def test_the_contract_survives_pyiceberg_maintenance(tmp_path_factory) -> None:
 
 # -- The quarantine table ----------------------------------------------------------
 
-#: A node that sets aside the rows with a negative amount: id 2 and id 4.
+#: A node that sets aside the rows with a negative amount: id 2.
 ROWS = [(1, 30), (2, -5), (3, 7)]
 SET_ASIDE = [{"id": 2, "amount": -5}]
 
@@ -305,31 +305,42 @@ def _held(table: Any) -> list[dict]:
 
 def test_other_engines_read_the_delta_quarantine_table(tmp_path) -> None:
     """delta-rs and DuckDB's `delta_scan` read the table the sink writes next
-    to its own, with the rows set aside, and the record is in the commit."""
+    to its own, with the rows set aside, also after delta-rs compacts and
+    vacuums it; the record is in the commit, and the table reads empty once
+    the upstream rows are fixed."""
     orders = _orders(ROWS)
     node = orders.pipe(_quarantining()).write(DeltaSink(str(tmp_path / "paid")))
     node.refresh()
     uri = str(tmp_path / "paid_quarantine")
+
+    def duckdb_rows() -> Any:
+        return _duckdb("delta").execute(f"SELECT * FROM delta_scan('{uri}')").to_arrow_table()
+
     assert _held(DeltaTable(uri).to_pyarrow_table()) == SET_ASIDE
-    assert _held(
-        _duckdb("delta").execute(f"SELECT * FROM delta_scan('{uri}')").to_arrow_table()
-    ) == (SET_ASIDE)
+    assert _held(duckdb_rows()) == SET_ASIDE
     records = [
         json.loads(c[_quarantine.RECORD_KEY])
         for c in DeltaTable(uri).history()
         if _quarantine.RECORD_KEY in c
     ]
     assert [(r["node"], r["format"]) for r in records] == [("paid", 1)]
+    dt = DeltaTable(uri)
+    dt.optimize.compact()
+    dt.vacuum(retention_hours=0, enforce_retention_duration=False, dry_run=False)
+    assert _held(DeltaTable(uri).to_pyarrow_table()) == SET_ASIDE
+    assert _held(duckdb_rows()) == SET_ASIDE
     # Fixed upstream: every reader sees the table empty.
     orders.apply(Changes(deletes=pa.Table.from_pylist([{"id": 2, "amount": -5}])))
     node.refresh()
     assert DeltaTable(uri).to_pyarrow_table().num_rows == 0
-    assert _duckdb("delta").execute(f"SELECT * FROM delta_scan('{uri}')").fetchall() == []
+    assert duckdb_rows().num_rows == 0
 
 
 def test_other_engines_read_the_iceberg_quarantine_table(tmp_path) -> None:
     """pyiceberg and DuckDB's `iceberg_scan` read the quarantine table of an
-    Iceberg sink, and the record is in the snapshot summary."""
+    Iceberg sink, also after pyiceberg expires its snapshots; the record is in
+    the snapshot summary, and pyiceberg reads the table empty once the upstream
+    rows are fixed."""
     pytest.importorskip("pyiceberg")
     from pyiceberg.catalog.sql import SqlCatalog
 
@@ -341,6 +352,11 @@ def test_other_engines_read_the_iceberg_quarantine_table(tmp_path) -> None:
     orders = _orders(ROWS)
     node = orders.pipe(_quarantining()).write(IcebergSink(cat, "db.paid"))
     node.refresh()
+
+    def duckdb_rows() -> Any:
+        meta = cat.load_table("db.paid_quarantine").metadata_location
+        return _duckdb("iceberg").execute(f"SELECT * FROM iceberg_scan('{meta}')").to_arrow_table()
+
     t = cat.load_table("db.paid_quarantine")
     assert _held(t.scan().to_arrow()) == SET_ASIDE
     snap = t.current_snapshot()
@@ -348,5 +364,15 @@ def test_other_engines_read_the_iceberg_quarantine_table(tmp_path) -> None:
     record = json.loads(str(snap.summary[_quarantine.RECORD_KEY]))
     assert (record["node"], record["format"]) == ("paid", 1)
     if DUCKDB_READS_PYICEBERG:
-        got = _duckdb("iceberg").execute(f"SELECT * FROM iceberg_scan('{t.metadata_location}')")
-        assert _held(got.to_arrow_table()) == SET_ASIDE
+        assert _held(duckdb_rows()) == SET_ASIDE
+    t.maintenance.expire_snapshots().older_than(datetime.now()).commit()
+    t = cat.load_table("db.paid_quarantine")
+    assert _held(t.scan().to_arrow()) == SET_ASIDE
+    if DUCKDB_READS_PYICEBERG:
+        assert _held(duckdb_rows()) == SET_ASIDE
+    # Fixed upstream: pyiceberg sees the table empty. DuckDB's iceberg_scan
+    # fails on it ("Invalid Avro file block count or size"), so that read is
+    # left out here.
+    orders.apply(Changes(deletes=pa.Table.from_pylist([{"id": 2, "amount": -5}])))
+    node.refresh()
+    assert cat.load_table("db.paid_quarantine").scan().to_arrow().num_rows == 0
