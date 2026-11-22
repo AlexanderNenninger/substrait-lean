@@ -99,7 +99,7 @@ as doubles, NULLs sort last, an integer literal has the narrowest type that
 holds it.
 
 Every check uses sverify's reference semantics unless you opt into DuckDB's.
-`semantics="reference"`, the default, means what sverify's reference
+`semantics="portable"`, the default, means what sverify's reference
 computes, so a double divided by zero raises; `semantics="duckdb"` means what
 DuckDB computes, which gives `inf`, and models NaN and ±inf as DuckDB has
 them. `sv.sql(query, semantics=...)` attaches the choice to the query.
@@ -115,7 +115,7 @@ the report is the reference's, with the stated `FLOOR` read by the core, and a
 `semantics="spark"` reads an Ibis transformation as Spark 4.3.0 computes it
 under ANSI mode, and doubles that overflow are ±inf with no precondition.
 Until the checker reports under Spark's own profile,
-the report is the reference's, `report.semantics` says `"reference"`, a
+the report is the reference's, `report.semantics` says `"portable"`, a
 `ProfilePendingWarning` says so, and the plan reaches Spark through its
 translation ([engine-profiles.md](engine-profiles.md#spark-as-a-profile)).
 The lift reads a subset (SELECT, WHERE,
