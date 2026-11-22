@@ -90,6 +90,7 @@ A page of this kind runs its Python examples in `tests/test_readme.py`, and the 
 | [theorems/README.md](theorems/README.md) | One page per top-level theorem: what it says, what it assumes, the Lean statement line by line, an example | |
 | [engine-profiles.md](engine-profiles.md) | Each engine's profile, shims and translation | Design |
 | [float-bounds.md](float-bounds.md) | Error bounds for doubles and their proofs | Design |
+| [refresh-findings.md](refresh-findings.md) | What the refresh protocol's model found, and what is proved of it | Design |
 | [optimizations.md](optimizations.md) | Proved optimizations and incremental maintenance | Design |
 | [nested-values.md](nested-values.md) | Lists, structs and lambdas in the model | Design |
 | [trusted-base.md](trusted-base.md) | What a result rests on: the kernel-checked theorems, what tests cover, what is trusted | Design |
@@ -133,7 +134,7 @@ A page of this kind runs its Python examples in `tests/test_readme.py`, and the 
 | The Lean build's time and memory, and its budget | [build-performance.md](build-performance.md) |
 | How each feature is taught, and each refusal's exit | [teaching.md](teaching.md) |
 | Float error bounds | [float-bounds.md](float-bounds.md) |
-| The refresh protocol, model-checked | [models/refresh/README.md](../models/refresh/README.md) |
+| The refresh protocol: what the model found, and what is proved | [refresh-findings.md](refresh-findings.md) |
 | Credits | [prior-work.md](prior-work.md) |
 | Install | [python/README.md](../python/README.md) |
 | The formats sverify writes | [stability.md, The formats](stability.md#the-formats) |
