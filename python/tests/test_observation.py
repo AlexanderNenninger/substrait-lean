@@ -343,6 +343,22 @@ def test_a_table_condition_depends_on_the_open_columns_it_reads() -> None:
     assert counted.ignores == ()
 
 
+def test_a_proved_table_condition_keeps_the_order_of_the_lists_it_reads() -> None:
+    """`unique(k, xs)` is proved by the key `k`, but reads a list column whose element order the
+    default observation ignores: it depends on "elements" whether or not `xs` is also an open
+    `collect` (an open column applies only where a condition is unproved)."""
+    expr = T.group_by("k").aggregate(xs=T.x.collect())
+    report = sv.verify(
+        expr,
+        requires={"t": [sv.max_rows(1000)]},
+        ensures=[sv.unique("k", "xs")],
+        counterexamples=0,
+    )
+    (cond,) = report.ensures
+    assert cond.proved
+    assert cond.ignores == ("elements",)
+
+
 #: Scalars whose engines' `UPPER` or `LOWER` values differ in `strings="ascii"`'s key
 #: (a raise in 3b, #1285). None today: the level hides every difference D51 records.
 _ASCII_KEY_EXCEPTIONS: dict[str, set[str]] = {"upper": set(), "lower": set()}

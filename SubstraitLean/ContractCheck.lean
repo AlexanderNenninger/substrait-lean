@@ -882,7 +882,7 @@ def kindComponent : Kind → Option String
 
 /-- What a table condition reading columns `reads` of the transformation `r` depends on (#1071):
 the open aggregate columns among them (none where `noOpen`: windows order totally, or the
-transformation is SQL), and the components the observation ignores that their kinds fall under:
+transformation is SQL), and, apart from those, the components the observation ignores that their kinds fall under:
 not `"rows"`, `"zeros"` or `"errors"`, and not `"floats"` under the plan's bound or a
 tolerance (`floatsOk`). `none` reads every column. -/
 def tableIgnores (cat : Catalog) (tables : Tables) (r : Rel) (coarsens : List String)
@@ -892,7 +892,7 @@ def tableIgnores (cat : Catalog) (tables : Tables) (r : Rel) (coarsens : List St
   let opened : List String := if noOpen then [] else (cols.filterMap (r.openCol cat)).eraseDups
   let ignored := (cols.filterMap fun j => kindComponent (ks.getD j .other)).eraseDups.filter fun c =>
     coarsens.contains c && c != "rows" && c != "zeros" && c != "errors" &&
-      !(c == "floats" && floatsOk) && !opened.contains c
+      !(c == "floats" && floatsOk)
   (opened, ignored)
 
 /-- Where `contract_sound_allowed` carries a postcondition column of a plan

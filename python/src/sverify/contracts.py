@@ -1114,14 +1114,17 @@ def _observed(report: Report, observed: Observation, ensures: Sequence[Condition
     checked = []
     for cond, c in zip(ensures, report.ensures, strict=True):
         r = _reads(cond, report.output)
-        if isinstance(cond, TableCondition):
-            opened, ignored = next(table)
-            ignores = tuple(ignored if c.proved else [*opened, *ignored])
-        elif c.checker_ignores is not None:
+        known = next(table, None) if isinstance(cond, TableCondition) else None
+        if known is not None:
+            opened, ignored = known
+            ignores = (
+                tuple(ignored) if c.proved else (*opened, *(x for x in ignored if x not in opened))
+            )
+        elif not isinstance(cond, TableCondition) and c.checker_ignores is not None:
             ignores = c.checker_ignores
         else:
-            # The checker did not read the plan as a selection of conditions:
-            # it may depend on everything the observation ignores.
+            # The checker did not read the condition (a plan that is not a selection of
+            # conditions, or no answer): it may depend on everything the observation ignores.
             ignores = tuple(sorted(set(observed.ignored()) - {"rows", "zeros", "errors"}))
         checked.append(
             replace(
