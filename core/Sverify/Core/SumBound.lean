@@ -176,12 +176,12 @@ theorem FloatSums.sumBound_of_raw (hraw : ∀ {vs : List Value} {c : Int}, Float
 
 The two orders whose `SumOrder` clause is a bound and no shape, written as the
 engines compute them. `float-bounds/FloatBridge/Orders.lean` proves that each
-meets `SumOrder`: Kahan's sum in any order (`COMPENSATED`, polars-sum-float)
-and a tree of sums with constant runs (`SCALED_CONSTANT`, duckdb-sum-double). -/
+meets `SumOrder`: Kahan's sum in any order (`COMPENSATED`) and a tree of sums
+with constant runs (`SCALED_CONSTANT`). -/
 
 /-- One step of Kahan's compensated sum on codes: from the running sum and
 the compensation `(s, c)`, a double `x` takes `y = x − c`, `t = s + y`, and
-the compensation `(t − s) − y` (`KahanSum::add_assign` in polars-utils). -/
+the compensation `(t − s) − y`. -/
 def kahanStep (p : Int × Int) : Value → Int × Int
   | .float x =>
     let y := fsub x p.2
@@ -200,7 +200,7 @@ def KahanSums (vs : List Value) (c : Int) : Prop :=
 
 /-- **Sums with constant runs**: `FloatSums`' shapes, and a run of `k ≥ 1`
 copies of one double added as one product `k · x`, rounded once
-(`SCALED_CONSTANT`: DuckDB's `AddConstant`). The run's value is a double's
+(`SCALED_CONSTANT`). The run's value is a double's
 code (`Dbl`, ruling 268): the codes `-1` and `-2`, of magnitude zero, are no
 double's, and their product is `-0.0`. -/
 inductive FloatSumsK : List Value → Int → Prop
