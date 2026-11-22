@@ -104,7 +104,7 @@ first.to_sql("snowflake")
 Refused for now: correlated scalar subqueries, unbound parameters
 (`sv.verify(expr, params={p: 10})` checks an `ibis.param` with its value),
 `sample`, `random()` and `now()`, among the operations
-[the Ibis coverage table](../README.md#ibis-coverage)
+[the Ibis coverage table](coverage.md)
 marks ✗. The repository has
 [a how-to page](tasks.md), [getting started](https://alexandernenninger.github.io/substrait-lean/examples/examples.html),
 the Ibis coverage table in its README, and

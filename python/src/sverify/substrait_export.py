@@ -1639,15 +1639,9 @@ def _refuse_unverified(report: Report) -> None:
             hint="export a report that sv.verify returned",
         )
     if not report._proved:
-        reasons = [f"not proved: {c.label}" for c in report.ensures if not c.portable]
-        reasons += [f"may fail: {i}" for i in report.errors]
-        if report._transfer:
-            reasons.append("the proof does not carry over to Substrait (see report.details())")
-        reasons += [f"needs {n}" for n in report._needs_lines()]
-        if report.floats_unmet:
-            reasons.append(f"no engine meets the lenses' doubles: {report.floats_unmet}")
         raise ExportError(
-            "not verified: " + "; ".join(reasons), hint="fix what it names and verify again"
+            "not verified: " + "; ".join(report._unproved_reasons()),
+            hint="fix what it names and verify again",
         )
 
 

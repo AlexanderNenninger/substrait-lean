@@ -805,7 +805,7 @@ class Report:
         The plan goes to the checker as it was exported, pinned options,
         shims and all, with the preconditions and postconditions it
         carries; the report says what the checker proves of it now. For an
-        export of a verified plan, `proved` is true again, with the same
+        export of a verified plan, the verdict is `PROVED` again, with the same
         postconditions.
 
         Args:
@@ -1215,7 +1215,7 @@ class Report:
         runs on `engine` as `sverify.engines.run` runs a plan, with the
         meaning `Rel.eval` gives it.
 
-        A plan that is not proved (`proved` is False) is refused
+        A plan whose verdict is not `PROVED` is refused
         (`UnverifiedRunError`), with what was not proved in the message;
         `unverified=True` runs it anyway, and
         says so: a warning (`UnverifiedRunWarning`), the route `"unverified"`
@@ -1696,6 +1696,19 @@ class Report:
     def _unmet_ensures(self) -> list[Postcondition]:
         """The postconditions that are neither proved nor checked on the data."""
         return [c for c in self.ensures if not (c.portable or c.checked)]
+
+    def _unproved_reasons(self) -> list[str]:
+        """Why the report is not proved, one reason per field `_proved` reads:
+        each postcondition not proved, each runtime error, the proof that does
+        not carry over, each need and the doubles no engine meets."""
+        reasons = [f"not proved: {c.label}" for c in self.ensures if not c.portable]
+        reasons += [f"may fail: {i}" for i in self.errors]
+        if self._transfer:
+            reasons.append("the proof does not carry over to Substrait (see report.details())")
+        reasons += [f"needs {n}" for n in self._needs_lines()]
+        if self.floats_unmet:
+            reasons.append(f"no engine meets the lenses' doubles: {self.floats_unmet}")
+        return reasons
 
     @property
     def floats_unmet(self) -> str | None:

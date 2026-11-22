@@ -1,6 +1,6 @@
 name: Generated files
 
-# The tables generated from the sources: README.md's coverage table,
+# The tables generated from the sources: docs/coverage.md's coverage table,
 # catalogue/INDEX.md and catalogue/FINDINGS.md's stats tables,
 # docs/realizability.md, upstream/REPORT.md, docs/ledger.md and the DuckDB
 # replay's summary in engines/duckdb/facts/README.md. Feature branches leave
@@ -43,7 +43,7 @@ jobs:
       - working-directory: python
         run: |
           uv run --locked python -m sverify_dev.catalogue --write-tables
-          uv run --locked python -m sverify_dev.coverage --write-readme
+          uv run --locked python -m sverify_dev.coverage --write
           uv run --locked python -m sverify_dev.realizability --write
           uv run --locked python -m sverify_dev.bugs --write
           uv run --locked python -m sverify_dev.decisions --write

@@ -246,7 +246,8 @@ def _records(proj: Any, result: Any, statuses: dict[str, str]) -> dict[str, Any]
             rec.update(model=m.name, outcome="refused", construct=normalize(m.refused))
         elif uid in checked:
             t, m = checked[uid]
-            rec.update(model=m.name, outcome=t.status)
+            # The ledgers keep the words: `not_proved` is recorded as "not proved".
+            rec.update(model=m.name, outcome=t.status.replace("_", " "))
             if t.why:
                 rec["why"] = normalize(t.why)
         elif test.on in refused:

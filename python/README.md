@@ -53,10 +53,6 @@ print(big_orders.report)
 #   doubled ≥ 22
 #   doubled is never NULL
 #   no two rows share id
-# Each run checks on the data:
-#   orders: amount ≥ 0
-#   orders: amount < 1000000000
-#   orders: no two rows share id
 # ...
 ```
 
@@ -76,37 +72,16 @@ pip install 'sverify[all]'         # with every engine in the 1.x promise and bo
 Linux and macOS (Python 3.12 and later); Windows through WSL2.
 [Install](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-install.md) has the extras, the wheels and the nightly builds.
 
-## In CI
-
-`sverify check` proves every transform and node in a pipeline file and
-exits 0 when all are proved, 1 when one is not, and 3 when a construct is
-outside sverify's model (the other codes are in
-[the command line](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-command-line.md#the-command-line)). `--format sarif` writes a
-report for GitHub's code scanning.
-
-```bash
-# skip: runs on pipelines/orders.py, the reader's file
-sverify check pipelines/orders.py
-```
+In CI, `sverify check pipelines/orders.py` proves every transform and node in the file and exits 0 when all are proved, 1 when one is not, and 3 when a construct is outside sverify's model; `--format sarif` writes a report for GitHub's code scanning ([the command line](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-command-line.md#the-command-line)).
 
 ## Go on from here
 
-* [Getting started](https://alexandernenninger.github.io/substrait-lean/examples/examples.html) goes in ten steps from a first contract to Substrait's own semantics, each feature in a few lines.
-* The [how-to pages](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md) take one task each; [what sverify proves](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/what-sverify-proves.md) says what the checker proves and how the reference semantics and the engines fit.
-* The [whole tour](https://github.com/AlexanderNenninger/substrait-lean/tree/main/notebooks) adds three guides, to contracts, to pipelines and engines, and to running it in production; it runs locally with `uvx marimo edit --sandbox notebooks` from a clone.
-* The [API reference](https://alexandernenninger.github.io/substrait-lean/) documents every public function and class of the released version, with the [examples](https://alexandernenninger.github.io/substrait-lean/examples/examples.html) and the [ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/): the upstream bugs and Substrait spec gaps sverify found, and each engine's characterization, searchable by id, engine, function and option.
-* For coding agents, the site also publishes [skills](https://alexandernenninger.github.io/substrait-lean/skills.html) for writing contracts, pipelines and engine code with sverify (`npx skills add https://alexandernenninger.github.io/substrait-lean/`); they ship in the wheel too, under `sverify/skills/`.
-* `SVERIFY_CHECKER` is the path to a `substrait-check` binary that replaces the bundled one, for example your own `lake build`; [the environment variables](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-command-line.md#environment-variables) lists the rest.
-* [Status](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#status) says what a prototype means for the API. To work on sverify, see the [repository](https://github.com/AlexanderNenninger/substrait-lean).
+* [Getting started](https://alexandernenninger.github.io/substrait-lean/examples/examples.html), ten steps from a first contract to Substrait's own semantics, and [the tour](https://github.com/AlexanderNenninger/substrait-lean/tree/main/notebooks), three guides that run locally with `uvx marimo edit --sandbox notebooks`.
+* [The how-to pages](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md), one task each, and [what sverify proves](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/what-sverify-proves.md).
+* [The site](https://alexandernenninger.github.io/substrait-lean/): the API reference of the released version, the [ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/) of upstream bugs and engine facts, and [skills](https://alexandernenninger.github.io/substrait-lean/skills.html) for coding agents.
+* [Status](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#status) and the [repository](https://github.com/AlexanderNenninger/substrait-lean), to work on sverify.
 
 ## License
 
-Sverify is licensed under the [Mozilla Public License 2.0](https://github.com/AlexanderNenninger/substrait-lean/blob/main/LICENSE) (MPL-2.0).
-You can use it in any product, open or proprietary, and your own code stays
-yours. If you distribute a modified version of sverify's own files, those
-files stay under the MPL and you share their source. The license applies file
-by file, so it never reaches the code around them.
-
-`python/src/sverify/ibis_substrait/` is derived from
-[ibis-substrait](https://github.com/ibis-project/ibis-substrait) and stays
-under the [Apache License 2.0](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/src/sverify/ibis_substrait/LICENSE).
+Sverify is licensed under the [Mozilla Public License 2.0](https://github.com/AlexanderNenninger/substrait-lean/blob/main/LICENSE) (MPL-2.0), file by file: your own code stays yours, and a modified version of sverify's own files stays under the MPL with its source shared.
+`python/src/sverify/ibis_substrait/` is derived from [ibis-substrait](https://github.com/ibis-project/ibis-substrait) and stays under the [Apache License 2.0](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/src/sverify/ibis_substrait/LICENSE).

@@ -499,9 +499,9 @@ def string_key(level: str, s: str) -> str:
     """The key two strings share when they are equal at `level`, a function
     of the string alone (so each level is an equivalence). `"nfc"` is
     `NFC(s)`; `"casefold"` is `NFD(casefold(NFD(s)))`, Unicode's canonical
-    caseless match (D145); `"ascii"` is the code points below U+0080 of
+    caseless match (Unicode D145); `"ascii"` is the code points below U+0080 of
     `NFKD(casefold(NFKD(casefold(NFD(s)))))`, the compatibility caseless
-    match (D146), then the drop. Each key is a function of the previous
+    match (Unicode D146), then the drop. Each key is a function of the previous
     level's. The keys follow `unicodedata.unidata_version` (stable for
     assigned code points; they can differ for code points assigned after
     Unicode 15.0, Python 3.12)."""
@@ -520,25 +520,6 @@ def string_key(level: str, s: str) -> str:
 
 
 # -- which conditions depend on what the observation ignores (D12) -----------
-
-
-#: The component a column's type falls under, where an observation may coarsen it.
-def _component(dtype: Any) -> str | None:
-    if dtype.is_floating():
-        return "floats"
-    if dtype.is_timestamp():
-        return "timestamps"
-    if dtype.is_string():
-        return "strings"
-    if dtype.is_decimal():
-        return "decimals"
-    if dtype.is_integer() or dtype.is_boolean() or dtype.is_date() or dtype.is_time():
-        return None
-    # Every other type is a kind `mayHoldList` (`ContractCheck.lean`) counts:
-    # a list or struct, `Kind.opaque`, which `Parse.typeKind` gives a map, a
-    # binary and a UUID (D67), and `Kind.other`, which it gives an interval,
-    # NULL, JSON and any type it does not know (#2005).
-    return "elements"
 
 
 class Tolerant:

@@ -61,6 +61,7 @@ contract's preconditions.
 | A window's result does not depend on how its ties are broken | `eval`, `OrderAllowed` | `Rel.window_deterministic`, `Rel.keyedWindows_soundAll` | `Keys.lean` |
 | A plan with no reported issue raises no runtime error | `eval` | `Rel.mayIssues_sound` | `Safety.lean` |
 | … on every order of the ties the reference allows: an engine that breaks a window's ties another way meets no unreported issue either (#1484) | `OrderAllowed` | `Rel.mayIssues_sound_all` | `Safety.lean` |
+| A double divided by an integer cast to a double (`x / DOUBLE(n)`) does not overflow to `±∞`: a zero `n` raises first, and `\|n\| ≥ 1` keeps the quotient at most `x` (#1787) | `eval` | `fdiv_ofInt_fin`, `Expr.mayInfBin_sound` | `FloatArith.lean`, `Safety.lean` |
 | A raise of the reference is an issue, so a plan with no reported issue meets DuckDB's side condition (`Engine.NoRaiseSide`), for a plan whose loose rows include its rows (`Rel.looseSub`). Where `Rel.looseSub` fails (an `UNNEST`, or a left join whose right side has a filter, an inner join or a `DISTINCT`), the step from a report without issues to "the reference does not raise" is not proved yet | `eval` | `Rel.hasIssue_of_raises`, `Engine.duckdb_noRaise_of_mayIssues` | `Obligations.lean`, `Engine.lean` |
 | Row caps rule out `SUM` overflow | `eval` | `Rel.issuesCapped_sound`, `Rel.capJoins_eval` | `Rows.lean` |
 | A well-formed plan on a well-formed catalog gives rows of its declared arity | `eval` | `Rel.eval_arity` | `Rel.lean` |
@@ -473,7 +474,8 @@ core trusts about doubles ([float-bounds.md](float-bounds.md)).
 | `Moments.lean` | Exact moments and the scale of the variance bounds |
 | `Variance.lean` | Variance, covariance and correlation bounds for any algorithm |
 | `FloatBridge/Codes.lean` | The bridge to the core (#1196): the core's rounding (`FloatCode.ofExact` after the nearest multiple of `2⁻¹⁰⁷⁴`) is a `StdModel` (`FloatBridge.model`), and on multiples of `2⁻¹⁰⁷⁴` it is `ofExact` (`model_fl_grid`) |
-| `FloatBridge/Sums.lean` | The core's summation orders over the bridge (#1196): a `FloatSums` sum of finite doubles is finite and a `StdModel.TreeSum` of their values (`FloatSums.treeSum`), so it meets the core's `SumBound` (`FloatSums.sumBound`) |
+| `FloatBridge/Sums.lean` | The core's summation orders over the bridge (#1196): a `FloatSums` sum of finite doubles is finite and a `StdModel.TreeSum` of their values (`FloatSums.treeSum`), so it meets the core's `SumBound` (`FloatSums.sumBound`); a sum within `γₙ · Σ(|xᵢ| + 2⁻¹⁰²²)` over the reals meets `SumBoundRaw` (`sumBoundRaw_of_near`) |
+| `FloatBridge/Orders.lean` | The shapeless orders over the bridge (#1196, ruling 268): Kahan's sum on codes is `Rnd.kahan` step by step (`kahan_model`) and meets `SumOrder` under `COMPENSATED` (`KahanSums.sumOrder`); a sum with constant runs is a `StdModel.TreeSum` (`FloatSumsK.treeSum`) and meets it under `SCALED_CONSTANT` (`FloatSumsK.sumOrder`), for doubles' codes (`FloatCode.Dbl`) |
 | `Textbook.lean` | The textbook one-pass algorithm |
 | `TwoPass.lean`, `TwoPassRel.lean` | Lean's two-pass algorithm, absolute and relative to the variance |
 | `CovTwoPass.lean` | Two-pass covariance, relative to the spread |

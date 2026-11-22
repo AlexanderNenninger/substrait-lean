@@ -32,7 +32,7 @@ def findings(result: CheckResult) -> list[dict[str, Any]]:
         for t in m.tests + m.constraints:
             if t.status == "proved":
                 continue
-            checked = t.status == "not proved"
+            checked = t.status == "not_proved"
             code = t.reason or ("may_be_false" if t.counterexample else "unknown")
             code = code if checked else "unchecked"
             f = _f(m, file, code, "error" if checked else "warning", t.label, _text(t))
@@ -127,7 +127,7 @@ def junit(result: CheckResult) -> str:
             cls = quoteattr(m.name)
             if t.status == "proved":
                 cases.append(f"<testcase classname={cls} name={name}/>")
-            elif t.status == "not proved":
+            elif t.status == "not_proved":
                 body = escape(
                     _text(t) + (f"\ncounterexample: {t.counterexample}" if t.counterexample else "")
                 )
