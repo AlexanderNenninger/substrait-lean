@@ -28,9 +28,9 @@ mutual
 of its kind. -/
 def Value.hasKind : Kind → Value → Bool
   | _, .null => true
-  | .other, _ => true
+  | .other, _ | .opaque, _ => true
   | .bool, .bool _ | .str, .str _ | .int, .int _ | .float, .float _ | .date, .date _
-  | .time, .ts _ | .timeTz, .ts _ | .tod, .tod _ => true
+  | .time, .ts _ | .timeTz, .ts _ | .timeNs, .ts _ | .timeTzNs, .ts _ | .tod, .tod _ => true
   | .dec _ s, .dec t _ => decide (s = t)
   | .list k, .list vs => Value.allHaveKind k vs
   | .struct ks, .struct vs => Value.fieldsHaveKinds ks vs
@@ -169,6 +169,8 @@ def UnFn.kindOf (f : UnFn) (t : KT) : Option KT :=
     | .kind .other => some (.kind .other)
     | _ => none
   | .itos => need (t.okI Kind.isInt) (.kind .str)
+  | .dtext | .dtextFull => need (t.okI Kind.isIntOrDec) (.kind .str)
+  | .dwiden => need (t.okI Kind.isIntOrDec) t
   | .upper | .lower | .reverse | .replace _ _ | .regexExtract _ _ | .regexReplace _ _ _
   | .md5 | .sha256 => need (t.okK .str) (.kind .str)
   | .length | .ascii | .regexMatch _ => need (t.okK .str) (.kind .int)
@@ -348,7 +350,7 @@ theorem KT.has_join_right {a b : KT} {v : Value} (h : b.has v = true) : (a.join 
 has one kind; `other` for the rest. -/
 def UnFn.out : UnFn → Kind
   | .not | .isNull | .isNum _ => .bool
-  | .itos | .upper | .lower | .reverse | .replace _ _ | .regexExtract _ _ | .regexReplace _ _ _
+  | .itos | .dtext | .dtextFull | .upper | .lower | .reverse | .replace _ _ | .regexExtract _ _ | .regexReplace _ _ _
   | .md5 | .sha256 | .strftime _ => .str
   | .neg | .ftoi | .ftoiOrNull | .narrow _ | .narrowOrNull _ | .length | .ascii | .regexMatch _
   | .datePart _ | .dayPart _ | .epochUs | .dround _ | .dtrunc _ | .ftod _ | .cardinality => .int
@@ -357,7 +359,7 @@ def UnFn.out : UnFn → Kind
   | .addMonths _ true | .bucket _ _ | .asTime | .dateTime => .time
   | .timeOfDay => .tod
   | .decimal p s | .dkind p s => .dec p s
-  | .wrap _ | .widen | .atUtc _ | .fit _ _ | .dateTrunc _ | .structField _ | .listElement _
+  | .wrap _ | .widen | .dwiden | .atUtc _ | .fit _ _ | .dateTrunc _ | .structField _ | .listElement _
   | .flatten | .raise _ | .bbox _ | .approx _ => .other
 
 theorem UnFn.apply_out (f : UnFn) (v : Value) : (f.apply v).hasKind f.out = true := by
@@ -422,7 +424,7 @@ theorem UnFn.kindOf_sound {f : UnFn} {t t' : KT} {v : Value} (h : f.kindOf t = s
     | (obtain ⟨_, rfl⟩ := h; exact hout)
     | (subst h; first | exact hout | (simp [KT.has, KT.toKind]; done))
     | skip
-  case wrap | widen => obtain ⟨_, rfl⟩ := h; exact hv
+  case wrap | widen | dwiden => obtain ⟨_, rfl⟩ := h; exact hv
   case fit =>
     obtain ⟨_, rfl⟩ := h
     cases v <;> simp only [UnFn.apply] <;> first | exact hv | exact KT.has_int hv _
@@ -1070,5 +1072,187 @@ theorem Rel.kinds_sound {cat : Catalog} {tk : String → List Kind} (hcat : cat.
       rw [hkc] at hc
       exact Value.hasKind_list.mp hc v hv
     · simp
+
+
+/-! ## Opaque columns (D67)
+
+A column of kind `.opaque` holds a value of a type the model does not read
+(binary, a map). The model holds an injective image of the engine's value;
+a plan that only carries the column reads nothing from it, so no result
+depends on which image. `Rel.opaqueOk`, which `checkPlan` runs beside
+`Rel.inferKinds`, refuses every other use: an opaque argument to any
+function, measure or window function, a branch of a `CASE`, a cast, a sort,
+grouping or partition key, `DISTINCT`, `UNNEST`, and a `UNION ALL` that puts
+an opaque column beside another kind. `IS NULL` of the column itself is
+admitted (K4). -/
+
+/-- Is `k` an opaque column's kind? -/
+def Kind.isOpaque : Kind → Bool
+  | .opaque => true
+  | _ => false
+
+/-- Does `e` read no opaque column of `env`, but in `IS NULL` of the column
+itself? A lambda's element is never opaque (a list holds no opaque values). -/
+def Expr.opaqueFree (env : List Kind) : Expr → Bool
+  | .lit _ => true
+  | .field i => !(env.getD i .other).isOpaque
+  | .un .isNull (.field _) => true
+  | .un _ a => a.opaqueFree env
+  | .bin _ a b => a.opaqueFree env && b.opaqueFree env
+  | .ifThen c t e => c.opaqueFree env && t.opaqueFree env && e.opaqueFree env
+  | .hof _ l b => l.opaqueFree env && b.opaqueFree (.other :: env)
+
+/-- A projected expression: an opaque column as it is, or one that reads none. -/
+def Expr.carries (env : List Kind) : Expr → Bool
+  | .field _ => true
+  | e => e.opaqueFree env
+
+/-- Does a measure read no opaque column (its argument, filter and order)? -/
+def Measure.opaqueFree (env : List Kind) (m : Measure) : Bool :=
+  m.arg.opaqueFree env && m.filter.all (·.opaqueFree env) &&
+    m.sort.all fun k => !(env.getD k.col .other).isOpaque
+
+/-- Does a window function read no opaque column? `LAG` and the frame's values
+of an opaque column are refused with the rest (K2). -/
+def WinFn.opaqueFree (env : List Kind) : WinFn → Bool
+  | .lag c _ _ | .lead c _ _ => !(env.getD c .other).isOpaque
+  | .firstValue c sort _ | .lastValue c sort _ | .nthValue c _ sort _ =>
+    !(env.getD c .other).isOpaque && sort.all fun k => !(env.getD k.col .other).isOpaque
+  | .agg m sort _ => m.opaqueFree env && sort.all fun k => !(env.getD k.col .other).isOpaque
+  | .rank sort | .denseRank sort | .percentRank sort | .cumeDist sort =>
+    sort.all fun k => !(env.getD k.col .other).isOpaque
+  | .rowNumber | .ntile _ => true
+
+/-- The first use of an opaque column the plan makes beyond carrying it, named
+for the refusal (D67), or `none`. -/
+def Rel.opaqueUse? (cat : Catalog) (tk : String → List Kind) : Rel → Option String
+  | .read _ | .values _ _ => none
+  | .filter r c => r.opaqueUse? cat tk <|> check (c.opaqueFree (kinds r)) "a filter on it"
+  | .project r es => r.opaqueUse? cat tk <|>
+    check (es.all (·.carries (kinds r))) "a function, comparison, CASE or cast of it"
+  | .emit r _ | .fetch r _ _ => r.opaqueUse? cat tk
+  | .cross a b => a.opaqueUse? cat tk <|> b.opaqueUse? cat tk
+  | .join a b _ on | .semi a b _ on => a.opaqueUse? cat tk <|> b.opaqueUse? cat tk <|>
+    check (on.opaqueFree (kinds a ++ kinds b)) "a join condition on it"
+  -- An opaque column meets only an opaque one, so `Kind.join` never makes it
+  -- unknown.
+  | .unionAll a b => a.opaqueUse? cat tk <|> b.opaqueUse? cat tk <|>
+    check ((List.zipWith (fun x y => x.isOpaque == y.isOpaque) (kinds a) (kinds b)).all id)
+      "a UNION ALL of it with another type"
+  | .window r part sort fns => r.opaqueUse? cat tk <|>
+    check (part.all (fun c => !((kinds r).getD c .other).isOpaque) &&
+      sort.all (fun k => !((kinds r).getD k.col .other).isOpaque) &&
+      fns.all (·.opaqueFree (kinds r))) "a window partition, order or function of it"
+  | .orderBy r keys => r.opaqueUse? cat tk <|>
+    check (keys.all fun k => !((kinds r).getD k.col .other).isOpaque) "ORDER BY it"
+  | .distinct r => r.opaqueUse? cat tk <|> check (!(kinds r).any Kind.isOpaque) "DISTINCT over it"
+  | .aggregate r gs ms => r.opaqueUse? cat tk <|>
+    check (gs.all (·.opaqueFree (kinds r)) && ms.all (·.opaqueFree (kinds r)))
+      "a grouping key or an aggregate of it"
+  | .unnest r c => r.opaqueUse? cat tk <|>
+    check (!((kinds r).getD c .other).isOpaque) "UNNEST of it"
+where
+  kinds (r : Rel) : List Kind := (r.inferKinds cat tk).getD []
+  check (ok : Bool) (use : String) : Option String := if ok then none else some use
+
+/-- Does the plan use its opaque columns only by carrying them (D67)? -/
+def Rel.opaqueOk (cat : Catalog) (tk : String → List Kind) (r : Rel) : Bool :=
+  (r.opaqueUse? cat tk).isNone
+
+/-- The refusal of an opaque column's use (D67). -/
+def opaqueRefusal (use : String) : String :=
+  s!"an opaque column (of a type sverify does not read, such as binary or a map) can only \
+    be carried through, by design; {use} is not supported"
+
+/-- The columns `e` reads, but in `IS NULL` of a column itself: indices into
+the row, a lambda's own element left out (D28). -/
+def Expr.readsOutsideIsNull : Expr → List Nat
+  | .lit _ => []
+  | .field i => [i]
+  | .un .isNull (.field _) => []
+  | .un _ a => a.readsOutsideIsNull
+  | .bin _ a b => a.readsOutsideIsNull ++ b.readsOutsideIsNull
+  | .ifThen c t e => c.readsOutsideIsNull ++ t.readsOutsideIsNull ++ e.readsOutsideIsNull
+  | .hof _ l b => l.readsOutsideIsNull ++ b.readsOutsideIsNull.filterMap
+      fun i => if i = 0 then none else some (i - 1)
+
+omit [Boxes.Ambient] in
+/-- A function's argument is read where the function is, but in `IS NULL` of a
+column itself, which reads nothing. -/
+theorem Expr.opaqueFree_un {f : UnFn} {a : Expr} {env : List Kind} {i : Nat}
+    (h : (Expr.un f a).opaqueFree env = true) (hi : i ∈ (Expr.un f a).readsOutsideIsNull) :
+    a.opaqueFree env = true ∧ i ∈ a.readsOutsideIsNull := by
+  cases f <;> cases a <;> simp_all [opaqueFree, readsOutsideIsNull]
+
+omit [Boxes.Ambient] in
+/-- **K3**: an expression `Expr.opaqueFree` admits reads no opaque column,
+but in `IS NULL` of the column itself (K4). -/
+theorem Expr.opaqueFree_reads : ∀ {e : Expr} {env : List Kind}, e.opaqueFree env = true →
+    ∀ i ∈ e.readsOutsideIsNull, (env.getD i .other).isOpaque = false
+  | .lit _, _, _, i, hi => by simp [readsOutsideIsNull] at hi
+  | .field j, env, h, i, hi => by
+    simp only [readsOutsideIsNull, List.mem_singleton] at hi; subst hi
+    simpa [opaqueFree] using h
+  | .un .isNull (.field _), _, _, i, hi => by simp [readsOutsideIsNull] at hi
+  | .un f a, env, h, i, hi =>
+    have h' := Expr.opaqueFree_un h hi
+    Expr.opaqueFree_reads h'.1 i h'.2
+  | .bin _ a b, env, h, i, hi => by
+    simp only [opaqueFree, Bool.and_eq_true] at h
+    simp only [readsOutsideIsNull, List.mem_append] at hi
+    rcases hi with hi | hi
+    · exact Expr.opaqueFree_reads h.1 i hi
+    · exact Expr.opaqueFree_reads h.2 i hi
+  | .ifThen c t e, env, h, i, hi => by
+    simp only [opaqueFree, Bool.and_eq_true] at h
+    simp only [readsOutsideIsNull, List.mem_append] at hi
+    rcases hi with (hi | hi) | hi
+    · exact Expr.opaqueFree_reads h.1.1 i hi
+    · exact Expr.opaqueFree_reads h.1.2 i hi
+    · exact Expr.opaqueFree_reads h.2 i hi
+  | .hof _ l b, env, h, i, hi => by
+    simp only [opaqueFree, Bool.and_eq_true] at h
+    simp only [readsOutsideIsNull, List.mem_append, List.mem_filterMap] at hi
+    rcases hi with hi | ⟨j, hj, hji⟩
+    · exact Expr.opaqueFree_reads h.1 i hi
+    · have := Expr.opaqueFree_reads h.2 j hj
+      split at hji
+      · simp at hji
+      · simp only [Option.some.injEq] at hji; subst hji
+        obtain ⟨k, rfl⟩ : ∃ k, j = k + 1 := ⟨j - 1, by omega⟩
+        simpa using this
+
+/-! ### Refused and admitted uses
+
+A table `t` of an integer, an opaque column and a list of integers. -/
+
+private def ocat : Catalog := fun _ => ⟨3, []⟩
+private def otk : String → List Kind := fun _ => [.int, .opaque, .list .int]
+private def ook (r : Rel) : Bool := r.opaqueOk ocat otk
+
+-- Carried: projected, filtered on another column, joined on another, limited,
+-- and `IS NULL` of it.
+#guard ook (.project (.read "t") [.field 1, .un .isNull (.field 1)])
+#guard ook (.fetch (.filter (.read "t") (.bin .lt (.field 0) (.lit (.int 3)))) 0 (some 5))
+#guard ook (.join (.read "t") (.read "t") .inner (.bin .eq (.field 0) (.field 3)))
+#guard ook (.unionAll (.read "t") (.read "t"))
+#guard ook (.orderBy (.read "t") [{ col := 0 }])
+-- Refused: a function of it, a comparison, a `CASE` branch, a filter on it, a
+-- join on it, a sort, grouping or partition key, `DISTINCT`, a measure, `LAG`,
+-- and a `UNION ALL` beside another kind.
+#guard !ook (.project (.read "t") [.un .length (.field 1)])
+#guard !ook (.project (.read "t") [.bin .eq (.field 1) (.field 1)])
+#guard !ook (.project (.read "t") [.ifThen (.lit (.bool true)) (.field 1) (.lit .null)])
+#guard !ook (.filter (.read "t") (.field 1))
+#guard !ook (.join (.read "t") (.read "t") .inner (.bin .eq (.field 1) (.field 4)))
+#guard !ook (.orderBy (.read "t") [{ col := 1 }])
+#guard !ook (.aggregate (.read "t") [.field 1] [])
+#guard !ook (.aggregate (.read "t") [] [{ fn := .count, arg := .field 1 }])
+#guard !ook (.window (.read "t") [1] [] [])
+#guard !ook (.window (.read "t") [] [] [.lag 1 1 .null])
+#guard !ook (.distinct (.read "t"))
+#guard !ook (.unnest (.read "t") 1)
+#guard !ook (.unionAll (.read "t") (.emit (.project (.read "t") [.field 0]) [0, 3, 2]))
+#guard !ook (.project (.read "t") [.hof .transform (.field 2) (.field 2)])
 
 end Substrait

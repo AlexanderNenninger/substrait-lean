@@ -721,10 +721,11 @@ def colKindOf : Kind → ColKind
   | .dec _ _ => .decimal
   | _ => .other
 
-/-- Might a column of this kind hold a list (at any depth)? `other` counts: the
-checker does not know its type. -/
+/-- Might a column of this kind hold a list (at any depth)? `other` and
+`opaque` count: the checker does not know their type, and an opaque map holds
+one (D67). -/
 def mayHoldList : Kind → Bool
-  | .list _ | .struct _ | .other => true
+  | .list _ | .struct _ | .other | .opaque => true
   | _ => false
 
 -- The two theorems belong to `Substrait`, beside the ones they extend.
@@ -1005,6 +1006,9 @@ def outputKindJson (k : Write.WKind) (bits : Nat) : Json := match k with
   | .date => Json.mkObj [("kind", "date")]
   | .time => Json.mkObj [("kind", "time")]
   | .instant => Json.mkObj [("kind", "instant")]
+  -- Nanoseconds (D61): the run's types keep their precision.
+  | .timeNs => Json.mkObj [("kind", "timeNs")]
+  | .instantNs => Json.mkObj [("kind", "instantNs")]
   | .interval => Json.mkObj [("kind", "interval")]
   | .tod => Json.mkObj [("kind", "tod")]
   | .list _ => Json.mkObj [("kind", "list")]
@@ -1581,6 +1585,10 @@ def Request.check (R : Request) : Except String Report :=
     throw "a postcondition plan is not well-formed"
   else if !R.transform.all fun T => T.root.checkWF R.cat then
     throw "the transformation plan is not well-formed"
+  -- An opaque column is carried, and no plan reads it (`checkPlan`, D67).
+  else if let some use := (R.transform.toList ++ R.ensures).findSome? fun p =>
+      p.root.opaqueUse? p.catalog p.tableKinds then
+    throw (opaqueRefusal use)
   else
     -- `R.kenv`, with every table's knowledge evaluated once (`knowsTable`):
     -- `R.kenv` itself would evaluate it again at each read.
@@ -1655,6 +1663,8 @@ theorem Request.check_ok {R : Request} {rep : Report} (hc : R.check = .ok rep) :
     split at hc
     · cases hc
     · rename_i htw
+      split at hc
+      · cases hc
       simp only at hc
       split at hc
       · cases hc

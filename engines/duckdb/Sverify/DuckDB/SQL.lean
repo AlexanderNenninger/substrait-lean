@@ -150,8 +150,12 @@ def DuckFn.result : DuckFn → DuckType
 /-- Functions the model cannot state under the semantics, and why: the lift
 refuses them (`sverify.sql_lift` raises `Unsupported`). -/
 def DuckFn.refused : Semantics → DuckFn → Option String
-  | .duckdb, .castDoubleBigint => some "DuckDB rounds half to even, which the model's casts \
-      (they truncate) cannot state; use semantics='reference', or cast round(x), floor(x) or ceil(x), which lift"
+  -- D55: a SQL cast of a double to an integer rounds half to even, under both
+  -- semantics; the core has no such rounding until #322 (#2008).
+  | _, .castDoubleBigint => some "a SQL cast of a double rounds half to even (D55), \
+      which the model's casts (they truncate) cannot state until #322; write \
+      CAST(round(x) AS BIGINT), CAST(floor(x) AS BIGINT) or CAST(ceil(x) AS BIGINT), \
+      which mean the same on both"
   | _, _ => none
 
 theorem FloatCode.ofInt_ne_posInf (i : Int) : FloatCode.ofInt i ≠ FloatCode.posInf := by

@@ -57,11 +57,13 @@ def Lowering.duckdbTableJson : Lean.Json :=
 def Lowering.duckdb : Lowering (Profile.duckdb {}) := duckdbOn
 
 theorem Lowering.duckdb_total : Lowering.duckdb.Total := duckdbOn.total
+theorem Lowering.duckdb_allExact : Lowering.duckdb.AllExact := duckdbOn.allExact
+theorem Lowering.duckdb_noneOnDbl : Lowering.duckdb.NoneOnDbl := duckdbOn.noneOnDbl
 
 /-- **Every lowered expression is exact on DuckDB.** -/
 theorem Lowering.duckdb_exact (e : Expr) :
     Expr.Exact (Profile.duckdb {}) (Lowering.duckdb.lowerE e) e :=
-  Lowering.lowerE_exact Lowering.duckdb_total e
+  Lowering.lowerE_exact Lowering.duckdb_total Lowering.duckdb_noneOnDbl e
 
 /-- **The lowered plan runs correctly on DuckDB, or raises.** Unless one of
 its expressions raises on a row DuckDB evaluates it on, DuckDB's functions
@@ -71,7 +73,7 @@ that `Profile.duckdb` is DuckDB's, and that the SQL printer is faithful. -/
 theorem Rel.duckdb_shim_sound {cat : Catalog} {r : Rel}
     (h : ¬(Lowering.duckdb.lowerRel r).Raises (Profile.duckdb {}) cat) :
     (Lowering.duckdb.lowerRel r).eval cat (Profile.duckdb {}).impl = r.eval cat :=
-  Lowering.lowerRel_sound Lowering.duckdb_total h
+  Lowering.lowerRel_sound Lowering.duckdb_total Lowering.duckdb_noneOnDbl h
 
 /-- The DuckDB shim: unless the shimmed plan raises, DuckDB returns an allowed
 result. -/
@@ -98,7 +100,8 @@ theorem Rel.duckdb_guardFree_sound {cat : Catalog} (hcat : cat.WF) {A : String �
     (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true)
     (h : ¬(Lowering.duckdb.lowerRelWith (fun _ => false) r).Raises (Profile.duckdb {}) cat) :
     (Lowering.duckdb.lowerRelWith (fun _ => false) r).eval cat (Profile.duckdb {}).impl = r.eval cat :=
-  Lowering.lowerRelWith_mayIssues_sound Lowering.duckdb_total Lowering.duckdb_guardsFor_none hcat hA hF
+  Lowering.lowerRelWith_mayIssues_sound Lowering.duckdb_total Lowering.duckdb_allExact
+    Lowering.duckdb_noneOnDbl Lowering.duckdb_guardsFor_none hcat hA hF
     hT hwf hsmall hs (by simpa using hm) h
 
 end Substrait

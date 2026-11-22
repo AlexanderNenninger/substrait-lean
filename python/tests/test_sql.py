@@ -389,7 +389,7 @@ def test_sum_of_both_infinities_is_nan_under_the_duckdb_lens():
     lens = sv.verify(query, tables={"floats": con.table("floats")}, semantics="duckdb")
     assert "domain error" not in lens.details()
     assert [math.isnan(r["s"]) for r in lens.run(con).to_pylist()] == [True]
-    ref = sv.verify(query, tables={"floats": con.table("floats")}, semantics="reference")
+    ref = sv.verify(query, tables={"floats": con.table("floats")}, semantics="portable")
     assert "may fail: domain error: sum(f)" in ref.details()
 
 
@@ -417,7 +417,7 @@ def test_runtime_errors_raise(sql, a, b):
     """Where the reference raises, Lean's value is NULL (and `Safety.lean`
     reports the plan); the SQL fails too instead of answering."""
     r = pa.table({"a": pa.array([a], pa.int64()), "b": pa.array([b], pa.int64()), "f": [math.nan]})
-    plan_json = plan_of(sql, {"r": r}, "reference")
+    plan_json = plan_of(sql, {"r": r}, "portable")
     with pytest.raises(duckdb.Error):
         duckdb_rows(plan_json, {"r": r})
 
@@ -430,7 +430,7 @@ def test_remainder_by_minus_one_is_zero(width):
     low = -(2 ** (width.bit_width - 1))
     r = pa.table({"a": pa.array([low, 5, None], width), "b": pa.array([-1, -1, -1], width)})
     sql = "SELECT a % b AS m FROM r"
-    assert check_three_ways(sql, {"r": r}, "reference") == [(0,), (0,), (None,)]
+    assert check_three_ways(sql, {"r": r}, "portable") == [(0,), (0,), (None,)]
     with pytest.raises(duckdb.Error, match="MIN % -1"):
         duckdb_rows(plan_of(sql, {"r": r}), {"r": r})
     # Without the MIN row the lens runs and agrees with Lean.
@@ -515,14 +515,14 @@ def test_rounding_and_casts_match_lean(sql):
             ),
         }
     )
-    check_three_ways(sql, {"r": r}, "reference")
+    check_three_ways(sql, {"r": r}, "portable")
 
 
 def test_round_to_digits_is_duckdbs():
     """`round(x, d)` is DuckDB's (#335): the written plan on DuckDB is DuckDB's own."""
     r = pa.table({"f": pa.array(ROUNDING, pa.float64())})
     sql = "SELECT f, round(f, 2) AS x, round(f, -1) AS y, round(f, -400) AS z FROM r"
-    plan = plan_of(sql, {"r": r}, "reference")
+    plan = plan_of(sql, {"r": r}, "portable")
     native = duckdb.connect()
     native.register("r", r)
     # DuckDB's own result keeps -0.0, which `canonical` reads as 0.0.
@@ -536,7 +536,7 @@ def test_double_division_by_zero_raises_unless_ieee():
     creates a NaN, which raises (D37)."""
     r = ints(a=[7, -7, 0, 1], b=[2, 0, 0, 3])
     sql = "SELECT CAST(a AS DOUBLE) / CAST(b AS DOUBLE) AS q FROM r"
-    plan_json = plan_of(sql, {"r": r}, "reference")
+    plan_json = plan_of(sql, {"r": r}, "portable")
     with pytest.raises(duckdb.Error, match="division by zero"):
         duckdb_rows(plan_json, {"r": r})
     plan = json.loads(plan_json)
@@ -743,25 +743,33 @@ def test_contract_checks_on_duckdb():
 # --------------------------------------------------------------------------
 # Snapshots of the generated SQL
 
-SNAPSHOT_FIXTURES = [
-    "filter_project",
-    "virtual_left_join",
-    "union_fetch",
-    "df_window",
-    "df_float_timestamp",
-]
+#: Three plans and every fixture the checker accepts (`[exit 0]`).
+SNAPSHOT_FIXTURES = sorted(
+    {"filter_project", "virtual_left_join", "union_fetch"}
+    | {
+        p.stem
+        for p in (FIXTURES.glob("*.json") if FIXTURES.is_dir() else [])
+        if p.with_suffix(".expected").read_text().rstrip().endswith("[exit 0]")
+    }
+)
 
 
 @needs_fixtures
 @pytest.mark.parametrize("name", SNAPSHOT_FIXTURES)
 def test_sql_snapshot(name):
-    """Set SVERIFY_UPDATE_SNAPSHOTS=1 to re-record."""
-    sql = to_sql(fixture(name), DUCKDB) + "\n"
+    """DuckDB's SQL, in Lean's row order (`rows="sequence"`, its default): the
+    multiset writer's shortcuts leave it as it was (#2186, ruling 217 S2). Set
+    SVERIFY_UPDATE_SNAPSHOTS=1 to re-record."""
+    try:
+        sql = to_sql(fixture(name), DUCKDB) + "\n"
+    except Unsupported as e:
+        sql = f"-- Unsupported: {e}\n"
     path = SNAPSHOTS / f"{name}.duckdb.sql"
+    # As bytes: a `\r` in a string literal stays one (`read_text` reads it as `\n`).
     if os.environ.get("SVERIFY_UPDATE_SNAPSHOTS"):
         SNAPSHOTS.mkdir(exist_ok=True)
-        path.write_text(sql)
-    assert path.read_text() == sql
+        path.write_bytes(sql.encode())
+    assert path.read_bytes().decode() == sql
 
 
 EVENTS = pa.table(

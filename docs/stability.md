@@ -54,6 +54,9 @@ earlier formats:
   `not_null` listing the columns proved never NULL, and a postcondition's
   `needs` as their tables and labels; format 4 writes `facts` as objects
   (text, nullability, bounds) and `needs` as whole `needed` objects.
+- a report of format 2 or 3 and a manifest of format 1 or 2 say
+  `"reference"` for the semantics 1.0 calls `"portable"` (`semantics`, and
+  a route's `semantics`), and a reader maps it.
 
 The OpenLineage facet `sverify_contract` follows the same name: its format
 2 says `lenses` where format 1 said `equivalence`.
@@ -92,7 +95,7 @@ which keep old readers and old data working:
   neither is used again.
 - The manifest, a `google.protobuf.Struct`, follows the rules of the JSON
   formats above. Its keys are in
-  [the guide](tasks.md#exporting-to-substrait).
+  [the guide](how-to-export.md#exporting-to-substrait).
 - `sv.Report.from_substrait` reads every earlier 1.x export and proves its contract
   again; for an export of a proved plan the report is proved. It proves each
   postcondition over the exported plan, shims included (#1484). An export whose
@@ -147,11 +150,15 @@ Every type a public name returns, holds or takes is public too, so
 `sverify.types` names the types a report and a refresh hold. The
 [API reference](https://alexandernenninger.github.io/substrait-lean/)
 documents each public name, and `tests/test_public_api.py` holds the
-reference, the `__all__`s and that closure equal. In the Python API "verify" proves
+reference, the `__all__`s and that closure equal. `sv.connect()` returns a
+`sverify.engines.Connection`, public there. In the Python API "verify" proves
 (`sv.verify`, `ContractedTransform.verify`) and "check" reads data
 (`check_requires`, `Report.check_inputs`, `proved_with_checks`); the
 commands named `check` (`sverify check`, `sverify-dbt check`) verify a
-project. Every other module is
+project. A check on data of a table of `sv.connect()` runs the plan the checker
+wrote for the condition. A check through Ibis, on a table of the caller's own
+Ibis backend, reads the condition as that backend does, and which rows it
+flags where backends differ is outside the 1.x promise (F219). Every other module is
 internal, whether or not its name starts with an underscore, and so are
 the maintainer tooling `sverify_dev` and the printed text of a report
 (`str(report)`); tools read the report through its attributes or its JSON.
@@ -205,7 +212,7 @@ pages link here. The reference is Lean's reference profile
 ([reference semantics](reference-semantics.md)), one of the profiles that
 refine the core ([core, profiles and engines](core-and-profiles.md)), and an engine runs a plan
 by a route that the checker justifies against it
-([routes, classes and profiles](tasks.md#routes-classes-and-profiles)).
+([routes, classes and profiles](how-to-engines-and-sql.md#routes-classes-and-profiles)).
 
 | Engine | Runs plans | Writes its SQL | Profile (`semantics=`) | Run proved sound | In the 1.x promise |
 |---|---|---|---|---|---|
@@ -235,3 +242,7 @@ model stays the reference.
 Each release is checked against these rules: the format fixtures, the "Breaking changes"
 section and its migration notes, and the facts or upstream records of each
 soundness fix.
+
+## Status
+
+Sverify is a working prototype of a pipeline tool: it proves contracts and runs the checked plan. Production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. A name that goes is gone in that release, with no alias, and [the changelog](../CHANGELOG.md) lists each move and what replaces it ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)). It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.

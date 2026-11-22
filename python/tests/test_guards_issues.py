@@ -78,7 +78,8 @@ def _recording(monkeypatch: pytest.MonkeyPatch, used: set[Site]) -> None:
 
         def raise_(self, message, dep, kind, issue, _orig=orig):  # type: ignore[no-untyped-def]
             f = sys._getframe(1)
-            file = re.split(r"/(?:src|site-packages)/", f.f_code.co_filename)[-1]
+            path = f.f_code.co_filename.replace("\\", "/")  # Windows' separators
+            file = re.split(r"/(?:src|site-packages)/", path)[-1]
             used.add((file, f.f_lineno, issue, message))
             return _orig(self, message, dep, kind, issue)
 
@@ -206,7 +207,7 @@ def _sql_plan(sql: str, semantics: str = "duckdb") -> str:
 #: operand whose bounds Safety does not get from its type (a timestamp from an
 #: integer column, a date from columns), an offset computed from a column.
 WITNESSES: dict[str, Callable[[], str]] = {
-    "integer division by a column": lambda: _sql_plan("SELECT qty // id AS x FROM t", "reference"),
+    "integer division by a column": lambda: _sql_plan("SELECT qty // id AS x FROM t", "portable"),
     "integer modulo by a column": lambda: _plan(t.select(x=t.qty % t.id)),
     "date from unbounded columns": lambda: _plan(t.select(x=ibis.date(t.id, t.qty, t.qty))),
     "text of a date from unbounded columns": lambda: _plan(
@@ -217,7 +218,7 @@ WITNESSES: dict[str, Callable[[], str]] = {
     ),
     "months added to a timestamp": lambda: _plan(t.select(x=t.ts + ibis.interval(months=1))),
     "substring at an offset from a column": lambda: _sql_plan(
-        "SELECT substr(name, qty) AS x FROM t", "reference"
+        "SELECT substr(name, qty) AS x FROM t", "portable"
     ),
     "bucket of a computed timestamp": lambda: _plan(
         t.select(x=(t.ts + ibis.interval(days=1)).bucket(minutes=15))

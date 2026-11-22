@@ -383,7 +383,7 @@ def _(mo):
 
     Windows that share one `PARTITION BY` recompute only the partitions a
     batch touches, for inputs without ties on the partition and sort columns
-    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)). The
+    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-nodes.md#nodes-composing-storing-refreshing)). The
     node's status says how it is refreshed, and its change flows to the
     sink and to nodes downstream:
     """)

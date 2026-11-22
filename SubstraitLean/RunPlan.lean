@@ -683,7 +683,8 @@ theorem run_plan_noRaise_duckdb {input : Json} {R : Request} {rep : Report}
   intro r' hl hr
   cases hl
   obtain ⟨p, hp⟩ := Rel.hasIssue_of_raises false hloose
-    (Lowering.lowerRel_raises Lowering.duckdb_total hr)
+    (Lowering.lowerRel_raises Lowering.duckdb_total Lowering.duckdb_allExact
+      Lowering.duckdb_noneOnDbl hr)
   rcases (R.withRoot s).issuesIn_sound (hD.withRoot s) hT' hw hP (hss hsm) p hp with h | ⟨-, h, -⟩
   · exact absurd (show p ∈ (R.withRoot s).issuesIn R.kenv from h) (by rw [his.2]; simp)
   · exact absurd href (by rw [show (R.withRoot s).underReference = R.underReference from rfl] at h

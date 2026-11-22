@@ -11,6 +11,7 @@ import Init.Data.List.Nat.Range
 import Sverify.Core.Profile
 import Sverify.DuckDB.LoweringOn.Native
 import Sverify.DuckDB.LoweringOn.Math
+import Sverify.DuckDB.LoweringOn.Other
 import Sverify.DuckDB.LoweringOn.Integers
 import Sverify.DuckDB.LoweringOn.Arith
 import Sverify.DuckDB.LoweringOn.Powers
@@ -55,6 +56,9 @@ def Substrait.duckdbOn : Substrait.Lowering (Substrait.Profile.duckdb (Substrait
     | Substrait.UnFn.narrowOrNull a0 => some (Substrait.duckdbOn.narrowOrNull a0)
     | Substrait.UnFn.wrap a0 => some (Substrait.duckdbOn.wrap a0)
     | Substrait.UnFn.itos  => some (Substrait.duckdbOn.itos )
+    | Substrait.UnFn.dtext  => some (Substrait.duckdbOn.dtext )
+    | Substrait.UnFn.dtextFull  => some (Substrait.duckdbOn.dtextFull )
+    | Substrait.UnFn.dwiden  => some (Substrait.duckdbOn.dwiden )
     | Substrait.UnFn.widen  => some (Substrait.duckdbOn.widen )
     | Substrait.UnFn.atUtc a0 => some (Substrait.duckdbOn.atUtc a0)
     | Substrait.UnFn.upper  => some (Substrait.duckdbOn.upper )
@@ -177,6 +181,9 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("UnFn.narrowOrNull", "native", 0),
   ("UnFn.wrap", "native", 0),
   ("UnFn.itos", "native", 0),
+  ("UnFn.dtext", "native", 0),
+  ("UnFn.dtextFull", "hand-written schema: dtext of the decimal widened by one digit", 0),
+  ("UnFn.dwiden", "native", 0),
   ("UnFn.widen", "native", 0),
   ("UnFn.atUtc", "native", 0),
   ("UnFn.upper", "native", 0),
@@ -282,5 +289,15 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("BinFn.listFn", "native", 0)]
 
 theorem Substrait.duckdbOn.total : (Substrait.duckdbOn).Total :=
+  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
+   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩
+
+/-- Every entry is exact (`Lowering.AllExact`). -/
+theorem Substrait.duckdbOn.allExact : (Substrait.duckdbOn).AllExact :=
+  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
+   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩
+
+/-- No entry is stated on doubles only (`Lowering.NoneOnDbl`). -/
+theorem Substrait.duckdbOn.noneOnDbl : (Substrait.duckdbOn).NoneOnDbl :=
   ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
    fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩

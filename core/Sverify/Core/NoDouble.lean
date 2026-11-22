@@ -90,9 +90,9 @@ end
 
 mutual
 /-- A kind whose values may hold a double: a double, a kind the parser does
-not know, or a list or struct of such kinds. -/
+not know, an opaque column (any image), or a list or struct of such kinds. -/
 def Kind.mayDouble : Kind → Bool
-  | .float | .other => true
+  | .float | .other | .opaque => true
   | .list k => k.mayDouble
   | .struct ks => Kind.anyMayDouble ks
   | _ => false
@@ -149,7 +149,7 @@ variable [Boxes.Ambient]
 /-- Fail closed: the constructors that neither take nor give a double are
 listed, and any other, a new one included, may. -/
 def UnFn.mayDouble : UnFn → Bool
-  | .not | .isNull | .neg | .narrow _ | .narrowOrNull _ | .wrap _ | .itos | .atUtc _
+  | .not | .isNull | .neg | .narrow _ | .narrowOrNull _ | .wrap _ | .itos | .dtext | .dtextFull | .dwiden | .atUtc _
   | .upper | .lower | .length | .reverse | .ascii | .replace _ _ | .regexMatch _
   | .regexExtract _ _ | .regexReplace _ _ _ | .md5 | .sha256 | .datePart _ | .dateTrunc _
   | .toDate | .dayPart _ | .dayTrunc _ | .addMonths _ _ | .timeOfDay | .asTime | .dateTime

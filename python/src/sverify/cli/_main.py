@@ -47,9 +47,9 @@ exit codes:
   3  unsupported: a construct outside sverify's model
   4  time or memory budget exceeded
   5  a refresh committed with rows quarantined
-  6  error: the file raised, I/O, a crash
+  6  error: the file raised outside a run-time check, I/O, a crash
   7  refused: no route takes the proved node to the engine
-  8  a refresh held a node"""
+  8  a refresh held a node: a condition failed, or a run-time check fired"""
 STATUS = {
     OK: "proved",
     NOT_PROVED: "not_proved",
@@ -719,7 +719,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     return its exit code: 0 proved (a refresh committed every row), 1 not
     proved, 2 usage error, 3 unsupported, 4 time or memory budget exceeded,
     5 a refresh quarantined rows, 6 error, 7 refused (no route to the
-    engine), 8 a refresh held a node."""
+    engine), 8 a refresh held a node (a condition failed or a run-time check
+    fired)."""
     try:
         args = parser().parse_args(argv)
     except SystemExit as e:

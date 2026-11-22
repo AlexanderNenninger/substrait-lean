@@ -22,7 +22,7 @@ The contract travels in the plan's `advanced_extensions.optimization` as an
 module): the preconditions, declared and inferred, and the postconditions,
 each in the user's terms and as a Substrait plan, and a manifest. A consumer
 that does not know the message ignores it, as Substrait's docs allow for an
-optimization. `from_substrait` reads both back and proves the contract again
+optimization. `Report.from_substrait` reads both back and proves the contract again
 with the checker.
 """
 
@@ -1645,7 +1645,7 @@ def _refuse_unverified(report: Report) -> None:
             reasons.append("the proof does not carry over to Substrait (see report.details())")
         reasons += [f"needs {n}" for n in report._needs_lines()]
         if report.floats_unmet:
-            reasons.append(f"no engine meets the observation's doubles: {report.floats_unmet}")
+            reasons.append(f"no engine meets the lenses' doubles: {report.floats_unmet}")
         raise ExportError(
             "not verified: " + "; ".join(reasons), hint="fix what it names and verify again"
         )
@@ -1668,14 +1668,14 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
     typer.run()
     if report.semantics == "substrait":
         handling = Handling()
-    elif report.semantics == "reference":
+    elif report.semantics == "portable":
         handling = _pin(report, typer, shims)
         # Shims add calls: type the plan again, for their URNs and types.
         _Typer(plan).run()
     else:
         raise ExportError(
             f"a plan verified with semantics={report.semantics!r} holds on that engine only; "
-            "verify it with semantics='reference' or 'substrait' to export it"
+            "verify it with semantics='portable' or 'substrait' to export it"
         )
     major, minor, patch = SUBSTRAIT_VERSION
     plan["version"] = {
@@ -1785,7 +1785,7 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
 
 @dataclasses.dataclass(frozen=True)
 class Imported:
-    """A plan read back by `from_substrait`."""
+    """A plan read back by `Report.from_substrait`."""
 
     plan: Json
     """The plan, without the contract."""
@@ -1806,8 +1806,9 @@ _RENAMED = {
 
 
 def _manifest(m: Mapping[str, Any]) -> Json:
-    """The manifest in this version's format: a format 1 manifest's keys
-    renamed, `rows` an integer (a Struct holds every number as a double).
+    """The manifest in this version's format: an earlier format's keys
+    renamed and its `"reference"` semantics `"portable"`, `rows` an integer
+    (a Struct holds every number as a double).
 
     Raises:
         ValueError: The manifest's format is newer than this version reads.
@@ -1825,6 +1826,10 @@ def _manifest(m: Mapping[str, Any]) -> Json:
             {_RENAMED.get(k, k): v for k, v in u.items()} for u in out.get("up_to") or []
         ]
         out["format"] = FORMAT
+    if "semantics" in out:
+        from sverify.report_json import _portable
+
+        out["semantics"] = _portable(out["semantics"], fmt < FORMAT)
     if isinstance(out.get("rows"), float) and out["rows"].is_integer():
         out["rows"] = int(out["rows"])
     if isinstance(out.get("format"), float):
@@ -1872,31 +1877,6 @@ def read(data: str | bytes | Mapping[str, Any]) -> Imported:
     )
 
 
-def from_substrait(data: str | bytes | Mapping[str, Any]) -> Report:
-    """Read a plan `Report.to_substrait` exported, and prove its contract
-    again with the checker (#664).
-
-    The plan goes to the checker as it was exported, pinned options, shims
-    and all, with the preconditions and postconditions it carries; the
-    report says what the checker proves of it now. For an export of a
-    verified plan, `proved` is true again, with the same postconditions.
-
-    Args:
-        data: The export: protobuf JSON (a string or its dict) or bytes.
-
-    Returns:
-        A `Report` of the plan: its postconditions with their status, the
-        runtime errors the checker cannot rule out, the facts on each output
-        column and the options the proof depends on. Facts are in Lean's
-        notation, and nothing is known of the Ibis types.
-
-    Raises:
-        ValueError: The plan carries no sverify contract, or the checker
-            rejects the plan.
-    """
-    return recheck(data)
-
-
 def _floats_component(components: Mapping[str, Any]) -> Any:
     """The `floats` of a manifest's observation: `"exact"`, `"plan"` (also
     where the manifest has none), or a tolerance, written as its fields."""
@@ -1914,8 +1894,8 @@ def _floats_component(components: Mapping[str, Any]) -> Any:
         return "plan"
 
 
-def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
-    """`from_substrait`, under its internal name."""
+def _recheck(data: str | bytes | Mapping[str, Any]) -> Report:
+    """Prove a stored plan's contract again: `Report.from_substrait`."""
     from sverify._verdict import split_assumed, verdict
     from sverify.conditions import CheckedCondition, PlannedCondition
     from sverify.engine import run_checker
@@ -1991,7 +1971,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
             Issue(i["kind"], i["expr"], i["error"] or i["assumed"], assumed=i["assumed"])
             for i in out["issues"]
         ],
-        semantics=m.get("semantics", "reference"),
+        semantics=m.get("semantics", "portable"),
         requires=requires,
         ensures=checked,
         facts={
@@ -2151,9 +2131,7 @@ __all__ = [
     "Imported",
     "contract_json",
     "export",
-    "from_substrait",
     "read",
-    "recheck",
     "resolve",
 ]
 

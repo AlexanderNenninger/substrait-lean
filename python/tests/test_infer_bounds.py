@@ -12,7 +12,7 @@ from deltalake import write_deltalake
 from ibis import _
 
 import sverify as sv
-import sverify.contracts as contracts
+import sverify.proposers as proposers
 from _pipelines import discharged, make_orders, orders_table, paid
 from sverify.contracts import ON_DATA, Inferred, label
 from sverify.errors import PreconditionError, VerificationError
@@ -169,13 +169,13 @@ def test_limits_are_suggested_not_assumed(expr, hint):
 
 
 def test_a_wrong_inference_fails_the_proof(monkeypatch):
-    """The inference is untrusted: a bound too weak to rule out the overflow
-    is assumed, and the proof with it still fails."""
+    """The inference is a proposer, so untrusted: a bound too weak to rule out
+    the overflow is assumed, and the proof with it still fails."""
 
     def too_weak(needs, schemas):
         return {"orders": [Inferred('"amount" < 9000000000000000000', "(_.amount < 9 * 10**18)")]}
 
-    monkeypatch.setattr(contracts, "_render_needs", too_weak)
+    monkeypatch.setattr(proposers.Infer, "conditions", staticmethod(too_weak))
     report = verify(T.select(x=T.amount * 2), requires={"orders": [_.amount >= 0]})
     assert inferred(report) == ["(_.amount < 9 * 10**18)"]
     assert report.verdict == sv.Verdict.UNPROVED

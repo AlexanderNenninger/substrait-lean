@@ -53,7 +53,7 @@ from sverify.plan_json import (
 from sverify.plan_json import decimal_dtype as _decimal
 from sverify.plan_json import same_type as _same
 
-__all__ = ["DUCKDB", "PROFILES", "REFERENCE", "Lifted", "Profile", "lift", "parse"]
+__all__ = ["DUCKDB", "PORTABLE", "PROFILES", "Lifted", "Profile", "lift", "parse"]
 
 DIALECT = "duckdb"
 
@@ -78,7 +78,7 @@ class Profile:
     in both profiles; the second is what the functions do.
 
     Attributes:
-        name: `"duckdb"` or `"reference"`, as `sv.sql`'s `semantics`.
+        name: `"duckdb"` or `"portable"`, as `sv.sql`'s `semantics`.
         divide: SQL `/` on integers and decimals: `"double"`, both operands
             cast to `fp64` and divided (DuckDB's `/` without
             `integer_division`, F1).
@@ -134,8 +134,12 @@ DUCKDB = Profile(
     log_zero="MINUS_INFINITY",
     corr_degenerate="NAN",
 )
-REFERENCE = Profile("reference")
-PROFILES = {p.name: p for p in (DUCKDB, REFERENCE)}
+PORTABLE = Profile("portable")
+PROFILES = {p.name: p for p in (DUCKDB, PORTABLE)}
+
+#: The lift table's name of each profile's semantics: Lean's `Semantics.reference`
+#: is the portable profile (`engines/duckdb/Sverify/DuckDB/SQL.lean`).
+_TABLE_NAME = {"duckdb": "duckdb", "portable": "reference"}
 
 
 # --------------------------------------------------------------------------
@@ -150,19 +154,19 @@ PROFILES = {p.name: p for p in (DUCKDB, REFERENCE)}
 
 @dataclasses.dataclass(frozen=True)
 class LiftTable:
-    """The DuckDB semantics' part of `substrait-check --lift-table`.
+    """`substrait-check --lift-table`: the generated lift, by semantics.
 
     Attributes:
         functions: The templates' function anchors: the functions' names.
-        scalars: By construct (`"DOUBLE / DOUBLE"`): the entry, with its
-            `args` and `result` types and its `template` or why it is
-            `refused`.
-        aggregates: By construct (`"avg(BIGINT)"`): its `measures` and the
-            `finish` over them.
+        scalars: By semantics (`"duckdb"`, `"portable"`), then by construct
+            (`"DOUBLE / DOUBLE"`): the entry, with its `args` and `result`
+            types and its `template` or why it is `refused`.
+        aggregates: DuckDB's semantics' aggregates, by construct
+            (`"avg(BIGINT)"`): its `measures` and the `finish` over them.
     """
 
     functions: Mapping[int, str]
-    scalars: Mapping[str, Json]
+    scalars: Mapping[str, Mapping[str, Json]]
     aggregates: Mapping[str, Json]
 
 
@@ -216,7 +220,10 @@ def lift_table() -> LiftTable:
         _LIFT_TABLE.append(
             LiftTable(
                 {f["anchor"]: f["name"].split(":")[0] for f in raw["functions"]},
-                {e["construct"]: e for e in raw["lift"] if e["semantics"] == "duckdb"},
+                {
+                    p: {e["construct"]: e for e in raw["lift"] if e["semantics"] == _TABLE_NAME[p]}
+                    for p in PROFILES
+                },
                 {
                     e["construct"]: e["aggregate"]
                     for e in raw["aggregates"]
@@ -252,14 +259,15 @@ def _instantiate(template: Any, args: Sequence[Json]) -> Any:
     return out
 
 
-def _generated(lf: _Lift, construct: str, args: Sequence[E]) -> E | None:
-    """`construct` of `args` as the generated table lifts it with DuckDB's
-    semantics (the arguments brought to its types first), or None with the
-    reference's semantics, whose rules are written by hand. Raises
-    `Unsupported` where the table refuses it."""
-    if lf.profile is not DUCKDB:
-        return None
-    entry = lift_table().scalars[construct]
+def _generated(lf: _Lift, construct: str, args: Sequence[E]) -> E:
+    """`construct` of `args` as the generated table lifts it under the lift's
+    semantics (the arguments brought to its types first). Each entry is proved
+    to mean the function under that semantics; under the reference's it also
+    gives DuckDB's value wherever it gives a value (D54,
+    `liftReference_refines_duckdb`, #2008). Raises `Unsupported` where the
+    table refuses it."""
+    semantics = lf.profile.name
+    entry = lift_table().scalars[semantics][construct]
     if "refused" in entry:
         raise SqlUnsupported(
             f"{construct}: {entry['refused']}", construct=f"function {construct.lower()}"
@@ -268,18 +276,18 @@ def _generated(lf: _Lift, construct: str, args: Sequence[E]) -> E | None:
     js = [lf.to(a, t).json for a, t in zip(args, ts, strict=True)]
     # An argument the template names more than once, and evaluates on every
     # row, is bound to a column first (#1952).
-    shared = _shareable(construct)
+    shared = _shareable(semantics, construct)
     js = [lf.share(j) if i in shared else j for i, j in enumerate(js)]
     return E(_instantiate(entry["template"], js), _TABLE_TYPES[entry["result"]])
 
 
 @functools.cache
-def _shareable(construct: str) -> frozenset[int]:
+def _shareable(semantics: str, construct: str) -> frozenset[int]:
     """The arguments of `construct`'s template that it names more than once
     and evaluates on every row: those in its first condition or outside any
     `CASE`, and the first operand of an `and` or `or` (the second is
     evaluated only where the first does not decide)."""
-    template = lift_table().scalars[construct]["template"]
+    template = lift_table().scalars[semantics][construct]["template"]
     functions = lift_table().functions
     refs: list[int] = []
 
@@ -313,6 +321,13 @@ def _shareable(construct: str) -> frozenset[int]:
 
     count(template)
     return frozenset(i for i in always(template) if refs.count(i) > 1)
+
+
+def _is_call(j: Json) -> bool:
+    """Whether `j` is a function call, or casts one."""
+    while isinstance(j, dict) and "cast" in j:
+        j = j["cast"]["input"]
+    return isinstance(j, dict) and "scalarFunction" in j
 
 
 def _fields(j: Any) -> set[int]:
@@ -460,6 +475,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     _check_numbers(query)
     _check_intervals(query)
     _check_regex_operators(query)
+    _check_date_bin(query)
     query = expand_table_shorthand(query)
     try:
         tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
@@ -860,6 +876,9 @@ _STRICT = frozenset(
         sge.Column,
         sge.Literal,
         sge.Alias,
+        # The operand and the lower bound are evaluated on every row; `_between`
+        # keeps the upper bound out of what is bound.
+        sge.Between,
     }
 )
 
@@ -969,14 +988,17 @@ class _Lift:
         self.shared: list[Json] | None = None
         self.shared_base = 0
 
-    def share(self, j: Json) -> Json:
+    def share(self, j: Json, *, calls: bool = False) -> Json:
         """`j` as a column computed below the SELECT list being lifted, where
         every row evaluates it anyway, or `j` itself. A template that names an
         argument several times then copies a column, and a nested expression
         stays linear in its depth (#1952). A column stays itself, and so
         does a constant: it reads no column, and the parser reads some only
-        in place (a cast of a string literal)."""
-        if self.shared is None or column_of(j) is not None or not _fields(j):
+        in place (a cast of a string literal). With `calls`, a function call
+        of constants is bound too, where its value is not read in place (the
+        operand of a `BETWEEN`, #2338)."""
+        computed = calls and _is_call(j)
+        if self.shared is None or column_of(j) is not None or not (_fields(j) or computed):
             return j
         self.shared.append(j)
         return field_ref(self.shared_base + len(self.shared) - 1)
@@ -2942,6 +2964,27 @@ def _check_regex_operators(query: str) -> None:
             )
 
 
+def _check_date_bin(query: str) -> None:
+    """Refuse `date_bin(...)`: DuckDB 2.0.0 has no such function, but SQLGlot reads it as the
+    node of `time_bucket`, so the tree cannot tell them apart."""
+    from sqlglot.tokens import TokenType
+
+    try:
+        tokens = sg.Dialect.get_or_raise(DIALECT).tokenize(query)
+    except sg.errors.TokenError:
+        return  # the parser reports it
+    for tok, after in zip(tokens, tokens[1:], strict=False):
+        if (
+            tok.token_type == TokenType.VAR
+            and tok.text.lower() == "date_bin"
+            and after.token_type == TokenType.L_PAREN
+        ):
+            raise Unsupported(
+                "DuckDB has no function date_bin; write time_bucket(width, ts[, origin])",
+                construct="function date_bin",
+            )
+
+
 def _check_intervals(query: str) -> None:
     """Refuse `INTERVAL '… ago'`, which negates the interval in DuckDB.
     SQLGlot drops the `ago` of a single unit (`'1 day ago'` reads as
@@ -3020,7 +3063,7 @@ def _normalized(name: str) -> str:
 def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> Lifted:
     """The plan of the DuckDB SQL `query` over input tables of the Ibis
     schemas `schemas` (by table name), read as named tables, with the
-    `semantics` profile ("duckdb" or "reference").
+    `semantics` profile ("duckdb" or "portable").
 
     Raises:
         Unsupported: The query is outside the subset, saying what; also a

@@ -90,7 +90,7 @@ def sarif(
             "name": code,
             "shortDescription": {"text": code.replace("_", " ")},
             "fullDescription": {"text": _explain.explain(code) or code},
-            "helpUri": f"{INFO_URI}/blob/main/docs/guide.md#the-command-line",
+            "helpUri": f"{INFO_URI}/blob/main/docs/how-to-command-line.md#the-command-line",
             "defaultConfiguration": {"level": _explain.level_of(code)},
         }
         for code in codes

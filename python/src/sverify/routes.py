@@ -134,7 +134,7 @@ def shim_text(name: str) -> str:
 
 #: How a route line names a route without a class (#687).
 _KIND_TEXT: Mapping[str, str] = {
-    "translated": "verified under the reference",
+    "translated": "verified under portable semantics",
     "native": "verified under the engine's own semantics",
     "transfer": "verified under another engine's semantics, which carries over",
     "recheck": "verified again under the engine's own semantics",
@@ -236,7 +236,7 @@ class Route:
     with `unverified=True`; None when the plan is refused."""
     profile: str
     """The profile the proof the run relies on is under: the engine's own
-    for `"native"`, `"transfer"` and `"recheck"`, `"reference"` for
+    for `"native"`, `"transfer"` and `"recheck"`, `"portable"` for
     `"translated"`; for a refusal, the profile the plan was verified under."""
     reason: str
     """Why this route, or why none."""
@@ -962,7 +962,7 @@ def floats_on(report: Report) -> dict[str, list[str]]:
     it. Empty under any profile but the reference's (a native route is
     exact), and for a plan without doubles."""
     observation = report.lenses
-    if observation.floats == "plan" or report.semantics != "reference":
+    if observation.floats == "plan" or report.semantics != "portable":
         return {}
     if not any(getattr(t, "is_floating", bool)() for t in report.output.values()):
         return {}
@@ -983,7 +983,7 @@ def evidence_on(report: Report) -> dict[str, Realized]:
     translated route would carry (`translated_evidence`): what a run
     rests on, known before it. Empty for a plan that is not verified, or
     verified under another profile."""
-    if report.semantics != "reference" or not verified(report):
+    if report.semantics != "portable" or not verified(report):
         return {}
     seen, held = observed(report)
     out: dict[str, Realized] = {}
@@ -1071,7 +1071,7 @@ def recheck(report: Report, profile: str) -> tuple[bool | None, str]:
     if res.get("profile") != profile:
         return None, (
             f'the checker cannot check under semantics="{profile}" yet (#444); '
-            "verify with semantics='reference' to reach every engine"
+            "verify with semantics='portable' to reach every engine"
         )
     unproved = [e["name"] for e in res.get("ensures", []) if not e.get("proved")]
     unproved += ["a key" for k in res.get("keys", []) if not k.get("proved")]
@@ -1169,7 +1169,7 @@ UNORDERED_FETCH = (
 #: The two ways out of a class pick under an observation that reads the
 #: members (D48).
 CLASS_PICKS = (
-    "pass an observation that reads one zero and one NaN, such as the default "
+    "pass lenses that read one zero and one NaN, such as the default "
     "sv.equivalent(floats='plan') or sv.equivalent(zeros='canon'), or change the plan so "
     "it picks no double"
 )
@@ -1317,7 +1317,7 @@ def not_verified(report: Report) -> str:
     if report.floats_unmet:
         first = next(ps[0] for ps in report._floats_on.values() if ps)
         want = "exact doubles" if report.lenses.floats == "exact" else "tolerance on doubles"
-        parts.append(f"no engine meets the observation's {want}: {first}")
+        parts.append(f"no engine meets the lenses' {want}: {first}")
         see.append("report.details()")
     if report.needs:
         see.append("report.needs")
@@ -1443,8 +1443,11 @@ def choose(
             "the postcondition observes the rows as a sequence, and the plan does not fix their "
             "order: its result is not sorted on a key of its input"
         )
+    from sverify.sql.core import _base
+
     try:
         _support.check(plan, e)
+        _base.check_decimal_text(plan, e)
     except ValueError as err:
         return refuse(str(err))
 
@@ -1507,19 +1510,20 @@ def choose(
                 return taken("native", e, f'verified under semantics="{e}"')
             why_not.append(f'not verified under semantics="{e}"')
         elif kind == "translated":
-            if source == "reference" and e in translated:
+            if source == "portable" and e in translated:
                 return taken(
                     "translated",
-                    "reference",
-                    f"verified under the reference; the translation to {e} is {translated[e]}",
+                    "portable",
+                    'verified under semantics="portable"; '
+                    f"the translation to {e} is {translated[e]}",
                 )
             why_not.append(
-                "not verified under the reference"
-                if source != "reference"
-                else f"no translation from the reference to {e}"
+                'not verified under semantics="portable"'
+                if source != "portable"
+                else f"no translation from portable semantics to {e}"
             )
         elif kind == "transfer":
-            if source in ("reference", e):
+            if source in ("portable", e):
                 why_not.append(f'no transfer from semantics="{source}" needed')
                 continue
             # The checker's transfer check (`transferB`, proved sound by
@@ -1548,18 +1552,18 @@ def choose(
             if ok:
                 return taken("recheck", e, why)
             why_not.append(f"no re-check: {why}" if ok is None else why)
-    if route == "auto" and source not in ("reference", e) and e in translated:
+    if route == "auto" and source not in ("portable", e) and e in translated:
         # Lead with what the user can do: the reference reaches every engine.
         lead = (
-            f"verify with semantics='reference' to run on {e} (the plan was verified with "
+            f"verify with semantics='portable' to run on {e} (the plan was verified with "
             f"semantics={source!r}, whose proof does not carry over to {e})"
         )
         return refuse(f"{lead}; details: " + "; ".join(why_not), failures)
     reason = "; ".join(why_not)
     if route != "auto":
         # An explicit route is taken or refused, never replaced: say how to reach `e`.
-        if source != "reference" and e in translated:
-            reason += f"; verify with semantics='reference' to run on {e}, or pass route=\"auto\""
+        if source != "portable" and e in translated:
+            reason += f"; verify with semantics='portable' to run on {e}, or pass route=\"auto\""
         else:
             reason += '; route="auto" tries every route'
     if not failures and e in _PENDING:

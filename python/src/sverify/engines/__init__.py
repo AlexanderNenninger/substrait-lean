@@ -13,9 +13,12 @@ Running plans:
 
 * `run` runs a plan in sverify's internal form on DuckDB or Polars
   (`ENGINES`), or on Spark (`"spark"`, or a Spark session configured with
-  `sverify_spark.dialect.SPARK_CONF`; `pip install 'sverify[spark]'`), over a
-  `Connection`'s tables (`sv.connect()` makes one; `con.create`, `con.put`
-  and `con.rows` put rows in and read them back). `run_sharded` runs a plan
+  `sverify_spark.dialect.SPARK_CONF`; `pip install 'sverify[spark]'`), or on
+  any engine an installed package registers (`sverify.profiles`, by its name,
+  through the package's `ProfilePlugin.runner`; its secrets come through
+  `sverify.io.Secret`, never as values), over a `Connection`'s tables
+  (`sv.connect()` makes one; `con.create`, `con.put` and `con.rows` put
+  rows in and read them back). `run_sharded` runs a plan
   shard by shard and combines the results (with `tolerance=True`, a
   `Sharded`: the result and its doubles' distance from Lean's values).
   `run` and `run_sharded` take the plan as a value a node or report holds

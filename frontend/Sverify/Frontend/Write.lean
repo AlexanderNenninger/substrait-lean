@@ -197,6 +197,10 @@ def kindType : Kind → Json
       ("nullability", "NULLABILITY_NULLABLE")])]
   | .timeTz => obj [("precisionTimestampTz", obj [("precision", toJson 6),
       ("nullability", "NULLABILITY_NULLABLE")])]
+  | .timeNs => obj [("precisionTimestamp", obj [("precision", toJson 9),
+      ("nullability", "NULLABILITY_NULLABLE")])]
+  | .timeTzNs => obj [("precisionTimestampTz", obj [("precision", toJson 9),
+      ("nullability", "NULLABILITY_NULLABLE")])]
   | .date => obj [("date", nullable)]
   | .dec p s => obj [("decimal", obj [("precision", toJson p), ("scale", toJson s),
       ("nullability", "NULLABILITY_NULLABLE")])]
@@ -204,7 +208,9 @@ def kindType : Kind → Json
   | .list k => obj [("list", obj [("type", kindType k), ("nullability", "NULLABILITY_NULLABLE")])]
   | .struct ks => obj [("struct", obj [("types", Json.arr (ks.attach.map fun ⟨k, _⟩ => kindType k).toArray),
       ("nullability", "NULLABILITY_NULLABLE")])]
-  | .int | .other => i64Type
+  -- An opaque column is only ever a column reference (D67 K8), so no plan
+  -- writes its type from its kind.
+  | .int | .other | .opaque => i64Type
 where nullable := obj [("nullability", "NULLABILITY_NULLABLE")]
 
 /-- The kind of a column or expression as the writer sees it: the parser's
@@ -214,6 +220,8 @@ them apart to write a literal compared with, or added to, an interval as an
 interval (#65). -/
 inductive WKind where
   | int | float | time | instant | date | interval | str | bool | tod | other
+  /-- Timestamps in nanoseconds (D61), naive and instants. -/
+  | timeNs | instantNs
   | list (elem : WKind)
   | struct (fields : List WKind)
   | dec (p s : Nat)
@@ -226,10 +234,14 @@ def WKind.ofKind : Kind → WKind
   | .dec p s => .dec p s
   -- An instant (#1725): compared with another instant, never mixed (`checkArgKinds`).
   | .timeTz => .instant
+  | .timeNs => .timeNs | .timeTzNs => .instantNs
+  -- Carried, never read (D67).
+  | .opaque => .other
 
 /-- The model's view: an interval is a time (`Expr.kind`). -/
 def WKind.toKind : WKind → Kind
   | .int => .int | .float => .float | .time | .interval => .time | .instant => .timeTz
+  | .timeNs => .timeNs | .instantNs => .timeTzNs
   | .date => .date
   | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (toKind k)
   | .struct ks => .struct (ks.attach.map fun ⟨k, _⟩ => toKind k)
@@ -594,6 +606,13 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     obj [("cast", obj [("type", kindType (if inst then .timeTz else .time)),
       ("input", writeExpr cols (if inst then .time else .instant) a),
       ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+  | .un .dtext a | .un .dtextFull a =>
+    castTo (obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])])
+      (writeExpr cols (wkind cols a) a)
+  -- The decimal at one more digit of precision (D72); the argument as it is otherwise.
+  | .un .dwiden a => match (wkind cols a).toKind with
+    | .dec p s => castTo (decType (p + 1) s) (writeExpr cols (wkind cols a) a)
+    | _ => writeExpr cols (wkind cols a) a
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.froundTo d) a =>
@@ -802,7 +821,8 @@ def _root_.Substrait.Expr.decimalOps : Expr → Bool
   | .lit _ | .field _ => false
   | .un f a =>
     (match f with
-      | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ => true
+      | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ | .dtext
+      | .dtextFull | .dwiden => true
       | _ => false) ||
       a.decimalOps
   | .bin f a b =>

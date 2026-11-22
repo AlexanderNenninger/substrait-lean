@@ -41,7 +41,7 @@ snapshot and records its version, and a refresh applies the format's change
 feed from the recorded version to the latest, advancing the version in the
 same commit. The feed is trusted to turn the old snapshot into the new one
 (`ChangeFeed`, `Rel.cdf_sound` in `analysis/Sverify/Analysis/TableFormat.lean`), and
-every `RefreshReport` says so; where the feed is unavailable, the new
+every `BatchRefresh` says so; where the feed is unavailable, the new
 snapshot is diffed against the view's state instead and the views reading it
 are recomputed (`ChangeFeed.of_diff`). A source whose schema changed is read
 in the schema the views were checked against where its data still fits
@@ -579,14 +579,14 @@ an entry; two changes in different releases give different digests."""
 
 
 def plan_digest(
-    plan: str, changes: tuple[str, ...] | None = None, profile: str = "reference"
+    plan: str, changes: tuple[str, ...] | None = None, profile: str = "portable"
 ) -> str:
     """The sha256 of a plan's canonical form and of the changes of meaning
     (`MEANING_CHANGES`, or `changes`): its JSON with sorted keys, no
     `extensions` (which once listed every function the writer knows, and grew
     with each release), each `functionReference` replaced by the function's name.
     The profile the plan was verified under is a component of its own, left out
-    for the reference (`verify(semantics=...)`): the same plan under two profiles
+    for `"portable"` (`verify(semantics=...)`): the same plan under two profiles
     has two digests. With no changes recorded the digest is that of the plan alone. It is the
     same across releases that change nothing the plan computes, so a sink
     written by one is resumed by the next; sinks record it, and `Stored`
@@ -611,7 +611,7 @@ def plan_digest(
     text = json.dumps(canon(p), sort_keys=True, separators=(",", ":"))
     if changes:
         text += "\n" + json.dumps(list(changes))
-    if profile != "reference":
+    if profile != "portable":
         text += "\nprofile:" + profile
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -893,7 +893,7 @@ class SourceRefresh:
 
 
 @dataclass
-class RefreshReport:
+class BatchRefresh:
     """What one refresh did to a node's state: what it read from each
     source, how the preconditions on the batch were established, and how
     each view was brought up to date. `str()` gives one line per fact;
@@ -1010,9 +1010,9 @@ class IncrementalView:
         windows without a row-order tiebreak; set by a stored node."""
         self.query = query
         contract = None if isinstance(query, str) else view_contract(query)
-        self.profile: str = contract.profile if contract else "reference"
+        self.profile: str = contract.profile if contract else "portable"
         """The profile the view's plan was verified under; the plan's digest
-        includes it unless it is the reference."""
+        includes it unless it is `"portable"`."""
         self.deterministic: bool = contract.deterministic if contract else False
         """Its report proves the result determined up to row order and the
         members of a class: the same on every engine."""
@@ -2162,7 +2162,7 @@ class Pipeline:
         audit: bool = False,
         until: Mapping[str, int] | None = None,
         retire: bool = True,
-    ) -> RefreshReport:
+    ) -> BatchRefresh:
         """Bring every source table to its latest version (or the version
         `until` names for it), and the views with it.
 
@@ -2365,7 +2365,7 @@ class Pipeline:
                 self.versions[t] = versions[t]
         for t, fs in snapshot_facts.items():
             register_facts(self.con, t, fs)
-        return RefreshReport(
+        return BatchRefresh(
             report,
             pending.found,
             {v.name: v.versions for v in self._views},

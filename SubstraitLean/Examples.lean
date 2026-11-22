@@ -247,6 +247,8 @@ end Substrait.Examples
 #print axioms Substrait.Rel.eval_allowed
 #print axioms Substrait.Rel.allowed_perm_eval
 #print axioms Substrait.Rel.refines_of_perm
+#print axioms Substrait.Rel.optimize_refines
+#print axioms Substrait.Rel.AllowedP_mono
 #print axioms Substrait.Rel.guardFree_allowed
 #print axioms Substrait.Rel.duckdb_shim_allowed
 #print axioms Substrait.Rel.eval_orderAllowed
@@ -378,6 +380,9 @@ end Substrait.Examples
 #print axioms Substrait.Lowering.lowerRelWith_sound
 #print axioms Substrait.Rel.duckdb_guardFree_sound
 #print axioms Substrait.Lowering.lower_correct
+#print axioms Substrait.Lowering.lower_agreeOrRaises
+#print axioms Substrait.Lowering.lowerRel_sound_dbl
+#print axioms Substrait.Lowering.lowerRel?_sound_dbl
 #print axioms Substrait.Lowering.duckdb_exact
 #print axioms Substrait.liftDuckDB.total
 #print axioms Substrait.liftReference.total

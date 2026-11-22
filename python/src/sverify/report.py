@@ -596,9 +596,9 @@ class Report:
     """Each relation of the plan, from the result down in pre-order, with
     the bounds Lean proves on its rows and, for an aggregate, on the rows
     of a group (#219)."""
-    semantics: Semantics = "reference"
+    semantics: Semantics = "portable"
     """The profile the report is under (`verify(semantics=...)`):
-    `"reference"`, sverify's reference semantics; `"duckdb"`, what DuckDB
+    `"portable"`, sverify's portable semantics (the reference profile); `"duckdb"`, what DuckDB
     computes; `"polars"`; `"spark"`; or `"substrait"`, Substrait's own."""
     engine_version: str | None = None
     """The engine version the profile of `semantics` describes: the version
@@ -650,7 +650,10 @@ class Report:
     the checker's, which a run returns, not Ibis's. A column is not nullable
     where the checker proves it never NULL (`count(*)`, a key, a column of
     a NOT NULL input), from what it established about it (`facts`); a stored
-    node of a proved report writes those as NOT NULL columns."""
+    node of a proved report writes those as NOT NULL columns. These are the
+    plan's types, which `run` and `to_sql` give. Under `semantics="duckdb"`,
+    DuckDB running the SQL as written may type a column wider: a `SUM` of
+    integers is a `HUGEINT` there, and `BIGINT` here (#703)."""
     _epsilon: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
     """How far each double output column may be from a result the reference
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
@@ -816,7 +819,7 @@ class Report:
             ValueError: The plan carries no sverify contract, or the
                 checker rejects the plan.
         """
-        return _hooks.export().recheck(data)
+        return _hooks.export()._recheck(data)
 
     @overload
     def to_substrait(
@@ -1045,10 +1048,10 @@ class Report:
             reason = None
             if not routes.verified(self):
                 reason = routes.not_verified(self)
-            elif self.semantics != "reference":
+            elif self.semantics != "portable":
                 reason = (
                     f"verified under {self.semantics} semantics; {d.name} SQL is written "
-                    "only for plans verified under the reference"
+                    "only for plans verified under portable semantics"
                 )
             chosen = routes.Route(
                 d.name,
@@ -1064,7 +1067,7 @@ class Report:
             if not routes.verified(self):
                 raise UnverifiedRunError(self, chosen)
             raise routes.RouteError(chosen)
-        return d, _finite(self.semantics == "reference" or chosen.kind == "translated")
+        return d, _finite(self.semantics == "portable" or chosen.kind == "translated")
 
     def check_inputs(
         self,
@@ -1228,7 +1231,7 @@ class Report:
                 Spark session. Default: the connection's engine.
             route: `"auto"` (the default) chooses a route; `"native"`,
                 `"translated"`, `"transfer"` or `"recheck"` takes that one or
-                refuses .
+                refuses.
             unverified: Run a plan that is not proved, or an engine version
                 outside its profile's range (D70), without a route. Default
                 False: such a run is refused.
@@ -1374,7 +1377,7 @@ class Report:
         # reference, and for one that reaches the engine through the
         # reference's route. An aggregate's keeps it on every route: the
         # engine's running sum overflows where the exact one does not.
-        finite = _finite(self.semantics == "reference" or kind == "translated")
+        finite = _finite(self.semantics == "portable" or kind == "translated")
         # The checks the checker discharged (#1166): where the preconditions
         # were checked on these tables and the plan runs by the reference's
         # translation, a guard-free plan runs without its per-row checks on an
@@ -1386,7 +1389,7 @@ class Report:
         # without their checks, the one against `±∞` included, on an engine
         # whose writer a theorem covers so (`"marks_theorem"`, ruling 223), on
         # the same gate: the preconditions were checked on these tables.
-        checked = check_requires and kind == "translated" and self.semantics == "reference"
+        checked = check_requires and kind == "translated" and self.semantics == "portable"
         marked = (
             checked and ((self._engines or {}).get(name) or {}).get("marks_theorem") is not None
         )
@@ -1410,7 +1413,7 @@ class Report:
             if (
                 check_requires
                 and kind == "translated"
-                and self.semantics == "reference"
+                and self.semantics == "portable"
                 and self._guard_free
                 and theorem is not None
             ):
@@ -1872,7 +1875,7 @@ class Report:
             engine: The engine's name (`"duckdb"`, `"polars"`, …) or a Spark
                 session.
             route: `"auto"` (the default) tries the routes in turn; a route
-                by name (`"native"`, `"reference"`, `"transfer"`,
+                by name (`"native"`, `"translated"`, `"transfer"`,
                 `"recheck"`) is taken or refused.
             reproducible: What a rerun must reproduce, as `run` takes it.
 
@@ -1932,7 +1935,7 @@ class Report:
         if ignored := [c for c in self.ensures if c.proved and c.ignores]:
             out.append(
                 f"{n(len(ignored), 'postcondition')} "
-                f"{'depends' if len(ignored) == 1 else 'depend'} on what the observation ignores"
+                f"{'depends' if len(ignored) == 1 else 'depend'} on what the lenses ignore"
             )
         if self.errors:
             out.append(n(len(self.errors), "possible runtime error"))
@@ -1941,7 +1944,7 @@ class Report:
         if self._transfer:
             out.append(n(len(self._transfer), "option") + " where Substrait allows more")
         if self.floats_unmet:
-            out.append("no engine's doubles meet the observation")
+            out.append("no engine's doubles meet the lenses")
         return out or ["see the report"]
 
     def _ties_hint(self) -> str:
@@ -2573,7 +2576,7 @@ def _needed_deferred(n: Needed) -> Deferred | None:
     return col.isnull() | cmp if n.sql.startswith(nulls) else cmp
 
 
-def condition_query(table: Transform, cond: Condition, semantics: str = "reference") -> Transform:
+def condition_query(table: Transform, cond: Condition, semantics: str = "portable") -> Transform:
     """A query selecting one condition column from a table or transformation:
     SQL for a SQL condition on a SQL transformation, an Ibis expression
     otherwise (a SQL condition on an Ibis table is a SQL model over it, with
@@ -2624,9 +2627,12 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
     """Rows of a bound table where `cond` is not TRUE (FALSE or NULL), or for
     `unique`, rows beyond the first for each repeated key.
 
-    With an engine named, the condition's plan runs there, over the tables of
-    the connection `table` is bound to, and counts the rows in the engine
-    (no row reaches Python); otherwise Ibis counts on that connection."""
+    The condition's plan, as the checker wrote it, runs on `engine`, or with
+    none named on the engine of the connection `table` is bound to, over that
+    connection's tables, and counts the rows in the engine (no row reaches
+    Python; F219). A table of another Ibis backend is counted by Ibis there."""
+    if engine is None:
+        engine = _own_engine(table)
     if not isinstance(cond, TableCondition) and engine is not None:
         con = connection_of(table)
         if con is None:
@@ -2650,6 +2656,14 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         return int(backend.raw_sql(query).fetchall()[0][0])
     count: Any = table.filter(~resolve(cond, table).fill_null(ibis.literal(False))).count()
     return _count(count)
+
+
+def _own_engine(table: ir.Table) -> Engine | None:
+    """The engine of the `sverify.connect()` connection `table` is bound to,
+    which runs its data checks when none is named; None for a table of
+    another Ibis backend."""
+    con = connection_of(table)
+    return None if con is None else con.engine
 
 
 def _table_violations(table: ir.Table, cond: TableCondition, engine: str | None) -> int:
@@ -2708,8 +2722,10 @@ def violation_counts(
     per table where each condition had one. A plan that raises is a violation
     of the first condition that raises alone. A condition the writer refuses
     for the engine refuses the check (`SverifyError`), with no fallback to
-    Ibis. Without an `engine`, Ibis counts each condition on the table's own
-    backend (`violations`)."""
+    Ibis. Without an `engine`, the connection's engine runs them; Ibis counts
+    each condition on a table of another backend (`violations`)."""
+    if engine is None:
+        engine = _own_engine(table)
     counts: dict[int, tuple[int, str | None]] = {}
     on_table = [i for i, c in enumerate(conds) if isinstance(c, TableCondition)]
     if on_table:
@@ -2822,9 +2838,9 @@ def _run_conditions(
         query = f'SELECT {items} FROM "t" AS "t"'
         from sverify.ibis_substrait import SQLModel, sql_model_schema
 
-        schema = sql_model_schema(query, {"t": table.schema()}, "reference")
+        schema = sql_model_schema(query, {"t": table.schema()}, "portable")
         inputs: Any = (table.op(),)  # a table's op is the relation the model reads
-        q = SQLModel(query, inputs, ("t",), schema, "duckdb", "reference").to_expr()
+        q = SQLModel(query, inputs, ("t",), schema, "duckdb", "portable").to_expr()
     else:
         q = table.select(**{f"c{i}": resolve(c, table) for i, c in enumerate(conds)})
     return run_plan(con, written_plan(plan_json(con, q)), engine)

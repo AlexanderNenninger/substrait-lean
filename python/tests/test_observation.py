@@ -207,7 +207,7 @@ def test_report_names_what_a_condition_depends_on() -> None:
     }
     assert report.lenses == sv.equivalent(floats=sv.within(rel=1e-9), timestamps="s")
     assert report.verdict == sv.Verdict.UNPROVED
-    assert "depends on floats, which the observation ignores" in report.details()
+    assert "depends on floats, which the lenses ignore" in report.details()
     assert "lenses: equivalent(" in report.details()
     # `str(report)` lists a postcondition that is proved but depends on what the
     # observation ignores under "Not proved", with the same reason.

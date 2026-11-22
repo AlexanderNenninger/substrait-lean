@@ -32,7 +32,7 @@ where DuckDB and the reference (#185, #209) differ:
   the lift writes that entry, which Lean proves means what DuckDB computes,
   NaN and ±inf included; the other rules are written by hand, pending
   generation.
-* `semantics="reference"` (`REFERENCE`): sverify's reference. A double `/`
+* `semantics="portable"` (`PORTABLE`): sverify's reference profile. A double `/`
   by zero raises (`ERROR`, decided on #185). A cast of a double or decimal
   to an integer is refused, with the spellings that mean the same under both
   semantics (`CAST(round(x) AS BIGINT)`): DuckDB's cast rounds and the
@@ -64,8 +64,8 @@ import importlib
 from sverify.sql_lift._base import (  # noqa: F401
     DIALECT,
     DUCKDB,
+    PORTABLE,
     PROFILES,
-    REFERENCE,
     RULES,
     Lifted,
     LiftTable,
@@ -78,7 +78,7 @@ from sverify.sql_lift._base import (  # noqa: F401
     register,
 )
 
-__all__ = ["DUCKDB", "PROFILES", "REFERENCE", "Lifted", "Profile", "lift", "parse"]
+__all__ = ["DUCKDB", "PORTABLE", "PROFILES", "Lifted", "Profile", "lift", "parse"]
 
 #: The areas, each a module that registers its rules in `RULES`, imported in
 #: this order.

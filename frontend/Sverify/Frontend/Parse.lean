@@ -175,42 +175,65 @@ def narrowIntBits? (ty : Json) : Option Nat := (intTagBits? ty).filter (· < 64)
 /-- The smallest integer type holding `n` bits (`i64` for more than 32). -/
 def intTagFor (n : Nat) : String := ((intTags.find? fun (_, b) => n ≤ b).map (·.1)).getD "i64"
 
+/-- The types the model does not read: a column of one is opaque (D67),
+carried and never read. -/
+def opaqueTypes : List String := ["binary", "fixedBinary", "map", "uuid", "userDefined"]
+
+/-- A type's kind. A type the model does not read is opaque (D67), and so is a
+list or struct that holds one, as a whole (K5); a timestamp at a precision other
+than microseconds or nanoseconds (D61), and a time at one other than
+microseconds, too (#2004). A JSON that names no type (an absent output
+type) is `.other`, the kind checker's unknown. -/
 partial def typeKind (ty : Json) : Kind :=
   let has (k : String) := (ty.getObjVal? k).toOption.isSome
+  let precision (t : Json) : Nat := (t.getObjValAs? Nat "precision").toOption.getD 0
+  let micros (t : Json) (k : Kind) : Kind := if precision t == 6 then k else .opaque
+  -- Nanoseconds are a kind of their own (D61), which meets microseconds only through a cast.
+  let timestamp (t : Json) (us ns : Kind) : Kind :=
+    match precision t with | 6 => us | 9 => ns | _ => .opaque
   if intTags.any (fun (k, _) => has k) then .int
   else if ["fp32", "fp64"].any has then .float
-  -- Times are microseconds: a coarser precision (Calcite's `TIMESTAMP` is seconds) would
-  -- truncate, and a finer one (nanoseconds) would be read as a count of microseconds, which
-  -- compares raw counts of different units (#2004). Neither is modelled.
+  else if opaqueTypes.any has then .opaque
+  -- Timestamps are microseconds or nanoseconds (D61): a coarser precision (Calcite's
+  -- `TIMESTAMP` is seconds) would be read as a count of microseconds, which compares raw
+  -- counts of different units (#2004), so such a column is carried only. The Python reader
+  -- widens seconds and milliseconds to microseconds before the plan is written.
   else if has "timestamp" then .time
   else if let some t := (ty.getObjVal? "precisionTimestamp").toOption then
-    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .time else .other
-  -- An instant (#1725): microseconds, as the naive kind.
+    timestamp t .time .timeNs
+  -- An instant (#1725), as the naive kind.
   else if let some t := (ty.getObjVal? "precisionTimestampTz").toOption then
-    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .timeTz else .other
+    timestamp t .timeTz .timeTzNs
   else if has "timestampTz" then .timeTz
   else if has "date" then .date
   else if has "time" then .tod
-  else if let some t := (ty.getObjVal? "precisionTime").toOption then
-    if ((t.getObjValAs? Nat "precision").toOption.getD 0) == 6 then .tod else .other
+  else if let some t := (ty.getObjVal? "precisionTime").toOption then micros t .tod
   else if ["string", "varchar", "fixedChar"].any has then .str
   else if has "bool" then .bool
   else if let some l := (ty.getObjVal? "list").toOption then
-    .list (typeKind ((l.getObjVal? "type").toOption.getD .null))
+    match typeKind ((l.getObjVal? "type").toOption.getD .null) with
+    | .opaque => .opaque
+    | k => .list k
   else if let some t := (ty.getObjVal? "struct").toOption then
-    .struct (((t.getObjValAs? (Array Json) "types").toOption.getD #[]).toList.map typeKind)
+    let ks := ((t.getObjValAs? (Array Json) "types").toOption.getD #[]).toList.map typeKind
+    if ks.contains .opaque then .opaque else .struct ks
   -- A scale of 0 is left out of the JSON.
   else if let some d := (ty.getObjVal? "decimal").toOption then
     .dec ((d.getObjValAs? Nat "precision").toOption.getD 38) ((d.getObjValAs? Nat "scale").toOption.getD 0)
   else .other
 
 #guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 6)])]) == .timeTz
-#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 3)])]) == .other
--- Nanoseconds are not microseconds (#2004).
+#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 3)])]) == .opaque
+-- Nanoseconds are a kind of their own (D61).
 #guard typeKind (Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 6)])]) == .time
-#guard typeKind (Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 9)])]) == .other
-#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 9)])]) == .other
-#guard typeKind (Json.mkObj [("precisionTime", Json.mkObj [("precision", 9)])]) == .other
+#guard typeKind (Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 9)])]) == .timeNs
+#guard typeKind (Json.mkObj [("precisionTimestampTz", Json.mkObj [("precision", 9)])]) == .timeTzNs
+#guard typeKind (Json.mkObj [("precisionTimestamp", Json.mkObj [("precision", 3)])]) == .opaque
+#guard typeKind (Json.mkObj [("precisionTime", Json.mkObj [("precision", 9)])]) == .opaque
+#guard typeKind (Json.mkObj [("binary", Json.mkObj [])]) == .opaque
+#guard typeKind (Json.mkObj [("list", Json.mkObj [("type", Json.mkObj [("binary", Json.mkObj [])])])])
+  == .opaque
+#guard typeKind .null == .other
 
 def schemaKinds (schema : Json) : List Kind :=
   match (schema.getObjVal? "struct").toOption.bind (·.getObjValAs? (Array Json) "types" |>.toOption) with
@@ -285,7 +308,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un (.narrowOrNull _) _ => .int
   | .un (.wrap _) a => a.kind cols
   | .un (.approx _) a => a.kind cols
-  | .un .itos _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _
+  | .un .itos _ | .un .dtext _ | .un .dtextFull _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _
   | .un (.regexExtract _ _) _ | .un (.regexReplace _ _ _) _ | .un .md5 _ | .un .sha256 _ => .str
   | .un .widen _ => .float
   | .un (.atUtc true) _ => .timeTz
@@ -676,6 +699,11 @@ def singleTie (f : Float) : Bool :=
 #guard singleTie (1.0 + 2.0 ^ (-24 : Float)) && singleTie (-(1.0 + 2.0 ^ (-24 : Float)))
 #guard !singleTie 0.1 && !singleTie 1.5
 
+/-- A `DECIMAL(p, p)` cast to a string stays a call: DuckDB prints it without its integer part
+(`.500`), so the text depends on the profile (D72) and a constant must not fold it. -/
+def keepsDecimalText (ty : Json) (c : Const) : Bool :=
+  typeKind ty == .str && (match c with | .dec _ p s => p == s | _ => false)
+
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"
   if let .null := c then return .null
@@ -723,6 +751,7 @@ def castConst (ty : Json) (c : Const) : J Const := do
     | .str s => return .str s
     | .bool b => return .str (if b then "true" else "false")
     | .date d => return .str (Time.strftime "%Y-%m-%d" (d * Time.usPerDay))
+    | .dec m _ s => return .str (decText s m)
     | _ => throw "casts of this value to strings are not supported"
   | .tod =>
     match c with
@@ -809,6 +838,31 @@ def instantRefusal (what : String) : String :=
     UTC (a cast to a timestamp, `x AT TIME ZONE 'UTC'` in SQL), which the calendar functions \
     read (D69); a function of an instant that reads a zone is refused"
 
+/-- What a plan may do with a timestamp in nanoseconds (`.timeNs`, `.timeTzNs`, D61): as with
+an instant, it is read, compared with others of its kind, used as a key, counted, its `MIN`
+and `MAX` taken, and carried through. It meets a microsecond timestamp only through a cast. -/
+def nanosRefusal (what : String) : String :=
+  s!"{what} is not supported: a timestamp in nanoseconds (1677-09-21 to 2262-04-11) can be \
+    read, compared with other such columns, used as a key, counted, its MIN and MAX taken and \
+    written back; it meets a timestamp in microseconds only through a cast, which is not \
+    supported yet"
+
+/-- A timestamp kind that meets only its own kind, which `KT.join` would turn into `.other`
+beside another: an instant (#1725) or a timestamp in nanoseconds (D61). -/
+def _root_.Substrait.Kind.isStrictTime : Kind → Bool
+  | .timeTz | .timeNs | .timeTzNs => true
+  | _ => false
+
+/-- How a message names a strict timestamp kind. -/
+def _root_.Substrait.Kind.timeName : Kind → String
+  | .timeNs => "a timestamp in nanoseconds"
+  | .timeTzNs => "a timestamp with a time zone in nanoseconds"
+  | _ => "a timestamp with a time zone"
+
+/-- The refusal of `what` for a value of the strict timestamp kind `k`. -/
+def strictRefusal (k : Kind) (what : String) : String :=
+  if k matches .timeNs | .timeTzNs then nanosRefusal what else instantRefusal what
+
 def parseConstLiteral (j : Json) : J Const := do
   if intTags.any (fun (k, _) => (field? j k).isSome) &&
       (field? j "typeVariationReference").any (·.getNat?.toOption != some 0) then
@@ -836,7 +890,10 @@ def parseConstLiteral (j : Json) : J Const := do
     let s ← (← field v "value").getStr?
     if s.length > (← natD v "length") then throw "VARCHAR literal longer than its type"
     return .str s
-  | ("null", _) => return .null
+  | ("null", t) =>
+    -- No constant of an opaque column's type, not even NULL (D67 K6).
+    if typeKind t == .opaque then throw (opaqueRefusal "a constant of its type")
+    return .null
   | ("fp32", n) | ("fp64", n) =>
     -- An `fp32` literal is the single-precision value its digits round to,
     -- which a double holds exactly (#208).
@@ -896,7 +953,7 @@ def arrowCast (c : Const) (ty : String) : Option Const :=
     else if ty.startsWith "Int" then some (dummy "i64")
     else if ty == "Utf8" then some (dummy "string")
     else none
-  target >>= fun t => (castConst t c).toOption
+  target >>= fun t => if keepsDecimalText t c then none else (castConst t c).toOption
 
 /-- Negation of a double constant: NaN stays NaN. -/
 def fneg (c : Int) : Int := if c == FloatCode.nan then c else FloatCode.neg c
@@ -941,6 +998,7 @@ partial def constOf? (fns : List (Nat × String)) (j : Json) : J (Option Const) 
     -- A cast to an instant keeps its kind: `parseExpr` reads it as the conversion.
     if typeKind (← field c "type") == .timeTz then return none
     let some x ← constOf? fns (← field c "input") | return none
+    if keepsDecimalText (← field c "type") x then return none
     return some (← castConst (← field c "type") x)
   if let some f := field? j "scalarFunction" then
     let anchor ← natD f "functionReference"
@@ -1015,7 +1073,9 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
   let base := baseName name
   let sigs := (sigTokens name).map argSig
   -- `none` for expressions of literals.
-  let ks := args.map fun e => if e.readsField || e.kind cols == .timeTz then some (e.kind cols) else none
+  let ks := args.map fun e =>
+    if e.readsField || (e.kind cols).isStrictTime then some (e.kind cols) else none
+  let strictK := ks.findSome? (·.filter Kind.isStrictTime)
   let strict := arithmeticFns.contains base || comparisonFns.contains base
   if strict then
     if let some t := sigs.findSome? (fun | .unknown t => some t | _ => none) then
@@ -1027,16 +1087,17 @@ def checkArgKinds (name : String) (cols : List Kind) (args : List Expr) : J Unit
     -- daylight saving time.
     if ks.any (· == some .timeTz) then
       throw (instantRefusal s!"{name}: arithmetic on a timestamp with a time zone (daylight saving time)")
-  -- Refused by default (S2): one list holds what takes an instant.
-  if ks.any (· == some .timeTz) && !instantFns.contains base then
-    throw (instantRefusal s!"{name} of a timestamp with a time zone")
+  -- Refused by default (S2): one list holds what takes an instant, or nanoseconds.
+  if let some k := strictK then
+    if !instantFns.contains base then throw (strictRefusal k s!"{name} of {k.timeName}")
   if comparisonFns.contains base then
     let known := ((ks.filterMap id).filter (· != .other)) ++
       sigs.filterMap (fun | .kind k => some k | _ => none)
     if let k :: rest := known then
-      -- An instant is not comparable with a naive timestamp or an integer.
-      if known.contains .timeTz && known.any (· != .timeTz) then
-        throw (instantRefusal s!"{name}: compares a timestamp with a time zone with another kind")
+      -- An instant, or nanoseconds, is not comparable with another timestamp or an integer.
+      if let some s := known.find? Kind.isStrictTime then
+        if known.any (· != s) then
+          throw (strictRefusal s s!"{name}: compares {s.timeName} with another kind")
       if rest.any (·.numeric != k.numeric) then throw s!"{name}: compares values of different types"
   -- `Rel.eval` gives `NULL` for a string or boolean function of anything
   -- else; DataFusion would cast the argument (`1 || 'a'` is `'1a'`).
@@ -1978,16 +2039,18 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- the codes (#206). Producers cast one side; a plan that does not is refused.
     if comparisonFns.contains (baseName name) then
       let ks := ((argJs.zip parsed).map fun (j, e) => argKind cols j e).filter
-        ([Kind.date, .time, .tod, .timeTz].contains ·)
+        (fun k => [Kind.date, .time, .tod].contains k || k.isStrictTime)
+      -- An instant, or nanoseconds, against any other kind: the conversion waits for #1725, D61.
+      if let some s := ks.find? Kind.isStrictTime then
+        if ks.any (· != s) then
+          throw (strictRefusal s s!"{name}: compares {s.timeName} with another kind")
       if let k :: rest := ks then
         if rest.any (· != k) then throw s!"{name}: compares a {repr k} with another kind of time"
       -- `COALESCE` of an instant and another kind is the same mix.
       let ksAll := (argJs.zip parsed).map fun (j, e) => argKind cols j e
-      if baseName name == "coalesce" && ksAll.contains .timeTz && ksAll.any (· != .timeTz) then
-        throw (instantRefusal "COALESCE of a timestamp with a time zone and another kind")
-      -- An instant against any other kind: the conversion waits for #1725.
-      if ks.contains .timeTz && ks.any (· != .timeTz) then
-        throw (instantRefusal s!"{name}: compares a timestamp with a time zone with another kind")
+      if let some s := ksAll.find? Kind.isStrictTime then
+        if baseName name == "coalesce" && ksAll.any (· != s) then
+          throw (strictRefusal s s!"COALESCE of {s.timeName} and another kind")
     let onFloats :=
       (argJs.zip parsed).any (fun (j, e) => e.kind cols == .float || doubleJ fns j) ||
       typeKind ((field? f "outputType").getD .null) == .float
@@ -2021,13 +2084,13 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       if o < Time.tsMin || o > Time.tsMax then
         throw "date_bin's origin is outside the reference's timestamps (0001-01-01 to 9999-12-31)"
       let ts ← parseExpr fns cols bits tj
-      if ts.kind cols == .timeTz then
-        throw (instantRefusal "date_bin of a timestamp with a time zone")
+      if (ts.kind cols).isStrictTime then
+        throw (strictRefusal (ts.kind cols) s!"date_bin of {(ts.kind cols).timeName}")
       if ts.kind cols != .time then throw "date_bin is only supported on timestamps"
       return .un (.bucket k.toNat o) ts
     if ["strftime", "to_char", "date_format"].contains (baseName name) then
-      if (parsed.getD 0 (.lit .null)).kind cols == .timeTz then
-        throw (instantRefusal s!"{baseName name} of a timestamp with a time zone")
+      let k := (parsed.getD 0 (.lit .null)).kind cols
+      if k.isStrictTime then throw (strictRefusal k s!"{baseName name} of {k.timeName}")
       if (parsed.getD 0 (.lit .null)).kind cols != .time then
         throw s!"{baseName name} is only supported on timestamps"
     if ["date_part", "datepart", "date_trunc", "datetrunc"].contains (baseName name) then
@@ -2055,8 +2118,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
             throw s!"date_trunc of a date to a {u.name} is not supported"
           return .un (.dayTrunc u) a
         | e => return e
-      | .timeTz => throw (instantRefusal s!"{baseName name} of a timestamp with a time zone")
-      | _ => throw s!"{baseName name} is only supported on timestamps and dates"
+      | k =>
+        if k.isStrictTime then throw (strictRefusal k s!"{baseName name} of {k.timeName}")
+        throw s!"{baseName name} is only supported on timestamps and dates"
     -- Arithmetic on doubles rounds, so it gets the float operators; integer
     -- arguments of a double function are converted, as DataFusion does
     -- (a plan may type `POWER` of integers as a double).
@@ -2163,8 +2227,9 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       let thens := els :: clauses.map (·.2)
       -- An instant keeps its kind or the plan is refused (#1725): a NULL branch, a
       -- literal and `NULLIF` have another kind, which `KT.join` turns into `.other`.
-      if thens.any (·.kind cols == .timeTz) && !thens.all (·.kind cols == .timeTz) then
-        throw (instantRefusal "a CASE with a timestamp with a time zone and a branch of another kind (a NULL, a literal or NULLIF)")
+      if let some s := (thens.map (·.kind cols)).find? Kind.isStrictTime then
+        if !thens.all (·.kind cols == s) then
+          throw (strictRefusal s s!"a CASE with {s.timeName} and a branch of another kind (a NULL, a literal or NULLIF)")
       if thens.any (·.kind cols == .bool) then
         return .ifThen (eagerly c (thens ++ rest.map (·.1))) x rest'
       return .ifThen c x rest'
@@ -2187,6 +2252,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if unsignedType target then throw "unsigned integers are not supported"
     let target := typeKind (← field c "type")
     let k := e.kind cols
+    if k == .opaque || target == .opaque then throw (opaqueRefusal "a cast of it")
     -- An instant (`.timeTz`) is read, compared and ordered; the conversions and
     -- the calendar's casts wait for #1725.
     if k == .time && target == .timeTz then return .un (.atUtc true) e
@@ -2194,6 +2260,10 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     if k == .timeTz && target == .timeTz then return e
     if k == .timeTz || target == .timeTz then
       throw (instantRefusal "a cast to or from a timestamp with a time zone, but at UTC to a timestamp,")
+    -- Nanoseconds (D61) meet microseconds only through a cast, which waits.
+    if k.isStrictTime || target.isStrictTime then
+      if k == target then return e
+      throw (nanosRefusal "a cast to or from a timestamp in nanoseconds")
     -- Decimals (#27): unscaled integers, rescaled, with `UnFn.decimal`
     -- checking the precision. To a smaller scale rounds half away from zero;
     -- to an integer truncates toward zero.
@@ -2218,6 +2288,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         if orNull then throw "TRY_CAST of a DECIMAL to an integer is not supported yet"
         return .un (.narrow bits) (.un (.dtrunc s₀) e)
       | .float => return .un (.dtof s₀) e
+      -- A decimal's text: its scale's digits, exact (D72, #346).
+      | .str => return .un (if p₀ == s₀ then .dtextFull else .dtext) e
       | _ => throw s!"unsupported cast from DECIMAL to {repr target}"
     -- A duration (`ts - ts`) compared with an interval compares as
     -- microseconds; comparisons with intervals of days or months are refused
@@ -2254,6 +2326,12 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- Fails on NaN, ±∞ and out-of-range values (`analysis/Sverify/Analysis/Safety.lean`).
     if target == .int && k == .float then return .un (if orNull then .ftoiOrNull else .ftoi) e
     if target == .str && k == .int then return .un .itos e
+    -- DuckDB and Spark trim the fraction's trailing zeros and Polars prints six digits
+    -- (D72, ruling 244); a format that states the text is the same on every engine.
+    if target == .str then
+      if k == .time || k == .timeTz then
+        throw ("casts of timestamps to strings are not supported: the engines print the fraction " ++
+          "differently; write strftime with an explicit format, for example '%Y-%m-%d %H:%M:%S'")
     -- `true` / `false`, as every tier-1 engine prints a boolean; NULL stays NULL (#346).
     if target == .str && k == .bool then
       return .ifThen e (.lit (.str "true")) (.ifThen (.un .not e) (.lit (.str "false")) (.lit .null))
@@ -2288,8 +2366,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- An instant against another kind (a naive timestamp, a literal): refused (#1725).
     let ks := ((field? l "value").toList ++ (← arrD l "options")).zip (v :: opts) |>.map
       fun (j, e) => argKind cols j e
-    if ks.contains .timeTz && ks.any (· != .timeTz) then
-      throw (instantRefusal "IN of a timestamp with a time zone against another kind")
+    if let some s := ks.find? Kind.isStrictTime then
+      if ks.any (· != s) then throw (strictRefusal s s!"IN of {s.timeName} against another kind")
     match opts.map (.bin .eq v) with
     | [] => return .lit (.bool false)
     | e :: es => return es.foldl (.bin .or) e
@@ -2445,8 +2523,8 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     then args.take 1 else args
   let k : Kind := if valueArgs.any (doubleJ fns) then .float else arg.kind cols
   -- An instant takes `MIN`, `MAX` and `COUNT` (#1725).
-  if k == .timeTz && !instantMeasures.contains name then
-    throw (instantRefusal s!"{name} of a timestamp with a time zone")
+  if k.isStrictTime && !instantMeasures.contains name then
+    throw (strictRefusal k s!"{name} of {k.timeName}")
   let mopts ← checkOptions name (k == .float || name == "avg") (← arrD m "options")
   -- `AVG` of a `DECIMAL(p, s)` (#27) is its `SUM` here, divided by a `COUNT`
   -- in `decimalAvgs`: a decimal, or a double if the plan says so (as DuckDB
@@ -2476,8 +2554,8 @@ def parseMeasure (fns : List (Nat × String)) (cols : List Kind) (bits : List Na
     | "avg", .int => pure (if intOut then (.iavg, arg) else (.avg, .un .itof arg))
     | "avg", .float => pure (.avg, arg)
     | "avg", .dec p s => pure (.sum, .un (.decimal p s) arg)
-    | "min", _ => if minMax k || k == .timeTz then pure (.min, arg) else throw "min of this type is not supported"
-    | "max", _ => if minMax k || k == .timeTz then pure (.max, arg) else throw "max of this type is not supported"
+    | "min", _ => if minMax k || k.isStrictTime then pure (.min, arg) else throw "min of this type is not supported"
+    | "max", _ => if minMax k || k.isStrictTime then pure (.max, arg) else throw "max of this type is not supported"
     | "sum", _ | "avg", _ => throw s!"{name} of this type is not supported"
     -- NULLs are skipped (`Measure.inputs`), as with Ibis's
     -- `ARRAY_AGG(x) FILTER (WHERE x IS NOT NULL)`, so the filter must say so.
@@ -2610,8 +2688,8 @@ def parseWindow (fns : List (Nat × String)) (cols : List Kind) (bits : List Nat
   if !instantMeasures.contains (baseName name) then
     for a in args do
       if let .ok e := parseExpr fns cols bits a then
-        if e.kind cols == .timeTz then
-          throw (instantRefusal s!"{baseName name} over a timestamp with a time zone")
+        if (e.kind cols).isStrictTime then
+          throw (strictRefusal (e.kind cols) s!"{baseName name} over {(e.kind cols).timeName}")
   -- `LAG(c [, offset [, default]])`; a double column's default is a code.
   let shifted (args : List Json) : J (Nat × Nat × Value) := do
     let some c := args.head? | throw s!"{name} needs a column"
@@ -2853,13 +2931,16 @@ def literalFits (ty : Json) (v : Value) : Bool :=
 
 def parseRead (fns : List (Nat × String)) (r : Json) : P Rel := do
   let arity ← schemaArity r
-  -- The model's times are microseconds (`typeKind`).
+  -- The model's times are microseconds, and its timestamps microseconds or nanoseconds (D61,
+  -- `typeKind`).
   for ty in ← arrD ((field? (← field r "baseSchema") "struct").getD .null) "types" do
     if unsignedType ty then throw "unsigned integer columns are not supported"
-    for tag in ["precisionTimestamp", "precisionTimestampTz", "precisionTime"] do
+    for (tag, ps) in [("precisionTimestamp", [6, 9]), ("precisionTimestampTz", [6, 9]),
+        ("precisionTime", [6])] do
       if let some t := field? ty tag then
-        if (← natD t "precision") != 6 then
-          throw "timestamp and time columns of a precision other than microseconds are not supported"
+        if !ps.contains (← natD t "precision") then
+          throw "timestamp columns of a precision other than microseconds or nanoseconds, and \
+            time columns of one other than microseconds, are not supported"
   let base ← match ← oneof "read type" r ["namedTable", "virtualTable"] with
     | ("namedTable", t) =>
       let names ← (← arrD t "names").mapM (·.getStr?)
@@ -3363,8 +3444,9 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
       let width := (kindsOf.head?.map (·.length)).getD 0
       for i in List.range width do
         let ks := kindsOf.map (·.getD i .other)
-        if ks.contains .timeTz && ks.any (· != .timeTz) then
-          throw (instantRefusal s!"a set operation over column {i}, a timestamp with a time zone in one input and another kind in another")
+        if let some s := ks.find? Kind.isStrictTime then
+          if ks.any (· != s) then
+            throw (strictRefusal s s!"a set operation over column {i}, {s.timeName} in one input and another kind in another")
       let union ← match inputs with
         | a :: as => pure (as.foldl .unionAll a)
         | [] => throw "SetRel without inputs"

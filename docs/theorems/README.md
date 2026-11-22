@@ -16,3 +16,9 @@ over (`eval`, `OrderAllowed`, `Allowed`, `AllowedP`, `Near`) and its axioms.
 | [`Rel.polars_sound`](polars_sound.md) | … on Polars, after the shims |
 | [`Rel.spark_sound`](spark_sound.md) | … on Spark under ANSI |
 | [`Rel.keys_sound`](keys_sound.md) | A derived key holds on the output: no two rows share its columns |
+| [`Rel.AllowedP_mono`](allowedp_mono.md) | A profile whose choices are within another's allows no more results |
+| [`Rel.refines_of_perm`](refines_of_perm.md) | A rewrite with no open choices, with the original's rows in some order, refines it |
+| [`Rel.optimize_refines`](optimize_refines.md) | The optimized plan refines the original, up to the order of rows |
+| [`floatSumCR_mem`](floatsumcr_mem.md) | The `SUM` of bounded doubles, with a row cap, lies within the checker's bounds |
+| [`floatAvgCR_mem`](floatavgcr_mem.md) | The `AVG` of bounded doubles lies within their range, widened by the tolerance |
+| [`comomentNum_nonneg`](comomentnum_nonneg.md) | A variance's numerator is never negative |
