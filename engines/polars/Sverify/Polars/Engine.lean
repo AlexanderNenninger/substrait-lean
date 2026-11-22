@@ -262,6 +262,7 @@ theorem Polars.floorModT_eval (a b : Int) :
 /-- A floored quotient or remainder is the truncated one, or the call is in
 `division_type`'s scope (`floorDiffers`: the signs differ and the division is
 not exact). -/
+omit [Boxes.Ambient] in
 theorem Polars.floor_or_differs {a b : Int} (h : floorDiffers [.int a, .int b] = false) :
     a.fdiv b = a.tdiv b ∧ a.fmod b = a.tmod b := by
   have hd : a * b < 0 → b ∣ a := fun hab => by
@@ -280,8 +281,19 @@ theorem Polars.floor_or_differs {a b : Int} (h : floorDiffers [.int a, .int b] =
 /-- **`Profile.polars`'s binary functions are within Polars's table** (S1,
 ruling 235): the reference's, but the floored `//` and `%` of integers whose
 signs differ (`division_type`, `FLOOR`). -/
+theorem Polars.idiv_notInt_within {x y v : Value} (hn : Polars.NotInt x ∨ Polars.NotInt y)
+    (h : Profile.polars.bin .idiv x y = .ok v) : v = BinFn.apply .idiv x y := by
+  rw [Polars.polars_idiv_notInt hn] at h
+  cases h
+  exact raiseIf_ok (Polars.ref_idiv_notInt hn)
+
+theorem Polars.imod_notInt_within {x y v : Value} (hn : Polars.NotInt x ∨ Polars.NotInt y)
+    (h : Profile.polars.bin .imod x y = .ok v) : v = BinFn.apply .imod x y := by
+  rw [Polars.polars_imod_notInt hn] at h
+  exact raiseIf_ok h
+
 theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polars.bin f v w = .ok x)
-    (hf : f ≠ .fmod) : x = f.apply v w ∨ CallExtra Profile.polars.table (.bin f) [v, w] := by
+    (hne : f ≠ .fmod) : x = f.apply v w ∨ CallExtra Profile.polars.table (.bin f) [v, w] := by
   cases hf : f.polarsTmpl with
   | none => simp only [Profile.polars, hf] at h; exact .inl (raiseIf_ok h)
   | some t =>
@@ -290,7 +302,7 @@ theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polar
       cases f <;> simp only [BinFn.polarsTmpl, reduceCtorEq] at hf <;> simp
     rcases hfc with rfl | rfl | rfl
     rotate_left 2
-    · exact absurd rfl hf
+    · exact absurd rfl hne
     · simp only [BinFn.polarsTmpl, Option.some.injEq] at hf; subst hf
       cases v
       case int a =>
@@ -305,12 +317,8 @@ theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polar
           · left
             rw [(Polars.floor_or_differs (by simpa using hd)).1, Polars.apply_idiv_ne hb]
             simp [hb]
-        all_goals
-          rw [Polars.polars_idiv_notInt (.inr fun _ h => by cases h)] at h
-          cases h; exact .inl (raiseIf_ok (Polars.ref_idiv_notInt (.inr fun _ h => by cases h))).symm
-      all_goals
-        rw [Polars.polars_idiv_notInt (.inl fun _ h => by cases h)] at h
-        cases h; exact .inl (raiseIf_ok (Polars.ref_idiv_notInt (.inl fun _ h => by cases h))).symm
+        all_goals exact .inl (Polars.idiv_notInt_within (.inr fun _ hc => by cases hc) h)
+      all_goals exact .inl (Polars.idiv_notInt_within (.inl fun _ hc => by cases hc) h)
     · simp only [BinFn.polarsTmpl, Option.some.injEq] at hf; subst hf
       cases v
       case int a =>
@@ -325,12 +333,8 @@ theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polar
           · left
             rw [(Polars.floor_or_differs (by simpa using hd)).2, Polars.apply_imod_ne hb]
             simp [hb]
-        all_goals
-          rw [Polars.polars_imod_notInt (.inr fun _ h => by cases h)] at h
-          exact .inl (raiseIf_ok h)
-      all_goals
-        rw [Polars.polars_imod_notInt (.inl fun _ h => by cases h)] at h
-        exact .inl (raiseIf_ok h)
+        all_goals exact .inl (Polars.imod_notInt_within (.inr fun _ hc => by cases hc) h)
+      all_goals exact .inl (Polars.imod_notInt_within (.inl fun _ hc => by cases hc) h)
 
 /-! ## Polars's lowering calls no `%` of doubles (ruling 259, R1) -/
 
