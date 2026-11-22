@@ -1000,8 +1000,7 @@ def infer_bounds(
     conditions = {t: list(cs) for t, cs in requires.items()}
     _merge(conditions, report._inferred)
     report._conditions = conditions
-    opened = {} if report._windows_total or isinstance(transform, str) else _open_columns(transform)
-    out = _observed(report, observed or _observation.PLAN_BOUND, ensures, opened)
+    out = _observed(report, observed or _observation.PLAN_BOUND, ensures)
     out._stated = observed is not None
     from sverify import routes as _routes
 
@@ -1104,61 +1103,38 @@ def _checked_on_unproved(v: str) -> OnUnproved:
     return v  # type: ignore[return-value]
 
 
-def _observed(
-    report: Report,
-    observed: Observation,
-    ensures: Sequence[Condition],
-    opened: Mapping[str, str],
-) -> Report:
+def _observed(report: Report, observed: Observation, ensures: Sequence[Condition]) -> Report:
     """`report` with the observation, and each postcondition marked with the
     components it depends on that the observation ignores, or that the plan
-    leaves open (D1, D12): the checker's (`ContractCheck`'s `Report.ignores`,
-    #1071) for every postcondition it reports them for. A table condition
-    (`unique`, `references`, `max_rows`, `rows_per`), which the checker does
-    not evaluate as an expression, depends on the values of the columns it
-    reads (`observation.dependencies`), and on the open choices of the plan
-    (`opened`) where it is unproved: a proved condition holds for every
-    choice the plan leaves open."""
-    checked = [
-        replace(
-            c,
-            reads=None if (r := _reads(cond, report.output)) is None else tuple(r),
-            approx=isinstance(cond, Approx),
-            nullable=None
-            if r is None or any(c not in report.facts for c in r)
-            else tuple(c for c in r if report.facts[c].nullable),
-            ignores=c.checker_ignores
-            if c.checker_ignores is not None
-            else tuple(
-                _observation.dependencies(
-                    observed, cond, report.output, r, {} if c.proved else opened
-                )
-            ),
+    leaves open (D1, D12): the checker's (`ContractCheck`'s `Report.ignores`
+    and `Report.tableIgnores`, #1071). A proved condition holds for every
+    choice the plan leaves open, so a table condition's open columns apply
+    where it is unproved."""
+    table = iter(report._table_ignores)
+    checked = []
+    for cond, c in zip(ensures, report.ensures, strict=True):
+        r = _reads(cond, report.output)
+        if isinstance(cond, TableCondition):
+            opened, ignored = next(table)
+            ignores = tuple(ignored if c.proved else [*opened, *ignored])
+        elif c.checker_ignores is not None:
+            ignores = c.checker_ignores
+        else:
+            # The checker did not read the plan as a selection of conditions:
+            # it may depend on everything the observation ignores.
+            ignores = tuple(sorted(set(observed.ignored()) - {"rows", "zeros", "errors"}))
+        checked.append(
+            replace(
+                c,
+                reads=None if r is None else tuple(r),
+                approx=isinstance(cond, Approx),
+                nullable=None
+                if r is None or any(c not in report.facts for c in r)
+                else tuple(c for c in r if report.facts[c].nullable),
+                ignores=ignores,
+            )
         )
-        for cond, c in zip(ensures, report.ensures, strict=True)
-    ]
     return replace(report, ensures=checked, lenses=observed)
-
-
-def _open_columns(expr: ir.Table) -> dict[str, str]:
-    """The output columns of aggregates whose value the reference leaves
-    open: `"picks"` for `first`, `last` or `arbitrary` without an order,
-    `"elements"` for `collect` or `group_concat` without one."""
-    out: dict[str, str] = {}
-    for agg in expr.op().find(ops.Aggregate):
-        if not isinstance(agg, ops.Aggregate):
-            continue
-        for name, metric in agg.metrics.items():
-            if (
-                isinstance(metric, ops.First | ops.Last)
-                and not metric.order_by
-                or isinstance(metric, ops.Arbitrary)
-            ):
-                out[name] = "picks"
-            elif isinstance(metric, ops.ArrayCollect | ops.GroupConcat) and not metric.order_by:
-                out[name] = "elements"
-    names = set(expr.columns)
-    return {n: why for n, why in out.items() if n in names}
 
 
 def _reads(cond: Condition, columns: Mapping[str, Any]) -> list[str] | None:
@@ -1720,18 +1696,30 @@ def _prove_once(
         "text": {t: _declared_text(names(t), cs) for t, cs in requires.items()},
     }
 
-    if observed is not None:
-        # What the checker needs to report each postcondition's ignored
-        # components itself (#1071, `Report.ignores` in ContractCheck.lean).
-        contract["observation"] = {
-            "coarsens": [c for c in observed.ignored()],
-            # The rows level by name: the plan to run may refine the plan
-            # as written up to the order of rows only under `multiset` (#1787).
-            "rows": observed.rows,
-            "floats_plan": observed.floats == "plan",
-            "approx": [isinstance(c, Approx) for c in ensures if not isinstance(c, TableCondition)],
-            "sql": isinstance(transform, str),
-        }
+    # What the checker needs to report each postcondition's ignored components
+    # itself (#1071, `Report.ignores` and `Report.tableIgnores` in
+    # ContractCheck.lean): the observation, the columns each table condition
+    # reads, and whether it allows for a tolerance.
+    obs = observed or _observation.PLAN_BOUND
+    contract["observation"] = {
+        "coarsens": [c for c in obs.ignored()],
+        # The rows level by name: the plan to run may refine the plan
+        # as written up to the order of rows only under `multiset` (#1787).
+        "rows": obs.rows,
+        "floats_plan": obs.floats == "plan",
+        "approx": [isinstance(c, Approx) for c in ensures if not isinstance(c, TableCondition)],
+        "sql": isinstance(transform, str),
+        "table_reads": [
+            {
+                "reads": None
+                if (r := _reads(c, {})) is None
+                else [out_cols.index(n) for n in r if n in out_cols],
+                "tolerant": isinstance(c, _observation.Tolerant),
+            }
+            for c in ensures
+            if isinstance(c, TableCondition)
+        ],
+    }
     if _RULES is not None:
         contract["rules"] = list(_RULES)
     if semantics != "reference":

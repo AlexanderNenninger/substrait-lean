@@ -545,55 +545,6 @@ class Tolerant:
     (`sverify.conditions.Approx`)."""
 
 
-def dependencies(
-    observation: Observation,
-    cond: Any,
-    columns: Mapping[str, Any],
-    read: Sequence[str] | None,
-    open_columns: Mapping[str, str] | None = None,
-) -> list[str]:
-    """The components `observation` ignores that `cond`, a table condition
-    (`unique`, `references`, `max_rows`, `rows_per`), depends on. The
-    checker reports them for every other condition (`ContractCheck`'s
-    `Report.ignores`); a table condition is no expression it
-    evaluates. Empty when the condition cannot tell results equal up to
-    `observation` apart.
-
-    A table condition ignores the order of the rows and depends on the
-    values of the columns it reads, unless the observation keeps them:
-    doubles with a tolerance, timestamps truncated, strings normalised,
-    decimals without their scale. Zeros and NaNs made one change no
-    comparison of reference codes (`Expr.robust_of_depends_canon`).
-
-    Args:
-        observation: The postcondition's observation.
-        cond: The condition.
-        columns: The output's columns by name, with Ibis types.
-        read: The columns `cond` reads; None if unknown, which counts as
-            every column.
-        open_columns: Output columns whose value the reference leaves open:
-            `"picks"` for `first` or `last` without an order (which
-            row's value), `"elements"` for a `collect` without one (the
-            order of the elements).
-    """
-    names = list(columns) if read is None else [n for n in read if n in columns]
-    out: list[str] = []
-    for n in names:
-        why_open = (open_columns or {}).get(n)
-        if why_open is not None and why_open not in out:
-            out.append(why_open)
-    ignored = set(observation.ignored()) - {"rows", "zeros", "errors"}
-    for comp in (_component(columns[n]) for n in names):
-        if comp is None or comp not in ignored or comp in out:
-            continue
-        if comp == "floats" and (isinstance(cond, Tolerant) or observation.floats == "plan"):
-            # Under the plan's bound, a run holds the columns a condition
-            # reads to their exact value (`sverify.routes.observed`).
-            continue
-        out.append(comp)
-    return out
-
-
 def why(components: Sequence[str]) -> str:
     """How a report names what a condition depends on."""
     opened = [c for c in components if c in ("picks", "elements")]

@@ -328,16 +328,19 @@ def test_the_docs_state_the_default_observation() -> None:
     assert rows == {name: str(getattr(PLAN_BOUND, name)) for name, _ in _COMPONENTS}
 
 
-def test_a_lens_on_element_order_keeps_a_condition_on_a_list_column_dependent():
-    """`ensures list_position(pair, a) = 1` changes between results equal up
-    to `elements="multiset"`, so a condition reading a list column depends on
-    the order of its elements; one reading a scalar does not (#2005)."""
-    from sverify.observation import PLAN_BOUND, dependencies
-
-    cols = {"pair": ibis.dtype("array<int64>"), "a": ibis.dtype("int64")}
-    assert dependencies(PLAN_BOUND, object(), cols, ["pair", "a"]) == ["elements"]
-    assert dependencies(PLAN_BOUND, object(), cols, ["a"]) == []
-    assert dependencies(Observation(), object(), cols, ["pair"]) == []
+def test_a_table_condition_depends_on_the_open_columns_it_reads() -> None:
+    """A table condition on a column the reference leaves open (a `FIRST` without an order) depends
+    on which row it picks; the checker reports it (`Report.tableIgnores`, #1071)."""
+    expr = T.group_by("k").aggregate(first_x=T.x.first(), n=T.k.count())
+    report = sv.verify(
+        expr,
+        requires={"t": [sv.max_rows(1000)]},
+        ensures=[sv.unique("first_x"), sv.unique("n")],
+        counterexamples=0,
+    )
+    picked, counted = report.ensures
+    assert picked.ignores == ("picks",)
+    assert counted.ignores == ()
 
 
 #: Scalars whose engines' `UPPER` or `LOWER` values differ in `strings="ascii"`'s key

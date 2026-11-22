@@ -60,6 +60,7 @@ def verdict(
         _exact=out["deterministic"],
         _class_places=class_places(out),
         _windows_total=out.get("windows_total", out["deterministic"]),
+        _table_ignores=[(t["opened"], t["ignored"]) for t in out.get("table_ignores", [])],
         _tie_places=tie_places(out),
         _guard_free=out["guard_free"],
         _unchecked=out.get("unchecked"),
