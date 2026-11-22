@@ -44,7 +44,9 @@ class Lst:
 
 
 Kind = (
-    Literal["int", "float", "time", "instant", "date", "interval", "str", "bool", "tod"] | Dec | Lst
+    Literal["int", "float", "time", "timeNs", "instant", "date", "interval", "str", "bool", "tod"]
+    | Dec
+    | Lst
 )
 
 #: The constructors of `Substrait.Issue` (`core/Sverify/Core/Issue.lean`), which a
@@ -85,12 +87,14 @@ def raised_issue(message: str) -> GuardIssue:
 
 
 """What a value is in SQL. `time` is a microsecond TIMESTAMP without time
-zone, `tod` a microsecond TIME of day, `interval` a day/second interval of
-microseconds. `None` (unknown) is
-used for columns whose Substrait type the model does not know."""
+zone, `timeNs` a nanosecond one (D61), `tod` a microsecond TIME of day,
+`interval` a day/second interval of microseconds. `None` (unknown) is used for
+columns whose Substrait type the model does not know."""
 
 LeanKind = (
-    Literal["int", "float", "time", "instant", "date", "str", "bool", "tod", "other"] | Dec | Lst
+    Literal["int", "float", "time", "timeNs", "instant", "date", "str", "bool", "tod", "other"]
+    | Dec
+    | Lst
 )
 """`Parse.Kind`: what Lean's parser knows about a value. The parser decides
 between integer and double arithmetic by it, so this module tracks it too."""
@@ -240,6 +244,7 @@ class Dialect:
             "int": "BIGINT",
             "float": "DOUBLE PRECISION",
             "time": "TIMESTAMP",
+            "timeNs": "TIMESTAMP_NS",
             "instant": "TIMESTAMP WITH TIME ZONE",
             "date": "DATE",
             "tod": "TIME",
@@ -2044,8 +2049,13 @@ def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
         case ("int" | "float" | "date" | "str" | "bool") as k, _:
             return k, k
         # Times are microseconds; a coarser precision is not modelled.
-        case ("time" | "instant" | "tod") as k, int() as p if p >= 6:
+        case ("time" | "instant" | "tod") as k, 6:
             return k, k
+        # Nanosecond timestamps (D61): a kind of their own, which the plan
+        # carries, compares, orders and takes the MIN and MAX of, and never
+        # mixes with microseconds.
+        case "time", 9:
+            return "timeNs", "timeNs"
         case "decimal", (p, sc):
             d = Dec(p, sc)
             return d, d
@@ -3770,7 +3780,7 @@ class _Parser:
                     arg = Un("itof", arg)
             case (
                 ("min" | "max"),
-                ("int" | "float" | "str" | "bool" | "time" | "instant" | "date"),
+                ("int" | "float" | "str" | "bool" | "time" | "timeNs" | "instant" | "date"),
             ):
                 fn = name
             case (("min" | "max" | "sum" | "avg"), _):

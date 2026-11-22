@@ -30,7 +30,7 @@ def Value.hasKind : Kind → Value → Bool
   | _, .null => true
   | .other, _ | .opaque, _ => true
   | .bool, .bool _ | .str, .str _ | .int, .int _ | .float, .float _ | .date, .date _
-  | .time, .ts _ | .timeTz, .ts _ | .tod, .tod _ => true
+  | .time, .ts _ | .timeTz, .ts _ | .timeNs, .ts _ | .timeTzNs, .ts _ | .tod, .tod _ => true
   | .dec _ s, .dec t _ => decide (s = t)
   | .list k, .list vs => Value.allHaveKind k vs
   | .struct ks, .struct vs => Value.fieldsHaveKinds ks vs
