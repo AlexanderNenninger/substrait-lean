@@ -361,7 +361,7 @@ Design notes: [nested-values.md](nested-values.md).
 
 A SQL text reads as DuckDB's under both semantics: `/`, `//`, NULL order and
 `replace` mean what they mean on DuckDB. The semantics is what the functions
-then do. Under `semantics="reference"` the lift refines the dialect
+then do. Under `semantics="portable"` the lift refines the dialect
 ([D54](decisions.md#d54-the-lift-refines-the-dialect)): where the reference
 gives a value, DuckDB running the same text gives that value; where the
 reference raises, DuckDB may give a value, and the inferred preconditions name

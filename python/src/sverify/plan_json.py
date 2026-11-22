@@ -415,7 +415,7 @@ def call(name: str, args: Iterable[Json]) -> Json:
 
 #: The profile the plan being built is read under (`verify(semantics=...)`):
 #: under `"polars"`, integer `//` and `%` are Polars's (`floor_call`).
-_SEMANTICS: contextvars.ContextVar[str] = contextvars.ContextVar("_SEMANTICS", default="reference")
+_SEMANTICS: contextvars.ContextVar[str] = contextvars.ContextVar("_SEMANTICS", default="portable")
 
 
 def semantics() -> str:
@@ -768,7 +768,7 @@ def values_rel(schema: Any, rows: list[list[Json]]) -> Json:
 
 
 @contextlib.contextmanager
-def compiling(semantics: str = "reference") -> Iterator[Compiler]:
+def compiling(semantics: str = "portable") -> Iterator[Compiler]:
     """A fresh `Compiler` for the plan built inside the block, read under
     `semantics`."""
     compiler = Compiler()

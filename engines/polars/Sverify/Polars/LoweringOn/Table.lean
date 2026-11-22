@@ -227,3 +227,13 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("BinFn.least", "native", 0),
   ("BinFn.bbox2", "native", 0),
   ("BinFn.listFn", "native", 0)]
+
+/-- Every entry is exact (`Lowering.AllExact`). -/
+theorem Substrait.polarsOn.allExact : (Substrait.polarsOn).AllExact :=
+  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
+   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩
+
+/-- No entry is stated on doubles only (`Lowering.NoneOnDbl`). -/
+theorem Substrait.polarsOn.noneOnDbl : (Substrait.polarsOn).NoneOnDbl :=
+  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
+   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩

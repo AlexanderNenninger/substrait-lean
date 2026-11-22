@@ -535,8 +535,9 @@ def _component(dtype: Any) -> str | None:
     if dtype.is_integer() or dtype.is_boolean() or dtype.is_date() or dtype.is_time():
         return None
     # Every other type is a kind `mayHoldList` (`ContractCheck.lean`) counts:
-    # a list or struct, and `Kind.other`, which `Parse.typeKind` gives a map,
-    # an interval, NULL, JSON, a UUID and any type it does not know (#2005).
+    # a list or struct, `Kind.opaque`, which `Parse.typeKind` gives a map, a
+    # binary and a UUID (D67), and `Kind.other`, which it gives an interval,
+    # NULL, JSON and any type it does not know (#2005).
     return "elements"
 
 
@@ -608,5 +609,5 @@ def why(components: Sequence[str]) -> str:
             f"depends on {' and '.join(names[c] for c in opened)}, which the plan leaves open"
         )
     if ignored:
-        parts.append(f"depends on {', '.join(ignored)}, which the observation ignores")
+        parts.append(f"depends on {', '.join(ignored)}, which the lenses ignore")
     return "; ".join(parts)

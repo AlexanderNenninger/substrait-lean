@@ -106,16 +106,16 @@ def test_another_release_alone_is_in_the_structured_result_only() -> None:
 
 def test_the_same_plan_under_two_profiles_is_recomputed_and_names_both() -> None:
     stored = under_duckdb(lambda t: positive(t))
-    assert stored.profile == "reference"
+    assert stored.profile == "portable"
     v = view("duckdb", lambda t: positive_as_duckdb(t), resume=stored)
     assert v.profile == "duckdb"
     assert v.resumed is not None and v.resumed.startswith("computed:")
-    assert "reference profile" in v.resumed and "duckdb profile" in v.resumed
+    assert "portable profile" in v.resumed and "duckdb profile" in v.resumed
 
 
 def test_the_profile_is_a_component_of_the_digest_unless_it_is_the_reference() -> None:
     plan = view("duckdb", lambda t: positive(t)).plan
-    assert plan_digest(plan, profile="reference") == plan_digest(plan)
+    assert plan_digest(plan, profile="portable") == plan_digest(plan)
     assert plan_digest(plan, profile="duckdb") != plan_digest(plan)
     assert plan_digest(plan, profile="duckdb") != plan_digest(plan, profile="polars")
 
@@ -147,7 +147,7 @@ def test_a_contract_with_the_fields_is_in_the_schema_and_an_old_one_still_reads(
         not_null=[],
         checks={},
         unique=[],
-        **dict[str, Any](profiles.runtime("duckdb"), profile="reference"),
+        **dict[str, Any](profiles.runtime("duckdb"), profile="portable"),
     )
     record = json.loads(c.to_json())
     jsonschema.validate(record, schema)

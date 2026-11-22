@@ -44,11 +44,26 @@ release on PyPI.
 
 ## How-to
 
+A page of this kind runs its Python examples in `tests/test_readme.py`, and the test fails a page of more than 600 lines (a tutorial or how-to page) or `python/README.md` of more than 120.
+
 | Page | Job | Site |
 |---|---|---|
-| [tasks.md](tasks.md) | One section per task: contracts, runtime errors and guards, inferred bounds, the command line, nodes and refresh, quarantine, Delta and Iceberg, credentials, OpenLineage, engines and SQL, routes, export, ODCS, pytest | |
+| [tasks.md](tasks.md) | The index of the how-to pages, with the setup their examples share | |
+| [how-to-contracts.md](how-to-contracts.md) | State what a transform assumes and promises, and read the report | |
+| [how-to-guards.md](how-to-guards.md) | Runtime errors and the guards that rule them out | |
+| [how-to-bounds.md](how-to-bounds.md) | Inferred bounds, row caps, non-overlapping ranges, rows per key and suggested preconditions | |
+| [how-to-command-line.md](how-to-command-line.md) | Checking without running, `sverify check`, its formats and exit codes, the environment variables | |
+| [how-to-nodes.md](how-to-nodes.md) | Nodes, composing contracts, refresh | |
+| [how-to-quarantine.md](how-to-quarantine.md) | What a refresh does with rows that break a precondition | |
+| [how-to-table-formats.md](how-to-table-formats.md) | A complete job in outline, and Delta Lake and Iceberg sources and sinks | |
+| [how-to-credentials.md](how-to-credentials.md) | Named secrets and what each node uses | |
+| [how-to-openlineage.md](how-to-openlineage.md) | Lineage events with the contract | |
+| [how-to-time-buckets.md](how-to-time-buckets.md) | Bounded state for late-arriving streams | |
+| [how-to-engines-and-sql.md](how-to-engines-and-sql.md) | Running a proved plan on an engine, its SQL, routes, classes and profiles | |
+| [how-to-export.md](how-to-export.md) | Exporting a contract to Substrait and ODCS | |
+| [how-to-production.md](how-to-production.md) | Reproducible sinks, engine settings and versions, sharding, testing with pytest | |
+| [how-to-install.md](how-to-install.md) | The extras, the wheels and the nightly builds | |
 | [examples.md](examples.md) | Moved: a list of links to the steps of getting-started.md | |
-| [guide.md](guide.md) | Moved: each section links to its home in getting-started.md or tasks.md | |
 
 ## Reference
 
@@ -65,6 +80,7 @@ release on PyPI.
 | Page | Job | Site |
 |---|---|---|
 | [core-and-profiles.md](core-and-profiles.md) | The core, an abstract machine, and the profiles that narrow it: the reference, each engine's, Substrait's | Design |
+| [what-sverify-proves.md](what-sverify-proves.md) | What the checker proves, the reference semantics and the engines, in a page | Design |
 | [verifying.md](verifying.md) | Verifying under the reference or under an engine's profile, the routes each takes, and what the report says | Design |
 | [report.md](report.md) | What a report holds, and how a verdict traces to what supports it | Design |
 | [rejections.md](rejections.md) | Where the reference raises, the precondition that rules each case out, and how to read a refusal | Design |
@@ -99,8 +115,8 @@ release on PyPI.
 | Topic | Home |
 |---|---|
 | Which engines sverify supports | [stability.md, Engines](stability.md#engines) |
-| What refresh maintains incrementally | [tasks.md, Nodes](tasks.md#nodes-composing-storing-refreshing) |
-| Routes and classes, for users | [tasks.md, Routes, classes and profiles](tasks.md#routes-classes-and-profiles) |
+| What refresh maintains incrementally | [how-to-nodes.md, Nodes](how-to-nodes.md#nodes-composing-storing-refreshing) |
+| Routes and classes, for users | [how-to-engines-and-sql.md, Routes, classes and profiles](how-to-engines-and-sql.md#routes-classes-and-profiles) |
 | What a plan means | [reference-semantics.md](reference-semantics.md) |
 | What an Ibis expression means | [reference-semantics.md, The Ibis frontend](reference-semantics.md#the-ibis-frontend) |
 | How engine facts are judged | [characterization/README.md](../characterization/README.md) |

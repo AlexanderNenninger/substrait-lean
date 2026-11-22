@@ -196,6 +196,8 @@ def _run_suite(source: Source) -> dict[str, Any]:
     results: dict[str, Any] = {}
     with tempfile.TemporaryDirectory() as tmp:
         for case in cases:
+            if not case.has_tests:
+                continue  # nothing to check: no build, no `docs generate`
             project = Path(tmp) / re.sub(r"\W", "_", case.name)
             replay_suites.write(case, project)
             label = case.name.removeprefix(package + ".")

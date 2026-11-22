@@ -17,7 +17,7 @@ T = ibis.table({"x": "int64", "d": "int64"}, name="t")
 REQUIRES = {"t": [_.x.between(-1000, 1000), _.d.between(1, 10)]}
 
 
-def hints(expr, semantics: Semantics = "reference"):
+def hints(expr, semantics: Semantics = "portable"):
     return sv.verify(expr, requires=REQUIRES, semantics=semantics)._hints
 
 

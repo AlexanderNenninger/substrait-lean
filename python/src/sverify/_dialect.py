@@ -10,7 +10,7 @@ listed as a guard's issue) are not here: a raise is visible and the inferred pre
 its inputs.
 
 One table, keyed by the `Profile` field. `tests/test_dialect_differences.py`
-derives the key set from `REFERENCE` and `DUCKDB` and fails when a field joins
+derives the key set from `PORTABLE` and `DUCKDB` and fails when a field joins
 it neither refused nor listed.
 """
 
