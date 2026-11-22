@@ -87,7 +87,11 @@ def test_write_makes_a_dbt_project(suite: Path, tmp_path: Path) -> None:
     ("files", "config", "expected"),
     [
         ({"models/m.sql": "select 1", "models/s.yml": "models: []"}, {}, False),
-        ({"models/s.yml": "models:\n- name: m\n  columns:\n  - {name: id, tests: [unique]}"}, {}, True),
+        (
+            {"models/s.yml": "models:\n- name: m\n  columns:\n  - {name: id, tests: [unique]}"},
+            {},
+            True,
+        ),
         ({"models/s.yml": "models:\n- name: m\n  data_tests: [x]"}, {}, True),
         ({"tests/t.sql": "select 1 where false"}, {}, True),
         ({"models/m.sql": "select 1"}, {"data_tests": {"+severity": "warn"}}, True),
