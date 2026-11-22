@@ -29,19 +29,19 @@ from sverify_dbt.manifest import load
 from sverify_dbt.replay import Source, _dbt, _statuses, extract, normalize
 
 #: The projects: the repository, a pinned commit, the dbt project's directory
-#: in it, and the `dbt build` arguments that load its data on DuckDB; None for
+#: in it (dbt-labs/jaffle-shop, its successor, needs dbt 2), and the `dbt build` arguments that load its data on DuckDB; None for
 #: a project with no data to load, which is compiled only.
 PROJECTS: dict[str, tuple[Source, list[str] | None]] = {
     "jaffle_shop": (
         Source(
             "jaffle_shop",
-            "https://github.com/dbt-labs/jaffle-shop",
+            "https://github.com/dbt-labs/jaffle_shop",
             "",
-            "5beb145b00f5465ec759cfcdd9745e858818cf95",
+            "fd7bfacae4f497ff044a6a0275268676bf1b64c3",
             ".",
             "Apache-2.0",
         ),
-        ["--vars", "{load_source_data: true}"],
+        [],  # its seeds are the data: `dbt build` loads them
     ),
     # BigQuery; GitLab's dbt project went private, and Mattermost's is gone.
     "calitp": (
