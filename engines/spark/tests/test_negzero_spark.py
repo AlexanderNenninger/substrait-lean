@@ -126,4 +126,4 @@ def test_power_and_atan2_are_refused_on_spark_by_their_own_group(
     expr = t.select(t.k, v=t.x**2.5 if which == "power" else t.x.atan2(-1.0))
     report = sv.verify(expr, requires={"t": [_.x.between(1, 100)]})
     route = routes.choose(report, "spark")
-    assert route.refused and group in route.reason and option in route.reason, route
+    assert route.refused and group in route.why and option in route.why, route

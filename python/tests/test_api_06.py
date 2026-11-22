@@ -117,7 +117,7 @@ def test_on_unproved_warn_refreshes_unverified(tmp_path) -> None:
         node = clipped(orders)
     with pytest.warns(UnverifiedRunWarning, match=r"unverified \(on_unproved='warn'\)"):
         out = node.refresh()
-    assert out["clipped"].route is not None and out["clipped"].route.kind == "unverified"
+    assert out["clipped"].route is not None and out["clipped"].route.taken == "unverified"
     assert node.to_arrow().to_pylist() == [{"id": 1, "big": 5}]
 
 
@@ -143,12 +143,12 @@ def test_an_unproved_refresh_raises_unverified_run_error() -> None:
 
 def test_the_route_reference_is_now_translated(con, tmp_path) -> None:
     report = _quiet(sv.verify, con.table("t").select("k"))
-    assert _quiet(routes.choose, report, "duckdb").kind == "translated"
+    assert _quiet(routes.choose, report, "duckdb").taken == "translated"
     _quiet(report.run, con, route="translated")
-    assert report.routes["duckdb"].kind == "translated"
+    assert report.routes["duckdb"].taken == "translated"
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5)])
     out = _quiet(doubled(paid(orders)).refresh, route="translated")
-    assert out["doubled"].route is not None and out["doubled"].route.kind == "translated"
+    assert out["doubled"].route is not None and out["doubled"].route.taken == "translated"
 
 
 def test_a_route_names_translated_by_its_class_alone() -> None:
@@ -162,8 +162,8 @@ def test_a_route_names_translated_by_its_class_alone() -> None:
 def test_printed_output_says_semantics_where_a_profile_is_meant(con) -> None:
     report = _quiet(sv.verify, con.table("t").select("k"))
     refused = _quiet(routes.choose, report, "duckdb", "native")
-    assert 'not verified under semantics="duckdb"' in refused.reason
-    assert "Profile." not in refused.reason
+    assert 'not verified under semantics="duckdb"' in refused.why
+    assert "Profile." not in refused.why
 
 
 def test_transform_engine_is_check_engine() -> None:

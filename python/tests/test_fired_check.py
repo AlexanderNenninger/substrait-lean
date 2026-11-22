@@ -146,3 +146,14 @@ def test_a_fired_check_leaves_independent_nodes_committing(tmp_path):
     assert any(s.held is not None and "run-time check" in s.held for s in r.nodes)
     # T3: the other node committed its batch.
     assert _rows(tmp_path / "good") == [(1, 1e300)]
+
+
+def test_an_insert_only_batch_refreshes_a_sink_with_a_nullable_or_nonnegative_ensures(tmp_path):
+    """#2377: Delta stores the constraint of a NOT NULL column without its
+    `IS NULL` disjunct; the second refresh must still accept it."""
+    src = StaticSource(_table([(1, 1.0)]), name="t")
+    node = _sink_node(src, tmp_path / "out", scale=2.0)
+    assert node.refresh().outcome == "ok"
+    src.apply(Changes(inserts=_table([(2, 2.0)])))
+    assert node.refresh().outcome == "ok"
+    assert _rows(tmp_path / "out") == [(1, 2.0), (2, 4.0)]

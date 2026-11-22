@@ -85,7 +85,7 @@ def test_the_cli_exits_4_on_the_checkers_memory_cap(tmp_path):
         "SVERIFY_CHECKER_MEMORY_MB": "50",
         "SVERIFY_TIMEOUT": "0",
     }
-    argv = [sys.executable, "-m", "sverify.cli", "check", str(path), "--json"]
+    argv = [sys.executable, "-m", "sverify.cli", "check", str(path), "--format", "json"]
     done = subprocess.run(argv, capture_output=True, text=True, env=env, timeout=60)
     assert done.returncode == BUDGET, done.stdout + done.stderr
     error = json.loads(done.stdout)["error"]

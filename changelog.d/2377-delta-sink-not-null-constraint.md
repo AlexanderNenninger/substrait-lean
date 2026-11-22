@@ -1,0 +1,1 @@
+A Delta sink no longer refuses its own constraint on the refresh after an insert-only change when the node's ensures is `isnull() | (>= 0)` on a column that is never NULL: Delta stores that constraint without its `IS NULL` part, and the sink now compares the two as the same condition.

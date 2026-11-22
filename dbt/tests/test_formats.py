@@ -96,7 +96,7 @@ def test_json_is_sverifys_envelope() -> None:
     doc = _result().to_dict(1)
     jsonschema.validate(doc, schema)
     assert (doc["format"], doc["command"], doc["exit"], doc["status"]) == (
-        1,
+        2,
         "check",
         1,
         "not_proved",
