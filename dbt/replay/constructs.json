@@ -92,6 +92,10 @@
     {
       "match": "sverify proves no foreign keys of a model's result",
       "design": "a foreign key relates two relations, and sverify-dbt proves conditions on one model's result; dbt still runs it"
+    },
+    {
+      "match": "its columns are no list of column names",
+      "design": "a column list with a null or a bare string names no columns to check; dbt itself fails such a test, so sverify-dbt does not read it"
     }
   ]
 }
