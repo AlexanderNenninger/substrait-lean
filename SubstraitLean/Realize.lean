@@ -369,14 +369,14 @@ structure Seen where
 
 /-- The components of `a` that are coarser than `b`'s, but the doubles (`coarser_than`),
 in the order Python names them. -/
-def Obs.coarserThan (a b : Obs) : List String :=
+def _root_.Substrait.Obs.coarserThan (a b : Obs) : List String :=
   [("rows", !a.rows.le b.rows), ("elements", !a.elements.le b.elements),
    ("zeros", !a.zeros.le b.zeros), ("timestamps", !a.times.le b.times),
    ("strings", !(a.strings.rank ≤ b.strings.rank)), ("decimals", !a.decimals.le b.decimals),
    ("errors", !(a.errors.rank ≤ b.errors.rank))].filterMap fun (n, c) => if c then some n else none
 
 /-- The coarser of two observations on each component but the doubles. -/
-def Obs.coarsest (a b : Obs) : Obs where
+def _root_.Substrait.Obs.coarsest (a b : Obs) : Obs where
   rows := if a.rows.le b.rows then b.rows else a.rows
   elements := if a.elements.le b.elements then b.elements else a.elements
   zeros := if a.zeros.le b.zeros then b.zeros else a.zeros
