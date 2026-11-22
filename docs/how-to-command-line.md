@@ -218,8 +218,8 @@ The limit does not reach Polars, which has no memory cap to set; with
 `SVERIFY_CHECKER_MEMORY_MB` (below), since its memory does not grow with
 the data. Past any of these budgets the call raises
 `sverify.errors.MemoryLimitError` (its `.stage`, `.limit` and `.setting`
-say which), a refresh commits nothing, and the command stops with code 4
-and reports what was proved before it
+say which), a refresh commits nothing, and the command stops with the budget's exit
+code (5) and reports what was proved before it
 ([test_memory_limits.py](../python/tests/test_memory_limits.py)).
 `sverify.cli.discover(path)` does what `check` does from Python.
 

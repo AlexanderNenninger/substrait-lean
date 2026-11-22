@@ -20,6 +20,8 @@ from sverify_dbt.result import CheckResult
 
 #: The exit codes of `sverify check` (`sverify.cli.ExitCode`), those a dbt check
 #: gives: a model refused (`--fail-on refused`) or the check unsupported is 3.
+#: This `REFUSED` is a model sverify cannot read, `ExitCode.UNSUPPORTED` (3); it is
+#: not `ExitCode.REFUSED` (4), a proved node with no route to the engine.
 NOT_PROVED, USAGE, REFUSED, BUDGET, ERROR = (
     ExitCode.NOT_PROVED,
     ExitCode.USAGE,
