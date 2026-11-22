@@ -8,9 +8,9 @@
   },
   "sverify_substrait": "0.106.0",
   "summary": {
-    "agree": 332,
+    "agree": 333,
     "disagree": 9,
-    "refused": 191,
+    "refused": 190,
     "skipped": 146
   },
   "refusals": {
@@ -55,8 +55,7 @@
     "no impl of add in Substrait's YAMLs takes (precision_time<N>, interval_day<N>); cast the arguments to the types of one of its impls": 2,
     "no impl of add in Substrait's YAMLs takes (precision_timestamp<N>, i64); cast the arguments to the types of one of its impls": 2,
     "no impl of nth_value in Substrait's YAMLs takes (i64, i64); cast the arguments to the types of one of its impls": 2,
-    "refused for Substrait: agg.stat'…'annotate'…'s pow_one_inf: Substrait allows ONE, NAN where the proof uses ONE; no shim writes it for this plan: export with shi": 1,
-    "the inputs of a set relation differ in their column types (for example decimals of two precisions), which Substrait does not allow (#N); report.to_sql(dialect) ": 1
+    "refused for Substrait: agg.stat'…'annotate'…'s pow_one_inf: Substrait allows ONE, NAN where the proof uses ONE; no shim writes it for this plan: export with shi": 1
   },
   "findings": {
     "0001 not yet implemented: PrecisionTime literals are not yet implemented": {
@@ -668,8 +667,7 @@
       "outcome": "agree"
     },
     "catalogue/tpcds-q51 [annotate]": {
-      "outcome": "refused",
-      "reason": "the inputs of a set relation differ in their column types (for example decimals of two precisions), which Substrait does not allow (#N); report.to_sql(dialect) "
+      "outcome": "agree"
     },
     "catalogue/tpcds-q51 [apply]": {
       "outcome": "refused",

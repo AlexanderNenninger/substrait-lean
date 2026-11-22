@@ -203,7 +203,11 @@ Sverify's words claim no more than these theorems give
   own constructor of `Value` ([a value has its kind](decisions.md#d29-a-value-has-its-kind)).
 - The code that writes a checked plan for an engine: the SQL printers
   (`Pretty.lean`, `python/src/sverify/sql/`), a shimmed plan's `isNum` as
-  `IS NOT NULL` included, and the Polars translator. Golden, round-trip and
+  `IS NOT NULL` included, and the Polars translator. The interpreters of the
+  generated lowering tables are among them: `sverify/sql/lowering.py` writes a
+  DuckDB template as SQL, and `sverify_polars/lowering.py` a Polars template
+  as a `pl.Expr`, which the Polars translator takes over from its hand-written
+  shims in #271's step 2. Golden, round-trip and
   differential tests cover them
   ([the translations](engine-profiles.md#the-translations-today)).
 - The CLI's glue, `Main.lean`, `SubstraitCheck.lean`, `ContractCheck.lean` and `ShardCheck.lean`:

@@ -86,7 +86,7 @@ TARGETS = [
         "time_bucket",
         "in",
         "catalogue time_bucket 1; metrics rollups; replay 74",
-        False,
+        True,
         sql="SELECT time_bucket(INTERVAL 15 MINUTE, ts) FROM t",
         issue=347,
     ),

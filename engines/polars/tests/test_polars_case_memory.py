@@ -59,6 +59,7 @@ def peak_mb(sql: str) -> tuple[int, int]:
     ],
     ids=["not", "plain"],
 )
+@pytest.mark.skipif(sys.platform == "win32", reason="the peak is read with `resource`, POSIX only")
 def test_a_case_over_double_comparisons_uses_memory_of_its_input(sql: str) -> None:
     _, base = peak_mb("SELECT x AS c FROM t")
     rows, mb = peak_mb(sql)

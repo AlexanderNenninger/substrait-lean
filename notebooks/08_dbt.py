@@ -264,7 +264,7 @@ def _(mo):
     The [sverify-dbt
     README](https://github.com/AlexanderNenninger/substrait-lean/blob/main/dbt/README.md)
     lists the tests it reads, and the
-    [guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md)
+    [guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md)
     covers every feature in more detail.
     """)
     return

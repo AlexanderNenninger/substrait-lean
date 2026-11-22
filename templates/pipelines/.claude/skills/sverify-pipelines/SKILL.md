@@ -22,7 +22,7 @@ recompute; other aggregates recompute only the groups a batch touches,
 windows on one `PARTITION BY` the touched partitions (inputs without ties),
 and bounded `RANGE` frames the touched frames; others (left joins, `LIMIT`)
 are recomputed and diffed. `node.status()` says which
-([guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)).
+([guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-nodes.md#nodes-composing-storing-refreshing)).
 Needs the `delta` or `iceberg` extra.
 
 A node whose contract is not proved refuses the refresh

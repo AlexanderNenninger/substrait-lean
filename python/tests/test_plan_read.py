@@ -81,7 +81,12 @@ def test_type_kind() -> None:
     assert pr.type_kind({"precisionTime": {}}) == ("tod", 0)
     assert pr.type_kind({"decimal": {"precision": 10}}) == ("decimal", (10, 0))
     assert pr.type_kind({"list": {"type": {"string": {}}}}) == ("list", {"string": {}})
-    assert pr.type_kind({"map": {}}) is None
+    assert pr.type_kind({"map": {}}) == ("opaque", {"map": {}})
+    assert pr.type_kind({"list": {"type": {"binary": {}}}}) == (
+        "opaque",
+        {"list": {"type": {"binary": {}}}},
+    )
+    assert pr.type_kind({"uuid": {}}) is not None
     assert pr.type_kind(None) is None
 
 

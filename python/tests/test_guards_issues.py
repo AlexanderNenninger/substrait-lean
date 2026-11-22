@@ -78,7 +78,8 @@ def _recording(monkeypatch: pytest.MonkeyPatch, used: set[Site]) -> None:
 
         def raise_(self, message, dep, kind, issue, _orig=orig):  # type: ignore[no-untyped-def]
             f = sys._getframe(1)
-            file = re.split(r"/(?:src|site-packages)/", f.f_code.co_filename)[-1]
+            path = f.f_code.co_filename.replace("\\", "/")  # Windows' separators
+            file = re.split(r"/(?:src|site-packages)/", path)[-1]
             used.add((file, f.f_lineno, issue, message))
             return _orig(self, message, dep, kind, issue)
 
