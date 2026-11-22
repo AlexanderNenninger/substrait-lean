@@ -658,6 +658,303 @@ theorem inv_reachable {s : World} (h : Reachable s) : Inv s := by
   | init => exact inv_init
   | step _ hst ih => exact inv_step ih hst
 
+
+/-! ## What a write reads, and the order of the commits
+
+`ReadIsHead`, `Monotone` and `NoRewriteUnchanged` of `models/refresh/Refresh.tla`,
+for a source that cannot restore. While the log still has the length a write
+read, it is the log the write read: its change was computed from the newest
+commit of the node, and its state is above that commit's, of other contents. -/
+
+/-- Adjacent commits of the node under one plan: a version not below the
+earlier one, and other contents (no state is committed twice in a row). -/
+def AdjOK : List Commit → Prop
+  | c' :: c :: rest =>
+      (c'.app = true → c.app = true → c.key.plan = c'.key.plan →
+        c.key.ver ≤ c'.key.ver ∧ c.key.dig ≠ c'.key.dig) ∧ AdjOK (c :: rest)
+  | _ => True
+
+def Reads (s : World) (o : Out) : Prop :=
+  s.log.length = o.head →
+    (∀ c rest, s.log = c :: rest → c.app = true → c.key.plan = o.key.plan →
+        c.key.ver ≤ o.key.ver ∧ c.key.dig ≠ o.key.dig) ∧
+    (o.mode = .merge → kept s.log = true ∧ ∃ r, record s.log = some r ∧ o.base = r.tbl)
+
+def Inv2 (s : World) : Prop := AdjOK s.log ∧ ∀ o, Pending s o → Reads s o
+
+theorem kept_cons {c : Commit} {rest : List Commit} (h : c.app = true) :
+    kept (c :: rest) = true := by
+  simp [kept, h]
+
+/-- A write of the process, on a record of its plan, is of a version not below
+the record's, and of other contents: the record has the state or a later one
+otherwise. -/
+theorem next_above {r : Key} {k : Bool} {w : Writer} {m : Mode} {v : Nat} {wr : Tbl}
+    {l : Option Key} (h : next (some r) k w = .write m v wr l) (hk : k = true)
+    (hp : r.plan = w.plan) : r.ver ≤ v ∧ r.dig ≠ w.c := by
+  simp only [next] at h
+  split at h
+  · cases h
+  · next hs =>
+    split at h
+    · cases h
+    · next hs2 =>
+      simp only [Decision.write.injEq] at h
+      obtain ⟨_, rfl, _, _⟩ := h
+      refine ⟨?_, fun hd => hs ?_⟩
+      · by_cases hc : clashOf r w = true
+        · simp [verOf, hc]
+        · apply Nat.le_of_lt
+          by_cases hv : verOf r w ≤ r.ver
+          · exact absurd (by simp [skip2Of, hp, hk, hc, hv]) hs2
+          · omega
+      · exact sameOf_iff.mpr ⟨hp, hk, hd⟩
+
+theorem inv2_of_upd {s t : World} {i : Nat} {w : Writer} (hs : Inv2 s)
+    (hws : t.ws = upd s.ws i w) (hlog : t.log = s.log)
+    (hz : ∀ o, o ∈ t.zombies → Pending s o) (hph : ∀ o, w.phase ≠ .writing o) : Inv2 t := by
+  refine ⟨by rw [hlog]; exact hs.1, fun o ho => ?_⟩
+  have hp : Pending s o := by
+    rcases ho with ⟨j, hj⟩ | hz'
+    · rw [hws] at hj
+      by_cases hji : j = i
+      · subst hji; rw [upd_same] at hj; exact absurd hj (hph o)
+      · exact Or.inl ⟨j, by rw [upd_other _ _ hji] at hj; exact hj⟩
+    · exact hz o hz'
+  have := hs.2 o hp
+  unfold Reads at this ⊢
+  rw [hlog]
+  exact this
+
+theorem inv2_of_same {s t : World} (hs : Inv2 s) (hws : t.ws = s.ws) (hlog : t.log = s.log)
+    (hz : t.zombies = s.zombies) : Inv2 t := by
+  refine ⟨by rw [hlog]; exact hs.1, fun o ho => ?_⟩
+  have hp : Pending s o := by
+    rcases ho with ⟨j, hj⟩ | hz'
+    · rw [hws] at hj; exact Or.inl ⟨j, hj⟩
+    · exact Or.inr (hz ▸ hz')
+  have := hs.2 o hp
+  unfold Reads at this ⊢
+  rw [hlog]
+  exact this
+
+/-- A commit of `o` on the log `o` read. -/
+theorem inv2_of_commit {s t : World} {o : Out} (hi : Inv s) (hs : Inv2 s) (hpo : Pending s o)
+    (hc : s.log.length = o.head) (hlog : t.log = ⟨true, o.key⟩ :: s.log)
+    (hp : ∀ o', Pending t o' → Pending s o') : Inv2 t := by
+  have hr := hs.2 o hpo hc
+  refine ⟨?_, fun o' ho' => ?_⟩
+  · rw [hlog]
+    have h1 := hs.1
+    cases hl : s.log with
+    | nil => simp [AdjOK]
+    | cons c rest =>
+      rw [hl] at h1
+      exact ⟨fun _ hca hpl => (hr.1 c rest hl hca hpl), h1⟩
+  · have hh := (hi.2.1 o' (hp o' ho')).1
+    intro heq
+    exfalso
+    rw [hlog] at heq
+    have heq' : s.log.length + 1 = o'.head := heq
+    omega
+
+theorem inv2_step {s t : World} (hi : Inv s) (hs : Inv2 s) (h : Step s t) : Inv2 t := by
+  cases h with
+  | start i _ => exact inv2_of_upd hs rfl rfl (fun o h => Or.inr h) (fun o h => by cases h)
+  | stop i _ _ => exact inv2_of_upd hs rfl rfl (fun o h => Or.inr h) (fun o h => by cases h)
+  | refresh i _ => exact inv2_of_upd hs rfl rfl (fun o h => Or.inr h) (fun o h => by cases h)
+  | prepare i hr =>
+    cases hnext : next (record s.log) (kept s.log) (s.ws i) with
+    | skip v wr l =>
+      simp only [World.prepare, hnext]
+      exact inv2_of_upd hs rfl rfl (fun o h => Or.inr h) (fun o h => by cases h)
+    | write m v wr l =>
+      simp only [World.prepare, hnext]
+      have hwi : (s.ws i).written ≠ .none →
+          (∃ k, (s.ws i).last = some k ∧ (s.ws i).written = k.tbl) ∧ record s.log ≠ none := by
+        intro hne
+        obtain ⟨k, h1, h2, h3⟩ := hi.2.2 i hne
+        exact ⟨⟨k, h1, h2⟩, record_ne_none h3⟩
+      refine ⟨hs.1, fun o ho => ?_⟩
+      rcases ho with ⟨j, hj⟩ | hz
+      · dsimp only at hj
+        by_cases hji : j = i
+        · subst hji
+          rw [upd_same] at hj
+          simp only [Phase.writing.injEq] at hj
+          subst hj
+          intro _
+          refine ⟨fun c rest hl hca hpl => ?_, fun hm => ?_⟩
+          · have hrec : record s.log = some c.key := by rw [hl]; exact record_cons hca
+            have hk : kept s.log = true := by rw [hl]; exact kept_cons hca
+            rw [hrec, hk] at hnext
+            obtain ⟨h1, h2⟩ := next_above hnext rfl hpl
+            exact ⟨h1, fun h => h2 h⟩
+          · simp only at hm
+            subst hm
+            obtain ⟨r, hrec, hk, hwr, _⟩ := next_merge hwi hnext
+            exact ⟨hk, r, hrec, hwr⟩
+        · rw [upd_other _ _ hji] at hj
+          exact hs.2 o (Or.inl ⟨j, hj⟩)
+      · exact hs.2 o (Or.inr hz)
+  | land i o hw hc =>
+    refine inv2_of_commit hi hs (Or.inl ⟨i, hw⟩) hc rfl fun o' ho' => ?_
+    exact pending_upd (s := s.commit o) (by intro o' h; cases h) ho'
+  | landLostAck i o hw hc =>
+    refine inv2_of_commit hi hs (Or.inl ⟨i, hw⟩) hc rfl fun o' ho' => ?_
+    have hw' : ∀ o'', ({ s.ws i with phase := .idle } : Writer).phase ≠ .writing o'' := by
+      intro o'' h; cases h
+    exact pending_upd (s := s.commit o) hw' ho'
+  | fail i o _ => exact inv2_of_upd hs rfl rfl (fun o h => Or.inr h) (fun o' h => by cases h)
+  | conflict i o _ _ => exact inv2_of_upd hs rfl rfl (fun o h => Or.inr h) (fun o' h => by cases h)
+  | crash i _ =>
+    refine inv2_of_upd (t := s.crash i) hs rfl rfl ?_ (fun o h => by cases h)
+    intro o ho
+    unfold World.crash at ho
+    simp only at ho
+    split at ho
+    · next o' hph =>
+      rcases List.mem_cons.mp ho with rfl | hz
+      · exact Or.inl ⟨i, hph⟩
+      · exact Or.inr hz
+    · exact Or.inr ho
+  | zombieLands o hz hc =>
+    refine inv2_of_commit hi hs (Or.inr hz) hc rfl fun o' ho' => ?_
+    rcases ho' with ⟨j, hj⟩ | hz'
+    · exact Or.inl ⟨j, hj⟩
+    · exact Or.inr (List.mem_of_mem_erase hz')
+  | sourceChanges => exact inv2_of_same hs rfl rfl rfl
+  | foreignWrite =>
+    refine ⟨?_, fun o ho => ?_⟩
+    · show AdjOK (⟨false, ⟨0, 0, 0⟩⟩ :: s.log)
+      have h1 := hs.1
+      cases hl : s.log with
+      | nil => simp [AdjOK]
+      | cons c rest =>
+        rw [hl] at h1
+        exact ⟨fun h => absurd h (by simp), h1⟩
+    · have h' := (hi.2.1 o ho).1
+      intro heq
+      exfalso
+      have heq' : s.log.length + 1 = o.head := heq
+      omega
+  | deploy => exact inv2_of_same hs rfl rfl rfl
+
+theorem inv2_reachable {s : World} (h : Reachable s) : Inv2 s := by
+  induction h with
+  | init => exact ⟨trivial, fun o ho => (by rcases ho with ⟨_, h⟩ | h <;> cases h)⟩
+  | step hr hst ih => exact inv2_step (inv_reachable hr) ih hst
+
+
+/-! ## #889: what a new process does with the sink's record -/
+
+/-- A process that holds the record as its own, of its plan, with a version
+not below it (and its digest, when equal), writes at most a change on it. -/
+theorem next_resumes {r : Key} {w : Writer} (hp : r.plan = w.plan) (hl : w.last = some r)
+    (hw : w.written = r.tbl) (hv : r.ver ≤ w.ver) (hd : r.ver = w.ver → r.dig = w.c)
+    (v : Nat) (wr : Tbl) (l : Option Key) : next (some r) true w ≠ .write .replace v wr l := by
+  intro h
+  simp only [next] at h
+  split at h
+  · cases h
+  · split at h
+    · cases h
+    · simp only [Decision.write.injEq] at h
+      obtain ⟨hm, _, rfl, _⟩ := h
+      have hne := ite_replace.mp hm
+      have hl0 : l0Of (some r) w = some r := by
+        unfold l0Of; split
+        · rfl
+        · exact hl
+      have hnb : badOf r true w (l0Of (some r) w) = false := by
+        have hc : clashOf r w = false := by
+          by_cases hle : w.ver ≤ r.ver
+          · have := hd (Nat.le_antisymm hv hle)
+            simp [clashOf, this]
+          · simp [clashOf, hle]
+        simp [badOf, hp, hl0, hc]
+      simp only [hnb, Bool.false_eq_true, ↓reduceIte] at hne
+      unfold w0Of at hne
+      split at hne
+      · next hh =>
+        simp [hitOf_some hh, Key.tbl] at hne
+      · rw [hw] at hne
+        simp [Key.tbl] at hne
+
+/-- A process that is ready and could resume from `r` holds `r` as its own,
+under its plan, with a version not below it. -/
+def ResOK (s : World) : Prop :=
+  ∀ i r, (s.ws i).phase = .ready → (s.ws i).resumable = some r →
+    (s.ws i).written = r.tbl ∧ (s.ws i).last = some r ∧ r.plan = (s.ws i).plan ∧
+      r.ver ≤ (s.ws i).ver ∧ (r.ver = (s.ws i).ver → r.dig = (s.ws i).c)
+
+theorem resok_step {s t : World} (hi : Inv s) (hs : ResOK s) (h : Step s t) : ResOK t := by
+  have other : ∀ (i : Nat) (w : Writer), (∀ r, w.phase = .ready → w.resumable = some r →
+      w.written = r.tbl ∧ w.last = some r ∧ r.plan = w.plan ∧ r.ver ≤ w.ver ∧
+        (r.ver = w.ver → r.dig = w.c)) →
+      ∀ ws : Nat → Writer, ws = upd s.ws i w → ∀ j r, (ws j).phase = .ready →
+        (ws j).resumable = some r →
+        (ws j).written = r.tbl ∧ (ws j).last = some r ∧ r.plan = (ws j).plan ∧
+          r.ver ≤ (ws j).ver ∧ (r.ver = (ws j).ver → r.dig = (ws j).c) := by
+    intro i w hw ws hws j r hph hr
+    subst hws
+    by_cases hji : j = i
+    · subst hji; rw [upd_same] at hph hr ⊢; exact hw r hph hr
+    · rw [upd_other _ _ hji] at hph hr ⊢; exact hs j r hph hr
+  cases h with
+  | start i _ => exact other i _ (fun r hp => by simp at hp) _ rfl
+  | stop i _ _ => exact other i _ (fun r hp => by simp at hp) _ rfl
+  | refresh i _ =>
+    refine other i _ ?_ _ rfl
+    intro r _ hr
+    simp only [World.refreshW] at hr ⊢
+    by_cases hf : (s.ws i).first = true
+    · cases hrec : record s.log with
+      | none => simp [hf, hrec] at hr
+      | some r' =>
+        by_cases hk : kept s.log = true ∧ r'.plan = (s.ws i).plan
+        · obtain ⟨c, rest, hlog, happ, hrc⟩ := record_of_kept hk.1
+          have htbl := hi.1
+          unfold TblOK at htbl
+          rw [hlog] at htbl
+          simp only [happ, ↓reduceIte] at htbl
+          rw [hrec] at hrc
+          simp only [Option.some.injEq] at hrc
+          simp only [hf, hrec, hk.1, hk.2, Bool.and_self, beq_self_eq_true, ↓reduceIte,
+            Option.some.injEq] at hr ⊢
+          subst hr
+          refine ⟨by simp [htbl, ← hrc], rfl, hk.2, ?_, ?_⟩
+          · split <;> omega
+          · split
+            · next hd => simpa using hd
+            · omega
+        · exfalso
+          simp [hf, hrec] at hr
+          exact hk hr.1
+    · simp [hf] at hr
+  | prepare i _ =>
+    cases hnext : next (record s.log) (kept s.log) (s.ws i) with
+    | skip v wr l =>
+      simp only [World.prepare, hnext]
+      exact other i _ (fun r hp => by simp at hp) _ rfl
+    | write m v wr l =>
+      simp only [World.prepare, hnext]
+      exact other i _ (fun r hp => by simp at hp) _ rfl
+  | land i o _ _ => exact other i _ (fun r hp => by simp at hp) _ rfl
+  | landLostAck i o _ _ => exact other i _ (fun r hp => by simp at hp) _ rfl
+  | fail i o _ => exact other i _ (fun r hp => by simp at hp) _ rfl
+  | conflict i o _ _ => exact other i _ (fun r hp => by simp at hp) _ rfl
+  | crash i _ => exact other i {} (fun r hp => by simp at hp) _ rfl
+  | zombieLands o _ _ => exact hs
+  | sourceChanges => exact hs
+  | foreignWrite => exact hs
+  | deploy => exact hs
+
+theorem resok_reachable {s : World} (h : Reachable s) : ResOK s := by
+  induction h with
+  | init => intro i r hp; simp at hp
+  | step hr hst ih => exact resok_step (inv_reachable hr) ih hst
+
 end RefreshSnap
 
 open RefreshSnap
@@ -681,5 +978,30 @@ theorem RefreshSnap.record_describes_table {s : World} (h : Reachable s)
   rw [hlog] at ht
   simp only [happ, ↓reduceIte] at ht
   exact ⟨c.key, hrc, ht⟩
+
+/-- A change that lands applies to the newest commit of the node, which is
+the sink's record, and was computed against its table (#933, invariant 3). -/
+theorem RefreshSnap.read_is_head {s : World} {o : Out} (h : Reachable s) (hp : Pending s o)
+    (hm : o.mode = .merge) (hc : s.log.length = o.head) :
+    kept s.log = true ∧ ∃ r, record s.log = some r ∧ o.base = r.tbl :=
+  ((inv2_reachable h).2 o hp hc).2 hm
+
+/-- Under one plan, adjacent commits of the node are of versions that do not go
+down and of other contents: no state is committed twice in a row (#933,
+invariants 1 and 5, and #889's `NoRewriteUnchanged`). -/
+theorem RefreshSnap.monotone {s : World} (h : Reachable s) : AdjOK s.log :=
+  (inv2_reachable h).1
+
+/-- Whenever a process prepares, if the record is still the one its first
+refresh could resume from and no other application wrote since, it does not
+write the whole table again (#889: `NoNeedlessRewrite`). -/
+theorem RefreshSnap.no_needless_rewrite {s : World} (h : Reachable s) {i : Nat} {r : Key}
+    (hph : (s.ws i).phase = .ready) (hres : (s.ws i).resumable = some r)
+    (hrec : record s.log = some r) (hk : kept s.log = true) (v : Nat) (wr : Tbl)
+    (l : Option Key) :
+    next (record s.log) (kept s.log) (s.ws i) ≠ .write .replace v wr l := by
+  obtain ⟨hw, hl, hp, hv, hd⟩ := resok_reachable h i r hph hres
+  rw [hrec, hk]
+  exact next_resumes hp hl hw hv hd v wr l
 
 end Substrait
