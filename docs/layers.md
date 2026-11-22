@@ -37,7 +37,7 @@ so a hook loads its module by name the first time it is called.
 - `_hooks.nodes` (`NodeHooks`): a source's `pipe` and a transform called on
   sources build nodes. `sverify.nodes` registers the hooks.
 - `_hooks.export` and `_hooks.report_json`: `Report` writes and reads
-  itself as Substrait (`to_substrait`, `substrait_contract`, `recheck`) and
+  itself as Substrait (`to_substrait`, `substrait_contract`, `from_substrait`) and
   as JSON (`to_json`, `from_json`) through `sverify.substrait_export` and
   `sverify.report_json`.
 - `_hooks.lineage`: a refresh with `lineage=` sends its events through

@@ -9,8 +9,8 @@ result is sorted, the discharged checks, all come from the answer. What the
 caller adds is the user's side: the conditions as written, the issues and
 facts in the user's terms, the schemas, the hints.
 
-`sverify.verify` (`contracts.py`) and `sverify.from_substrait`
-(`substrait_export.recheck`) build their reports here.
+`sverify.verify` (`contracts.py`) and `Report.from_substrait`
+(`substrait_export._recheck`) build their reports here.
 """
 
 from __future__ import annotations
