@@ -8,7 +8,11 @@ chaos suite (`python/tests/chaos/`) can only sample. Step 2,
 [`analysis/Sverify/Analysis/Refresh.lean`](../../analysis/Sverify/Analysis/Refresh.lean), states the
 fixed protocol for a durable source as a transition system and proves
 `NoCorruption` and `RecordDescribesTable` for every scope
-(`Refresh.no_corruption`, `Refresh.record_describes_table`).
+(`Refresh.no_corruption`, `Refresh.record_describes_table`), `ReadIsHead`
+(`Refresh.read_is_head`), `Monotone` and `NoRewriteUnchanged`
+(`Refresh.monotone`, one fact in Lean) and `NoNeedlessRewrite`
+(`Refresh.no_needless_rewrite`), and that every table and record an observer
+sees is one a failure-free run reaches (`Refresh.observable`).
 
 ## What it models
 

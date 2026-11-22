@@ -271,7 +271,7 @@ the quantile's `method`. The others are shims with a cost:
 
 - truncating division and modulus of negative integers (`//` floors,
   int-divide, int-modulus), and the sign of a double modulus (double-modulus);
-- an empty `SUM` (0, [sum-float](../engines/polars/facts/polars-sum-float.json)),
+- an empty `SUM` (0, [sum-float-streaming](../engines/polars/facts/polars-sum-float-streaming.json)),
   `avg` of integers ([avg-int](../engines/polars/facts/polars-avg-int.json)),
   `CORR` of one pair ([corr](../engines/polars/facts/polars-corr.json)),
   `mode`'s list ([mode](../engines/polars/facts/polars-mode.json)),
