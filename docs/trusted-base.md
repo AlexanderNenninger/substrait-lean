@@ -375,11 +375,13 @@ Sverify's words claim no more than these theorems give
   clauses are proved from the shape under the core's rounding
   (`FloatBridge.FloatSums.sumBound`, `float-bounds/FloatBridge/Sums.lean`; the
   canonical one by `FloatSums.canonV`, since IEEE addition treats the two zeros
-  alike but for the sign of a zero result). For Kahan's sum (`COMPENSATED`)
-  and a constant run's product (`SCALED_CONSTANT`) both are justified by
-  `float-bounds`' `Rnd.kahan_near` and `TreeSum.const` over the reals; those
-  algorithms written on the core's codes,
-  [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/1196), retire the rest.
+  alike but for the sign of a zero result). Kahan's sum (`COMPENSATED`)
+  and a constant run's product (`SCALED_CONSTANT`) are written on the core's
+  codes (`kahanSum`, `FloatSumsK`, `core/Sverify/Core/SumBound.lean`), and
+  each meets `SumOrder` for values that are doubles' codes
+  (`FloatBridge.KahanSums.sumOrder`, `FloatBridge.FloatSumsK.sumOrder`,
+  `float-bounds/FloatBridge/Orders.lean`, #1196, ruling 268). What stays
+  trusted is that the engine runs the algorithm its fact names, in some order.
 - Black boxes are DuckDB's functions: each black box means the function
   DuckDB computes under its name, and keeps its row's laws, tested by
   `python/tests/test_black_box.py` (DuckDB on the SQL against DuckDB on the

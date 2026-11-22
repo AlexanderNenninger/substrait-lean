@@ -98,8 +98,9 @@ one, of its shape: a tree (`ANY`, `PAIRWISE`) or a sequential sum in some
 order (`SEQUENTIAL`). Kahan's compensated sum (`COMPENSATED`) and a constant
 run's product (`SCALED_CONSTANT`) are the bound and exactness on small
 integers (D35, amended 2026-11-19): where `vs` are `SmallInts`, the exact
-sum. The shapes prove that (`SumOrder.int_exact`); here it is trusted, as
-the bound is. -/
+sum. The shapes prove that (`SumOrder.int_exact`); for these two, the
+algorithms on codes (`kahanSum`, `FloatSumsK`) meet both clauses
+(`float-bounds/FloatBridge/Orders.lean`, #1196). -/
 def SumOrder (b : Behaviour) (vs : List Value) (c : Int) : Prop :=
   if b = "EXACT" then c = floatSumCR vs
   else SumBound vs c ∧
