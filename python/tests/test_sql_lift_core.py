@@ -26,7 +26,7 @@ from sverify.engines import UnsupportedError
 from sverify.errors import VerificationError
 from sverify.io import StaticSource
 from sverify.plan_json import Unsupported as Refused
-from sverify.sql_lift import DUCKDB, REFERENCE, lift
+from sverify.sql_lift import DUCKDB, PORTABLE, lift
 from sverify.testing import LeanRaised, lean_values
 from sverify_dev import catalogue, slt
 from sverify_dev.lift import check, duckdb_result, score
@@ -82,14 +82,14 @@ def test_oracles_a_and_c(query):
 
 @pytest.mark.parametrize("query", [q for q in QUERIES if isinstance(q, str)])
 def test_the_reference_lift_is_checked_too(query):
-    plan = json.dumps(lift(query, SCHEMAS, "reference").plan)
+    plan = json.dumps(lift(query, SCHEMAS, "portable").plan)
     code, out, err = run_checker((), plan)
     assert code == 0, err or out
 
 
 def test_the_profiles_differ_only_in_what_functions_do():
     fields = DUCKDB.__dataclass_fields__
-    assert {f for f in fields if getattr(DUCKDB, f) != getattr(REFERENCE, f)} == {
+    assert {f for f in fields if getattr(DUCKDB, f) != getattr(PORTABLE, f)} == {
         "name",
         "min_mod_neg_one",
         "float_to_int",
@@ -125,7 +125,7 @@ def options(plan: dict, name: str) -> list[list[dict]]:
 
 def test_division_states_its_meaning():
     query = "SELECT amount / qty AS r, amount // qty AS q FROM orders"
-    duck, ref = (lift(query, SCHEMAS, s).plan for s in ("duckdb", "reference"))
+    duck, ref = (lift(query, SCHEMAS, s).plan for s in ("duckdb", "portable"))
     zero = {"name": "on_division_by_zero"}
     # `/` divides doubles: by zero DuckDB gives inf, the reference raises.
     assert options(duck, "divide")[0] == [{**zero, "preference": ["IEEE"]}]
@@ -258,9 +258,9 @@ def test_a_duckdb_sql_step_chains():
     step = sv.sql(
         "SELECT o.id, c.region FROM orders o JOIN customers c ON c.name = o.customer",
         dialect="duckdb",
-        semantics="reference",
+        semantics="portable",
     )
-    assert step.dialect == "duckdb" and step.semantics == "reference"
+    assert step.dialect == "duckdb" and step.semantics == "portable"
     node = orders.pipe(step, customers=customers)
     node.refresh(engine="duckdb")
     assert sorted(rows(node)) == [(1, "eu"), (2, "us"), (3, "eu")]
@@ -297,16 +297,19 @@ def test_sql_checks_dialect_and_semantics():
         sv.sql("SELECT a FROM t", dialect="postgres", t=t)
     with pytest.raises(ValueError, match="semantics must be"):
         sv.sql("SELECT a FROM t", dialect="duckdb", semantics="spark", t=t)  # type: ignore[call-overload]
+    # 1.0 keeps no synonym (#2081): the refusal names the new name.
+    with pytest.raises(ValueError, match="'reference' is called 'portable' since 1.0"):
+        sv.sql("SELECT a FROM t", semantics="reference", t=t)  # type: ignore[call-overload]
     with pytest.raises(UnsupportedError, match="unknown function"):
         sv.sql("SELECT my_udf(a) FROM t", dialect="duckdb", t=t)
 
 
-def test_sql_uses_the_reference_semantics_by_default():
+def test_sql_uses_the_portable_semantics_by_default():
     # #411: DuckDB's semantics is an explicit opt-in.
     t = ibis.table({"a": "int64"}, name="t")
     op: Any = sv.sql("SELECT a FROM t", t=t).op()
-    assert (op.dialect, op.semantics) == ("duckdb", "reference")
-    assert sv.sql("SELECT a FROM t").semantics == "reference"
+    assert (op.dialect, op.semantics) == ("duckdb", "portable")
+    assert sv.sql("SELECT a FROM t").semantics == "portable"
 
 
 def test_verify_states_and_takes_its_semantics():
@@ -315,12 +318,14 @@ def test_verify_states_and_takes_its_semantics():
     sql = "SELECT a / b AS ratio FROM t"
     ref = sv.verify(sql, tables={"t": t}, on_inferred="off")
     duck = sv.verify(sql, tables={"t": t}, semantics="duckdb", on_inferred="off")
-    assert (ref.semantics, duck.semantics) == ("reference", "duckdb")
-    assert "semantics: reference" in ref.details().splitlines()
+    assert (ref.semantics, duck.semantics) == ("portable", "duckdb")
+    assert "semantics: portable" in ref.details().splitlines()
     assert any("zero" in str(i) for i in ref.issues)
     assert not any("zero" in str(i) for i in duck.issues)
     with pytest.raises(ValueError, match="semantics must be"):
         sv.verify(sql, tables={"t": t}, semantics="sparkk")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="'reference' is called 'portable' since 1.0"):
+        sv.verify(sql, tables={"t": t}, semantics="reference")
     # Spark's profile reads Ibis transformations; SQL is DuckDB's.
     with pytest.raises(ValueError, match="semantics='spark' checks Ibis transformations"):
         sv.verify(sql, tables={"t": t}, semantics="spark")
@@ -354,9 +359,7 @@ def test_benchmark_queries_through_the_lift():
 
 def test_a_remainder_of_doubles_runs_with_the_reference_semantics():
     # `sverify_fmod` (#256): C's `fmod`, as DuckDB computes `%` of doubles.
-    result = check(
-        "SELECT id, price % 2.0 AS m, -price % 4.0 AS n FROM orders", TABLES, "reference"
-    )
+    result = check("SELECT id, price % 2.0 AS m, -price % 4.0 AS n FROM orders", TABLES, "portable")
     assert result.ok, f"{result.stage}: {result.detail}"
 
 
@@ -424,7 +427,7 @@ def test_an_error_in_a_conjunct_that_is_never_true_may_raise():
     columns = {"col0": [64, 75, 46], "col1": [77, 67, 51], "col2": [40, 58, 23]}
     tab2 = pa.table({k: pa.array(v, pa.int32()) for k, v in columns.items()})
     schema = ibis.Schema.from_pyarrow(tab2.schema)
-    for semantics in ("duckdb", "reference"):
+    for semantics in ("duckdb", "portable"):
         report = sv.verify(query, tables={"tab2": schema}, semantics=semantics, counterexamples=0)
         # The overflow is an issue, or a precondition that rules it out (an
         # INTEGER column's type bounds it, D46): `col1 < 1`, which the data breaks.
@@ -614,7 +617,7 @@ def test_a_lens_remainder_lists_min_mod_neg_one(width):
     assert any("MIN % -1" in str(i) for i in unbounded.issues)
     for bound in ("b > 0", f"b <> 0 AND a > {low + 1}"):
         assert verify("duckdb", bound).verdict == sv.Verdict.PROVED
-    assert verify("reference", "b <> 0").verdict == sv.Verdict.PROVED
+    assert verify("portable", "b <> 0").verdict == sv.Verdict.PROVED
     assert (
         verify("duckdb", "a IS NOT NULL", "SELECT a % 7 AS m FROM t").verdict == sv.Verdict.PROVED
     )

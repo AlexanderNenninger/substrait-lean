@@ -63,22 +63,46 @@
       "facts": [
         "duckdb-R1",
         "duckdb-R15-int-arith",
+        "duckdb-R1-min",
+        "duckdb-R15-int-modulus",
         "duckdb-R2",
+        "duckdb-R15-int-divide",
+        "duckdb-R3",
+        "duckdb-R4",
+        "duckdb-R15-double-modulus",
         "duckdb-R15-double-arith",
-        "duckdb-R3"
+        "duckdb-int-div-domain",
+        "duckdb-R15-math-domain",
+        "duckdb-R15-atan2"
       ],
       "guard_free_theorem": null,
       "issues": [
-        241
+        1985
       ],
       "observed": [],
       "problems": [],
       "profile": true,
-      "proved_facts": [],
+      "proved_facts": [
+        "duckdb-R1",
+        "duckdb-R15-int-arith",
+        "duckdb-R1-min",
+        "duckdb-R15-int-modulus",
+        "duckdb-R2",
+        "duckdb-R15-int-divide",
+        "duckdb-R3",
+        "duckdb-R4",
+        "duckdb-R15-double-modulus",
+        "duckdb-R15-double-arith",
+        "duckdb-int-div-domain",
+        "duckdb-R15-math-domain",
+        "duckdb-R15-atan2"
+      ],
       "rows": 5,
       "shims": [],
       "tested_because": [],
-      "theorems": [],
+      "theorems": [
+        "Lowering.duckdb_exact"
+      ],
       "transfer": {
         "polars": {
           "failures": [
@@ -101,7 +125,9 @@
             {
               "facts": [
                 "duckdb-R1",
-                "duckdb-R15-int-arith"
+                "duckdb-R15-int-arith",
+                "duckdb-R1-min",
+                "duckdb-R15-int-modulus"
               ],
               "from": [
                 "SILENT"
@@ -116,7 +142,9 @@
             {
               "facts": [
                 "duckdb-R1",
-                "duckdb-R15-int-arith"
+                "duckdb-R15-int-arith",
+                "duckdb-R1-min",
+                "duckdb-R15-int-modulus"
               ],
               "from": [
                 "SILENT"
@@ -130,7 +158,11 @@
             },
             {
               "facts": [
-                "duckdb-R2"
+                "duckdb-R2",
+                "duckdb-R15-int-divide",
+                "duckdb-R3",
+                "duckdb-R4",
+                "duckdb-R15-double-modulus"
               ],
               "from": [
                 "NULL"
@@ -211,7 +243,10 @@
             },
             {
               "facts": [
-                "duckdb-R15-double-arith"
+                "duckdb-R15-double-arith",
+                "duckdb-int-div-domain",
+                "duckdb-R15-math-domain",
+                "duckdb-R15-atan2"
               ],
               "from": [
                 "NULL",
@@ -801,8 +836,14 @@
   "rewrites": [],
   "routes": {},
   "rows": null,
+  "run_checks": {
+    "asof": [],
+    "asof_max_pairs": null,
+    "margin": []
+  },
   "run_gate": "no_rewrite",
-  "semantics": "reference",
+  "semantics": "portable",
+  "sequence_determined": false,
   "sorted": false,
   "summary": "NOT proved: 2 preconditions needed",
   "sverify": "0.9.0.dev0",

@@ -10,35 +10,35 @@
               "extensionUrns": [
                 {
                   "extensionUrnAnchor": 1,
-                  "urn": "extension:io.substrait:functions_boolean"
+                  "urn": "extension:io.substrait:functions_arithmetic"
                 },
                 {
                   "extensionUrnAnchor": 2,
-                  "urn": "extension:io.substrait:functions_comparison"
+                  "urn": "extension:io.substrait:functions_boolean"
                 },
                 {
                   "extensionUrnAnchor": 3,
-                  "urn": "extension:io.substrait:functions_string"
+                  "urn": "extension:io.substrait:functions_comparison"
                 }
               ],
               "extensions": [
                 {
                   "extensionFunction": {
-                    "extensionUrnReference": 3,
+                    "extensionUrnReference": 1,
                     "functionAnchor": 1,
-                    "name": "char_length:str"
+                    "name": "multiply:i64_i64"
                   }
                 },
                 {
                   "extensionFunction": {
-                    "extensionUrnReference": 2,
+                    "extensionUrnReference": 3,
                     "functionAnchor": 2,
                     "name": "lt:any_any"
                   }
                 },
                 {
                   "extensionFunction": {
-                    "extensionUrnReference": 1,
+                    "extensionUrnReference": 2,
                     "functionAnchor": 3,
                     "name": "not:bool"
                   }
@@ -130,10 +130,17 @@
                                         "selection": {
                                           "directReference": {
                                             "structField": {
-                                              "field": 3
+                                              "field": 1
                                             }
                                           },
                                           "rootReference": {}
+                                        }
+                                      }
+                                    },
+                                    {
+                                      "value": {
+                                        "literal": {
+                                          "i64": "2"
                                         }
                                       }
                                     }
@@ -194,34 +201,60 @@
                       }
                     },
                     "names": [
-                      "(_.n >= 0)"
+                      "(_.total >= 0)"
                     ]
                   }
                 }
               ]
             },
             "proved": true,
-            "text": "(_.n >= 0)"
+            "text": "(_.total >= 0)"
+          },
+          {
+            "entry": {
+              "class": "Unique",
+              "fields": {
+                "cols": [
+                  "id"
+                ]
+              }
+            },
+            "kind": "Unique",
+            "proved": true,
+            "text": "unique(id)"
           }
         ],
         "manifest": {
+          "asof_max_pairs": null,
           "assumptions": [],
           "checker_contract": {
-            "ensures_keys": [],
+            "ensures_keys": [
+              [
+                0.0
+              ]
+            ],
             "keys": {
-              "orders": []
+              "orders": [
+                [
+                  0.0
+                ]
+              ]
             },
             "max_rows": {},
+            "ranges": {},
             "references": {
               "orders": []
             },
-            "rows_per": {}
+            "rows_per": {},
+            "text": {
+              "orders": {}
+            }
           },
           "class": "exact",
           "deterministic": true,
           "evidence": "proved",
           "extension_urns": [
-            "extension:io.substrait:functions_string"
+            "extension:io.substrait:functions_arithmetic"
           ],
           "format": 3.0,
           "lenses": "equivalent(elements='multiset', floats=plan, zeros='canon')",
@@ -237,12 +270,24 @@
           },
           "output": {
             "id": "int64",
-            "n": "!int64"
+            "total": "!int64"
           },
           "params": [],
-          "pinned": [],
+          "pinned": [
+            {
+              "functions": [
+                "multiply:i64_i64"
+              ],
+              "group": "int.arith",
+              "option": "overflow",
+              "values": [
+                "ERROR"
+              ],
+              "yaml_option": "overflow"
+            }
+          ],
           "rows": null,
-          "semantics": "substrait",
+          "semantics": "portable",
           "shims": [],
           "shims_mode": "apply",
           "substrait": "0.106.0",
@@ -269,7 +314,7 @@
                   "extensionFunction": {
                     "extensionUrnReference": 2,
                     "functionAnchor": 1,
-                    "name": "is_null:any"
+                    "name": "lt:any_any"
                   }
                 },
                 {
@@ -305,10 +350,17 @@
                                             "selection": {
                                               "directReference": {
                                                 "structField": {
-                                                  "field": 3
+                                                  "field": 1
                                                 }
                                               },
                                               "rootReference": {}
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "value": {
+                                            "literal": {
+                                              "i64": "0"
                                             }
                                           }
                                         }
@@ -384,16 +436,149 @@
               ]
             },
             "table": "orders",
-            "text": "_.region.notnull()"
+            "text": "(_.amount >= 0)"
+          },
+          {
+            "kind": "row",
+            "plan": {
+              "extensionUrns": [
+                {
+                  "extensionUrnAnchor": 1,
+                  "urn": "extension:io.substrait:functions_comparison"
+                }
+              ],
+              "extensions": [
+                {
+                  "extensionFunction": {
+                    "extensionUrnReference": 1,
+                    "functionAnchor": 1,
+                    "name": "lt:any_any"
+                  }
+                }
+              ],
+              "relations": [
+                {
+                  "root": {
+                    "input": {
+                      "project": {
+                        "common": {
+                          "emit": {
+                            "outputMapping": [
+                              4
+                            ]
+                          }
+                        },
+                        "expressions": [
+                          {
+                            "scalarFunction": {
+                              "arguments": [
+                                {
+                                  "value": {
+                                    "selection": {
+                                      "directReference": {
+                                        "structField": {
+                                          "field": 1
+                                        }
+                                      },
+                                      "rootReference": {}
+                                    }
+                                  }
+                                },
+                                {
+                                  "value": {
+                                    "literal": {
+                                      "i64": "1000"
+                                    }
+                                  }
+                                }
+                              ],
+                              "functionReference": 1,
+                              "outputType": {
+                                "bool": {
+                                  "nullability": "NULLABILITY_NULLABLE"
+                                }
+                              }
+                            }
+                          }
+                        ],
+                        "input": {
+                          "read": {
+                            "baseSchema": {
+                              "names": [
+                                "id",
+                                "amount",
+                                "x",
+                                "region"
+                              ],
+                              "struct": {
+                                "nullability": "NULLABILITY_REQUIRED",
+                                "types": [
+                                  {
+                                    "i64": {
+                                      "nullability": "NULLABILITY_NULLABLE"
+                                    }
+                                  },
+                                  {
+                                    "i64": {
+                                      "nullability": "NULLABILITY_NULLABLE"
+                                    }
+                                  },
+                                  {
+                                    "fp64": {
+                                      "nullability": "NULLABILITY_NULLABLE"
+                                    }
+                                  },
+                                  {
+                                    "string": {
+                                      "nullability": "NULLABILITY_NULLABLE"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            "namedTable": {
+                              "names": [
+                                "orders"
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "names": [
+                      "c"
+                    ]
+                  }
+                }
+              ]
+            },
+            "table": "orders",
+            "text": "(_.amount < 1000)"
+          },
+          {
+            "entry": {
+              "class": "Unique",
+              "fields": {
+                "cols": [
+                  "id"
+                ]
+              }
+            },
+            "kind": "Unique",
+            "table": "orders",
+            "text": "unique(id)"
           }
         ]
       }
     ]
   },
+  "expectedTypeUrls": [
+    "type.googleapis.com/io.sverify.substrait.v1.Contract"
+  ],
   "extensionUrns": [
     {
       "extensionUrnAnchor": 1,
-      "urn": "extension:io.substrait:functions_string"
+      "urn": "extension:io.substrait:functions_arithmetic"
     }
   ],
   "extensions": [
@@ -401,7 +586,7 @@
       "extensionFunction": {
         "extensionUrnReference": 1,
         "functionAnchor": 1,
-        "name": "char_length:str"
+        "name": "multiply:i64_i64"
       }
     }
   ],
@@ -435,15 +620,30 @@
                         "selection": {
                           "directReference": {
                             "structField": {
-                              "field": 3
+                              "field": 1
                             }
                           },
                           "rootReference": {}
                         }
                       }
+                    },
+                    {
+                      "value": {
+                        "literal": {
+                          "i64": "2"
+                        }
+                      }
                     }
                   ],
                   "functionReference": 1,
+                  "options": [
+                    {
+                      "name": "overflow",
+                      "preference": [
+                        "ERROR"
+                      ]
+                    }
+                  ],
                   "outputType": {
                     "i64": {
                       "nullability": "NULLABILITY_NULLABLE"
@@ -498,7 +698,7 @@
         },
         "names": [
           "id",
-          "n"
+          "total"
         ]
       }
     }

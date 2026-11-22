@@ -74,7 +74,7 @@ runs proved sound against the reference (`Engine.duckdb_sound`,
 `Engine.polars_sound`, `Engine.spark_sound`).
 
 SQL strings go through SQLGlot and sverify's own lift: DuckDB's SQL
-with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`),
+with `sv.sql(query, semantics="duckdb" | "portable")` (`sverify.sql_lift`),
 whose two profiles are generated Lean modules
 (`engines/duckdb/Sverify/DuckDB/Lift/Duckdb` and `Reference`). The reference is
 Lean's reference profile, and DuckDB is the default oracle.
@@ -175,7 +175,7 @@ Lean's reference profile, and DuckDB is the default oracle.
 * The lift is generated too: the lowering search run backwards.
   `engines/duckdb/Sverify/DuckDB/SQL.lean` states what DuckDB's SQL functions mean
   (`DuckFn`, at one signature each) under `semantics="duckdb"` and
-  `"reference"`: `/` of integers divides as doubles, `%` of doubles is C's
+  `"portable"`: `/` of integers divides as doubles, `%` of doubles is C's
   `fmod`, `log` is base 10, and with DuckDB's semantics `±∞`, NaN where
   DuckDB gives them. It is trusted, like a profile, and tested against the
   engine (oracle A). `generate_lift` (`engines/duckdb/Sverify/DuckDB/LiftSearch.lean`)

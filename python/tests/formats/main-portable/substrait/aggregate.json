@@ -487,6 +487,7 @@
           }
         ],
         "manifest": {
+          "asof_max_pairs": null,
           "assumptions": [],
           "checker_contract": {
             "ensures_keys": [
@@ -500,10 +501,14 @@
             "max_rows": {
               "orders": 1000.0
             },
+            "ranges": {},
             "references": {
               "orders": []
             },
-            "rows_per": {}
+            "rows_per": {},
+            "text": {
+              "orders": {}
+            }
           },
           "class": "exact",
           "deterministic": true,
@@ -544,7 +549,7 @@
             }
           ],
           "rows": 1000.0,
-          "semantics": "reference",
+          "semantics": "portable",
           "shims": [],
           "shims_mode": "apply",
           "substrait": "0.106.0",
@@ -827,6 +832,9 @@
       }
     ]
   },
+  "expectedTypeUrls": [
+    "type.googleapis.com/io.sverify.substrait.v1.Contract"
+  ],
   "extensionUrns": [
     {
       "extensionUrnAnchor": 1,
