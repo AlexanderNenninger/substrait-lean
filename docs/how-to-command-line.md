@@ -239,6 +239,3 @@ given wins over the variable, and the variable over the default.
 | `SVERIFY_CACHE_DIR` | | | `$XDG_CACHE_HOME/sverify`, else `~/.cache/sverify` | where the proof cache lives |
 | `SVERIFY_SECRETS` | | `Resolver.from_config(path)` | the nearest `pyproject.toml` | the TOML file whose `[tool.sverify.secrets]` table configures named secrets ([Credentials](how-to-credentials.md#credentials)) |
 | `SVERIFY_PREBUILT_CHECKER` | | | | for contributors: an editable install links this checker and skips `lake build` |
-
-`SVERIFY_CHECK` and `SVERIFY_SPILL_DIRECTORY`, their names in 0.6, are read
-too, with a `DeprecationWarning`.

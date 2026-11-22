@@ -68,7 +68,7 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 from sverify._engines import translations
 from sverify._unsupported import SverifyError, SverifyWarning
-from sverify.observation import Observation, Within, _deterministic_arg
+from sverify.observation import Observation, Within
 
 if TYPE_CHECKING:
     from sverify.report import Report
@@ -1300,15 +1300,17 @@ def not_verified(report: Report) -> str:
     """Why a plan is not verified, in the user's terms: each runtime error
     that may happen and each postcondition that is not proved, with where
     the report keeps them, and how to run it anyway."""
+    from sverify._user_text import plain
+
     parts = [f"may fail: {i}" for i in report.errors]
     see = ["report.errors"] if report.errors else []
     for c in report._unmet_ensures():
         if not c.proved:
-            parts.append(f"ensures {c.label} is not proved: {c.why}")
+            parts.append(f"ensures {plain(c.label)} is not proved: {c.why}")
         else:
             from sverify import observation as _observation
 
-            parts.append(f"ensures {c.label} {_observation.why(c.ignores)}")
+            parts.append(f"ensures {plain(c.label)} {_observation.why(c.ignores)}")
         if "report.unproved" not in see:
             see.append("report.unproved")
     parts += [f"needs {n}" for n in report._needs_lines()]
@@ -1350,7 +1352,6 @@ def choose(
     engine: Any,
     route: RouteKind | Literal["auto"] = "auto",
     *,
-    deterministic: bool | None = None,
     version: str | None = None,
     reproducible: Observation | None = None,
 ) -> Route:
@@ -1362,7 +1363,6 @@ def choose(
         route: `"auto"` (the default) tries `"native"`, `"translated"`,
             `"transfer"` and `"recheck"` in turn; a route by name is taken or
             refused.
-        deterministic: Deprecated: `reproducible=sv.equivalent()`.
         reproducible: What a rerun must reproduce, as an
             idempotent sink needs: the engine's run-to-run variation must
             refine it (`reproducibility`), or the route is refused. None
@@ -1416,7 +1416,6 @@ def choose(
             cap = max_rows_fix(report, e, report.lenses)
             return replace(refuse(not_verified(report) + _cap_text(cap)), suggested=cap)
         return refuse(not_verified(report))
-    reproducible = _deterministic_arg("choose", deterministic, reproducible)
     rerun_evidence: Evidence | None = None
     if reproducible is not None:
         problems, rerun_evidence = reproducibility(report, e, reproducible)

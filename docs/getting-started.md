@@ -17,12 +17,13 @@ against the comment under it.
 
 ```bash
 # skip: installs software on the reader's machine
-pip install sverify                 # or: uv add sverify
 pip install 'sverify[duckdb,polars,delta]' # the steps below use DuckDB, Polars and Delta Lake
+pip install sverify                 # verifies only, runs no engine
 ```
 
-The core runs on DuckDB: contracts, incremental maintenance, and SQL for
-DuckDB, Snowflake and Spark. The extras add `polars`, `spark` (needs Java 17
+The `duckdb` extra runs plans on DuckDB and maintains views incrementally;
+the core verifies contracts and writes SQL for DuckDB, Snowflake and Spark.
+The other extras add `polars`, `spark` (needs Java 17
 or 21), `delta`, `iceberg`, `flight`, `testing`, `odcs` and `openlineage`;
 `all` brings every one of them. `polars` and `spark` install the engine packages `sverify-polars`
 and `sverify-spark` with their runtimes. Wheels bundle the Lean checker as a
@@ -124,6 +125,12 @@ print(report.run(con).to_pylist())
 
 `report.run` refuses a report that did not prove (`report.verdict == sv.Verdict.PROVED` is False)
 with a `RouteError`; `report.run(con, unverified=True)` runs it anyway.
+A verified plan is proved (`report.verdict`) and determined up to what its
+profile observes (`report.deterministic`): every result the reference allows
+is the same answer up to that observation, so every sound engine gives it
+([Terminology](core-semantics.md#terminology)). `report.run` checks the
+verdict alone, so a proved plan that is not determined runs, and its rows may
+differ between engines where the reference leaves them open.
 
 The SQL is DuckDB's dialect, read with sverify's reference semantics
 (`semantics="duckdb"` reads it as DuckDB computes it). Where the two differ on

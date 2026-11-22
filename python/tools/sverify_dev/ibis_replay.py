@@ -323,7 +323,7 @@ def pytest_runtest_logreport(report: Any) -> None:
     if report.when == "call" or (report.when == "setup" and report.outcome != "passed"):
         passed = report.outcome == "passed" and not hasattr(report, "wasxfail")
         rec = {"test": report.nodeid, "passed": passed, "replays": list(_current["replays"])}
-        with open(os.environ["SVERIFY_IBIS_REPLAY_OUT"], "a") as f:
+        with open(os.environ["SVERIFY_IBIS_REPLAY_OUT"], "a", encoding="utf-8") as f:
             f.write(json.dumps(rec) + "\n")
         _current["test"] = None
 

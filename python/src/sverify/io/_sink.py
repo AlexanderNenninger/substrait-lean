@@ -193,11 +193,11 @@ class Sink:
             def contract(self, version=None):
                 if not self.record.exists():
                     return None
-                return Contract.from_json(self.record.read_text())
+                return Contract.from_json(self.record.read_text(encoding="utf-8"))
 
             def write(self, change):
                 pq.write_table(change.table, self.path)
-                self.record.write_text(change.contract.to_json())
+                self.record.write_text(change.contract.to_json(), encoding="utf-8")
 
 
         @sv.transform()

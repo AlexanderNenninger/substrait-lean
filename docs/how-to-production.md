@@ -138,7 +138,8 @@ also runs the node on those rows, checks the preconditions and
 postconditions on them, and diffs the output against the expected rows.
 `assert_engines_agree(node, data)` runs it on every installed engine and
 diffs their results. `cases(node)` is a Hypothesis strategy of inputs that
-meet the preconditions (`pip install 'sverify[testing]'`). The fixtures are
+meet the preconditions (`pip install 'sverify[testing]'`, beside an engine's
+extra such as `sverify[testing,duckdb]`, since it checks them on an engine). The fixtures are
 `sv_source(rows, schema, name=...)`, an in-memory source, and `sv_engine`,
 which runs a test once per installed engine (`--sv-engines=duckdb,polars`
 picks them). [`python/tests/test_plugin_example.py`](../python/tests/test_plugin_example.py)

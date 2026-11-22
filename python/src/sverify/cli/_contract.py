@@ -53,5 +53,7 @@ def cmd_export(args: argparse.Namespace) -> int:
     if out is None:
         sys.stdout.write(odcs.dumps(doc, "yaml"))
     else:
-        Path(out).write_text(odcs.dumps(doc, "json" if out.endswith(".json") else "yaml"))
+        Path(out).write_text(
+            odcs.dumps(doc, "json" if out.endswith(".json") else "yaml"), encoding="utf-8"
+        )
     return OK

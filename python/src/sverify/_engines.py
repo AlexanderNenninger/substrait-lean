@@ -31,6 +31,38 @@ NAMED: frozenset[str] = frozenset(_FOUND)
 MODULES: Mapping[str, tuple[str, ...]] = {e: p.modules for e, p in _FOUND.items()}
 
 
+def _engine_extras() -> dict[str, str]:
+    """The extras of sverify named for the engine package they install, with
+    that package's module (`polars`: `sverify-polars`, so `sverify_polars`),
+    read from sverify's own metadata."""
+    import re
+    from importlib.metadata import PackageNotFoundError, requires
+
+    try:
+        reqs = requires("sverify") or []
+    except PackageNotFoundError:
+        return {}
+    found = (re.match(r"sverify-([\w-]+).*extra *== *['\"]([\w-]+)['\"]", r) for r in reqs)
+    return {m.group(2): f"sverify_{m.group(1)}" for m in found if m and m.group(1) == m.group(2)}
+
+
+def not_installed(name: object) -> ImportError | None:
+    """The error for a name of an engine sverify installs as an extra, where
+    the engine's package or a module it runs on is missing: it names the
+    extra. None for any other name."""
+    from importlib.util import find_spec
+
+    if not isinstance(name, str) or (module := _engine_extras().get(name.lower())) is None:
+        return None
+    p = plugins().get(name.lower())
+    # A package that is installed but registers no plugin is a broken
+    # install (`profiles.MISSING_BUILTINS`), which no extra fixes.
+    modules = (*(p.modules or (p.engine,)), module) if p is not None else (module,)
+    if all(find_spec(m) is not None for m in modules):
+        return None
+    return ImportError(f"engine {name!r} is not installed: pip install 'sverify[{name.lower()}]'")
+
+
 def default() -> str:
     """The engine that runs plans where none is named: the installed one that
     says so (`ProfilePlugin.default`), or else the first local one. `verify`

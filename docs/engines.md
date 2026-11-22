@@ -32,8 +32,8 @@ written SQL; the `all` extra installs every engine in it
 
 ```bash
 # skip: installs software on the reader's machine
+pip install 'sverify[duckdb]'          # DuckDB: runs plans, holds tables, incremental maintenance
 pip install sverify                    # verify, contracts, DuckDB and Snowflake SQL (no engine runs plans)
-pip install 'sverify[duckdb]'          # and DuckDB: runs plans, holds tables, incremental maintenance
 pip install 'sverify[polars]'          # and Polars
 pip install 'sverify[spark]'           # and Spark (needs Java 17 or 21)
 pip install 'sverify[all]'             # every engine in the promise, Delta, Iceberg and the rest

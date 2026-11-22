@@ -438,7 +438,9 @@ def write(node: Node, path: str | Path, **kwargs: Any) -> dict[str, Any]:
         The document written.
     """
     doc = export(node, **kwargs)
-    Path(path).write_text(dumps(doc, "json" if str(path).endswith(".json") else "yaml"))
+    Path(path).write_text(
+        dumps(doc, "json" if str(path).endswith(".json") else "yaml"), encoding="utf-8"
+    )
     return doc
 
 
@@ -581,7 +583,7 @@ def _load(source: str | Path | Mapping[str, Any]) -> dict[str, Any]:
     text = str(source)
     path = Path(text) if "\n" not in text and len(text) < 4096 else None
     if path is not None and path.is_file():
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         if path.suffix == ".json":
             return json.loads(text)
     stripped = text.lstrip()

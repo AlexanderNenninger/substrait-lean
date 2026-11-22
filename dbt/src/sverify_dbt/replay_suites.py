@@ -135,10 +135,13 @@ def write(case: Case, project: Path, profile: str = "replay") -> None:
     for rel, text in case.files.items():
         target = project / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text)
+        target.write_text(text, encoding="utf-8")
     base = {"name": "replay", "version": "1.0", "config-version": 2, "profile": profile}
-    (project / "dbt_project.yml").write_text(yaml.safe_dump({**base, **case.config}))
+    (project / "dbt_project.yml").write_text(
+        yaml.safe_dump({**base, **case.config}), encoding="utf-8"
+    )
     (project / "profiles.yml").write_text(
         f"{profile}:\n  target: duckdb\n  outputs:\n"
-        f'    duckdb: {{type: duckdb, path: "{project / "replay.duckdb"}", threads: 2}}\n'
+        f'    duckdb: {{type: duckdb, path: "{project / "replay.duckdb"}", threads: 2}}\n',
+        encoding="utf-8",
     )

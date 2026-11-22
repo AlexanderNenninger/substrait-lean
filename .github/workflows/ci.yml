@@ -970,6 +970,9 @@ jobs:
       - run: uv sync
       - run: |
           uv run --no-sync ruff check .
+          # Text files name their encoding (PLW1514, a preview rule, alone), as
+          # sverify's `poe lint` checks: Windows reads cp1252 otherwise (#183).
+          uv run --no-sync ruff check --preview --select PLW1514 .
           uv run --no-sync ruff format --check .
           uv run --no-sync pyrefly check
       # The sample project's packages once: the tests' copies of it take
