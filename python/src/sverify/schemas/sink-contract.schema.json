@@ -57,6 +57,11 @@
       "type": "object",
       "additionalProperties": {"type": "string"}
     },
+    "fingerprints": {
+      "description": "What identifies each source that names its place and has no table id (a Flight server and table, as `flight:<location>/<table>`), by source name. Absent in records written before it.",
+      "type": "object",
+      "additionalProperties": {"type": "string"}
+    },
     "engine": {
       "description": "The engine that computed the state (sverify.engines). Absent in records written before these fields.",
       "type": "string"

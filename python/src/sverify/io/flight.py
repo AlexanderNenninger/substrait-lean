@@ -42,6 +42,7 @@ except ImportError as e:  # pragma: no cover - pyarrow built without Flight
         "sverify.io.flight needs pyarrow with Flight: pip install 'sverify[flight]'"
     ) from e
 
+from sverify.io._common import public_uri
 from sverify.io._secrets import Secret
 from sverify.io._source import Batch, Source
 
@@ -135,6 +136,9 @@ class FlightSource(Source):
 
     def __repr__(self) -> str:
         return f"FlightSource({self.location!r}, {self.table!r})"
+
+    def _fingerprint(self) -> str:
+        return f"flight:{public_uri(self.location)}/{self.table}"
 
     def _get(
         self, after: int | None, until: int | None = None
