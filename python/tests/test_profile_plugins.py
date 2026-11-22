@@ -268,7 +268,7 @@ def test_an_engine_beside_a_sverify_of_another_build_says_which_to_align(engine)
 
 #: PLUGIN_API and ProfilePlugin's fields; change both together.
 PINNED = (
-    4,
+    5,
     (
         "engine",
         "versions",
@@ -279,6 +279,7 @@ PINNED = (
         "installed_version",
         "restore",
         "runner",
+        "credentials",
         "rows",
         "local",
         "session",
@@ -323,3 +324,89 @@ def test_the_report_names_the_front_end_that_read_the_sql(sql_dialects: None) ->
     assert "sql read by test_profile_plugins (toy)" in toy.notes
     duck = sv.verify(sv.sql("SELECT a AS b FROM t", t=t), on_inferred="off")
     assert duck._sql_front_ends == ()
+
+
+# An engine from outside that runs plans (#852): a runner and the secrets it
+# takes, but no store. The toy runner hands the plan to DuckDB and keeps what
+# it was given.
+
+_GIVEN: dict[str, Any] = {}
+
+
+def _toy_runner(con, plan_json, session, *, keep, finite, tie_free, credentials=None, **_):
+    from sverify.engines import run
+
+    _GIVEN["credentials"] = credentials
+    return run(con, plan_json, "duckdb", finite=finite, tie_free=tie_free)
+
+
+TOY_RUNNER = ProfilePlugin(
+    engine="toyrun",
+    runner=_toy_runner,
+    rows="multiset",
+    translation="the toy runner's writer",
+    credentials={"token": "toyrun-token"},
+)
+
+
+@pytest.fixture
+def toy_runner(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    found = [*entry_points(group=profiles.GROUP), _EntryPoint("toyrun", TOY_RUNNER)]
+    monkeypatch.setattr(profiles, "entry_points", lambda group: found)
+    profiles.plugins.cache_clear()
+    _GIVEN.clear()
+    yield
+    profiles.plugins.cache_clear()
+
+
+@sv.transform()
+def _positive(t):
+    return t.filter(t.x > 0)
+
+
+def _toy_node():
+    from sverify.io import StaticSource
+
+    return _positive(StaticSource(pa.table({"x": [-1, 2, 3]}), name="t"))
+
+
+def test_a_plugin_engine_runs_by_name_and_gets_its_secrets_by_reference(
+    toy_runner: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`sverify.engines.run` runs a plan on an engine a package registers, by
+    its name, and hands its runner the secrets it takes as `Secret`
+    references resolved through the configured resolver (#775): no value
+    passes through sverify."""
+    from sverify.engines import run
+    from sverify.io import Secret
+
+    assert "plugin" in (run.__doc__ or "")
+    con = sv.connect()
+    con.create("t", ibis.schema({"x": "int64"}), [(-1,), (2,), (3,)])
+    plan = _toy_node().internal_plan
+    monkeypatch.setenv("TOYRUN_TOKEN", "by-name")
+    monkeypatch.setenv("OTHER_TOKEN", "by-reference")
+    assert sorted(r["x"] for r in run(con, plan, "toyrun").to_pylist()) == [2, 3]
+    token = _GIVEN["credentials"]["token"]
+    assert isinstance(token, Secret) and token.ref == "toyrun-token"
+    assert token.value() == "by-name"
+    run(con, plan, "toyrun", credentials={"token": "env:OTHER_TOKEN"})
+    assert _GIVEN["credentials"]["token"].value() == "by-reference"
+    with pytest.raises(
+        ValueError, match="'toyrun' takes no secret 'password'; its runner takes 'token'"
+    ):
+        run(con, plan, "toyrun", credentials={"password": "env:OTHER_TOKEN"})
+    with pytest.raises(ValueError, match="'duckdb' takes no secret 'token'"):
+        run(con, plan, "duckdb", credentials={"token": "env:OTHER_TOKEN"})
+
+
+def test_a_plugin_engine_without_a_store_refuses_a_refresh_by_name(toy_runner: None) -> None:
+    """A refresh keeps state on its engine (`ProfilePlugin.store`): on a
+    plugin engine that has none, it is refused by the engine's name, with
+    the engines that have one and the one-shot run in the message."""
+    with pytest.raises(
+        ValueError,
+        match=r"'toyrun' keeps no pipeline state .*'duckdb'"
+        r".*sverify\.engines\.run\(con, plan, 'toyrun'\)",
+    ):
+        _toy_node().refresh(engine="toyrun")
