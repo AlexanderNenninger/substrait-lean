@@ -216,7 +216,7 @@ order of arrival, never changes one, and drops only whole batches below its
 floor. `sverify.testing.FlightLog()` is a small in-memory server that keeps such a log
 (`keep=` batches per table, or `drop(table, below=n)`), the one
 [the tests](../python/tests/test_io_flight.py) run against. With `schema=`, a
-`FlightSource` proves contracts without asking the server, and `secret=`
+`FlightSource` proves contracts without asking the server, and `credentials=`
 names a bearer token ([Credentials](how-to-credentials.md#credentials)):
 
 ```python

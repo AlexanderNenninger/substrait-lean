@@ -120,7 +120,7 @@ def test_the_delta_tables_hold_a_merge_and_maintenance(delta) -> None:
     the maintained table was compacted, checkpointed and vacuumed by the
     sink, so the readers below read past each."""
     merge = delta["merge"]
-    assert merge.mode == "merge" and (merge.inserted, merge.deleted) == (2, 1)
+    assert merge.mode == "merge" and (merge.inserts, merge.deletes) == (2, 1)
     before = DeltaTable(delta["uris"]["merged"], version=merge.version - 1)
     assert (None, 1) in _rows(before.to_pyarrow_table())
     maintained = delta["uris"]["maintained"]
@@ -214,7 +214,7 @@ def test_the_iceberg_tables_hold_a_delete_and_maintenance(iceberg) -> None:
     from pyiceberg.table.snapshots import Operation
 
     cat, idents = iceberg["catalog"], iceberg["idents"]
-    assert iceberg["merge"].deleted == 1
+    assert iceberg["merge"].deletes == 1
     tasks = list(cat.load_table(idents["merged"]).scan().plan_files())
     assert sum(len(t.delete_files) for t in tasks) >= 1
     ops = {s.summary.operation for s in cat.load_table(idents["maintained"]).snapshots()}

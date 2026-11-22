@@ -24,7 +24,7 @@ class Fix:
     transform: str
     conditions: dict[str, list[str]]
     placed: bool = False
-    reason: str | None = None
+    why: str | None = None
     edits: list[tuple[int, int, str]] = field(default_factory=list)
     """The edits that place it, as byte ranges of the file and their new
     text; the `from ibis import _` it needs goes with the first fix."""
@@ -72,7 +72,7 @@ def place(path: Path, checked: list[Checked]) -> Plan:
     plan = Plan(fixes(checked))
     if path.suffix == ".sql":
         for fix in plan.fixes:
-            fix.reason = f"{path.name} is SQL: it has no requires= to place the conditions in"
+            fix.why = f"{path.name} is SQL: it has no requires= to place the conditions in"
         return plan
     if not plan.fixes:
         return plan
@@ -93,11 +93,11 @@ def place(path: Path, checked: list[Checked]) -> Plan:
         t = next(t for t in transforms.values() if t.name == fix.transform)
         call = _decorator(tree, t)
         if call is None:
-            fix.reason = f"no @transform(...) decorator of {fix.transform} in {path.name}"
+            fix.why = f"no @transform(...) decorator of {fix.transform} in {path.name}"
             continue
         edit = _requires_edit(call, fix.conditions, at, len(inspect.signature(t.fn).parameters))
         if isinstance(edit, str):
-            fix.reason = edit
+            fix.why = edit
             continue
         edits += edit
         fix.placed, fix.edits = True, list(edit)

@@ -431,7 +431,7 @@ print(parity.verdict)
 # proved
 print(parity.run(con, "polars", route="auto").column("odd").to_pylist())
 # [1, 0, 1, 0]
-print(parity.routes["polars"].kind)
+print(parity.routes["polars"].taken)
 # translated
 ```
 

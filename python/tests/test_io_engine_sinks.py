@@ -104,7 +104,7 @@ def follow(tmp_path, monkeypatch, make_source, make_sink, read_sink, steps):
             no_arrow_writes(m)
             duck = nodes["duckdb"].refresh(engine="duckdb").writes[0]
         arrow = nodes["polars"].refresh(engine="polars").writes[0]
-        assert (duck.inserted, duck.deleted) == (arrow.inserted, arrow.deleted)
+        assert (duck.inserts, duck.deletes) == (arrow.inserts, arrow.deletes)
         got, want = read_sink("duckdb"), read_sink("polars")
         assert got.num_rows == want.num_rows and same(got, want)
         assert same(got, nodes["duckdb"].to_arrow())
@@ -182,11 +182,11 @@ def test_delta_decimals_and_empty_writes(tmp_path):
         .pipe(lambda o: o.filter(o.id > 5))
         .write(DeltaSink(str(tmp_path / "s")))
     )
-    assert node.refresh(engine="duckdb").writes[0].inserted == 0
+    assert node.refresh(engine="duckdb").writes[0].inserts == 0
     write_deltalake(
         path, pa.table({"id": [7], "price": rows.column("price").slice(0, 1)}), mode="append"
     )
-    assert node.refresh(engine="duckdb").writes[0].inserted == 1
+    assert node.refresh(engine="duckdb").writes[0].inserts == 1
     got = DeltaTable(str(tmp_path / "s")).to_pyarrow_table().to_pylist()
     assert got == [{"id": 7, "price": Decimal("1.25")}]
 

@@ -130,7 +130,7 @@ class CheckResult:
     def suggestions(self) -> list[Suggestion]:
         """The tests sverify suggests adding, so that it proves more: what
         each model needs (`Report.needs`), and the tests on the inputs under
-        which an unproved test would hold (`CheckedCondition.needs`).
+        which an unproved test would hold (`Postcondition.needs`).
         One per relation, column and test."""
         by_ref = {r.ref: r for r in self.relations.values()}
         out: dict[tuple, Suggestion] = {}
@@ -250,7 +250,7 @@ class CheckResult:
             d.pop("sql", None)
             items.append(_item(m) | d)
         return {
-            "format": 1,
+            "format": 2,
             "sverify": version("sverify"),
             "command": "check",
             "exit": exit_code,
