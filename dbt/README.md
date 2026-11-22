@@ -124,6 +124,8 @@ result["stg_orders"].by_status("proved")
 result.write_selectors("path/to/project/selectors.yml")
 ```
 
+The agent skill `sverify-patterns` (in `sverify/skills/`) has the SQL form of common patterns with the contract each proves: deduplicating, sessionizing, reconciling, funnels, slowly changing dimensions, running balances and gap filling. Each SQL form runs through `sv.sql` as a dbt model's body does.
+
 ## How a project becomes contracts
 
 Each model is checked on its own, the way dbt builds it. Its compiled SQL is

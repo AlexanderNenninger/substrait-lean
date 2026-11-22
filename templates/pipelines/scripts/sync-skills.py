@@ -11,7 +11,9 @@ import sys
 from importlib.resources import files
 from pathlib import Path
 
-SKILLS = ("sverify", "sverify-pipelines", "sverify-engines")
+SKILLS = sorted(
+    d.name for d in (files("sverify") / "skills").iterdir() if (d / "SKILL.md").is_file()
+)
 DEST = Path(__file__).resolve().parent.parent / ".claude" / "skills"
 
 
