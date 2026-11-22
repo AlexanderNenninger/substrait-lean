@@ -34,6 +34,7 @@ Closed since:
 
 | Note | Issue | Addition |
 |---|---|---|
+| 11 | [substrait-lean#704](https://github.com/AlexanderNenninger/substrait-lean/issues/704) | `Report.output` types a column `nullable=False` where the checker proves it never NULL, and `Report.facts: dict[str, ColumnFacts]` holds `nullable`, `lower` and `upper` as data, with the old text as `str()` (ruling 184; no value set yet) |
 | 17 | [substrait-lean#708](https://github.com/AlexanderNenninger/substrait-lean/issues/708) | A finite value set per string column in the range analysis, up to 64 strings |
 
 Filed (larger than substrait-lean#685; the checklist is [substrait-lean#692](https://github.com/AlexanderNenninger/substrait-lean/issues/692)):
@@ -44,7 +45,7 @@ Filed (larger than substrait-lean#685; the checklist is [substrait-lean#692](htt
 | 3 | [substrait-lean#700](https://github.com/AlexanderNenninger/substrait-lean/issues/700) | `Unsupported.construct: str \| None` (`"function md5"`, `"WITH RECURSIVE"`) and `Unsupported.sql: str \| None`, set at each refusal site of the lift and the producer |
 | 6 | [substrait-lean#701](https://github.com/AlexanderNenninger/substrait-lean/issues/701) | `CheckedCondition.needs: tuple[str, ...]`, the needed preconditions its proof used, and `proved` False when it is not empty; needs the checker to report which conditions used which inferred bound |
 | 7, 8, 9 | [substrait-lean#687](https://github.com/AlexanderNenninger/substrait-lean/issues/687), [substrait-lean#702](https://github.com/AlexanderNenninger/substrait-lean/issues/702), [substrait-lean#703](https://github.com/AlexanderNenninger/substrait-lean/issues/703) | `Issue.shown` from the user's SQL only; no domain error and no assumed `SUM` under `semantics="duckdb"` where DuckDB completes the operation or widens the type |
-| 10, 11 | [substrait-lean#703](https://github.com/AlexanderNenninger/substrait-lean/issues/703), [substrait-lean#704](https://github.com/AlexanderNenninger/substrait-lean/issues/704) | `Report.output` with DuckDB's types under `semantics="duckdb"`, `nullable=False` where proved; `Report.column_facts: dict[str, ColumnFacts]` (nullability, bounds, value set) |
+| 10 | [substrait-lean#703](https://github.com/AlexanderNenninger/substrait-lean/issues/703) | `Report.output` with DuckDB's types under `semantics="duckdb"` |
 | 12 | [substrait-lean#705](https://github.com/AlexanderNenninger/substrait-lean/issues/705) | `Report.ensured -> dict[str, list[Condition]]` (keys, NOT NULL, bounds of the result), in the form `requires` takes, to chain `verify` calls |
 | 14 | [substrait-lean#706](https://github.com/AlexanderNenninger/substrait-lean/issues/706) | `tables` keys qualified as DuckDB resolves names (`"shop.main.orders"`) |
 | 15 | [substrait-lean#707](https://github.com/AlexanderNenninger/substrait-lean/issues/707) | `sv.unique(*cols, nulls="distinct")`, a key that lets NULLs repeat (needs a key kind in Lean's `Rel.keys`) |
@@ -240,9 +241,12 @@ strings only.
 
 Sverify-dbt proves `c IS NOT NULL` as a condition instead of reading it.
 
-Proposed: `Report.output` types with `nullable=False` where the checker
-proves the column never NULL, and the facts as data (`Report.column_facts`:
-nullability, integer bounds, the set of a string's values).
+Closed by [substrait-lean#704](https://github.com/AlexanderNenninger/substrait-lean/issues/704)
+(ruling 184): `Report.output` types a column `nullable=False` where the
+checker proves it never NULL, and `report.facts["c"]` is a `ColumnFacts`
+(`nullable`, `lower`, `upper`), whose `str()` is the text above. A string's
+value set is not part of it yet. Sverify-dbt can read
+`report.facts[c].nullable` in place of its added `c IS NOT NULL`.
 
 ### 12. Facts proved of one model do not reach the next
 
