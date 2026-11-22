@@ -4,8 +4,8 @@ description: >-
   have sverify use it: the editable install links it (SVERIFY_PREBUILT_CHECKER,
   python/hatch_build.py) without running lake, and SVERIFY_CHECKER names it.
   On an ARM runner (the Hetzner hosts) that x86-64 binary cannot run, so it
-  takes the ARM checker from the cache (`arm-cache.yml` warms it on main) or
-  builds it, as `checker` does.
+  takes an ARM checker from the cache or builds it, as `checker` does (the
+  first Hetzner plan was ARM; the hosts are x86 now).
 runs:
   using: composite
   steps:

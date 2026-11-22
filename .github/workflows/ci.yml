@@ -86,14 +86,14 @@ permissions:
 # again): with no runners left, the probe would queue for good.
 #
 # The longest jobs (`lean`, `evidence`, `dbt`, `outside-repo`) may run on the
-# fixed Hetzner hosts instead (agentic-tools/hetzner-runner: five ARM64
-# servers of 4 vCPU and 8 GB, one job each in a fresh container, label
-# `hetzner`; those taking the checker build an ARM one, and `arm-cache.yml`
-# warms their caches on main), when the repository
-# variable `HETZNER_RUNNERS` is `on` and `hetzner-probe` starts within the
-# same 3 minutes; otherwise they go where the other jobs go. Only those four:
-# a whole run would take every slot of the host at once. `gh variable set
-# HETZNER_RUNNERS --body on` turns it on, `off` (or deleting it) off.
+# fixed Hetzner hosts instead (agentic-tools/hetzner-runner: two x86 servers
+# in Helsinki, six slots of 4 vCPU and about 7.5 GB, each job in a fresh
+# container, label `hetzner`), when the repository variable `HETZNER_RUNNERS`
+# is `on` and `hetzner-probe` starts within the same 3 minutes; otherwise
+# they go where the other jobs go. Only those four: a whole run would take
+# every slot at once. `gh variable set HETZNER_RUNNERS --body on` turns it
+# on, `off` (or deleting it) off. (The checker and cache steps still handle
+# an ARM runner, from the first plan; on x86 those branches never run.)
 #
 # `changes`, `qa`, the Spark tests, `bench` (its budgets assume
 # GitHub's CPUs), `float-bounds` and `refresh-model` always run on GitHub's
@@ -147,7 +147,7 @@ jobs:
           light='"ubuntu-latest"'
           [ "$aws" = up ] && light='["self-hosted","linux","x64","aws"]'
           heavy=$light
-          [ "$hz" = up ] && heavy='["self-hosted","linux","ARM64","hetzner"]'
+          [ "$hz" = up ] && heavy='["self-hosted","linux","X64","hetzner"]'
           echo "runner=$light" >> "$GITHUB_OUTPUT"
           echo "heavy=$heavy" >> "$GITHUB_OUTPUT"
           [ "$aws" != wait ] || echo "::warning::No AWS runner picked up the probe in 3 minutes: those jobs run on GitHub's runners."
@@ -164,12 +164,12 @@ jobs:
     steps:
       - run: echo "AWS runner $(hostname) is up"
 
-  # The same for the Hetzner hosts (fixed ARM64 servers, each job in a fresh
-  # container): it queues until one is free. Off unless the repository
+  # The same for the Hetzner hosts (fixed servers, each job in a fresh
+  # container): it queues until a slot is free. Off unless the repository
   # variable `HETZNER_RUNNERS` is `on`.
   hetzner-probe:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'batch/') && vars.HETZNER_RUNNERS == 'on'
-    runs-on: [self-hosted, linux, ARM64, hetzner]
+    runs-on: [self-hosted, linux, x64, hetzner]
     timeout-minutes: 2
     steps:
       - run: echo "Hetzner runner $(hostname) is up"

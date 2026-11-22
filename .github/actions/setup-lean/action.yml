@@ -6,7 +6,7 @@ inputs:
     default: "true"
   # On an ARM runner (the Hetzner hosts) a pull request's run only restores:
   # each run saving its own ~1 GB lake cache would crowd the repository's
-  # 10 GB of caches. arm-cache.yml saves the ARM caches, on main.
+  # 10 GB of caches. (The Hetzner hosts are x86 now, so this never runs.)
   save:
     description: Save .lake after the job (false restores only, for a job whose build differs from the others)
     default: "true"

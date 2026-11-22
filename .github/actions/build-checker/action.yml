@@ -16,7 +16,7 @@ runs:
   using: composite
   steps:
     # A pull request's run on an ARM runner (the Hetzner hosts) only restores
-    # (see setup-lean); arm-cache.yml saves the ARM checker on main.
+    # (see setup-lean).
     - id: key
       shell: bash
       env:
