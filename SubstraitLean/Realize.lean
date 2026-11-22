@@ -493,7 +493,7 @@ def PProb.json : PProb × EpsCol → Json
 /-- Where the plan realizes the options, met against what the postcondition observes
 (`realization`). `v` is the engine's verdict (`engineJson`): its class, evidence, shims and
 problems are the start. -/
-def realizeJson (E : EngineProfile) (ds : List Dep) (rows : List (Dep × ObsRow))
+def realizeJson (E : EngineProfile) (rows : List (Dep × ObsRow))
     (v : Json) (stated : Seen) (eps : List (String × EpsCol)) (held : List (String × Nat)) :
     Json × List Json := Id.run do
   let cls0 := match (v.getObjValAs? String "class").toOption with
@@ -569,8 +569,9 @@ def Seen.ofJson? (j : Json) : Option Seen := do
   let floats ← match j.getObjVal? "floats" with
     | .ok (.str "exact") => some Fl.exact
     | .ok (.str "plan") => some Fl.plan
-    | .ok t@(.obj _) => some (Fl.within { abs := (num "abs" t), rel := (num "rel" t),
-        ulps := ((t.getObjValAs? Nat "ulps").toOption) })
+    | .ok t@(.obj _) =>
+      let tol : Tol := { abs := num "abs" t, rel := num "rel" t, ulps := (t.getObjValAs? Nat "ulps").toOption }
+      some (Fl.within tol)
     | _ => none
   return { q := { rows := rows, elements := elements, zeros := zeros, times := times,
     strings := strings, errors := errors, decimals := decimals }, floats := floats }
@@ -648,10 +649,10 @@ def enginesJson (es : List EngineProfile) (input : Json) (rowsExact : Json)
       | some st =>
         let rows := rowsAt E ds
         let cols := epsCols epsE
-        let (realized, asked) := realizeJson E ds rows v st cols held
+        let (realized, asked) := realizeJson E rows v st cols held
         -- The problems the stated doubles meet that the plan's own bound does not.
         let added : List Json := if st.floats == .plan then [] else
-          let (_, base) := realizeJson E ds rows v { st with floats := .plan } cols []
+          let (_, base) := realizeJson E rows v { st with floats := .plan } cols []
           asked.filter (!base.contains ·)
         v.setObjVal! "realized" realized |>.setObjVal! "floats_added" (Json.arr added.toArray)
       | none => v
