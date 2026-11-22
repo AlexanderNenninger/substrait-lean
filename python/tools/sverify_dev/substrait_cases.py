@@ -391,7 +391,7 @@ def _table(r: _Reader, types: Sequence[Type] | None) -> tuple[tuple[Type, ...], 
 
 def parse_file(path: Path, root: Path) -> list[Case]:
     """The cases of one `.test` file."""
-    rel = str(path.relative_to(root))
+    rel = path.relative_to(root).as_posix()
     kind = ""
     include = ""
     frames: dict[str, tuple] = {}
@@ -450,7 +450,7 @@ def parse_all(root: Path) -> tuple[list[Case], list[tuple[str, str]]]:
         try:
             cases += parse_file(path, root)
         except (FormatError, KeyError, IndexError) as e:
-            errors.append((str(path.relative_to(root)), str(e)))
+            errors.append((path.relative_to(root).as_posix(), str(e)))
     return cases, errors
 
 

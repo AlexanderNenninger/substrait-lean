@@ -30,7 +30,10 @@ from pathlib import Path
 
 from hatchling.builders.hooks.plugin.interface import BuildHookInterface
 
-BINARY = "substrait-check"
+# Windows runs `.exe` files only. A Windows wheel is not on PyPI yet
+# (`WHEEL_PLATFORMS`): it builds with SVERIFY_BUILD_FROM_SOURCE=1 (#183).
+TARGET = "substrait-check"
+BINARY = TARGET + (".exe" if sys.platform == "win32" else "")
 
 # The (sys.platform, machine) pairs that have a wheel on PyPI.
 WHEEL_PLATFORMS = {("linux", "x86_64"), ("linux", "aarch64"), ("darwin", "arm64")}
@@ -57,6 +60,8 @@ def platform_tag() -> str:
     if sys.platform == "linux":
         # `auditwheel repair` turns this into a manylinux tag in CI.
         return f"linux_{machine}"
+    if sys.platform == "win32" and machine in ("amd64", "x86_64"):
+        return "win_amd64"
     raise RuntimeError(f"sverify wheels are not supported on {sys.platform}")
 
 
@@ -82,7 +87,7 @@ class LakeBuildHook(BuildHookInterface):
             raise RuntimeError("building sverify needs `lake` (install elan) on PATH")
         # `-R` applies the option even where a previous build set it otherwise.
         check = [] if version == "editable" else ["-R", "-Kcheck_generated=true"]
-        subprocess.run([lake, *check, "build", BINARY], cwd=repo, check=True)
+        subprocess.run([lake, *check, "build", TARGET], cwd=repo, check=True)
 
         built = repo / ".lake" / "build" / "bin" / BINARY
         if version == "editable":
@@ -91,7 +96,8 @@ class LakeBuildHook(BuildHookInterface):
             staged = Path(self.root) / "build" / BINARY
             staged.parent.mkdir(exist_ok=True)
             shutil.copy2(built, staged)
-            subprocess.run(["strip", str(staged)], check=True)
+            if sys.platform != "win32":  # Windows has no `strip`
+                subprocess.run(["strip", str(staged)], check=True)
             build_data["force_include"][str(staged)] = f"sverify/_bin/{BINARY}"
 
     def _link(self, target: Path) -> None:
@@ -101,4 +107,7 @@ class LakeBuildHook(BuildHookInterface):
         link = Path(self.root) / "src" / "sverify" / "_bin" / BINARY
         link.parent.mkdir(exist_ok=True)
         link.unlink(missing_ok=True)
-        link.symlink_to(target)
+        if sys.platform == "win32":  # a symlink needs developer mode there
+            shutil.copy2(target, link)
+        else:
+            link.symlink_to(target)

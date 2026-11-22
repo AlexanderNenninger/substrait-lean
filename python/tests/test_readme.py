@@ -12,6 +12,7 @@ The tour's notebooks are checked by `poe notebooks`.
 
 import contextlib
 import io
+import os
 import re
 import shlex
 from pathlib import Path
@@ -121,6 +122,8 @@ def run_blocks(path: Path, text: str) -> None:
         with contextlib.redirect_stdout(printed):
             exec(compile(block, f"{path.name} block {k + 1}", "exec"), namespace)
         lines = [line.rstrip() for line in printed.getvalue().splitlines()]
+        if os.sep == "\\":  # a path prints with Windows' separators; the comments write `/`
+            lines = [line.replace("\\", "/") for line in lines]
         for expected in shown_output(block):
             expected = expected.removesuffix("...").rstrip()  # "..." elides the rest
             if not expected:
