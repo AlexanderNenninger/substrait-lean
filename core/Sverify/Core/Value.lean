@@ -187,6 +187,12 @@ inductive Kind where
   | struct (fields : List Kind)
   /-- `DECIMAL(p, s)`, as its unscaled integer (#27). -/
   | dec (p s : Nat)
+  /-- An opaque column (D67): a column of a type the model does not read
+  (binary, a map, or any type containing one). The plan carries it and reads
+  nothing from it: the kind checker refuses every use but carrying it and
+  `IS NULL` (`Rel.inferKinds`). Its value is an injective image of the
+  engine's, among the existing constructors. -/
+  | opaque
   deriving Repr, BEq, Inhabited
 
 mutual
@@ -202,6 +208,7 @@ def Kind.decEq : (a b : Kind) → Decidable (a = b)
   | .tod, .tod => isTrue rfl
   | .other, .other => isTrue rfl
   | .timeTz, .timeTz => isTrue rfl
+  | .opaque, .opaque => isTrue rfl
   | .list a, .list b => match Kind.decEq a b with
     | isTrue h => isTrue (h ▸ rfl)
     | isFalse h => isFalse (by simp [h])
@@ -236,7 +243,13 @@ def Kind.decEq : (a b : Kind) → Decidable (a = b)
   | .struct _, .other | .struct _, .timeTz | .struct _, .list _ | .struct _, .dec _ _
   | .dec _ _, .int | .dec _ _, .float | .dec _ _, .time | .dec _ _, .date | .dec _ _, .str
   | .dec _ _, .bool | .dec _ _, .tod | .dec _ _, .other | .dec _ _, .timeTz | .dec _ _, .list _
-  | .dec _ _, .struct _ =>
+  | .dec _ _, .struct _
+  | .opaque, .int | .opaque, .float | .opaque, .time | .opaque, .date | .opaque, .str
+  | .opaque, .bool | .opaque, .tod | .opaque, .other | .opaque, .timeTz | .opaque, .list _
+  | .opaque, .struct _ | .opaque, .dec _ _ | .int, .opaque | .float, .opaque | .time, .opaque
+  | .date, .opaque | .str, .opaque | .bool, .opaque | .tod, .opaque | .other, .opaque
+  | .timeTz, .opaque | .list _, .opaque | .struct _, .opaque | .dec _ _, .opaque
+    =>
     isFalse (by simp)
 
 def Kind.decEqList : (as bs : List Kind) → Decidable (as = bs)

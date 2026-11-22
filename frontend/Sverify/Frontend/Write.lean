@@ -204,7 +204,9 @@ def kindType : Kind → Json
   | .list k => obj [("list", obj [("type", kindType k), ("nullability", "NULLABILITY_NULLABLE")])]
   | .struct ks => obj [("struct", obj [("types", Json.arr (ks.attach.map fun ⟨k, _⟩ => kindType k).toArray),
       ("nullability", "NULLABILITY_NULLABLE")])]
-  | .int | .other => i64Type
+  -- An opaque column is only ever a column reference (D67 K8), so no plan
+  -- writes its type from its kind.
+  | .int | .other | .opaque => i64Type
 where nullable := obj [("nullability", "NULLABILITY_NULLABLE")]
 
 /-- The kind of a column or expression as the writer sees it: the parser's
@@ -226,6 +228,8 @@ def WKind.ofKind : Kind → WKind
   | .dec p s => .dec p s
   -- An instant (#1725): compared with another instant, never mixed (`checkArgKinds`).
   | .timeTz => .instant
+  -- Carried, never read (D67).
+  | .opaque => .other
 
 /-- The model's view: an interval is a time (`Expr.kind`). -/
 def WKind.toKind : WKind → Kind

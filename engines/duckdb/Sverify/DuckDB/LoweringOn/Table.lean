@@ -291,3 +291,13 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
 theorem Substrait.duckdbOn.total : (Substrait.duckdbOn).Total :=
   ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
    fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩
+
+/-- Every entry is exact (`Lowering.AllExact`). -/
+theorem Substrait.duckdbOn.allExact : (Substrait.duckdbOn).AllExact :=
+  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
+   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩
+
+/-- No entry is stated on doubles only (`Lowering.NoneOnDbl`). -/
+theorem Substrait.duckdbOn.noneOnDbl : (Substrait.duckdbOn).NoneOnDbl :=
+  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
+   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩

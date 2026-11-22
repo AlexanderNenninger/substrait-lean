@@ -2,6 +2,7 @@
 
 import re
 import stat
+import sys
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,8 @@ from sverify.errors import CheckerVersionError
 
 def fake_checker(tmp_path: Path, output: str) -> str:
     """A checker that prints `output` for `--version`."""
+    if sys.platform == "win32":
+        pytest.skip("a fake checker is a /bin/sh script, which Windows cannot run")
     path = tmp_path / "substrait-check"
     path.write_text(f"#!/bin/sh\nprintf '%s\\n' '{output}'\n")
     path.chmod(path.stat().st_mode | stat.S_IEXEC)

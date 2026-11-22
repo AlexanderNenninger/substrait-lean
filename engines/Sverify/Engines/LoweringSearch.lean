@@ -818,7 +818,7 @@ def lowerSearch (boxes : Boxes.Ambient) (tbl : Name) (pE : Lean.Expr) (p : Profi
         | some m => `(tactic| exact $(mkIdent m))
         | none => `(tactic| simp [Substrait.Expr.must])
       let some strict ← prove strictTy strictTac | return none
-      let entry ← mkAppM (if unary then ``UnEntry.mk else ``BinEntry.mk)
+      let entry ← mkAppM (if unary then ``UnEntry.ofAgree else ``BinEntry.ofAgree)
         #[tmpl, strict, mkAppN (Lean.mkConst agreeName) ps]
       let entryTy ← mkForallFVars ps (← inferType entry)
       addAndCompile <| .defnDecl {
@@ -863,7 +863,8 @@ def lowerSearch (boxes : Boxes.Ambient) (tbl : Name) (pE : Lean.Expr) (p : Profi
             else "set_option maxHeartbeats 800000 in\n") ++
           s!"theorem {agreeName} : {← ppSource agreeTy} := by\n  {proof}\n\n" ++
           s!"abbrev {tbl ++ k.short} : {← ppSource entryTy} :=\n" ++
-          s!"  ⟨{← ppSource tmpl}, by {strictSrc}, {agreeName}⟩\n\n"))
+          s!"  {if unary then "Substrait.UnEntry.ofAgree" else "Substrait.BinEntry.ofAgree"}\n" ++
+          s!"  ({← ppSource tmpl})\n  (by {strictSrc}) {agreeName}\n\n"))
       let shown := cand.show k.ctor.componentsRev.head!.toString
       return some (if written then s!"hand-written schema: {shown}" else shown)
     -- The cache's template first (`LoweringHint`), found among the candidates
@@ -1017,6 +1018,14 @@ def elabGenerateLowering : CommandElab := fun stx => do
        fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩))
   else if !missing.isEmpty then
     logError m!"no lowering found for {missing.toList}"
+  -- Every generated entry is exact on every value (`UnEntry.ofAgree`, rulings
+  -- 250 and 254), refused functions included.
+  elabCommand (← `(theorem $(mkIdent (short ++ `allExact)) : ($(mkIdent tbl)).AllExact :=
+    ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
+     fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩))
+  elabCommand (← `(theorem $(mkIdent (short ++ `noneOnDbl)) : ($(mkIdent tbl)).NoneOnDbl :=
+    ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
+     fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩))
   let failedGuards ← guardFailures.get
   unless failedGuards.isEmpty do
     logError m!"guards not proved for {failedGuards.toList}"
@@ -1090,7 +1099,14 @@ def elabGenerateLowering : CommandElab := fun stx => do
     (if !refused.isEmpty then "" else
       s!"\ntheorem {tbl}.total : ({tbl}).Total :=\n" ++
       "  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),\n" ++
-      "   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩\n")
+      "   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩\n") ++
+    -- Every generated entry is exact on every value (rulings 250 and 254).
+    s!"\n/-- Every entry is exact (`Lowering.AllExact`). -/\ntheorem {tbl}.allExact : ({tbl}).AllExact :=\n" ++
+    "  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),\n" ++
+    "   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩\n" ++
+    s!"\n/-- No entry is stated on doubles only (`Lowering.NoneOnDbl`). -/\ntheorem {tbl}.noneOnDbl : ({tbl}).NoneOnDbl :=\n" ++
+    "  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),\n" ++
+    "   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩\n"
   IO.FS.writeFile s!"{dir}/Table.lean" table
   logInfo m!"wrote {dir}: Native, {areas}, Table"
   -- The guards (`proving_guards`), in a module of their own after the table,

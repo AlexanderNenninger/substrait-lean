@@ -1962,7 +1962,7 @@ the value unchanged through project, filter, join, sort, union all and limit; ot
 its route refuses the column. `Rel.eval` and
 `Rel.Allowed` do not change.
 
-Tracked in [#1958](https://github.com/AlexanderNenninger/substrait-lean/issues/1958); until it closes a table with such a column is refused.
+Implemented for binary and map columns on DuckDB, Polars and Spark ([#1958](https://github.com/AlexanderNenninger/substrait-lean/issues/1958); facts `duckdb-opaque-carry`, `polars-opaque-carry`, `spark-opaque-carry`). The Ibis producer refuses the other unread types (UUID, user-defined) until their facts are recorded; a plan from another producer reads them as opaque.
 
 Recomputes sinks: no
 

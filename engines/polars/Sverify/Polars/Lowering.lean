@@ -33,11 +33,14 @@ variable [Boxes.Ambient]
 /-- The generated lowering to Polars. -/
 def Lowering.polars : Lowering Profile.polars := polarsOn
 
+theorem Lowering.polars_allExact : Lowering.polars.AllExact := polarsOn.allExact
+theorem Lowering.polars_noneOnDbl : Lowering.polars.NoneOnDbl := polarsOn.noneOnDbl
+
 /-- **A lowered expression is exact on Polars**, wherever the table lowers it
 (every function but `%` of doubles). -/
 theorem Lowering.polars_exact {e : Expr} (he : (Lowering.polars.lower e).isSome) :
     Expr.Exact Profile.polars (Lowering.polars.lowerE e) e :=
-  Lowering.lowerE_exact_of _ he
+  Lowering.lowerE_exact_of _ Lowering.polars_noneOnDbl he
 
 /-- **The lowered plan runs correctly on Polars, or raises.** A plan the table
 lowers (`Lowering.lowerRel?`) gives `Rel.eval`'s rows under Polars's
@@ -47,7 +50,7 @@ the translation writes each template's functions as Polars's. -/
 theorem Rel.polars_lowered_sound {cat : Catalog} {r r' : Rel}
     (hr : Lowering.polars.lowerRel? r = .ok r') (h : ¬r'.Raises Profile.polars cat) :
     r'.eval cat Profile.polars.impl = r.eval cat :=
-  Lowering.lowerRel?_sound hr h
+  Lowering.lowerRel?_sound Lowering.polars_noneOnDbl hr h
 
 /-- The Polars table, exported: its entries that are not the native call. -/
 def Lowering.polarsTableJson : Lean.Json := LoweringExport.tableJson polarsOn

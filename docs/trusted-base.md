@@ -131,7 +131,7 @@ Sverify's words claim no more than these theorems give
   bounds hold over the reals in `float-bounds/`; the link from them to the
   core's codes is [#1196](https://github.com/AlexanderNenninger/substrait-lean/issues/1196), and `contract_sound_runs` for double
   aggregates beyond a root `SUM` or `AVG` is [#929](https://github.com/AlexanderNenninger/substrait-lean/issues/929).
-- Under `semantics="reference"`, the default for SQL, the lift from SQL is
+- Under `semantics="portable"`, the default for SQL, the lift from SQL is
   tested Python. The generated `liftReference` entries are unused, and no
   theorem states that the reference's reading is DuckDB's value wherever the
   reference gives one (`DuckFn.reference_refines_duckdb`,
@@ -203,7 +203,11 @@ Sverify's words claim no more than these theorems give
   own constructor of `Value` ([a value has its kind](decisions.md#d29-a-value-has-its-kind)).
 - The code that writes a checked plan for an engine: the SQL printers
   (`Pretty.lean`, `python/src/sverify/sql/`), a shimmed plan's `isNum` as
-  `IS NOT NULL` included, and the Polars translator. Golden, round-trip and
+  `IS NOT NULL` included, and the Polars translator. The interpreters of the
+  generated lowering tables are among them: `sverify/sql/lowering.py` writes a
+  DuckDB template as SQL, and `sverify_polars/lowering.py` a Polars template
+  as a `pl.Expr`, which the Polars translator takes over from its hand-written
+  shims in #271's step 2. Golden, round-trip and
   differential tests cover them
   ([the translations](engine-profiles.md#the-translations-today)).
 - The CLI's glue, `Main.lean`, `SubstraitCheck.lean`, `ContractCheck.lean` and `ShardCheck.lean`:

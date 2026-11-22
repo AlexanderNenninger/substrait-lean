@@ -167,11 +167,17 @@ def _type_json(dtype: Any) -> Json:
         return {"list": {"type": type_json(dtype.value_type), **NULLABLE}}
     if dtype.is_struct():
         return {"struct": {"types": [type_json(t) for t in dtype.types], **NULLABLE}}
+    # An opaque column (D67): carried, and never read.
     if dtype.is_binary():
-        raise Unsupported(
-            "sverify reads no binary values (#1918): encode them as text at the source "
-            "(hex or base64), or leave the column out"
-        )
+        return {"binary": NULLABLE}
+    if dtype.is_map():
+        return {
+            "map": {
+                "key": type_json(dtype.key_type),
+                "value": type_json(dtype.value_type),
+                **NULLABLE,
+            }
+        }
     if dtype.is_uuid():
         raise Unsupported(
             "type uuid is not supported; read it as text with CAST(column AS VARCHAR) in the "
@@ -203,6 +209,11 @@ def _instant(value: dt_.datetime) -> str:
 
 
 def literal(value: Any, dtype: Any) -> Json:
+    if dtype.is_binary():
+        raise ProducerUnsupported(
+            "sverify reads no binary values (#1918): it carries a binary column, but a binary "
+            "constant is not modelled; encode it as text at the source (hex or base64)"
+        )
     if value is None or dtype.is_null():
         return {"literal": {"null": type_json(dtype)}}
     if dtype.is_boolean():
@@ -253,8 +264,6 @@ def literal(value: Any, dtype: Any) -> Json:
     if dtype.is_struct():
         fields = [literal(value.get(f), t)["literal"] for f, t in dtype.items()]
         return {"literal": {"struct": {"fields": fields}}}
-    if dtype.is_binary():
-        type_json(dtype)  # refuses, saying why (#1918)
     raise ProducerUnsupported(f"literal of type {dtype} is not supported")
 
 
@@ -392,7 +401,7 @@ def call(name: str, args: Iterable[Json]) -> Json:
 
 #: The profile the plan being built is read under (`verify(semantics=...)`):
 #: under `"polars"`, integer `//` and `%` are Polars's (`floor_call`).
-_SEMANTICS: contextvars.ContextVar[str] = contextvars.ContextVar("_SEMANTICS", default="reference")
+_SEMANTICS: contextvars.ContextVar[str] = contextvars.ContextVar("_SEMANTICS", default="portable")
 
 
 def semantics() -> str:
@@ -745,7 +754,7 @@ def values_rel(schema: Any, rows: list[list[Json]]) -> Json:
 
 
 @contextlib.contextmanager
-def compiling(semantics: str = "reference") -> Iterator[Compiler]:
+def compiling(semantics: str = "portable") -> Iterator[Compiler]:
     """A fresh `Compiler` for the plan built inside the block, read under
     `semantics`."""
     compiler = Compiler()

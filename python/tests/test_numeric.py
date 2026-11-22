@@ -80,7 +80,7 @@ def test_rounding_semantics():
     # ROUND is half away from zero (DuckDB's round); the model has one zero.
     half_away = {f: math.copysign(math.floor(abs(f) + 0.5), f) + 0.0 for f in DOUBLES}
     expected = [(f, math.floor(f) + 0.0, math.ceil(f) + 0.0, half_away[f]) for f in DOUBLES]
-    plan = inline_tables(json.loads(substrait_json(con, sql, "reference")), {"r": rows})
+    plan = inline_tables(json.loads(substrait_json(con, sql, "portable")), {"r": rows})
     got = lean_values(json.dumps(plan))
     # Doubles come back printed, or as codes when tiny (±0.0).
     decoded = [

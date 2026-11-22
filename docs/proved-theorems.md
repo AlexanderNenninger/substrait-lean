@@ -194,7 +194,7 @@ The linear fragment, `Rel.Incremental`, covers every operator except left,
 semi and anti joins, `DISTINCT`, aggregates, fetch and windows; semi and anti
 joins, `DISTINCT` and `COUNT`, `SUM`, `AVG`, `MIN` and `MAX` per group have
 delta rules of their own ([section 6 of the optimizations note](optimizations.md#6-incremental-maintenance);
-what refresh maintains is in [the guide](tasks.md#nodes-composing-storing-refreshing)):
+what refresh maintains is in [the guide](how-to-nodes.md#nodes-composing-storing-refreshing)):
 
 * `Rel.zeval_add`: `Q(D + ΔD) ~ Q(D) + ΔQ`. Filter, project, emit, sort and union
   are linear (a sort only orders the bag), and cross and inner join use the bilinear rule

@@ -23,7 +23,7 @@ def _duckdbs_own(query: str) -> list:
 
 
 @pytest.mark.parametrize("r", ["'x'", "''", "NULL"])
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
 def test_sql_gives_duckdbs_value_on_every_route(r, semantics, engine):
     query = SQL.format(r=r)

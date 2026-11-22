@@ -87,10 +87,10 @@ print(numbered(orders).to_sql("snowflake")[:6])  # ties are open: the report is 
 ```
 
 * **Snowflake and Spark tables have no row order.** Under the default
-  observation (`rows="multiset"`) the SQL leaves ties and the rows of a
+  lenses (`rows="multiset"`) the SQL leaves ties and the rows of a
   `LIMIT` open, as the reference does, and writes no ordinal: a plan's last
   sort orders its result, and the report's `deterministic` says whether a
-  rerun can return other rows. An observation with `rows="sequence"` asks for
+  rerun can return other rows. Lenses with `rows="sequence"` ask for
   the model's list order, which these engines refuse. `SUM` or `AVG` of
   doubles is Spark's own, within the plan's bound of the reference's sum.
 * **Snowflake has no interval type**: interval-valued expressions are refused.

@@ -32,7 +32,9 @@ theorem Substrait.polarsOn.fceil_agree : ∀ (x : Substrait.Value),
   intros; apply Substrait.Polars.fceil_agree
 
 abbrev Substrait.polarsOn.fceil : Substrait.UnEntry Substrait.Profile.polars Substrait.UnFn.fceil :=
-  ⟨Substrait.Lowering.fceilTemplate, by exact Substrait.Lowering.fceilTemplate_must, Substrait.polarsOn.fceil_agree⟩
+  Substrait.UnEntry.ofAgree
+  (Substrait.Lowering.fceilTemplate)
+  (by exact Substrait.Lowering.fceilTemplate_must) Substrait.polarsOn.fceil_agree
 
 theorem Substrait.polarsOn.fround_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
@@ -41,5 +43,7 @@ theorem Substrait.polarsOn.fround_agree : ∀ (x : Substrait.Value),
   intros; apply Substrait.Polars.fround_agree
 
 abbrev Substrait.polarsOn.fround : Substrait.UnEntry Substrait.Profile.polars Substrait.UnFn.fround :=
-  ⟨Substrait.Lowering.froundTemplate, by exact Substrait.Lowering.froundTemplate_must, Substrait.polarsOn.fround_agree⟩
+  Substrait.UnEntry.ofAgree
+  (Substrait.Lowering.froundTemplate)
+  (by exact Substrait.Lowering.froundTemplate_must) Substrait.polarsOn.fround_agree
 

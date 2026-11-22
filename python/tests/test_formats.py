@@ -167,6 +167,46 @@ def test_newer_record_refused() -> None:
     assert Contract.from_json(json.dumps({**data, "added_in_1_9": [1]})) == Contract.from_json(text)
 
 
+def test_reference_reads_as_portable_only_in_the_formats_before_1_0() -> None:
+    """A report below format 4 and a manifest below format 3 say
+    `"reference"` for `"portable"`, and read as `"portable"`; 1.0's formats
+    keep no second name, so there `"reference"` does not read as
+    `"portable"` (#2081, ruling 214 T2)."""
+    from sverify.substrait_export import FORMAT, _manifest
+
+    assert _manifest({"format": FORMAT - 1, "semantics": "reference"})["semantics"] == "portable"
+    assert _manifest({"format": FORMAT, "semantics": "reference"})["semantics"] == "reference"
+
+    v3 = json.loads((FORMATS / "main-05c1e667" / "report" / "ran.json").read_text())
+    assert v3["format"] == 3 and v3["semantics"] == "reference"
+    report = sv.Report.from_json(v3)
+    assert report.semantics == "portable"
+    assert {r.profile for r in report.routes.values()} == {"portable"}
+    now = json.loads(report.to_json())
+    route = next(iter(now["routes"]))
+    said = {
+        **now,
+        "semantics": "reference",
+        "routes": {route: {**now["routes"][route], "semantics": "reference"}},
+    }
+    read = sv.Report.from_json(said)
+    assert read.semantics == "reference" and read.routes[route].profile == "reference"
+
+
+def test_sink_record_profile(tmp_path: Path) -> None:
+    """No release wrote a `profile` into the sink's record, so a 0.8.0 record
+    has none, and a record written now says `"portable"` (ruling 214 U3)."""
+    from sverify.io import DeltaSink, DeltaSource, StaticSource
+
+    old = Contract.from_json((FORMATS / "0.8.0" / "sink" / "contract.json").read_text())
+    assert old.profile is None
+    formats = pytest.importorskip("sverify_dev.formats")
+    node = formats.doubled(StaticSource(formats.ORDERS, version=1, name="orders"))
+    node.write(DeltaSink(str(tmp_path / "t"))).refresh()
+    c = DeltaSource(str(tmp_path / "t")).contract()
+    assert c is not None and c.profile == "portable"
+
+
 # -- the Substrait contract metadata (#735) --------------------------------------
 
 
@@ -230,7 +270,7 @@ def test_substrait_manifest_of_formats_1_and_2() -> None:
             assert m["format"] == FORMAT == 3
             gone = {"profile", "observation", "equivalence", "equivalence_components"}
             assert not gone & set(m)
-            assert m["semantics"] in ("reference", "substrait") and isinstance(m["lenses"], str)
+            assert m["semantics"] in ("portable", "substrait") and isinstance(m["lenses"], str)
             assert all("equivalence" not in u and "observation" not in u for u in m["up_to"])
     with pytest.raises(ValueError, match="upgrade sverify"):
         _manifest({"format": FORMAT + 1})
@@ -314,7 +354,7 @@ def test_report_reads(version: str, case: str) -> None:
         now["facts"] = {
             c: {"text": f["text"], "nullable": f["nullable"]} for c, f in now["facts"].items()
         }
-    doc = _as_format_4(doc)
+    doc = _portable(_as_format_4(doc))
     assert set(doc) <= set(now), f"keys of {version}/{case} dropped: {set(doc) - set(now)}"
     skip = {"sverify", "format", "verdict", "summary"}
     assert {k: v for k, v in now.items() if k in doc and k not in skip} == {
@@ -352,6 +392,22 @@ def _as_format_4(doc: dict) -> dict:
         for c, t in doc.get("output", {}).items()
     }
     return out
+
+
+def _portable(doc: dict) -> dict:
+    """`doc` with the semantics a report written before 1.0 calls
+    `"reference"` named `"portable"`, in a route too (#2081)."""
+
+    def name(s: str) -> str:
+        return "portable" if s == "reference" else s
+
+    return {
+        **doc,
+        "semantics": name(doc["semantics"]),
+        "routes": {
+            e: {**r, "semantics": name(r["semantics"])} for e, r in doc.get("routes", {}).items()
+        },
+    }
 
 
 def _needs_by_label(doc: dict) -> dict:

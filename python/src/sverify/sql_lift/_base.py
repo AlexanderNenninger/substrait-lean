@@ -53,7 +53,7 @@ from sverify.plan_json import (
 from sverify.plan_json import decimal_dtype as _decimal
 from sverify.plan_json import same_type as _same
 
-__all__ = ["DUCKDB", "PROFILES", "REFERENCE", "Lifted", "Profile", "lift", "parse"]
+__all__ = ["DUCKDB", "PORTABLE", "PROFILES", "Lifted", "Profile", "lift", "parse"]
 
 DIALECT = "duckdb"
 
@@ -78,7 +78,7 @@ class Profile:
     in both profiles; the second is what the functions do.
 
     Attributes:
-        name: `"duckdb"` or `"reference"`, as `sv.sql`'s `semantics`.
+        name: `"duckdb"` or `"portable"`, as `sv.sql`'s `semantics`.
         divide: SQL `/` on integers and decimals: `"double"`, both operands
             cast to `fp64` and divided (DuckDB's `/` without
             `integer_division`, F1).
@@ -134,8 +134,8 @@ DUCKDB = Profile(
     log_zero="MINUS_INFINITY",
     corr_degenerate="NAN",
 )
-REFERENCE = Profile("reference")
-PROFILES = {p.name: p for p in (DUCKDB, REFERENCE)}
+PORTABLE = Profile("portable")
+PROFILES = {p.name: p for p in (DUCKDB, PORTABLE)}
 
 
 # --------------------------------------------------------------------------
@@ -460,6 +460,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     _check_numbers(query)
     _check_intervals(query)
     _check_regex_operators(query)
+    _check_date_bin(query)
     query = expand_table_shorthand(query)
     try:
         tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
@@ -2942,6 +2943,27 @@ def _check_regex_operators(query: str) -> None:
             )
 
 
+def _check_date_bin(query: str) -> None:
+    """Refuse `date_bin(...)`: DuckDB 2.0.0 has no such function, but SQLGlot reads it as the
+    node of `time_bucket`, so the tree cannot tell them apart."""
+    from sqlglot.tokens import TokenType
+
+    try:
+        tokens = sg.Dialect.get_or_raise(DIALECT).tokenize(query)
+    except sg.errors.TokenError:
+        return  # the parser reports it
+    for tok, after in zip(tokens, tokens[1:], strict=False):
+        if (
+            tok.token_type == TokenType.VAR
+            and tok.text.lower() == "date_bin"
+            and after.token_type == TokenType.L_PAREN
+        ):
+            raise Unsupported(
+                "DuckDB has no function date_bin; write time_bucket(width, ts[, origin])",
+                construct="function date_bin",
+            )
+
+
 def _check_intervals(query: str) -> None:
     """Refuse `INTERVAL '… ago'`, which negates the interval in DuckDB.
     SQLGlot drops the `ago` of a single unit (`'1 day ago'` reads as
@@ -3020,7 +3042,7 @@ def _normalized(name: str) -> str:
 def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> Lifted:
     """The plan of the DuckDB SQL `query` over input tables of the Ibis
     schemas `schemas` (by table name), read as named tables, with the
-    `semantics` profile ("duckdb" or "reference").
+    `semantics` profile ("duckdb" or "portable").
 
     Raises:
         Unsupported: The query is outside the subset, saying what; also a

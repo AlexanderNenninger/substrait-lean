@@ -586,7 +586,9 @@ def test_github_annotations(tmp_path, capsys):
     [line] = out.splitlines()
     line_no = HEAD.count("\n") + 2  # the decorator, after the blank line
     assert line.startswith(
-        f"::error file={path},line={line_no},title=sverify may_be_false%3A paid::"
+        # A property value escapes `:` and `,` (GitHub's workflow commands): `C%3A\` on Windows.
+        f"::error file={str(path).replace(':', '%3A')},line={line_no},"
+        "title=sverify may_be_false%3A paid::"
     )
     assert "::amount > 20: it may be FALSE" in line and "%0Acounterexample: " in line
 
@@ -620,6 +622,21 @@ def test_sarif(tmp_path, capsys):
         fixed = fixed[:at] + rep["insertedContent"]["text"].encode() + fixed[at + n :]
     assert run(capsys, "check", str(path), "--fix")[0] in (0, 1)
     assert fixed == path.read_bytes()
+
+
+def test_fix_keeps_a_files_crlf_line_endings(tmp_path, capsys):
+    """A file with Windows line endings is fixed with them: no line gains a
+    second `\r`, and the diff removes only the decorators it rewrites (#183)."""
+    path = write(tmp_path, NEEDS + NOT_PROVED.replace("paid", "late").replace("p =", "q ="))
+    # Windows' text-mode write has `\r\n` already: normalise, then convert.
+    path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    code, out = run(capsys, "check", str(path), "--diff")
+    lines = out.splitlines()
+    removed = [line for line in lines if line.startswith("-") and not line.startswith("---")]
+    assert removed and all(line.startswith("-@sv.transform(") for line in removed), out
+    assert run(capsys, "check", str(path), "--fix")[0] in (0, 1)
+    fixed = path.read_bytes()
+    assert b"\r\r\n" not in fixed and fixed.count(b"\n") == fixed.count(b"\r\n")
 
 
 def test_sarif_is_valid(tmp_path, capsys):
@@ -740,3 +757,30 @@ def test_the_relaxations_name_each_setting_that_weakens_the_gate(tmp_path, capsy
     path = write(tmp_path, HEAD + body)
     _, doc = run_json(capsys, "check", f"{path}:p")
     assert doc["items"][0]["relaxations"] == ['on_inferred="ignore"', "check_requires=False"]
+
+
+def test_without_sigalrm_the_time_budget_raises_in_the_main_thread(monkeypatch):
+    """Windows has no SIGALRM: a timer raises SIGINT, which the budget turns
+    into `BudgetExceeded` in the main thread, so the partial report is
+    printed and the watchdog's hard stop is not needed (#183). Ctrl-C before
+    the timer stays a KeyboardInterrupt. Runs on every platform."""
+    import signal
+    import time
+
+    from sverify.cli._limits import Budget, BudgetExceeded
+
+    monkeypatch.delattr(signal, "SIGALRM", raising=False)
+    before = signal.getsignal(signal.SIGINT)  # Spark's, once a test has started it
+
+    def hard_stop() -> None:
+        raise AssertionError("the watchdog stopped the process")
+
+    budget = Budget(0.2, on_hard_stop=hard_stop)
+    end = time.monotonic() + 5
+    with pytest.raises(BudgetExceeded), budget.armed():
+        while time.monotonic() < end:  # Python code, where a raised signal lands on every platform
+            time.sleep(0.01)
+    assert budget.exceeded and time.monotonic() < end
+    with pytest.raises(KeyboardInterrupt), Budget(60, on_hard_stop=hard_stop).armed():
+        signal.raise_signal(signal.SIGINT)
+    assert signal.getsignal(signal.SIGINT) is before

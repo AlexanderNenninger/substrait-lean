@@ -2,8 +2,9 @@
 
 Part of the Ibis producer (`sverify.ibis_substrait`). A column of a type that
 blocks a read (a struct, which the DuckDB writer has no SQL form for, or a
-`map`, a zoned timestamp, an unsigned integer: `plan_json.type_json`
-refuses them) fails every plan over its table. Dropped from the read when no
+zoned timestamp, an unsigned integer: `plan_json.type_json` refuses them)
+fails every plan over its table, and an opaque one (a binary or a `map`, D67)
+can only be carried. Dropped from the read when no
 part of the query mentions it, it blocks nothing; a query that does mention
 it reaches the refusal, which names the column.
 
@@ -24,6 +25,7 @@ import ibis
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 
+from sverify._plan_read import holds_opaque
 from sverify.plan_json import Unsupported, type_json
 
 EVERYTHING = "*"
@@ -53,10 +55,12 @@ def blocks(dtype: Any) -> bool:
     if dtype.is_struct():
         return True
     try:
-        type_json(dtype)
+        t = type_json(dtype)
     except Unsupported:
         return True
-    return False
+    # An opaque column (D67) blocks nothing, but an engine's loader may hold no
+    # type for it: one no part of the query mentions is left out as well.
+    return holds_opaque(t)
 
 
 def mentions(expr: ir.Table) -> frozenset[str] | None:

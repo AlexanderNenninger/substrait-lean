@@ -94,7 +94,7 @@ def test_manifest() -> None:
     m = read(report.to_substrait()).manifest
     assert m["format"] == se.FORMAT
     assert m["substrait"] == "0.106.0"
-    assert m["semantics"] == "reference"
+    assert m["semantics"] == "portable"
     assert m["class"] == "exact"
     assert m["shims_mode"] == "apply"
     assert m["extension_urns"] == ["extension:io.substrait:functions_arithmetic"]
@@ -193,7 +193,7 @@ def test_unproved_plan_is_refused() -> None:
 
 def test_engine_profile_is_refused() -> None:
     report = sv.verify("SELECT id FROM orders", tables={"orders": orders}, semantics="duckdb")
-    with pytest.raises(ExportError, match="semantics='reference'"):
+    with pytest.raises(ExportError, match="semantics='portable'"):
         report.to_substrait()
 
 
@@ -582,14 +582,19 @@ def test_the_exported_ordering_agrees_with_the_reference_on_an_engine(
     assert got == want
 
 
-def test_set_inputs_of_two_decimal_precisions_are_refused() -> None:
+def test_set_inputs_of_two_decimal_precisions_are_cast_to_one() -> None:
     """A full outer join of two sums is written as a set relation whose inputs
     differ in decimal precision, which Substrait does not allow: the export
-    says so, and `to_sql` still writes the plan (#1904)."""
+    casts the narrower input to the wider precision, at the same scale, and
+    the plan reads back with the same verdict (#1904)."""
     a = ibis.table({"k": "int64", "d": "decimal(10,2)"}, name="a")
     b = ibis.table({"k": "int64", "d": "decimal(12,2)"}, name="b")
     ga, gb = (t.group_by("k").agg(s=t.d.sum()) for t in (a, b))
     report = _verify(ga.outer_join(gb, "k").select(ga.k, x=ga.s, y=gb.s))
-    with pytest.raises(ExportError, match=r"inputs of a set relation differ.*#1904"):
-        report.to_substrait(shims="annotate")
-    assert "SELECT" in report.to_sql("spark").upper()
+    plan = report.to_substrait(shims="annotate")
+    rel = json.loads(plan)["relations"][0]["root"]["input"]
+    while "set" not in rel:
+        [(_, body)] = rel.items()
+        rel = body["input"]
+    assert any("project" in i for i in rel["set"]["inputs"])
+    assert sv.Report.from_substrait(plan).verdict == report.verdict
