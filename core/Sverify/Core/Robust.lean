@@ -11,7 +11,7 @@ decidable sufficient condition, `Expr.robustB`, and its theorem.
 * A condition that reads only columns `q` observes exactly is robust
   (`Expr.robust_of_robustB`): equal columns give equal values
   (`Expr.eval_congr_cols`). `ObsCtx.colIgnores` names, per column, the components
-  `q` ignores there: the checker reports them, as `CheckedCondition.ignores`
+  `q` ignores there: the checker reports them, as `Postcondition.ignores`
   reads them.
 * A comparison of a tolerated double column with a constant is robust once
   the tolerance is folded into the constant (`Expr.narrow`): `x ≤ c` becomes

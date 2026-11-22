@@ -485,7 +485,7 @@ class _Checker:
 
     def _read(self, report: Any, m: Relation, res: ModelResult, ensures: list) -> None:
         # `report.ensures` is in the order of the conditions given, each
-        # with its condition (`CheckedCondition.condition`).
+        # with its condition (`Postcondition.condition`).
         results = iter(report.ensures)
         needed = report.needs
         res.needed = _needed(report, self, m)
@@ -744,7 +744,7 @@ _WHY = {
 
 def _why(c: Any) -> str:
     """Why a condition is not proved, in a dbt user's terms
-    (`CheckedCondition.reason`; its `why` speaks of `sv.unique` and
+    (`Postcondition.reason`; its `why` speaks of `sv.unique` and
     `requires`)."""
     return _WHY.get(c.reason, f"sverify only knows it is {c.value}")
 

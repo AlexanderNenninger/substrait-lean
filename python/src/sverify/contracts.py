@@ -102,12 +102,12 @@ from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts
     ROWS_SHOWN,
     Approx,
     ArrivesWithin,
-    CheckedCondition,
     Discharged,
     Inferred,
     Key,
     MaxRows,
     NonOverlapping,
+    Postcondition,
     PreconditionError,
     References,
     RelationRows,
@@ -142,7 +142,7 @@ from sverify.engine import (
     plan_and_differences,
     run_checker,
 )
-from sverify.observation import Observation
+from sverify.observation import Lenses
 from sverify.proposers import (
     _EPOCH,
     INFER,
@@ -722,7 +722,7 @@ def infer_bounds(
 
     An observation in `ensures` (`sv.equivalent`) is no condition to prove:
     it goes to `Report.lenses`, and each other postcondition that
-    depends on what it ignores says so (`CheckedCondition.ignores`)."""
+    depends on what it ignores says so (`Postcondition.ignores`)."""
     observed, ensures = _observation.split(ensures)
     report = _infer_bounds(
         transform,
@@ -739,8 +739,7 @@ def infer_bounds(
     conditions = {t: list(cs) for t, cs in requires.items()}
     _merge(conditions, report._inferred)
     report._conditions = conditions
-    opened = {} if report._windows_total or isinstance(transform, str) else _open_columns(transform)
-    out = _observed(report, observed or _observation.PLAN_BOUND, ensures, opened)
+    out = _observed(report, observed or _observation.PLAN_BOUND, ensures)
     out._stated = observed is not None
     from sverify import routes as _routes
 
@@ -817,7 +816,7 @@ def _typed(dtypes: Mapping[str, Any], facts: Mapping[str, ColumnFacts]) -> dict[
     }
 
 
-def _needing(c: CheckedCondition, needs: Sequence[Needed]) -> CheckedCondition:
+def _needing(c: Postcondition, needs: Sequence[Needed]) -> Postcondition:
     """`c` not proved where its proof used inferred preconditions (#701),
     with those it may have used as its `needs`: the bounds, and the `IS NOT
     NULL`s inferred for this postcondition; every inferred one where those
@@ -843,61 +842,41 @@ def _checked_on_unproved(v: str) -> OnUnproved:
     return v  # type: ignore[return-value]
 
 
-def _observed(
-    report: Report,
-    observed: Observation,
-    ensures: Sequence[Condition],
-    opened: Mapping[str, str],
-) -> Report:
+def _observed(report: Report, observed: Lenses, ensures: Sequence[Condition]) -> Report:
     """`report` with the observation, and each postcondition marked with the
     components it depends on that the observation ignores, or that the plan
-    leaves open (D1, D12): the checker's (`ContractCheck`'s `Report.ignores`,
-    #1071) for every postcondition it reports them for. A table condition
-    (`unique`, `references`, `max_rows`, `rows_per`), which the checker does
-    not evaluate as an expression, depends on the values of the columns it
-    reads (`observation.dependencies`), and on the open choices of the plan
-    (`opened`) where it is unproved: a proved condition holds for every
-    choice the plan leaves open."""
-    checked = [
-        replace(
-            c,
-            reads=None if (r := _reads(cond, report.output)) is None else tuple(r),
-            approx=isinstance(cond, Approx),
-            nullable=None
-            if r is None or any(c not in report.facts for c in r)
-            else tuple(c for c in r if report.facts[c].nullable),
-            ignores=c.checker_ignores
-            if c.checker_ignores is not None
-            else tuple(
-                _observation.dependencies(
-                    observed, cond, report.output, r, {} if c.proved else opened
-                )
-            ),
+    leaves open (D1, D12): the checker's (`ContractCheck`'s `Report.ignores`
+    and `Report.tableIgnores`, #1071). A proved condition holds for every
+    choice the plan leaves open, so a table condition's open columns apply
+    where it is unproved."""
+    table = iter(report._table_ignores)
+    checked = []
+    for cond, c in zip(ensures, report.ensures, strict=True):
+        r = _reads(cond, report.output)
+        known = next(table, None) if isinstance(cond, TableCondition) else None
+        if known is not None:
+            opened, ignored = known
+            ignores = (
+                tuple(ignored) if c.proved else (*opened, *(x for x in ignored if x not in opened))
+            )
+        elif not isinstance(cond, TableCondition) and c._checker_ignores is not None:
+            ignores = c._checker_ignores
+        else:
+            # The checker did not read the condition (a plan that is not a selection of
+            # conditions, or no answer): it may depend on everything the observation ignores.
+            ignores = tuple(sorted(set(observed.ignored()) - {"rows", "zeros", "errors"}))
+        checked.append(
+            replace(
+                c,
+                reads=None if r is None else tuple(r),
+                approx=isinstance(cond, Approx),
+                nullable=None
+                if r is None or any(c not in report.facts for c in r)
+                else tuple(c for c in r if report.facts[c].nullable),
+                ignores=ignores,
+            )
         )
-        for cond, c in zip(ensures, report.ensures, strict=True)
-    ]
     return replace(report, ensures=checked, lenses=observed)
-
-
-def _open_columns(expr: ir.Table) -> dict[str, str]:
-    """The output columns of aggregates whose value the reference leaves
-    open: `"picks"` for `first`, `last` or `arbitrary` without an order,
-    `"elements"` for `collect` or `group_concat` without one."""
-    out: dict[str, str] = {}
-    for agg in expr.op().find(ops.Aggregate):
-        if not isinstance(agg, ops.Aggregate):
-            continue
-        for name, metric in agg.metrics.items():
-            if (
-                isinstance(metric, ops.First | ops.Last)
-                and not metric.order_by
-                or isinstance(metric, ops.Arbitrary)
-            ):
-                out[name] = "picks"
-            elif isinstance(metric, ops.ArrayCollect | ops.GroupConcat) and not metric.order_by:
-                out[name] = "elements"
-    names = set(expr.columns)
-    return {n: why for n, why in out.items() if n in names}
 
 
 def _reads(cond: Condition, columns: Mapping[str, Any]) -> list[str] | None:
@@ -942,7 +921,7 @@ def _infer_bounds(
     infer: bool,
     inputs: Collection[str] | None,
     semantics: Semantics,
-    observed: _observation.Observation | None = None,
+    observed: _observation.Lenses | None = None,
 ) -> Report:
     def once(reqs: Mapping[str, Sequence[Condition]], n: int):
         return _verify_once(
@@ -1078,16 +1057,20 @@ def _confirm_hints(report: Report, requires, once) -> Report:
     tried: dict[str, set[tuple[str, str]]] = {}
     issues = []
     for i in report.issues:
-        if i.hint_needs:
-            key = repr(sorted((t, sorted(label(c) for c in cs)) for t, cs in i.hint_needs.items()))
+        if i.suggested_requires:
+            key = repr(
+                sorted((t, sorted(label(c) for c in cs)) for t, cs in i.suggested_requires.items())
+            )
             if key not in tried:
                 widened = {t: list(cs) for t, cs in requires.items()}
                 _merge(widened, report._inferred)
-                _merge(widened, i.hint_needs)
+                _merge(widened, i.suggested_requires)
                 again = once(widened, 0)[0]
                 tried[key] = {(j.kind, j.expr) for j in again.issues if j.error}
             if (i.kind, i.expr) in tried[key]:
-                i = replace(i, hint=i.unconfirmed, hint_needs={}, unconfirmed=None, needs=[])
+                i = replace(
+                    i, hint=i.unconfirmed, suggested_requires={}, unconfirmed=None, needs=[]
+                )
         issues.append(i)
     return replace(report, issues=issues)
 
@@ -1320,7 +1303,7 @@ def _prove_once(
     bound: list[str],
     inputs: Collection[str] | None,
     semantics: Semantics = "portable",
-    observed: _observation.Observation | None = None,
+    observed: _observation.Lenses | None = None,
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
     schemas."""
@@ -1459,18 +1442,30 @@ def _prove_once(
         "text": {t: _declared_text(names(t), cs) for t, cs in requires.items()},
     }
 
-    if observed is not None:
-        # What the checker needs to report each postcondition's ignored
-        # components itself (#1071, `Report.ignores` in ContractCheck.lean).
-        contract["observation"] = {
-            "coarsens": [c for c in observed.ignored()],
-            # The rows level by name: the plan to run may refine the plan
-            # as written up to the order of rows only under `multiset` (#1787).
-            "rows": observed.rows,
-            "floats_plan": observed.floats == "plan",
-            "approx": [isinstance(c, Approx) for c in ensures if not isinstance(c, TableCondition)],
-            "sql": isinstance(transform, str),
-        }
+    # What the checker needs to report each postcondition's ignored components
+    # itself (#1071, `Report.ignores` and `Report.tableIgnores` in
+    # ContractCheck.lean): the observation, the columns each table condition
+    # reads, and whether it allows for a tolerance.
+    obs = observed or _observation.PLAN_BOUND
+    contract["observation"] = {
+        "coarsens": [c for c in obs.ignored()],
+        # The rows level by name: the plan to run may refine the plan
+        # as written up to the order of rows only under `multiset` (#1787).
+        "rows": obs.rows,
+        "floats_plan": obs.floats == "plan",
+        "approx": [isinstance(c, Approx) for c in ensures if not isinstance(c, TableCondition)],
+        "sql": isinstance(transform, str),
+        "table_reads": [
+            {
+                "reads": None
+                if (r := _reads(c, {})) is None
+                else [out_cols.index(n) for n in r if n in out_cols],
+                "tolerant": isinstance(c, _observation.Tolerant),
+            }
+            for c in ensures
+            if isinstance(c, TableCondition)
+        ],
+    }
     if _RULES is not None:
         contract["rules"] = list(_RULES)
     if semantics != "portable":
@@ -1577,7 +1572,7 @@ def _prove_once(
             )
             depends = e.get("depends")
             checked.append(
-                CheckedCondition(
+                Postcondition(
                     e["name"],
                     e["proved"],
                     e["value"],
@@ -1588,7 +1583,7 @@ def _prove_once(
                     allowed=bool(e.get("allowed")),
                     robust=holds_on_engines,
                     robust_on=proved_on,
-                    checker_ignores=None if (ig := e.get("ignores")) is None else tuple(ig),
+                    _checker_ignores=None if (ig := e.get("ignores")) is None else tuple(ig),
                 )
             )
         checked[-1].condition = c
@@ -1859,7 +1854,7 @@ def _issues(
                 [_needed(t, c, dialect) for t, cs in code.items() for c in cs]
                 if error and not fallback
                 else [],
-                hint_needs={t: list(cs) for t, cs in code.items()} if error else {},
+                suggested_requires={t: list(cs) for t, cs in code.items()} if error else {},
                 unconfirmed=fallback,
                 assumed=assumed,
             )
@@ -1908,7 +1903,7 @@ def _ibis_text(node: Any) -> str:
 def rounding_hints(
     transform: ir.Table,
     ensures: Sequence[Condition],
-    checked: Sequence[CheckedCondition],
+    checked: Sequence[Postcondition],
     facts: Sequence[dict],
     dtypes: Mapping[str, Any],
 ) -> list[str]:

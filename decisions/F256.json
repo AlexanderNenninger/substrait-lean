@@ -1,0 +1,17 @@
+{
+  "id": "F256",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#271: F252's one-sided induction for an arbitrary `keep` is not provable, because a dropped guard may leave a CASE condition as the only reader of an argument. So the split is: A, two-sided `Agree` for any `keep` under `L.ExactOn e` (today's proof, with `lowerE_raises` and `lowerRel_raises` as corollaries); B, one-sided `AgreeOrRaises` for any table with every guard kept, its error branch closed by strictness. The guard-dropping theorems come from A, and `lowerRel_sound`, `lowerRel?_sound` and `lowerE_exact` come from B.",
+  "issues": [
+    271
+  ],
+  "amends": [
+    "F252",
+    "F255"
+  ],
+  "source": "fable-ruling-256-271-induction-split.md",
+  "note": "Two inductions, no third. F252's corollary route through `Outcome.agree_iff` is withdrawn. A Spark plan using `fdivIeee` keeps its guards. Conditions: P1, no DuckDB or Polars statement changes apart from the `ExactOn` argument, which `allExact` discharges, and the PR lists the statements before and after. P2, strictness is proved, never a trusted Bool. P3, A keeps its name and B gets one new name, with no `_exact` duplicate. P4, F252's L2–L4 and F254's M1–M5 stand, and F255's N3 now composes A under `allExact`."
+}

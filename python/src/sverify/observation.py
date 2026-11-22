@@ -143,7 +143,7 @@ Floats = Literal["exact", "plan"] | Within
 
 
 @dataclass(frozen=True)
-class Observation:
+class Lenses:
     """What a consumer of a result observes (`equivalent`), as a product of
     components, each from exact to coarse. Use it in `ensures`."""
 
@@ -198,12 +198,12 @@ class Observation:
 
     # -- the refinement order (D18) ------------------------------------------
 
-    def refines(self, other: Observation) -> bool:
+    def refines(self, other: Lenses) -> bool:
         """`self` observes everything `other` observes, on every component:
         equality up to `self` implies equality up to `other`."""
         return not self.coarser_than(other)
 
-    def coarser_than(self, other: Observation) -> list[str]:
+    def coarser_than(self, other: Lenses) -> list[str]:
         """The components on which `self` is not as fine as `other`: what
         `self` ignores that `other` observes. Empty when `self` refines
         `other`."""
@@ -394,7 +394,7 @@ def _order_key(v: Any) -> tuple:
     return (0, v)
 
 
-def from_json(q: Mapping[str, Any] | None) -> Observation:
+def from_json(q: Mapping[str, Any] | None) -> Lenses:
     """An observation as the checker writes it (a choices row's `"observation"`):
     component levels, a float tolerance as `{"abs", "rel", "ulps"}`; an
     absent component is exact, rows and elements included."""
@@ -409,7 +409,7 @@ def from_json(q: Mapping[str, Any] | None) -> Observation:
     unknown = set(q) - known
     if unknown:
         raise ValueError(f"unknown components of an observation: {sorted(unknown)}")
-    return Observation(
+    return Lenses(
         **{"rows": "sequence", "elements": "sequence", **q, "floats": floats}  # type: ignore[arg-type]
     )
 
@@ -419,14 +419,14 @@ def _sortable(t: pa.DataType) -> bool:
 
 
 #: The identity: every component exact, rows as a sequence.
-EXACT = Observation(rows="sequence")
+EXACT = Lenses(rows="sequence")
 #: The default when `ensures` names none: rows as a multiset, values exact.
-EXACT_MULTISET = Observation()
+EXACT_MULTISET = Lenses()
 #: Rows and list elements as multisets, one zero and one NaN, doubles within
 #: the plan's bound (the bound `report.lenses` prints), other values exact: what `ensures`
 #: observes where it names no observation (`Report.lenses`), and what a
 #: sink's rerun must reproduce by default.
-PLAN_BOUND = Observation(floats="plan", zeros="canon", elements="multiset")
+PLAN_BOUND = Lenses(floats="plan", zeros="canon", elements="multiset")
 
 
 def equivalent(
@@ -439,7 +439,7 @@ def equivalent(
     decimals: Decimals = "exact",
     errors: Errors = "exact",
     elements: Elements = "sequence",
-) -> Observation:
+) -> Lenses:
     """A postcondition naming what the result's consumer observes.
 
     Put it in a transformation's `ensures` (or `sv.verify`'s). An engine's
@@ -471,7 +471,7 @@ def equivalent(
             `collect` without an order leaves it.
 
     Returns:
-        An `Observation`, for `ensures`.
+        A `Lenses`, for `ensures`.
 
     Raises:
         ValueError: A component's level is unknown.
@@ -483,16 +483,16 @@ def equivalent(
             return t.group_by("k").aggregate(avg=t.x.mean())
         ```
     """
-    return Observation(rows, floats, zeros, timestamps, strings, decimals, errors, elements)
+    return Lenses(rows, floats, zeros, timestamps, strings, decimals, errors, elements)
 
 
-def split(ensures: Sequence[Any]) -> tuple[Observation | None, list[Any]]:
+def split(ensures: Sequence[Any]) -> tuple[Lenses | None, list[Any]]:
     """The observation among `ensures` (None if there is none) and the
     other conditions."""
-    found = [c for c in ensures if isinstance(c, Observation)]
+    found = [c for c in ensures if isinstance(c, Lenses)]
     if len(found) > 1:
         raise ValueError(f"ensures names {len(found)} observations; give one sv.equivalent(...)")
-    return (found[0] if found else None), [c for c in ensures if not isinstance(c, Observation)]
+    return (found[0] if found else None), [c for c in ensures if not isinstance(c, Lenses)]
 
 
 def string_key(level: str, s: str) -> str:
@@ -544,55 +544,6 @@ def _component(dtype: Any) -> str | None:
 class Tolerant:
     """A condition that allows for a tolerance on doubles: `sverify.approx`'s
     (`sverify.conditions.Approx`)."""
-
-
-def dependencies(
-    observation: Observation,
-    cond: Any,
-    columns: Mapping[str, Any],
-    read: Sequence[str] | None,
-    open_columns: Mapping[str, str] | None = None,
-) -> list[str]:
-    """The components `observation` ignores that `cond`, a table condition
-    (`unique`, `references`, `max_rows`, `rows_per`), depends on. The
-    checker reports them for every other condition (`ContractCheck`'s
-    `Report.ignores`); a table condition is no expression it
-    evaluates. Empty when the condition cannot tell results equal up to
-    `observation` apart.
-
-    A table condition ignores the order of the rows and depends on the
-    values of the columns it reads, unless the observation keeps them:
-    doubles with a tolerance, timestamps truncated, strings normalised,
-    decimals without their scale. Zeros and NaNs made one change no
-    comparison of reference codes (`Expr.robust_of_depends_canon`).
-
-    Args:
-        observation: The postcondition's observation.
-        cond: The condition.
-        columns: The output's columns by name, with Ibis types.
-        read: The columns `cond` reads; None if unknown, which counts as
-            every column.
-        open_columns: Output columns whose value the reference leaves open:
-            `"picks"` for `first` or `last` without an order (which
-            row's value), `"elements"` for a `collect` without one (the
-            order of the elements).
-    """
-    names = list(columns) if read is None else [n for n in read if n in columns]
-    out: list[str] = []
-    for n in names:
-        why_open = (open_columns or {}).get(n)
-        if why_open is not None and why_open not in out:
-            out.append(why_open)
-    ignored = set(observation.ignored()) - {"rows", "zeros", "errors"}
-    for comp in (_component(columns[n]) for n in names):
-        if comp is None or comp not in ignored or comp in out:
-            continue
-        if comp == "floats" and (isinstance(cond, Tolerant) or observation.floats == "plan"):
-            # Under the plan's bound, a run holds the columns a condition
-            # reads to their exact value (`sverify.routes.observed`).
-            continue
-        out.append(comp)
-    return out
 
 
 def why(components: Sequence[str]) -> str:

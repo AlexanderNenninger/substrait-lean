@@ -436,3 +436,7 @@ would give suggestions for more kinds of postcondition.
 ### sverify-dbt reads sverify's finding codes and budgets from `sverify.cli`
 
 `--format github|sarif|junit`, `--timeout` and `--memory-limit` (#891) use `sverify.cli._explain` (the text and level of a finding code) and `sverify.cli._limits` (`Budget`, `timeout_from`, `memory_limit_from`), both private. The `==` pin keeps them working. Two more names are not public: `sverify._duckdb.memory_limit_error` (DuckDB out of memory as a `MemoryLimitError`) and Ibis's `DuckDBType.to_string`, which turns a type of `Report.output` into DuckDB's name for it. `tests/test_public_api.py` lists every such name and fails on a new one. Proposed: a public `sverify.limits`, `sverify.explain`, `MemoryLimitError` raised for DuckDB's out-of-memory error `Report.output_types(dialect="duckdb")` and a public exit-status mapping (`EXIT_STATUS` in `sverify_dbt/result.py` repeats the table of `sverify.cli`'s `_main.py`), so that a package on sverify's API needs no underscore module.
+
+### sverify's 1.0 names (#2345, ruling 263)
+
+sverify-dbt reads one name the 1.0 naming sweep changed: `sverify.types.CheckedCondition`, the type of `Report.ensures`' items, is `sverify.types.Postcondition`, with the same fields (`reason`, `why`, `needs`, `condition`, `proved`). `check.py`, `mapping.py` and `result.py` follow. The other renames (`Lenses`, a route's `taken` and `why`, `SinkWrite.inserts`, the sink record's `semantics`) are not read here.

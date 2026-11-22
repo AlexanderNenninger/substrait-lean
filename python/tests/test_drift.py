@@ -107,17 +107,17 @@ def test_check_against_sink_gates_on_a_weakened_contract(tmp_path, capsys):
         f"stored = StaticSource(ROWS, name='orders').pipe(paid).write(DeltaSink({str(sink)!r}))\n"
     )
     path.write_text(head.replace("REQ", "1"))
-    assert main(["check", f"{path}:stored", "--against-sink", "--json"]) == 0
+    assert main(["check", f"{path}:stored", "--against-sink", "--format", "json"]) == 0
     doc = json.loads(capsys.readouterr().out)
     assert doc["drift"]["stored"]["weakened"]["checks"] == []
     # Another file: a rewrite of the same length within a second would load
     # Python's cached bytecode of the first.
     path = tmp_path / "weaker.py"
     path.write_text(head.replace("REQ", "0"))
-    assert main(["check", f"{path}:stored", "--against-sink", "--json"]) == 1
+    assert main(["check", f"{path}:stored", "--against-sink", "--format", "json"]) == 1
     doc = json.loads(capsys.readouterr().out)
     assert [f["code"] for f in doc["findings"]] == ["contract_weakened"]
     assert doc["findings"][0]["condition"] == "amount > 1"
     # Without the flag, check opens no sink.
-    assert main(["check", f"{path}:stored", "--json"]) == 0
+    assert main(["check", f"{path}:stored", "--format", "json"]) == 0
     assert "drift" not in json.loads(capsys.readouterr().out)

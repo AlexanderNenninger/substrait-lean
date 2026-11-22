@@ -1,0 +1,13 @@
+{
+  "id": "F268",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#1196's float-bounds bridge theorems, Kahan's sum (`KahanSums`) and a constant run's product (`FloatSumsK.const`), take ruling 248's `FloatCode.Dbl` as a hypothesis on their values. These are new theorems that weaken no existing statement, and on a code no double has their conclusions are false. No second predicate is defined. If a proof needs the form `IsFin x → ofExact (scaled x) = x`, it is proved once from `FloatCode.Dbl`, next to `dbl_ofExact`.",
+  "issues": [
+    1196
+  ],
+  "source": "fable-ruling-268-1196-kahan-dbl.md",
+  "note": "Applies F248; amends nothing, and needs no D-number, since it adds theorems and changes no promise to users. Conditions: H1, the hypothesis can be discharged: a consumer gets `Dbl` for an aggregate's input values from `Catalog.Dbl` through F248's closure theorem over `Rel.eval`, and if #1196 adds no consumer the PR names that lemma. H2, `#print axioms` of the two bridge theorems matches `SumOrder`'s existing theorems, and `SumOrder`, `SumBound`, `SumBoundRaw` and the core semantics stay unchanged. H3, `k ≥ 1` stays on the constant-run node, with no `decide` on large terms. H4, the duckdb-sum-double fact's constant-run note moves from unproved to proved, citing the theorem."
+}

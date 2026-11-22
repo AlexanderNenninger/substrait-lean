@@ -125,7 +125,7 @@ def test_a_decimal_38_38_is_refused_on_duckdb_in_the_report():
     report = sv.verify(t.select(x=t.d.cast("string")), counterexamples=0)
     route = report.route("duckdb")
     assert route.refused
-    assert "DECIMAL(38, 38)" in route.reason and "DECIMAL(38, 37)" in route.reason
+    assert "DECIMAL(38, 38)" in route.why and "DECIMAL(38, 37)" in route.why
 
 
 def test_a_decimal_38_37_is_not():

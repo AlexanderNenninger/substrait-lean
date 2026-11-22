@@ -1,0 +1,17 @@
+{
+  "id": "F252",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#271: the lowering theorems read the two-sided form with one induction per direction. `lowerWith_correct` concludes `AgreeOrRaises` for any table. The raise direction (`lowerE_raises`, `lowerRel_raises`) takes `L.ExactOn` of the expression or plan. `ExactOn` is defined once on `Expr`, and `L.allExact → L.ExactOn p` is one lemma, which DuckDB discharges once. `GuardsAt.one` takes the entry's exactness flag, and a non-exact entry keeps its guards.",
+  "issues": [
+    271,
+    2256
+  ],
+  "amended_by": [
+    "F256"
+  ],
+  "source": "fable-ruling-252-271-two-sided-theorems.md",
+  "note": "Builds on F249, F250 and F251. Conditions: L1, the error branch comes from `Expr.eval`'s strictness in function arguments, proved once, and any lazy lowered form is named in the PR. L2, time `allExact` for DuckDB's table; above the module's target, prove it from the table's construction. L3, list Spark's consumers of the no-raise side condition; the honest claim for a Spark plan with a non-exact entry is AgreeOrRaises, and any user-facing wording that says such a run will not raise goes to Fable. L4, `#print axioms` of every changed theorem is unchanged, and no DuckDB statement is weaker than today's. The corollary route through `Outcome.agree_iff` was withdrawn by F256."
+}
