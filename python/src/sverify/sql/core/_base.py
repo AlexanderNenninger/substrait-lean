@@ -5826,9 +5826,10 @@ class _Writer:
                 plain = _nan_ruled_out(op, a, b) and op not in ("fdiv", "fmod")
                 consts = [_float_lit(a), _float_lit(b)]
                 # A finite number divided by a constant of at least 1 in size, or
-                # multiplied by one of at most 1, has no larger magnitude: no overflow.
-                # Nor divided by an integer as a double: zero raises first, and
-                # any other is at least 1 in size (`Expr.mayInfBin_sound`, #1787).
+                # multiplied by one of at most 1, has no larger magnitude: no overflow
+                # (`BinFn.shrinks_fin`). Nor divided by an integer as a double: zero
+                # raises first, and any other is at least 1 in size
+                # (`Expr.mayInfBin_sound`, #1787).
                 shrinks = (
                     (op in ("fdiv", "fdivIeee") and abs(consts[1] or 0.0) >= 1.0)
                     or (op == "fmul" and any(c is not None and abs(c) <= 1.0 for c in consts))
