@@ -35,7 +35,7 @@ Emitting is off unless a refresh gets `lineage=` (or the command line
   `requires` holds the postconditions of its `sverify_contract` facet that
   sverify proves again from the exported plan (`sv.Report.from_substrait`); every
   other claim, and every other tool's `dataQualityAssertions`, is checked
-  evidence (`evidence`), never proof.
+  evidence (`assertions`), never proof.
 
 `SPEC_VERSION` is the OpenLineage spec the events follow (the spec of the
 pinned `openlineage-python`, `CLIENT_VERSION`), which the tests validate
@@ -396,7 +396,7 @@ def _with_refresh(facet: Mapping[str, Any], entry: StageRefresh) -> dict[str, An
     out = dict(facet)
     if entry.route is not None:
         r = entry.route
-        out["route"] = {"engine": r.engine, "kind": r.kind, "class": r.cls}
+        out["route"] = {"engine": r.engine, "kind": r.taken, "class": r.cls}
     out["outcome"] = entry.outcome
     out["quarantined"] = entry.quarantined
     if entry.held is not None:
@@ -704,7 +704,7 @@ class _Runs:
             d = {"namespace": out[0], "name": out[1], "facets": facets}
             if w is not None and w.mode != "skipped":
                 d["outputFacets"] = {
-                    "outputStatistics": _facet("outputStatistics", rowCount=w.inserted)
+                    "outputStatistics": _facet("outputStatistics", rowCount=w.inserts)
                 }
             outputs.append(d)
         if entry.held is not None:
@@ -790,7 +790,7 @@ class Upstream:
         producer: The job of the last run that wrote it (`namespace/name`),
             its run id and the `producer` URI.
         contract: Its `sverify_contract` facet, if a sverify job wrote it.
-        evidence: Checks other jobs ran on it (`dataQualityAssertions`), and
+        assertions: Checks other jobs ran on it (`dataQualityAssertions`), and
             the claims of a `sverify_contract` facet that sverify did not
             prove again: checked evidence, never proof.
     """
@@ -801,7 +801,7 @@ class Upstream:
     version: str | None = None
     producer: dict[str, str] = field(default_factory=dict)
     contract: dict[str, Any] | None = None
-    evidence: list[Assertion] = field(default_factory=list)
+    assertions: list[Assertion] = field(default_factory=list)
     _requires: list[Condition] | None = field(default=None, repr=False)
     _report: Report | None = field(default=None, repr=False)
     _why: str | None = field(default=None, repr=False)
@@ -824,7 +824,7 @@ class Upstream:
         return self._report is not None and self._report._proved
 
     @property
-    def why_unverified(self) -> str | None:
+    def why(self) -> str | None:
         """Why the facet's contract counts as evidence only, or None if it
         is verified (or there is no facet)."""
         self._verify()
@@ -883,7 +883,7 @@ class Upstream:
         job = self.producer.get("job", "")
         prod = self.producer.get("producer", "")
         for e in c.get("ensures", []):
-            self.evidence.append(
+            self.assertions.append(
                 Assertion(
                     f"sverify_contract: {e.get('label')} ({e.get('status')})",
                     e.get("status") in ("proved", "checked"),
@@ -893,7 +893,7 @@ class Upstream:
                 )
             )
         for col in c.get("not_null", []):
-            self.evidence.append(
+            self.assertions.append(
                 Assertion("sverify_contract: not_null (proved)", True, col, prod, job)
             )
 
@@ -972,7 +972,7 @@ class Events:
                     for facet in (facets, d.get("inputFacets") or {}):
                         dq = facet.get("dataQualityAssertions") or {}
                         for a in dq.get("assertions") or []:
-                            up.evidence.append(
+                            up.assertions.append(
                                 Assertion(
                                     str(a.get("assertion")),
                                     bool(a.get("success")),
@@ -1078,7 +1078,7 @@ def marquez(
             "producer": str(facets.get(_FACET, {}).get("_producer", "")),
         }
     for a in (facets.get("dataQualityAssertions") or {}).get("assertions") or []:
-        up.evidence.append(
+        up.assertions.append(
             Assertion(
                 str(a.get("assertion")),
                 bool(a.get("success")),

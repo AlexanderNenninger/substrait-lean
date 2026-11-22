@@ -68,7 +68,7 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 from sverify._engines import translations
 from sverify._unsupported import SverifyError, SverifyWarning
-from sverify.observation import Observation, Within
+from sverify.observation import Lenses, Within
 
 if TYPE_CHECKING:
     from sverify.report import Report
@@ -153,7 +153,7 @@ def _short(x: float) -> str:
     return f"{float(f'{x:.2g}'):g}"
 
 
-def observed_text(obs: Observation) -> str:
+def observed_text(obs: Lenses) -> str:
     """What an observed route's results agree with the reference up to, in
     words: "doubles within abs=2e-07, rows in any order"."""
     parts = []
@@ -221,7 +221,7 @@ class RouteError(SverifyError, ValueError):
     code = "route_refused"
 
     def __init__(self, route: Route):
-        super().__init__(f"refused on {route.engine}: {route.reason}")
+        super().__init__(f"refused on {route.engine}: {route.why}")
         self.route = route
 
 
@@ -231,15 +231,15 @@ class Route:
 
     engine: str
     """The engine, by name."""
-    kind: Taken | None
+    taken: Taken | None
     """The route taken; `"unverified"` for a plan that is not proved, run
     with `unverified=True`; None when the plan is refused."""
     profile: str
     """The profile the proof the run relies on is under: the engine's own
     for `"native"`, `"transfer"` and `"recheck"`, `"portable"` for
     `"translated"`; for a refusal, the profile the plan was verified under."""
-    reason: str
-    """Why this route, or why none."""
+    why: str
+    """Why this route, or why none, in words: `Postcondition.reason` is a code, `why` is words."""
     deterministic: bool = True
     """Whether the plan's result is determined up to row order
     (`Report.deterministic`)."""
@@ -264,7 +264,7 @@ class Route:
     evidence. None where no class applies (a refusal, an unverified run)."""
     shims: tuple[str, ...] = ()
     """The shims the translation writes for this plan, by option."""
-    reproducible: Observation | None = None
+    reproducible: Lenses | None = None
     """What a rerun had to reproduce, where the caller
     required one; the route was refused unless the engine's run-to-run
     variation refines it."""
@@ -276,7 +276,7 @@ class Route:
     """On Polars, the nodes of the plan's streaming plan that run on the
     in-memory engine (`sverify_polars.engine.fallback_nodes`), recorded by
     `Report.run`: the in-memory engine's facts hold for those."""
-    lenses: Observation | None = None
+    lenses: Lenses | None = None
     """For an `"observed"` route: the observation up to which the engine's
     result equals one the reference allows, the coarsest over the options
     the proof depends on (rows as a multiset, a tolerance on doubles from
@@ -289,12 +289,12 @@ class Route:
     labels per input table: an `sv.unique(...)` that determines a result
     with ties, an `sv.max_rows(n)` under which the plan's bound meets a
     tolerance."""
-    facts: tuple[str, ...] = ()
+    engine_facts: tuple[str, ...] = ()
     """The engine facts behind the choices the class rests on
     (`engines/<engine>/facts/`)."""
     theorems: tuple[str, ...] = ()
     """The Lean theorems that prove those choices, where they are proved."""
-    version: str | None = None
+    probed_version: str | None = None
     """The engine version the facts were probed at."""
     unprobed_version: str | None = None
     """The engine version the run is on where it is in the profile's range
@@ -302,24 +302,24 @@ class Route:
     version computes what the probed one does. None on a probed version."""
     issues: tuple[int, ...] = ()
     """The issues that track the tested choices (`"issue"` of a tested row)."""
-    proved_facts: tuple[str, ...] = ()
+    theorem_facts: tuple[str, ...] = ()
     """The facts the theorems rest on, where they prove the engine's model
     (`Rel.polars_sound` of `Polars.written`): those facts say the engine is it."""
 
     @property
     def refused(self) -> bool:
         """Whether no route takes the plan to the engine (`kind` is None)."""
-        return self.kind is None
+        return self.taken is None
 
     def __str__(self) -> str:
         """The class first, then what it means for this plan and the
         evidence: "shim (integer division …); evidence tested". The
         long form is `reason`."""
-        if self.kind is None:
-            return f"refused: {self.reason}"
-        if self.kind == "unverified":
-            return f"unverified: {self.reason}"
-        out = self.cls or _KIND_TEXT.get(self.kind, self.kind)
+        if self.taken is None:
+            return f"refused: {self.why}"
+        if self.taken == "unverified":
+            return f"unverified: {self.why}"
+        out = self.cls or _KIND_TEXT.get(self.taken, self.taken)
         if self.cls == "shim" and self.shims:
             what = dict.fromkeys(shim_text(n) for n in (x.split(": ", 1)[-1] for x in self.shims))
             out += f" ({'; '.join(what)})"
@@ -327,10 +327,10 @@ class Route:
             out += f": {observed_text(self.lenses)}"
         if self.evidence:
             out += "; evidence " + evidence_text(self, self.engine)
-        if self.cls and self.kind != "translated":
+        if self.cls and self.taken != "translated":
             # How the proof reaches the engine, where it is not the
             # translation from the reference.
-            out += f"; {self.kind}: {self.reason}"
+            out += f"; {self.taken}: {self.why}"
         if not self.deterministic:
             out += "; the result is not determined up to row order"
         return out
@@ -375,13 +375,13 @@ def evidence_text(x: Route | Realized, engine: str) -> str:
     and the issues that track them for a test."""
     if x.evidence == "proved":
         out = "proved" + (f" by {', '.join(x.theorems)}" if x.theorems else "")
-        if x.proved_facts:
-            out += f" on {engine}'s model (facts {', '.join(x.proved_facts)})"
+        if x.theorem_facts:
+            out += f" on {engine}'s model (facts {', '.join(x.theorem_facts)})"
     else:
         out = "tested"
-        if x.version:
-            out += f" at {x.version}"
-        cited = [f"facts {', '.join(x.facts)}"] if x.facts else []
+        if x.probed_version:
+            out += f" at {x.probed_version}"
+        cited = [f"facts {', '.join(x.engine_facts)}"] if x.engine_facts else []
         cited += [f"#{i}" for i in x.issues]
         if cited:
             out += f" ({'; '.join(cited)})"
@@ -642,7 +642,7 @@ def _bounds(eps: Mapping[str, Any]) -> dict[str, tuple[float, bool]]:
 
 def _plan_bound(
     q: Mapping[str, Any],
-    observed: Observation,
+    observed: Lenses,
     epsilon: Mapping[str, Mapping[str, Any]] | None,
     against: str = "of the reference, and the postcondition asks",
     fix: str = (
@@ -725,7 +725,7 @@ def _plan_bound(
     return rest, problems, unproved
 
 
-def _resolve(observed: Observation, epsilon: Mapping[str, Mapping[str, Any]] | None) -> Observation:
+def _resolve(observed: Lenses, epsilon: Mapping[str, Mapping[str, Any]] | None) -> Lenses:
     """`observed` with `floats="plan"` replaced by the plan's bound: per
     kind of bound, the smallest of the double columns' `ε` (every column
     meets it), exact where no column has one. Unchanged where the checker
@@ -793,7 +793,7 @@ def verdict(report: Report, engine: str) -> Mapping[str, Any] | None:
 def realization(
     engine: str,
     verdict: Mapping[str, Any] | None,
-    observed: Observation,
+    observed: Lenses,
     epsilon: Mapping[str, Mapping[str, float]] | None = None,
     held: Mapping[str, str] | None = None,
 ) -> Realized:
@@ -842,7 +842,7 @@ def realization(
             problems.append(_THRESHOLD.format(engine=engine))
         else:
             problems.append(f"{p.get('code')} on {engine}")
-    seen: list[Observation] = []
+    seen: list[Lenses] = []
     proved: list[bool] = []
     told: set[str] = set()
     for r in verdict.get("observed", ()):
@@ -904,23 +904,21 @@ class Realized(NamedTuple):
     evidence: Evidence | None
     shims: tuple[str, ...]
     problems: list[str]
-    observation: Observation | None = None
+    observation: Lenses | None = None
     bound_proved: bool | None = None
-    facts: tuple[str, ...] = ()
+    engine_facts: tuple[str, ...] = ()
     """The facts behind the rows of the options the plan depends on."""
     theorems: tuple[str, ...] = ()
     """The theorems that prove those rows (`"theorem"` of a proved row)."""
-    version: str | None = None
+    probed_version: str | None = None
     """The engine version the rows' facts were probed at (`"version"`)."""
     issues: tuple[int, ...] = ()
     """The issues that track the tested rows (`"issue"`)."""
-    proved_facts: tuple[str, ...] = ()
+    theorem_facts: tuple[str, ...] = ()
     """The facts the proved rows' theorems rest on (`"proved_facts"`)."""
 
 
-def _with_bound(
-    q: Observation, raw: Mapping[str, Any], epsilon: Mapping[str, Any] | None
-) -> Observation:
+def _with_bound(q: Lenses, raw: Mapping[str, Any], epsilon: Mapping[str, Any] | None) -> Lenses:
     """A row's observation with a per-plan bound on doubles written out as
     the tolerance the plan's `ε` gives (the largest over its columns)."""
     from sverify.observation import Within
@@ -1009,7 +1007,7 @@ def _all_proved(epsilon: Mapping[str, Any] | None) -> bool:
     )
 
 
-def _coarsest(a: Observation, b: Observation) -> Observation:
+def _coarsest(a: Lenses, b: Lenses) -> Lenses:
     """The coarser of two observations on each component."""
     from sverify.observation import _COMPONENTS
 
@@ -1020,10 +1018,10 @@ def _coarsest(a: Observation, b: Observation) -> Observation:
             out[name] = y if replace(a, floats=x).coarser_than(replace(a, floats=y)) == [] else x
         else:
             out[name] = max(x, y, key=levels.index)
-    return Observation(**out)
+    return Lenses(**out)
 
 
-def observed(report: Report) -> tuple[Observation, dict[str, str]]:
+def observed(report: Report) -> tuple[Lenses, dict[str, str]]:
     """What a run checks the engine's result against: the report's
     observation (`ensures`'s, or else rows as a multiset, doubles within
     the plan's bound and other values exact, `PLAN_BOUND`). Under the
@@ -1031,7 +1029,7 @@ def observed(report: Report) -> tuple[Observation, dict[str, str]]:
     postcondition reads are held to their exact value
     (by column, the postcondition's label): a condition proved of the
     reference's value need not hold of a value near it. One that holds of
-    every value near it is not held (`CheckedCondition.robust`)."""
+    every value near it is not held (`Postcondition.robust`)."""
     if report.lenses.floats != "plan":
         return report.lenses, {}
     held: dict[str, str] = {}
@@ -1087,7 +1085,7 @@ def recheck(report: Report, profile: str) -> tuple[bool | None, str]:
 # -- choosing the route (D13) -------------------------------------------------
 
 
-def max_rows_fix(report: Report, engine: str, required: Observation | None) -> dict[str, list[str]]:
+def max_rows_fix(report: Report, engine: str, required: Lenses | None) -> dict[str, list[str]]:
     """The `sv.max_rows(N)` under which the plan's bound on its doubles
     (`Report._epsilon`) meets the tolerance `required` states, by the input
     table that has a row cap now: the bound grows linearly with the rows,
@@ -1200,7 +1198,7 @@ def engine_name(engine: Any) -> str:
 def reproducibility(
     report: Report,
     engine: str,
-    required: Observation,
+    required: Lenses,
     depends: Sequence[Mapping[str, Any]] | None = None,
 ) -> tuple[list[str], Evidence]:
     """Whether a rerun of the plan on `engine` reproduces its result up to
@@ -1211,7 +1209,7 @@ def reproducibility(
     an ORDER BY, a LIMIT without one) fails every requirement, and the
     problem names each place. A place that only picks a member of a class
     (`-0.0` or `0.0`, a NaN: a group key over doubles, `MIN`, `MAX`) fails a
-    requirement that reads the members (`Observation.reads_members`): the
+    requirement that reads the members (`Lenses.reads_members`): the
     reference leaves the member open, and the check is the plan's, reading
     no engine fact; the problem names each pick and the two ways out. Then,
     on each option the plan depends on, the engine's run-to-run
@@ -1353,7 +1351,7 @@ def choose(
     route: RouteKind | Literal["auto"] = "auto",
     *,
     version: str | None = None,
-    reproducible: Observation | None = None,
+    reproducible: Lenses | None = None,
 ) -> Route:
     """The route by which the plan `report` checked reaches `engine`.
 
@@ -1489,12 +1487,12 @@ def choose(
             rerun_evidence,
             lenses=gives,
             bound_proved=got.bound_proved,
-            facts=got.facts,
+            engine_facts=got.engine_facts,
             theorems=got.theorems,
-            version=got.version or probed_version(e),
+            probed_version=got.probed_version or probed_version(e),
             unprobed_version=unprobed,
             issues=got.issues,
-            proved_facts=got.proved_facts,
+            theorem_facts=got.theorem_facts,
         )
 
     translated = translations()

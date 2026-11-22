@@ -2,11 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/AlexanderNenninger/substrait-lean/python/src/sverify/schemas/cli.schema.json",
   "title": "sverify command output",
-  "description": "The JSON document every `sverify` command prints with --format json (#744, API review I5). Format 1. Within 1.x the format only gains optional keys, values from a fixed set may gain new values, and readers ignore keys they do not know (docs/stability.md). Each checked node carries its report as Report.to_json() writes it, in the format of report.schema.json.",
+  "description": "The JSON document every `sverify` command prints with --format json (#744, API review I5). Format 2. Within 1.x the format only gains optional keys, values from a fixed set may gain new values, and readers ignore keys they do not know (docs/stability.md). Each checked node carries its report as Report.to_json() writes it, in the format of report.schema.json.",
   "type": "object",
   "required": ["format", "sverify", "command", "exit", "status"],
   "properties": {
-    "format": {"description": "The version of this format.", "const": 1},
+    "format": {"description": "The version of this format. Format 1, before 1.0, named a write's inserts and deletes inserted and deleted, and a fix's why reason.", "const": 2},
     "sverify": {"description": "The version of sverify that wrote the document.", "type": "string"},
     "command": {"description": "The command.", "enum": ["check", "refresh", "explain"]},
     "exit": {"description": "The exit code: 0 proved (a refresh committed every row), 1 not proved, 2 usage error, 3 unsupported, 4 time or memory budget exceeded, 5 a refresh quarantined rows, 6 error, 7 refused (no route to the engine), 8 a refresh held a node.", "type": "integer", "minimum": 0, "maximum": 8},
@@ -55,12 +55,12 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["transform", "requires", "placed", "reason"],
+        "required": ["transform", "requires", "placed", "why"],
         "properties": {
           "transform": {"type": "string"},
           "requires": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
           "placed": {"description": "Whether --fix could write them into the decorator.", "type": "boolean"},
-          "reason": {"description": "Why they were not placed; null if they were.", "type": ["string", "null"]}
+          "why": {"description": "Why they were not placed, in words; null if they were.", "type": ["string", "null"]}
         }
       }
     },
@@ -90,8 +90,8 @@
                 "properties": {
                   "mode": {"type": "string"},
                   "version": {"type": ["integer", "null"]},
-                  "inserted": {"type": "integer"},
-                  "deleted": {"type": "integer"}
+                  "inserts": {"type": "integer"},
+                  "deletes": {"type": "integer"}
                 }
               }
             ]

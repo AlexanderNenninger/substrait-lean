@@ -1922,9 +1922,9 @@ def _floats_component(components: Mapping[str, Any]) -> Any:
 def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     """`from_substrait`, under its internal name."""
     from sverify._verdict import split_assumed, verdict
-    from sverify.conditions import CheckedCondition, PlannedCondition
+    from sverify.conditions import PlannedCondition, Postcondition
     from sverify.engine import run_checker
-    from sverify.observation import Observation
+    from sverify.observation import Lenses
     from sverify.report import Issue, column_facts
 
     imp = read(data)
@@ -1966,7 +1966,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     for e in imp.ensures:
         if e.get("kind") == "row":
             r = next(rows)
-            checked.append(CheckedCondition(e["text"], r["proved"], r["value"]))
+            checked.append(Postcondition(e["text"], r["proved"], r["value"]))
         else:
             checked.append(_table_condition(e["entry"]).ensured(out, next_key))
     requires: dict[str, list[str]] = {}
@@ -1987,7 +1987,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         k: v for k, v in (m.get("lenses_components") or {}).items() if k not in ("floats", "bound")
     }
     observation = dataclasses.replace(
-        Observation(floats=_floats_component(m.get("lenses_components") or {})), **components
+        Lenses(floats=_floats_component(m.get("lenses_components") or {})), **components
     )
     report = verdict(
         out,

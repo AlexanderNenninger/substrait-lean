@@ -190,7 +190,7 @@ def _fail(
 
         err = {"code": kind, "type": type(e).__name__, "message": message}
         doc = {
-            "format": 1,
+            "format": 2,
             "sverify": version("sverify"),
             "command": "check",
             "exit": code,

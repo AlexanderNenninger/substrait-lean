@@ -468,17 +468,17 @@ class Unread:
         table: The schema object it is on.
         column: The property it is on, or None for a rule on the object.
         rule: The rule (or the property's field) as the document has it.
-        reason: Why sverify cannot read it.
+        why: Why sverify cannot read it.
     """
 
     table: str
     column: str | None
     rule: Any
-    reason: str
+    why: str
 
     def __str__(self) -> str:
         where = self.table if self.column is None else f"{self.table}.{self.column}"
-        return f"{where}: {self.reason}: {json.dumps(self.rule, default=str)}"
+        return f"{where}: {self.why}: {json.dumps(self.rule, default=str)}"
 
 
 @dataclass

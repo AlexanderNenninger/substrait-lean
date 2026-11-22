@@ -102,12 +102,12 @@ from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts
     ROWS_SHOWN,
     Approx,
     ArrivesWithin,
-    CheckedCondition,
     Discharged,
     Inferred,
     Key,
     MaxRows,
     NonOverlapping,
+    Postcondition,
     PreconditionError,
     References,
     RelationRows,
@@ -143,7 +143,7 @@ from sverify.engine import (
     plan_and_differences,
     run_checker,
 )
-from sverify.observation import Observation
+from sverify.observation import Lenses
 from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
     _DECIMAL_ARG,
     _EPOCH_DAY,
@@ -987,7 +987,7 @@ def infer_bounds(
 
     An observation in `ensures` (`sv.equivalent`) is no condition to prove:
     it goes to `Report.lenses`, and each other postcondition that
-    depends on what it ignores says so (`CheckedCondition.ignores`)."""
+    depends on what it ignores says so (`Postcondition.ignores`)."""
     observed, ensures = _observation.split(ensures)
     report = _infer_bounds(
         transform,
@@ -1082,7 +1082,7 @@ def _typed(dtypes: Mapping[str, Any], facts: Mapping[str, ColumnFacts]) -> dict[
     }
 
 
-def _needing(c: CheckedCondition, needs: Sequence[Needed]) -> CheckedCondition:
+def _needing(c: Postcondition, needs: Sequence[Needed]) -> Postcondition:
     """`c` not proved where its proof used inferred preconditions (#701),
     with those it may have used as its `needs`: the bounds, and the `IS NOT
     NULL`s inferred for this postcondition; every inferred one where those
@@ -1110,7 +1110,7 @@ def _checked_on_unproved(v: str) -> OnUnproved:
 
 def _observed(
     report: Report,
-    observed: Observation,
+    observed: Lenses,
     ensures: Sequence[Condition],
     opened: Mapping[str, str],
 ) -> Report:
@@ -1131,8 +1131,8 @@ def _observed(
             nullable=None
             if r is None or any(c not in report.facts for c in r)
             else tuple(c for c in r if report.facts[c].nullable),
-            ignores=c.checker_ignores
-            if c.checker_ignores is not None
+            ignores=c._checker_ignores
+            if c._checker_ignores is not None
             else tuple(
                 _observation.dependencies(
                     observed, cond, report.output, r, {} if c.proved else opened
@@ -1207,7 +1207,7 @@ def _infer_bounds(
     infer: bool,
     inputs: Collection[str] | None,
     semantics: Semantics,
-    observed: _observation.Observation | None = None,
+    observed: _observation.Lenses | None = None,
 ) -> Report:
     def once(reqs: Mapping[str, Sequence[Condition]], n: int):
         return _verify_once(
@@ -1343,16 +1343,20 @@ def _confirm_hints(report: Report, requires, once) -> Report:
     tried: dict[str, set[tuple[str, str]]] = {}
     issues = []
     for i in report.issues:
-        if i.hint_needs:
-            key = repr(sorted((t, sorted(label(c) for c in cs)) for t, cs in i.hint_needs.items()))
+        if i.suggested_requires:
+            key = repr(
+                sorted((t, sorted(label(c) for c in cs)) for t, cs in i.suggested_requires.items())
+            )
             if key not in tried:
                 widened = {t: list(cs) for t, cs in requires.items()}
                 _merge(widened, report._inferred)
-                _merge(widened, i.hint_needs)
+                _merge(widened, i.suggested_requires)
                 again = once(widened, 0)[0]
                 tried[key] = {(j.kind, j.expr) for j in again.issues if j.error}
             if (i.kind, i.expr) in tried[key]:
-                i = replace(i, hint=i.unconfirmed, hint_needs={}, unconfirmed=None, needs=[])
+                i = replace(
+                    i, hint=i.unconfirmed, suggested_requires={}, unconfirmed=None, needs=[]
+                )
         issues.append(i)
     return replace(report, issues=issues)
 
@@ -1585,7 +1589,7 @@ def _prove_once(
     bound: list[str],
     inputs: Collection[str] | None,
     semantics: Semantics = "portable",
-    observed: _observation.Observation | None = None,
+    observed: _observation.Lenses | None = None,
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
     schemas."""
@@ -1836,7 +1840,7 @@ def _prove_once(
             )
             depends = e.get("depends")
             checked.append(
-                CheckedCondition(
+                Postcondition(
                     e["name"],
                     e["proved"],
                     e["value"],
@@ -1847,7 +1851,7 @@ def _prove_once(
                     allowed=bool(e.get("allowed")),
                     robust=holds_on_engines,
                     robust_on=proved_on,
-                    checker_ignores=None if (ig := e.get("ignores")) is None else tuple(ig),
+                    _checker_ignores=None if (ig := e.get("ignores")) is None else tuple(ig),
                 )
             )
         checked[-1].condition = c
@@ -2118,7 +2122,7 @@ def _issues(
                 [_needed(t, c, dialect) for t, cs in code.items() for c in cs]
                 if error and not fallback
                 else [],
-                hint_needs={t: list(cs) for t, cs in code.items()} if error else {},
+                suggested_requires={t: list(cs) for t, cs in code.items()} if error else {},
                 unconfirmed=fallback,
                 assumed=assumed,
             )
@@ -2167,7 +2171,7 @@ def _ibis_text(node: Any) -> str:
 def rounding_hints(
     transform: ir.Table,
     ensures: Sequence[Condition],
-    checked: Sequence[CheckedCondition],
+    checked: Sequence[Postcondition],
     facts: Sequence[dict],
     dtypes: Mapping[str, Any],
 ) -> list[str]:

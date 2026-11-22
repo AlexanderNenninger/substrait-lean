@@ -218,7 +218,7 @@ def test_a_bearer_token(monkeypatch):
             FlightSource(location(s), "samples", schema=SAMPLES).latest()
         monkeypatch.setenv("SVERIFY_TEST_FLIGHT_TOKEN", "s3cret")
         src = FlightSource(
-            location(s), "samples", schema=SAMPLES, secret="env:SVERIFY_TEST_FLIGHT_TOKEN"
+            location(s), "samples", schema=SAMPLES, credentials="env:SVERIFY_TEST_FLIGHT_TOKEN"
         )
         assert src.latest() == 0
         assert "s3cret" not in repr(src)
@@ -251,11 +251,11 @@ def test_a_restarted_job_resumes_and_reads_later_drops_as_deletes(server, tmp_pa
     _, restarted = restart_job(server, path)
     out = restarted.refresh()["busy"]
     assert out.started is not None and out.started.startswith("resumed from")
-    assert out.write is not None and (out.write.mode, out.write.inserted) == ("merge", 1)
+    assert out.write is not None and (out.write.mode, out.write.inserts) == ("merge", 1)
     assert stored_ts(path) == [1, 2, 3]
     server.drop("samples", below=2)
     w = restarted.refresh().writes[0]
-    assert (w.mode, w.deleted) == ("merge", 1)
+    assert (w.mode, w.deletes) == ("merge", 1)
     assert stored_ts(path) == [2, 3]
 
 

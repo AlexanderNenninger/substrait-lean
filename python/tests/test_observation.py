@@ -25,7 +25,7 @@ from sverify.observation import (
     _STRINGS,
     EXACT,
     PLAN_BOUND,
-    Observation,
+    Lenses,
     Within,
     string_key,
 )
@@ -35,7 +35,7 @@ T = ibis.table({"k": "int64", "x": "float64", "s": "string", "ts": "timestamp"},
 
 def test_default_is_multiset_exact() -> None:
     q = sv.equivalent()
-    assert q == Observation()
+    assert q == Lenses()
     assert q.ignored() == ["rows"]
     assert EXACT.refines(q) and not q.refines(EXACT)
 
@@ -89,7 +89,7 @@ def test_a_finite_value_is_never_close_to_an_infinity(big: float) -> None:
 
 
 def test_the_order_agrees_with_lean() -> None:
-    """`Observation.refines` orders each component's levels as `Obs.le`
+    """`Lenses.refines` orders each component's levels as `Obs.le`
     does (`--options`' `levels`), on every pair of levels both sides name."""
     out = subprocess.run(
         [str(checker_path()), "--options"], capture_output=True, text=True, check=True
@@ -104,7 +104,7 @@ def test_the_order_agrees_with_lean() -> None:
             for b in names:
                 fine: dict[str, Any] = {component: a}
                 coarse: dict[str, Any] = {component: b}
-                mine = Observation(**fine).refines(Observation(**coarse))
+                mine = Lenses(**fine).refines(Lenses(**coarse))
                 assert mine == ((a, b) in le), (component, a, b)
 
 
@@ -252,7 +252,7 @@ def test_without_an_observation_nothing_changes() -> None:
     observed = sv.verify(expr, requires=req, ensures=[sv.equivalent(), _.y >= 1], counterexamples=0)
     assert plain.verdict == sv.Verdict.PROVED and observed.verdict == sv.Verdict.PROVED
     assert plain.lenses == PLAN_BOUND
-    assert observed.lenses == Observation()
+    assert observed.lenses == Lenses()
     assert "observes" not in str(plain)
 
 
@@ -337,7 +337,7 @@ def test_a_lens_on_element_order_keeps_a_condition_on_a_list_column_dependent():
     cols = {"pair": ibis.dtype("array<int64>"), "a": ibis.dtype("int64")}
     assert dependencies(PLAN_BOUND, object(), cols, ["pair", "a"]) == ["elements"]
     assert dependencies(PLAN_BOUND, object(), cols, ["a"]) == []
-    assert dependencies(Observation(), object(), cols, ["pair"]) == []
+    assert dependencies(Lenses(), object(), cols, ["pair"]) == []
 
 
 #: Scalars whose engines' `UPPER` or `LOWER` values differ in `strings="ascii"`'s key

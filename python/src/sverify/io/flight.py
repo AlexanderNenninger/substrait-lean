@@ -42,7 +42,7 @@ except ImportError as e:  # pragma: no cover - pyarrow built without Flight
         "sverify.io.flight needs pyarrow with Flight: pip install 'sverify[flight]'"
     ) from e
 
-from sverify.io._secrets import Secret, as_secret
+from sverify.io._secrets import Secret
 from sverify.io._source import Batch, Source
 
 ASSUMES = (
@@ -78,9 +78,10 @@ class FlightSource(Source):
         schema: The table's schema. With it, contracts are proved without
             asking the server, and a log that starts empty works. Default:
             the first batch's.
-        secret: The bearer token, by name or reference (`sverify.io.Secret`,
-            such as `"env:FLIGHT_TOKEN"`), read at each connection and sent
-            as the `authorization` header. Default: None.
+        credentials: The bearer token, by name or reference
+            (`sverify.io.Secret`, such as `"env:FLIGHT_TOKEN"`), read at each
+            connection and sent as the `authorization` header, and named in
+            the refresh's `credentials` as every source's are. Default: None.
         timeout: Seconds a call may take. Default: 30.
 
     Examples:
@@ -117,13 +118,11 @@ class FlightSource(Source):
         *,
         name: str | None = None,
         schema: pa.Schema | None = None,
-        secret: str | Secret | None = None,
+        credentials: str | Secret | None = None,
         timeout: float = 30.0,
     ):
-        super().__init__(name or table, schema=schema, assumes=ASSUMES)
+        super().__init__(name or table, schema=schema, assumes=ASSUMES, credentials=credentials)
         self.location, self.table = location, table
-        self.secret = as_secret(secret, "FlightSource(secret=)")
-        """The bearer token, by name or reference, or None."""
         self.timeout = timeout
         self._client: fl.FlightClient | None = None
         self._held: dict[int, pa.RecordBatch] = {}
@@ -143,7 +142,7 @@ class FlightSource(Source):
         """The batches numbered in `(after, until]`, and the server's floor."""
         if self._client is None:
             self._client = fl.connect(self.location)
-        token = self.secret.value() if self.secret is not None else None
+        token = self.credentials[0].value() if self.credentials else None
         headers = [(b"authorization", f"Bearer {token}".encode())] if token else []
         options = fl.FlightCallOptions(headers=headers, timeout=self.timeout)
         ticket = {"table": self.table, "after": after, "until": until}

@@ -1538,7 +1538,7 @@ observation reads one zero and one NaN, so no rerun it compares can differ at
 a pick.
 
 An observation that reads the members (`floats` and `zeros` both exact,
-`Observation.reads_members`) asks for the exact level. There each class pick
+`Lenses.reads_members`) asks for the exact level. There each class pick
 is an open place: the refusal names it and the two ways out, a class-blind
 observation or a plan without the pick.
 
@@ -1554,10 +1554,10 @@ Tie order, tie picks and an unordered `FETCH` are open at both levels
 ([D24](#d24-tie-order-is-open-and-determinism-is-proved) unchanged).
 
 `floats="plan"` reads one zero and one NaN whether or not the plan has a
-float bound (`Observation.equal`). The refinement order (`coarser_than`),
+float bound (`Lenses.equal`). The refinement order (`coarser_than`),
 which D18's check and the engines' rerun rows use, still compares `zeros` as
 a component of its own: under `floats="plan"` or a tolerance it asks for more
-than `Observation.equal` can see, which is sound.
+than `Lenses.equal` can see, which is sound.
 
 Amends: D10 (the default requirement is the class level); D20 (the
 consumer's observation `q_det` chooses the level); D24 (determinism is a

@@ -62,7 +62,7 @@ def test_a_restart_resumes_past_another_writers_maintenance(tmp_path, engine, ot
     grow(src, 1)
     _, again = job(tmp_path, src)
     entry = again.refresh(engine=engine)["big"]
-    assert entry.started == f"resumed from {state.where}"
+    assert entry.started == f"resumed from {state.location}"
     assert entry.write is not None and entry.write.mode == "merge"
     assert rows(again) == recomputed(doubled(paid(src)), src)
 

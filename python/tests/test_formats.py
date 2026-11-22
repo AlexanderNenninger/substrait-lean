@@ -58,11 +58,13 @@ def test_fixtures_exist() -> None:
 @pytest.mark.parametrize("version", VERSIONS)
 def test_sink_record_reads(version: str) -> None:
     """Each version's record reads as the current format, which follows the
-    schema; a record of format 1 names the node `view`."""
+    schema; a record of format 1 names the node `view`, and one of format 1
+    or 2 names the semantics `profile` (#2345)."""
     text = (FORMATS / version / "sink" / "contract.json").read_text()
     c = Contract.from_json(text)
     _valid(json.loads(c.to_json()), "sink-contract.schema.json")
-    assert c.format == CONTRACT_FORMAT == 2
+    assert c.format == CONTRACT_FORMAT == 3
+    assert c.semantics == json.loads(text).get("profile")
     assert c.node == "doubled" and c.sources == {"orders": 2} and c.epoch == 2
     assert "id" in c.not_null and c.unique == [["id"]]
 
@@ -152,8 +154,13 @@ def test_sink_record_only_gains_keys(tmp_path: Path) -> None:
     assert now["format"] == CONTRACT_FORMAT
     for version in VERSIONS:
         text = (FORMATS / version / "sink" / "contract.json").read_text()
-        old = {k for k in json.loads(text) if k in Contract.__dataclass_fields__ or k == "view"}
-        old = {"node" if k == "view" else k for k in old} | {"format"}
+        old = {
+            k
+            for k in json.loads(text)
+            if k in Contract.__dataclass_fields__ or k in ("view", "profile")
+        }
+        renamed = {"view": "node", "profile": "semantics"}
+        old = {renamed.get(k, k) for k in old} | {"format"}
         assert old <= set(now), f"keys of {version}'s record dropped: {set(old) - set(now)}"
 
 
@@ -199,12 +206,12 @@ def test_sink_record_profile(tmp_path: Path) -> None:
     from sverify.io import DeltaSink, DeltaSource, StaticSource
 
     old = Contract.from_json((FORMATS / "0.8.0" / "sink" / "contract.json").read_text())
-    assert old.profile is None
+    assert old.semantics is None
     formats = pytest.importorskip("sverify_dev.formats")
     node = formats.doubled(StaticSource(formats.ORDERS, version=1, name="orders"))
     node.write(DeltaSink(str(tmp_path / "t"))).refresh()
     c = DeltaSource(str(tmp_path / "t")).contract()
-    assert c is not None and c.profile == "portable"
+    assert c is not None and c.semantics == "portable"
 
 
 # -- the Substrait contract metadata (#735) --------------------------------------
@@ -354,7 +361,7 @@ def test_report_reads(version: str, case: str) -> None:
         now["facts"] = {
             c: {"text": f["text"], "nullable": f["nullable"]} for c, f in now["facts"].items()
         }
-    doc = _portable(_as_format_4(doc))
+    doc = _portable(_as_format_5(_as_format_4(doc)))
     assert set(doc) <= set(now), f"keys of {version}/{case} dropped: {set(doc) - set(now)}"
     skip = {"sverify", "format", "verdict", "summary"}
     assert {k: v for k, v in now.items() if k in doc and k not in skip} == {
@@ -392,6 +399,30 @@ def _as_format_4(doc: dict) -> dict:
         for c, t in doc.get("output", {}).items()
     }
     return out
+
+
+#: A route's keys before format 5 and their names since (#2345).
+ROUTE_KEYS_4 = {
+    "kind": "taken",
+    "reason": "why",
+    "facts": "engine_facts",
+    "version": "probed_version",
+    "proved_facts": "theorem_facts",
+}
+
+
+def _as_format_5(doc: dict) -> dict:
+    """A report of format 4 or before, mapped to format 4 already, as format 5
+    writes it: a route's `kind`, `reason`, `facts`, `version` and
+    `proved_facts` named `taken`, `why`, `engine_facts`, `probed_version`
+    and `theorem_facts`."""
+    if doc["format"] >= 5:
+        return doc
+    routes = {
+        e: {ROUTE_KEYS_4.get(k, k): v for k, v in r.items()}
+        for e, r in doc.get("routes", {}).items()
+    }
+    return {**doc, "routes": routes}
 
 
 def _portable(doc: dict) -> dict:
@@ -445,8 +476,10 @@ def test_report_only_gains_keys() -> None:
     _valid(now, "report.schema.json")
     for version, case in REPORTS:
         if case == "proved":
-            old = _as_format_4(
-                json.loads((FORMATS / version / "report" / f"{case}.json").read_text())
+            old = _as_format_5(
+                _as_format_4(
+                    json.loads((FORMATS / version / "report" / f"{case}.json").read_text())
+                )
             )
             assert set(old) <= set(now), f"keys of {version}/{case} dropped: {set(old) - set(now)}"
             for c_old, c_now in zip(old["ensures"], now["ensures"], strict=True):
@@ -515,3 +548,100 @@ def test_quarantine_formats_only_gain_keys(tmp_path: Path) -> None:
     for version in QUARANTINED:
         old = json.loads((FORMATS / version / "quarantine" / "refresh.json").read_text())
         assert set(old) <= set(now) and set(old["nodes"][0]) <= set(now["nodes"][0])
+
+
+# -- the command line's JSON and the refresh report (#2345) -------------------------
+
+#: The keys 1.0 renamed in format 2 of the command line's JSON and of the
+#: refresh report, by the key that holds them: a write's counts and a fix's
+#: words (ruling 264).
+CLI_KEYS_1 = {
+    "write": {"inserted": "inserts", "deleted": "deletes"},
+    "fixes": {"reason": "why"},
+}
+
+CLI_HEAD = """\
+import pyarrow as pa
+import sverify as sv
+from ibis import _
+from sverify.io import DeltaSink, StaticSource
+
+orders = StaticSource(
+    pa.table({"id": [1, 2, 3], "customer": ["a", "b", "a"], "amount": [30, 5, 50]}),
+    name="orders",
+)
+"""
+
+
+def _paths(doc: object, at: tuple = ()) -> set[tuple]:
+    """Every key path of a JSON document, list positions left out."""
+    if isinstance(doc, dict):
+        return {p for k, v in doc.items() for p in {(*at, k)} | _paths(v, (*at, k))}
+    if isinstance(doc, list):
+        return {p for v in doc for p in _paths(v, at)}
+    return set()
+
+
+def _renamed(paths: set[tuple]) -> set[tuple]:
+    """Key paths of format 1 as format 2 names them: `CLI_KEYS_1`, and in a
+    node's report (format 4 then) a route's keys (`ROUTE_KEYS_4`)."""
+
+    def name(p: tuple, i: int) -> str:
+        k = p[i]
+        if i >= 2 and p[i - 2] == "routes":
+            return ROUTE_KEYS_4.get(k, k)
+        return CLI_KEYS_1.get(p[i - 1], {}).get(k, k) if i else k
+
+    return {tuple(name(p, i) for i in range(len(p))) for p in paths}
+
+
+def _cli_json(argv: list[str], capsys: pytest.CaptureFixture[str]) -> dict:
+    from sverify.cli import main
+
+    main(argv)
+    return json.loads(capsys.readouterr().out)
+
+
+def test_cli_formats_only_rename_keys(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Format 2 of the command line's JSON and of the refresh report differ
+    from format 1 (stored before 1.0 under `formats/main-portable/cli`) only
+    in the keys `CLI_KEYS_1` renames: every other key keeps its name."""
+    fix = tmp_path / "fix.py"
+    fix.write_text(
+        CLI_HEAD
+        + '\n\n@sv.transform(requires={"other": []} if False else {})\n'
+        + "def doubled(orders):\n    return orders.select(orders.id, doubled=orders.amount * 2)\n"
+        + "\n\nd = orders.pipe(doubled)\n"
+    )
+    stored = tmp_path / "stored.py"
+    stored.write_text(
+        CLI_HEAD
+        + '\n\n@sv.transform(requires={"orders": [_.amount >= 0, _.amount < 1000]})\n'
+        + "def doubled(orders):\n    return orders.select(orders.id, doubled=orders.amount * 2)\n"
+        + f"\n\nstored = orders.pipe(doubled).write(DeltaSink({str(tmp_path / 'lake')!r}))\n"
+    )
+    folder = FORMATS / "main-portable" / "cli"
+    for name, argv in [
+        ("check-fix", ["check", str(fix), "--diff", "--format", "json"]),
+        ("refresh", ["refresh", f"{stored}:stored", "--format", "json"]),
+    ]:
+        old = json.loads((folder / f"{name}.json").read_text())
+        now = _cli_json(argv, capsys)
+        assert (old["format"], now["format"]) == (1, 2)
+        _valid(now, "cli.schema.json")
+        assert _renamed(_paths(old)) != _paths(old), f"{name}: no renamed key stored"
+        assert _renamed(_paths(old)) == _paths(now), name
+
+
+def test_refresh_report_only_renames_a_writes_counts(tmp_path: Path) -> None:
+    """The refresh report of format 1 (each version's `quarantine/refresh.json`)
+    and of format 2 have the same keys but a write's `inserted` and `deleted`,
+    named `inserts` and `deletes` (#2345)."""
+    _, text = _quarantine_written(tmp_path)
+    now = json.loads(text)
+    assert now["format"] == 2 and now["nodes"][0]["write"].keys() >= {"inserts", "deletes"}
+    for version in QUARANTINED:
+        old = json.loads((FORMATS / version / "quarantine" / "refresh.json").read_text())
+        assert old["format"] == 1
+        write = {CLI_KEYS_1["write"].get(k, k) for k in old["nodes"][0]["write"]}
+        assert write <= set(now["nodes"][0]["write"]), version

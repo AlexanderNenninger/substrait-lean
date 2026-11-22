@@ -127,7 +127,7 @@ def census_case(c: Case, schemas: dict[str, Any]) -> dict[str, Any]:
             engines[e] = {"outcome": "error", "reason": f"{type(err).__name__}: {err}"}
             continue
         if r.refused:
-            engines[e] = {"outcome": "refused", "reason": FACTS.sub("", r.reason)}
+            engines[e] = {"outcome": "refused", "reason": FACTS.sub("", r.why)}
         elif r.evidence == "proved":
             engines[e] = {"outcome": "proved", "class": r.cls}
         else:

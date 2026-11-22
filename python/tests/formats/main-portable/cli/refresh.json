@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "sverify": "0.9.0.dev0",
+  "command": "refresh",
+  "exit": 0,
+  "status": "proved",
+  "file": "stored.py",
+  "target": "stored",
+  "nodes": [
+    {
+      "node": "doubled",
+      "summary": "doubled: computed, requires checked on data, created v1: +3 \u22120",
+      "started": "computed",
+      "outcome": "ok",
+      "held": null,
+      "quarantined": 0,
+      "quarantine_table": null,
+      "quarantine": [],
+      "route": "exact; evidence proved by Lowering.duckdb_exact on duckdb's model (facts duckdb-R1, duckdb-R15-int-arith, duckdb-R1-min, duckdb-R15-int-modulus); this run is on 2.0.1, unprobed",
+      "write": {
+        "mode": "created",
+        "version": 1,
+        "inserted": 3,
+        "deleted": 0
+      }
+    }
+  ],
+  "error": null,
+  "outcome": "ok",
+  "memory_limit": null,
+  "alert": null
+}

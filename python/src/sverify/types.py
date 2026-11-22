@@ -12,12 +12,12 @@ The report (`sverify.verify`, `Report`):
 
 * `Issue`: a reason a plan is not proved, with the preconditions that
   would settle it (`Needed`).
-* `CheckedCondition`: a postcondition and how it was established, with a
+* `Postcondition`: a postcondition and how it was established, with a
   `Counterexample` where the checker found one; `Discharged`: how a
   precondition was established.
 * `ColumnFacts`: what the checker proved about a result column
   (`Report.facts`): whether it may be NULL, and bounds on its values.
-* `Observation`: what the result's consumer observes (`sv.equivalent`),
+* `Lenses`: what the result's consumer observes (`sv.equivalent`),
   with `Within` tolerances (`sv.within`).
 * `Route`: how a plan reaches an engine, or why it doesn't.
 * `DialectDifference`: where an engine's SQL dialect differs from the
@@ -41,12 +41,12 @@ from sverify._retention import RetentionReport
 from sverify.conditions import (
     Approx,
     ArrivesWithin,
-    CheckedCondition,
     Discharged,
     Key,
     MaxRows,
     NonOverlapping,
     PlannedCondition,
+    Postcondition,
     References,
     RowsPer,
     Unique,
@@ -54,7 +54,7 @@ from sverify.conditions import (
 from sverify.counterexample import Counterexample
 from sverify.incremental import RefreshReport, SourceRefresh
 from sverify.nodes import Group, NodeStatus, Refresh, StageRefresh, Status
-from sverify.observation import Observation, Within
+from sverify.observation import Lenses, Within
 from sverify.report import ColumnFacts, Issue, Needed
 from sverify.routes import Route
 from sverify.sql_model import SQLStep
@@ -62,7 +62,7 @@ from sverify.sql_model import SQLStep
 __all__ = [
     "Approx",
     "ArrivesWithin",
-    "CheckedCondition",
+    "Postcondition",
     "ColumnFacts",
     "Counterexample",
     "DialectDifference",
@@ -74,7 +74,7 @@ __all__ = [
     "Needed",
     "NodeStatus",
     "NonOverlapping",
-    "Observation",
+    "Lenses",
     "PlannedCondition",
     "QuarantineReport",
     "References",

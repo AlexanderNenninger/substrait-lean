@@ -367,7 +367,7 @@ class Source(Pipeable, ABC):
         entries = st.log.since(since)
         if entries is None:
             return SourceBatch.from_snapshot(
-                since, st.version, st.table, reason=f"{self.name}'s batches since v{since} are gone"
+                since, st.version, st.table, why=f"{self.name}'s batches since v{since} are gone"
             )
         kinds = {e.kind for e in entries if e.kind is not None}
         span = f"{self.name} v{since}→v{st.version}"
@@ -387,8 +387,8 @@ class Source(Pipeable, ABC):
             st.version,
             inserts=pa.concat_tables([e.inserts for e in entries] or [schema.empty_table()]),
             deletes=pa.concat_tables([e.deletes for e in entries] or [schema.empty_table()]),
-            trusted=trusted,
-            kind="snapshot_diff" if kinds == {"snapshot"} else "change_feed",
+            assumes=trusted,
+            mode="snapshot_diff" if kinds == {"snapshot"} else "change_feed",
             schema=schema,
         )
 

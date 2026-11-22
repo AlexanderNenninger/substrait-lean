@@ -73,7 +73,7 @@ from sverify.io._common import (
 )
 from sverify.io._sink import SinkChange, _TableSink
 from sverify.io._storage import Options, Storage, resolve
-from sverify.observation import Observation
+from sverify.observation import Lenses
 
 CONSTRAINT = "Delta constraint"
 INSERT = ("insert", "update_postimage")
@@ -639,7 +639,7 @@ class DeltaSource(_TableSource):
             c.engine,
             c.engine_version,
             c.sverify,
-            c.profile,
+            c.semantics,
             c.package,
         )
 
@@ -725,7 +725,7 @@ class DeltaSource(_TableSource):
             end,
             inserts=rows.filter(_is_in(kind, INSERT)),
             deletes=rows.filter(_is_in(kind, DELETE)),
-            trusted=f"Δ trusted as coming from Delta CDF v{since}→v{end}",
+            assumes=f"Δ trusted as coming from Delta CDF v{since}→v{end}",
             facts=facts,
             snapshot_facts=snapshot_facts,
             schema=schema,
@@ -922,7 +922,7 @@ class DeltaSink(_TableSink[DeltaTable]):
         log_retention: Duration | None = None,
         compact_every: int | None = None,
         vacuum_retention: Duration | None = None,
-        reproducible: Observation | None = None,
+        reproducible: Lenses | None = None,
     ):
         self.uri, self.storage_options = str(uri), storage_options
         if checkpoint_interval is not None and checkpoint_interval < 1:
@@ -1139,8 +1139,8 @@ class DeltaSink(_TableSink[DeltaTable]):
             mode=mode,
             version=None,
             contract=contract,
-            inserted=inserted,
-            deleted=deleted,
+            inserts=inserted,
+            deletes=deleted,
             constraints=contract.checks,
         )
 
@@ -1189,8 +1189,8 @@ class DeltaSink(_TableSink[DeltaTable]):
             mode=mode,
             version=None,
             contract=contract,
-            inserted=inserted,
-            deleted=deleted,
+            inserts=inserted,
+            deletes=deleted,
             constraints=contract.checks,
         )
 

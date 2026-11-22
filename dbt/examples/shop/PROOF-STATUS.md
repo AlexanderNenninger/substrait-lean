@@ -25,7 +25,7 @@ of double arithmetic), which proved one test each.
 | `source('app', 'subscriptions').mrr`: `accepted_range` `max_value: 1000000` | sverify suggested `max_value: 700000000000000000, inclusive: false`, since `mrr * 12` overflows otherwise. A shop would cap a subscription's monthly revenue far lower, and a tighter bound proves the same. | `subscription_arr`: `accepted_range(arr)` |
 
 `sverify-dbt suggest` proposes nothing more: none of the tests left
-unproved has a suggestion (`CheckedCondition.suggested` is empty for each).
+unproved has a suggestion (`Postcondition.suggested` is empty for each).
 One more source test is there for sverify's sake: `customer_updates.updated_at`
 below `timestamp '9999-12-31'`, the value `customer_history`'s
 `mutually_exclusive_ranges` reads an open `valid_to` as. With it every version

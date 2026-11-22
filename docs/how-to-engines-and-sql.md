@@ -126,7 +126,7 @@ the evidence, and the route where it is not `translated`:
 
 `route.evidence` says whether each step rests on a Lean proof (`proved`)
 or on anything else, tests and probes among them (`tested`). `route.theorems`
-names the proofs, and `route.facts` and `route.version` the engine facts and
+names the proofs, and `route.engine_facts` and `route.probed_version` the engine facts and
 the engine version they were probed at. `print(report.details())` shows the same before
 any run, one `evidence:` line per engine:
 `evidence: polars shim, proved by Rel.polars_sound, Polars.int_div_trunc on polars's model (facts …)` or
@@ -201,10 +201,10 @@ would do ([example 5](getting-started.md#5-doubles-within-the-plans-bound)).
 
 `sv.equivalent` also takes `elements="multiset"`, `zeros="canon"`,
 `timestamps="ms"`, `strings="nfc"` (or `"casefold"`, `"ascii"`), `decimals="value"` and
-`errors="kind"`; `Observation.refines` orders lenses component by
+`errors="kind"`; `Lenses.refines` orders lenses component by
 component. A postcondition that reads what the lenses ignore, such as
 `_.mean_x <= 100` under a float tolerance, is reported with
-`CheckedCondition.ignores`; `sv.approx(_.mean_x <= 100)` allows for the
+`Postcondition.ignores`; `sv.approx(_.mean_x <= 100)` allows for the
 tolerance. The checker names the components each condition's value depends
 on, from the columns it reads, and a condition that depends on none the
 lenses ignore holds on every result equal to a proved one up to the
@@ -212,7 +212,7 @@ lenses. A comparison with a constant
 narrowed by the tolerance, `x ≤ c - ε` for `x ≤ c`, keeps the original on
 every such result. A postcondition is proved on every
 result the reference allows, and
-`CheckedCondition.allowed` says so. A double `SUM` or `AVG` is one
+`Postcondition.allowed` says so. A double `SUM` or `AVG` is one
 value, the exact sum rounded once, so this covers postconditions that read
 it; one that reads a statistical aggregate, whose value is still a choice of
 the reference, is proved of the plan's own value, and `sv.approx` allows for

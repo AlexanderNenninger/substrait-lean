@@ -41,7 +41,7 @@ The report's parts come as data and as the lines `str(report)` prints:
 
 - `Report.inputs` and `Report.output` give the schemas of the input tables
   and of the result, the columns `requires` and `ensures` may name.
-- `CheckedCondition.message`, `Issue.message`, `Issue.assumption` and
+- `Postcondition.message`, `Issue.message`, `Issue.assumption` and
   `Report.notes` are the report's lines for each postcondition, possible
   runtime error, assumption and note.
 - `Report.needs` gives the preconditions the proof needs, one `Needed` each:
@@ -73,7 +73,7 @@ that only needs the verdicts
 ([test_check_api.py](../python/tests/test_check_api.py)). It skips a
 postcondition that only the order of ties leaves open: the checker proves
 it where every window orders its rows totally, so its reason is `"ties"`
-(`CheckedCondition.ties`), and a key that breaks the ties proves it
+(`Postcondition.ties`), and a key that breaks the ties proves it
 ([test_checker_speed.py](../python/tests/test_checker_speed.py)).
 
 Sverify keeps the checker's answers on disk, so the next `verify`, `check`
@@ -169,7 +169,7 @@ contract added are not compared: the sink's record does not store them.
 `--format` chooses the output:
 
 - `text`, the default, as above;
-- `json` (`--json` for short), one document for tools in the format of
+- `json`, one document for tools in the format of
   [`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json): the
   exit code and its `status`, for each node its `status`, the plain words
   (`summary`) and its report as `Report.to_json()` writes it, and the

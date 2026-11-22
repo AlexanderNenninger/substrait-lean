@@ -37,7 +37,7 @@ lake = { ref = "bao:kv/pipelines/production", writes = ["s3://lake/production/"]
 
 Sources, sinks and catalogs take the names: `Storage(credentials="lake")`
 for a table's object store (the secret's fields are delta-rs options), a
-`Secret` as one option's value, `FlightSource(..., secret="flight-token")`,
+`Secret` as one option's value, `FlightSource(..., credentials="flight-token")`,
 `Lineage(url, api_key=Secret("env:LINEAGE_TOKEN"))`, and `credentials=` on
 `from_query`, `from_frame`, `from_files` and `sink_from`, whose function
 reads the value with `Secret(name).value()`. An Iceberg catalog takes
