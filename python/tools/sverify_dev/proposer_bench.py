@@ -27,6 +27,30 @@ Every number comes from the checker (`--contract` requests, replayed with a
     uv run python -m sverify_dev.proposer_bench            # the tables
     uv run python -m sverify_dev.proposer_bench --json out.json
     uv run python -m sverify_dev.proposer_bench --limit 5  # a slice
+
+* pairs that lift: for the query-pair sets of #958's validation step, how
+  many pairs lift on both sides (`lift_pairs`): each query read as MySQL
+  and written as DuckDB's SQL by SQLGlot, then lifted under the reference
+  over the set's schema. No checker runs, so it runs anywhere:
+
+    uv run python -m sverify_dev.proposer_bench --pairs DIR --json pairs.json
+    uv run python -m sverify_dev.proposer_bench --from-json out.json --from-json pairs.json
+
+  The sets are other projects' data and stay out of the repository. DIR
+  holds, read as data only (their solvers and scripts are never run):
+
+  - `sqlsolver_data/`: SQLSolver (SIGMOD 2024), Apache-2.0, at commit
+    dcc2a91d8971a4c4d30b055f99d7d8428a1b754b of
+    https://github.com/SJTU-IPADS/SQLSolver: `calcite/calcite_tests`,
+    `db_rule_instances/spark_tests`, `no_order_by/tests_tpcc` and
+    `tests_tpch`, and `schemas/calcite_test`, `tpcc` and `tpch.base.schema.sql`;
+    pairs are consecutive lines.
+  - `benchmarks/`: VeriEQL (OOPSLA 2024), the artifact
+    `VeriEQL-artifact-evaluation.zip` of https://zenodo.org/records/10795614
+    (version 5, md5 8869ce8f900bd11d7a2f85a12032b18b), its
+    `verieql/benchmarks/*.jsonlines`; CC BY-NC 4.0 on Zenodo, and the
+    archive's `license.md` is CC BY-NC-SA 4.0. Each line is one pair with
+    its schema.
 """
 
 from __future__ import annotations
@@ -312,8 +336,217 @@ def measure(limit: int | None = None) -> dict[str, Any]:
     }
 
 
+# --------------------------------------------------------------------------
+# Pair sets: which of #958's query pairs lift
+
+
+#: The pair sets `--pairs DIR` reads, by name: the file under DIR and the
+#: schema it is read over (`None` where each pair carries its own). DIR holds
+#: SQLSolver's `sqlsolver_data/` and VeriEQL's `benchmarks/` (the module doc
+#: says where each comes from).
+PAIR_SETS: dict[str, tuple[str, str | None]] = {
+    "SQLSolver calcite": (
+        "sqlsolver_data/calcite/calcite_tests",
+        "sqlsolver_data/schemas/calcite_test.base.schema.sql",
+    ),
+    "SQLSolver spark": (
+        "sqlsolver_data/db_rule_instances/spark_tests",
+        "sqlsolver_data/schemas/calcite_test.base.schema.sql",
+    ),
+    "SQLSolver tpcc": (
+        "sqlsolver_data/no_order_by/tests_tpcc",
+        "sqlsolver_data/schemas/tpcc.base.schema.sql",
+    ),
+    "SQLSolver tpch": (
+        "sqlsolver_data/no_order_by/tests_tpch",
+        "sqlsolver_data/schemas/tpch.base.schema.sql",
+    ),
+    "VeriEQL calcite": ("benchmarks/calcite.jsonlines", None),
+    "VeriEQL literature": ("benchmarks/literature.jsonlines", None),
+    "VeriEQL leetcode": ("benchmarks/leetcode.jsonlines", None),
+}
+
+
+@dataclass
+class PairSet:
+    """One pair set's lifting: how many pairs lift on both sides, one or
+    neither, and why a query is refused (its construct, or the error's
+    first line), counted over queries."""
+
+    name: str
+    pairs: int = 0
+    both: int = 0
+    one: int = 0
+    neither: int = 0
+    why: dict[str, int] = field(default_factory=dict)
+
+
+def _ibis_type(text: str) -> Any:
+    """The Ibis type of a column type as MySQL writes it (both sets are
+    MySQL's), or None where it has none: strings without their length and
+    timestamps without a zone, as the lift's inputs are."""
+    import ibis.expr.datatypes as dt
+    from ibis.backends.sql.datatypes import MySQLType
+
+    text = text.strip().lower()
+    if text.startswith("enum"):
+        return dt.string
+    try:
+        t = MySQLType.from_string(text)
+    except Exception:  # noqa: BLE001 - an unknown type name, as VeriEQL's NONE
+        return None
+    if t.is_unknown():
+        return None
+    if t.is_string():
+        return dt.string
+    if t.is_timestamp():
+        return dt.Timestamp()
+    return t
+
+
+def ddl_schemas(ddl: str) -> dict[str, Any]:
+    """The tables of a file of MySQL `CREATE TABLE` statements, as Ibis
+    schemas (columns `NOT NULL` non-nullable), or the reason one cannot be."""
+    import ibis
+    import sqlglot as sg
+
+    out: dict[str, Any] = {}
+    for stmt in sg.parse(ddl, read="mysql"):
+        if not isinstance(stmt, sg.exp.Create) or not isinstance(stmt.this, sg.exp.Schema):
+            continue
+        cols: dict[str, Any] = {}
+        bad = ""
+        for c in stmt.this.expressions:
+            if not isinstance(c, sg.exp.ColumnDef) or c.kind is None:
+                continue
+            t = _ibis_type(c.kind.sql("mysql"))
+            if t is None:
+                bad = f"column type {c.kind.sql('mysql')}"
+                break
+            not_null = any(
+                isinstance(k.kind, sg.exp.NotNullColumnConstraint)
+                and not k.kind.args.get("allow_null")
+                for k in c.args.get("constraints") or []
+            )
+            cols[c.name] = t.copy(nullable=not not_null)
+        out[stmt.this.this.name] = bad or ibis.schema(cols)
+    return out
+
+
+def json_schemas(schema: dict[str, Any], constraints: list[Any] | None) -> dict[str, Any]:
+    """The tables of a VeriEQL pair, as Ibis schemas (its `not_null`
+    columns non-nullable), or the reason one cannot be."""
+    import ibis
+
+    not_null = {
+        k["not_null"]["value"].upper()
+        for k in constraints or []
+        if isinstance(k, dict) and "not_null" in k
+    }
+    out: dict[str, Any] = {}
+    for table, columns in (schema or {}).items():
+        cols: dict[str, Any] = {}
+        bad = ""
+        for col, text in columns.items():
+            t = _ibis_type(str(text))
+            if t is None:
+                bad = f"column type {text}"
+                break
+            cols[col] = t.copy(nullable=f"{table}__{col}".upper() not in not_null)
+        out[table] = bad or ibis.schema(cols)
+    return out
+
+
+def lift_reason(query: str, schemas: dict[str, Any]) -> str:
+    """Empty where `query`, read as MySQL and written as DuckDB's SQL by
+    SQLGlot, lifts under the reference over `schemas`; else why not."""
+    import sqlglot as sg
+
+    from sverify.engine import lift_sql_plan
+    from sverify.errors import UnsupportedError
+    from sverify.sql_lift import full_name
+
+    try:
+        sql = sg.transpile(query, read="mysql", write="duckdb")[0]
+    except sg.errors.SqlglotError:
+        return "SQLGlot cannot read it as MySQL"
+    read = {full_name(t) for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
+    bad = {n: s for n, s in schemas.items() if isinstance(s, str) and full_name(n) in read}
+    if bad:
+        return f"schema: {next(iter(bad.values()))}"
+    try:
+        lift_sql_plan({n: s for n, s in schemas.items() if not isinstance(s, str)}, sql)
+    except UnsupportedError as e:
+        return e.construct or str(e).splitlines()[0][:80]
+    except Exception as e:  # noqa: BLE001 - a crash of the lift is a finding too
+        return f"crash: {type(e).__name__}"
+    return ""
+
+
+def _pairs_of(
+    root: Path, file: str, schema: str | None
+) -> Iterator[tuple[str, str, dict[str, Any]]]:
+    path = root / file
+    if schema is not None:
+        tables = ddl_schemas((root / schema).read_text())
+        lines = [x for x in path.read_text().splitlines() if x.strip()]
+        for a, b in zip(lines[::2], lines[1::2], strict=False):
+            yield a, b, tables
+        return
+    for line in path.read_text().splitlines():
+        if line.strip():
+            r = json.loads(line)
+            yield r["pair"][0], r["pair"][1], json_schemas(r["schema"], r.get("constraint"))
+
+
+def lift_pairs(root: Path, limit: int | None = None) -> list[PairSet]:
+    """Each of `PAIR_SETS` found under `root`, lifted pair by pair (the
+    first `limit` pairs of each where given)."""
+    out = []
+    for name, (file, schema) in PAIR_SETS.items():
+        if not (root / file).exists():
+            continue
+        s = PairSet(name)
+        why: Counter[str] = Counter()
+        for i, (a, b, tables) in enumerate(_pairs_of(root, file, schema)):
+            if limit is not None and i >= limit:
+                break
+            reasons = [lift_reason(a, tables), lift_reason(b, tables)]
+            why.update(r for r in reasons if r)
+            s.pairs += 1
+            ok = sum(not r for r in reasons)
+            s.both += ok == 2
+            s.one += ok == 1
+            s.neither += ok == 0
+        s.why = dict(why.most_common())
+        out.append(s)
+    return out
+
+
+def pair_table(sets: list[PairSet]) -> list[str]:
+    """The pair sets' table for #2245's comment, in Markdown."""
+    out = [
+        "Pairs that lift (both queries, read as MySQL, lift under the reference):",
+        "",
+        "| Set | Pairs | Both lift | One | Neither | Most common refusals (queries) |",
+        "|---|---:|---:|---:|---:|---|",
+    ]
+    for s in sets:
+        top = ", ".join(f"{w} ({n})" for w, n in list(s.why.items())[:4]) or "-"
+        out.append(f"| {s.name} | {s.pairs} | {s.both} | {s.one} | {s.neither} | {top} |")
+    return out
+
+
 def tables(data: dict[str, Any]) -> str:
-    """The tables for #2245's comment, in Markdown."""
+    """The tables for #2245's comment, in Markdown: the checker's where
+    `data` has them, and the pair sets' where it has those."""
+    out = _checker_tables(data) if "obligations" in data else []
+    if "pairs" in data:
+        out += ([""] if out else []) + pair_table([PairSet(**s) for s in data["pairs"]])
+    return "\n".join(out)
+
+
+def _checker_tables(data: dict[str, Any]) -> list[str]:
     obs = [Obligation(**o) for o in data["obligations"]]
     out = [
         "Obligations by theory (open, closed by `infer`):",
@@ -380,19 +613,34 @@ def tables(data: dict[str, Any]) -> str:
         ]
     if data["failed"]:
         out += ["", f"Not measured ({len(data['failed'])}):"] + [f"- {f}" for f in data["failed"]]
-    return "\n".join(out)
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--limit", type=int, help="measure the first N plans only")
+    p.add_argument("--limit", type=int, help="measure the first N plans (or pairs of each set)")
     p.add_argument("--json", type=Path, help="write the measurements to this file")
-    p.add_argument("--from-json", type=Path, help="print the tables of an earlier --json run")
+    p.add_argument(
+        "--from-json",
+        type=Path,
+        action="append",
+        help="print the tables of earlier --json runs (repeatable; later runs win)",
+    )
+    p.add_argument(
+        "--pairs",
+        type=Path,
+        help="lift the pair sets under this directory instead of asking the checker",
+    )
     args = p.parse_args(argv)
-    if args.from_json is not None:
-        data = json.loads(args.from_json.read_text())
+    if args.from_json:
+        data: dict[str, Any] = {}
+        for f in args.from_json:
+            data |= json.loads(f.read_text())
     else:
-        data = measure(args.limit)
+        if args.pairs is not None:
+            data = {"pairs": [asdict(s) for s in lift_pairs(args.pairs, args.limit)]}
+        else:
+            data = measure(args.limit)
         if args.json is not None:
             args.json.write_text(json.dumps(data, indent=1) + "\n")
     print(tables(data))
