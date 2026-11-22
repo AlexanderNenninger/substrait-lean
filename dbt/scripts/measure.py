@@ -19,6 +19,7 @@ import argparse
 import collections
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -167,6 +168,32 @@ def classify(refusal: str | None) -> str:
     return CLASSES[4]
 
 
+def transpile(project: Path) -> tuple[set[str], set[str]]:
+    """Rewrite each model's compiled SQL in the manifest from BigQuery to
+    DuckDB with SQLGlot, mechanically (no hand edits). Returns the unique ids
+    of the models it rewrote and of those it fails on, which keep their
+    BigQuery SQL."""
+    import sqlglot
+
+    path = project / "target" / "manifest.json"
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    done: set[str] = set()
+    failed: set[str] = set()
+    for uid, node in manifest["nodes"].items():
+        sql = node.get("compiled_code")
+        if node.get("resource_type") != "model" or not sql:
+            continue
+        try:
+            node["compiled_code"] = ";\n".join(
+                sqlglot.transpile(sql, read="bigquery", write="duckdb")
+            )
+            done.add(uid)
+        except sqlglot.errors.SqlglotError:
+            failed.add(uid)
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    return done, failed
+
+
 def apply_types(project: Path, types: Path, origins: set[str]) -> int:
     """Give the project's sources the column types in `types` (a sources YAML
     whose columns say where each type comes from: `catalog`, `declared` or
@@ -205,13 +232,19 @@ def apply_types(project: Path, types: Path, origins: set[str]) -> int:
 
 
 def measure(
-    name: str, types: Path | None = None, origins: frozenset[str] = frozenset()
+    name: str,
+    types: Path | None = None,
+    origins: frozenset[str] = frozenset(),
+    overlay: Path | None = None,
+    sqlglot_bigquery: bool = False,
 ) -> dict[str, Any]:
     source, build_args = PROJECTS[name]
     with tempfile.TemporaryDirectory() as tmp:
         project = extract(source, Path(tmp) / name)
         _dbt(project, "deps")
         typed = apply_types(project, types, set(origins)) if types else 0
+        if overlay:
+            shutil.copy(overlay, project / "models" / "sverify_measure_overlay.yml")
         started = time.monotonic()
         left_out: list[str] = []
         if build_args is None:
@@ -224,6 +257,10 @@ def measure(
         statuses = _statuses(project / "target" / "run_results.json")
         if build_args is not None:
             _dbt(project, "docs", "generate", "--no-compile")
+        transpiled: set[str] = set()
+        failed_to_transpile: set[str] = set()
+        if sqlglot_bigquery:
+            transpiled, failed_to_transpile = transpile(project)
         proj = load(project)
         result = check(proj, counterexamples=0)
 
@@ -240,6 +277,23 @@ def measure(
             test_classes[f"read, {status.get(t.name, 'not_checked')}"] += 1
         else:
             test_classes["on a source or seed"] += 1
+    transpile_report: dict[str, Any] = {}
+    if sqlglot_bigquery:
+        by_id = {m.unique_id: m for m in models}
+        ok = [by_id[u] for u in transpiled if u in by_id]
+        ok_ids = {m.unique_id for m in ok}
+        transpile_report = {
+            "transpiled": len(ok),
+            "failed": len(failed_to_transpile),
+            "read_of_transpiled": sum(1 for m in ok if not m.refused),
+            "tests_on_transpiled": sum(1 for t in proj.tests.values() if t.on in ok_ids),
+            "proved_on_transpiled": sum(
+                1 for m in ok for t in m.tests if _word(t.status) == "proved"
+            ),
+            "top_root_causes_of_transpiled": collections.Counter(
+                normalize(_root(m.refused), 110) for m in ok if m.refused
+            ).most_common(TOP),
+        }
     skippable = {t.name for t in result.skippable if t.name}
     test_ids = list(proj.tests)
     declared = len(test_ids)
@@ -253,6 +307,8 @@ def measure(
         "commit": source.commit,
         "dbt": result.dbt_version,
         "source_columns_typed": {"origins": sorted(origins), "columns": typed},
+        "overlay": overlay.name if overlay else None,
+        "transpile": transpile_report or None,
         "models": {
             "total": len(models),
             "read": sum(1 for m in models if not m.refused),
@@ -272,6 +328,12 @@ def measure(
             "not_checked": sum(
                 1 for m in models for t in m.tests if _word(t.status) == "not_checked"
             ),
+            "detail": [
+                [m.name, t.label, _word(t.status), t.why]
+                for m in models
+                for t in m.tests
+                if build_args is not None
+            ],
             "dbt_failed": sum(1 for s in statuses.values() if s in ("fail", "error")),
         },
         "savings": {
@@ -296,12 +358,23 @@ def main(argv: list[str] | None = None) -> int:
         default=["catalog", "declared", "inferred"],
         help="which origins of the types file to apply",
     )
+    parser.add_argument(
+        "--overlay", type=Path, help="a dbt properties YAML of tests to add (copied into models/)"
+    )
+    parser.add_argument(
+        "--transpile",
+        action="store_true",
+        help="rewrite the compiled BigQuery SQL to DuckDB with SQLGlot before the check",
+    )
     args = parser.parse_args(argv)
     if args.list or not args.project:
         for name, (src, _) in PROJECTS.items():
             print(f"{name}  {src.repo}@{src.commit[:12]}")
         return 0
-    print(json.dumps(measure(args.project, args.types, frozenset(args.origins)), indent=2))
+    record = measure(
+        args.project, args.types, frozenset(args.origins), args.overlay, args.transpile
+    )
+    print(json.dumps(record, indent=2))
     return 0
 
 
