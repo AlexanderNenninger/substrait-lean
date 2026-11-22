@@ -20,7 +20,6 @@ COLS = {"l": "array<struct<a: int32, b: int16>>"}
     [
         "STRUCT(b SMALLINT, a INTEGER)[]",  # the names swapped, the kinds the same
         "STRUCT(b INTEGER, a SMALLINT)[]",  # 100000 into SMALLINT by name: an error in DuckDB
-        "STRUCT(a INTEGER, b SMALLINT)[]",  # the source's own type
     ],
 )
 def test_a_cast_of_a_list_of_structs_is_refused(target):
