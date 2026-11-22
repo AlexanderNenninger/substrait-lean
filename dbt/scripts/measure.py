@@ -29,8 +29,9 @@ from sverify_dbt.manifest import load
 from sverify_dbt.replay import Source, _dbt, _statuses, extract, normalize
 
 #: The projects: the repository, a pinned commit, the dbt project's directory
-#: in it and the `dbt build` arguments that load its data on DuckDB.
-PROJECTS: dict[str, tuple[Source, list[str]]] = {
+#: in it, and the `dbt build` arguments that load its data on DuckDB; None for
+#: a project with no data to load, which is compiled only.
+PROJECTS: dict[str, tuple[Source, list[str] | None]] = {
     "jaffle_shop": (
         Source(
             "jaffle_shop",
@@ -41,6 +42,18 @@ PROJECTS: dict[str, tuple[Source, list[str]]] = {
             "Apache-2.0",
         ),
         ["--vars", "{load_source_data: true}"],
+    ),
+    # BigQuery; GitLab's dbt project went private, and Mattermost's is gone.
+    "calitp": (
+        Source(
+            "calitp",
+            "https://github.com/Cal-ITP/data-infra",
+            "",
+            "546e3548a1b594b7f52728ce46311f2d45a0dc82",
+            "warehouse",
+            "AGPL-3.0",
+        ),
+        None,
     ),
 }
 TOP = 10
@@ -61,11 +74,15 @@ def measure(name: str) -> dict[str, Any]:
         project = extract(source, Path(tmp) / name)
         _dbt(project, "deps")
         started = time.monotonic()
-        _dbt(project, "build", *build_args)
+        if build_args is None:
+            _dbt(project, "compile")
+        else:
+            _dbt(project, "build", *build_args)
         build_seconds = time.monotonic() - started
         times = _run_results(project)
         statuses = _statuses(project / "target" / "run_results.json")
-        _dbt(project, "docs", "generate", "--no-compile")
+        if build_args is not None:
+            _dbt(project, "docs", "generate", "--no-compile")
         proj = load(project)
         result = check(proj, counterexamples=0)
 
