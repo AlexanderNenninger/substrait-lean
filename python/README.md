@@ -53,7 +53,7 @@ print(big_orders.report)
 #   doubled ≥ 22
 #   doubled is never NULL
 #   no two rows share id
-# ... and the checks each run makes on the data
+# ...
 ```
 
 `print(big_orders.report.details())` goes on with the evidence for each engine, and `sverify check` prints the same contract.
