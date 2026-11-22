@@ -56,4 +56,4 @@ assert sv.verify(sql, requires=requires, ensures=ensures[:2]).verdict == sv.Verd
 - Without `unique(key, valid_from)` two changes at one instant tie, and the
   `valid_to` of the earlier one is the engine's choice.
 - That two versions of a key never overlap needs both rows of a pair, which
-  the lenses do not see. Test it on the data.
+  the analysis does not see. Test it on the data.

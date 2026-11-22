@@ -43,7 +43,7 @@ and `sverify-pipelines` for sources, sinks and refresh.
    `sverify check --fix` adds the needed preconditions to `requires=`.
 5. Repeat until the report says proved, then run the node.
 
-## What the lenses prove and what they don't
+## What the analysis proves, and where it stops
 
 - A window function's value is nullable to the proof and has no upper bound.
   State a lower bound as `_.x.isnull() | (_.x >= 0)`, and bound a window total in
