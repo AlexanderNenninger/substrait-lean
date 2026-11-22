@@ -218,7 +218,7 @@ them with sverify-dbt and records every test beside dbt's own result, in
 
 | Source | Proved | Not proved | Not checked | Refused | Inputs |
 |---|---|---|---|---|---|
-| dbt-utils 1.4.1 | 3 | 13 | 45 | 15 | 37 |
+| dbt-utils 1.4.1 | 3 | 13 | 46 | 14 | 37 |
 | dbt-expectations 0.10.10 | 0 | 33 | 9 | 115 | 0 |
 | dbt-tests-adapter 1.20.0 | 8 | 11 | 86 | 10 | 13 |
 
