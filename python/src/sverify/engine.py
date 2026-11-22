@@ -602,6 +602,7 @@ def run_plan(
     finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
+    credentials: Mapping[str, Any] | None = None,
 ) -> pa.Table: ...
 
 
@@ -615,6 +616,7 @@ def run_plan(
     finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
+    credentials: Mapping[str, Any] | None = None,
 ) -> pa.Table | Resident: ...
 
 
@@ -627,23 +629,28 @@ def run_plan(
     finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
+    credentials: Mapping[str, Any] | None = None,
 ) -> pa.Table | Resident:
     """Run a plan in Lean's written form on `engine` (default: the
     connection's), over the tables of `con`. `"spark"` runs it
     on the local Spark session (`sverify_spark.engine.session`), and a Spark
-    session as `engine` runs it there.
+    session as `engine` runs it there. Any other engine an installed package
+    registers (`sverify.profiles`, `ProfilePlugin.runner`) runs by its name,
+    or on a session of it, through that package's runner.
 
     DuckDB runs the SQL `sverify.engines.plan.to_sql` writes for the plan, Polars
     a translation to a lazy frame, Spark the Spark SQL
     `sverify.engines.plan.to_sql` writes in Spark's dialect
     (`sverify_spark.dialect.SPARK`); each gives the result `Rel.eval` gives.
+    A plugin engine runs what its package's runner writes.
     This is `sverify.engines.run`.
 
     Args:
         con: The connection whose tables the plan reads.
         plan_json: A plan in Lean's written form (a node's `plan`, or
             `sverify.engines.plan.written_plan`'s output).
-        engine: `"duckdb"`, `"polars"`, `"spark"`, or a Spark session.
+        engine: `"duckdb"`, `"polars"`, `"spark"`, a Spark session, or
+            the name or a session of an engine a plugin package registers.
             Default: the connection's engine.
         keep: On DuckDB, leave the result in DuckDB, as a `Resident` table.
             Other engines ignore it. Default: False.
@@ -662,13 +669,20 @@ def run_plan(
             (`asof_checks`): on DuckDB, the plan's as-of joins run as its
             ASOF JOIN where the writer can (`to_sql`'s `asof`). Other
             engines are not given any. Default: none.
+        credentials: For an engine whose runner takes secrets
+            (`ProfilePlugin.credentials`): a secret's name or reference
+            (`sverify.io.Secret`) by keyword, in place of the plugin's
+            default name. The runner gets each as a `Secret`, never a
+            value. Default: the plugin's names, which `Report.run` and a
+            refresh always use.
 
     Returns:
         The result as an Arrow table, with the plan's output names; with
         `keep` on DuckDB, a `Resident` table.
 
     Raises:
-        ValueError: `engine` is unknown, or the checker rejects the plan.
+        ValueError: `engine` is unknown, the checker rejects the plan, or
+            `credentials` names a secret the engine's runner does not take.
         ImportError: The engine is an extra that is not installed.
         sverify.engines.UnsupportedError: The plan uses something the engine's
             SQL dialect cannot express (DuckDB, Spark). Polars refuses what
@@ -700,7 +714,16 @@ def run_plan(
             assert run(con, plan, engine).to_pylist() == [{"id": 1, "amount": 30}]
         ```
     """
-    return _run_plan(con, plan_json, engine, keep=keep, finite=finite, tie_free=tie_free, asof=asof)
+    return _run_plan(
+        con,
+        plan_json,
+        engine,
+        keep=keep,
+        finite=finite,
+        tie_free=tie_free,
+        asof=asof,
+        credentials=credentials,
+    )
 
 
 def _run_plan(
@@ -714,6 +737,7 @@ def _run_plan(
     asof: Sequence[dict] = (),
     unchecked: dict | None = None,
     rows: Literal["sequence", "multiset"] | None = None,
+    credentials: Mapping[str, Any] | None = None,
 ) -> pa.Table | Resident:
     """`run_plan`, and with `unchecked` the plan's marks (`Rel.marks`):
     `Report.run` passes them on a checked run, to an engine the checker names
@@ -737,10 +761,31 @@ def _run_plan(
         extra["unchecked"] = unchecked
     if rows is not None:
         extra["rows"] = rows
+    if plugin.credentials or credentials:
+        extra["credentials"] = _credentials(plugin, credentials or {})
     out = plugin.runner(
         con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free, **extra
     )
     return instants_in_utc(out) if isinstance(out, pa.Table) else out
+
+
+def _credentials(plugin: Any, given: Mapping[str, Any]) -> dict[str, Any]:
+    """The secrets `plugin`'s runner takes, as `Secret` references: the
+    caller's where given, else the plugin's default names."""
+    from sverify import _hooks
+
+    as_secret = _hooks.secrets().as_secret
+    unknown = sorted(set(given) - set(plugin.credentials))
+    if unknown:
+        takes = ", ".join(repr(k) for k in sorted(plugin.credentials)) or "none"
+        raise ValueError(
+            f"engine {plugin.engine!r} takes no secret {', '.join(map(repr, unknown))}; "
+            f"its runner takes {takes} (ProfilePlugin.credentials)"
+        )
+    return {
+        k: as_secret(given.get(k, name), f"{plugin.engine}'s {k}")
+        for k, name in plugin.credentials.items()
+    }
 
 
 def run_guard_free(

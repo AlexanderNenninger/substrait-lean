@@ -23,6 +23,8 @@ hook loads its module by name.
 * `export` (`sverify.substrait_export`) and `report_json`: a `Report`
   written and read as Substrait and as JSON.
 * `lineage` (`sverify.openlineage`): a refresh's OpenLineage events.
+* `secrets` (`sverify.io._secrets`): a plugin engine's credentials, as
+  `Secret` references, for `sverify.engine.run_plan`.
 
 `nodes` is registered by its module; the others load their module by name.
 """
@@ -143,6 +145,12 @@ def export() -> Any:
 def report_json() -> Any:
     """`sverify.report_json`, which writes and reads a report as JSON."""
     return importlib.import_module("sverify.report_json")
+
+
+def secrets() -> Any:
+    """`sverify.io._secrets`, whose `Secret` references hand a plugin
+    engine's runner its credentials (`ProfilePlugin.credentials`)."""
+    return importlib.import_module("sverify.io._secrets")
 
 
 def lineage() -> Any:
