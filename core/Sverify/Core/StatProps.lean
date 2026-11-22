@@ -5,11 +5,13 @@ import Sverify.Core.Aggregate
 
 `VARIANCE`, `STDDEV`, `COVAR_SAMP`/`COVAR_POP` and `CORR` are computed by each
 engine's own algorithm, and none documents which (the tier-1 engines use Welford's update with
-Chan's merge, or a blockwise two-pass). Before D30 the reference allowed any value with the generic
-properties every reasonable algorithm keeps; since D30 it is the exact moments
-rounded once, and these properties (`StatProps`) are what an engine's
-algorithm may give (`core/Sverify/Core/AllowedP.lean`). An engine profile may
-name a stricter algorithm (`Profile.statAlgo`); without one, these hold.
+Chan's merge, or blockwise two-pass with Schubert and Gertz's merge). Before D30 the reference
+allowed any value with the generic properties of Welford's update with Chan's merge and of
+two-pass; since D30 it is the exact moments rounded once, and these properties (`StatProps`)
+are what an engine's algorithm may give (`core/Sverify/Core/AllowedP.lean`). An engine profile
+may name a stricter algorithm (`Profile.statAlgo`); without one, these hold. Their constants
+are a `StatTol`: Chan's (`StatTol.chan`) for `GENERIC` and `WELFORD_CHAN`, and Schubert and
+Gertz's (`StatTol.sg`) for `SCHUBERT_GERTZ`, whose merge falls outside Chan's (ruling 271).
 
 For `n ≤ 2³²` finite values at most `2³⁹⁸` in magnitude, with `u = 2⁻⁵³`,
 the exact co-moments `C = Σxy − Σx · Σy / n`, `S_xx`, `S_yy`, and
@@ -21,11 +23,11 @@ the exact co-moments `C = Σxy − Σx · Σy / n`, `S_xx`, `S_yy`, and
 * `VAR_*`, `S / d` with `d = n − 1` (sample) or `n` (population), is within
   `(160 n u √(Q' S) + 3970 n² u² Q' + 800 n² u · tiny) / d` (`varTol`);
 * `COVAR_*`, `C / d`, is within
-  `(71 n u (√(Q'_x S_yy) + √(Q'_y S_xx)) + 15 n u √(S_xx S_yy) + 3970 n² u² √(Q'_x Q'_y) + 800 n² u · tiny) / d`
-  (`covTol`);
+  `(k n u (√(Q'_x S_yy) + √(Q'_y S_xx)) + 15 n u √(S_xx S_yy) + 3970 n² u² √(Q'_x Q'_y) + 800 n² u · tiny) / d`
+  (`covTol`), `k` 71 for Chan's merge and 107 for Schubert and Gertz's;
 * `STDDEV_*` is within `(1 ± u)` of `√(V ± τ)`, stated squared;
 * `|CORR| ≤ 1 + 3E/L + 8u`, `E = 447 n u R + 11883 n² u² (Q'_x + Q'_y) + 2379 n² u · tiny`
-  (`corrErr`), for an `R` at least `√(Q' S)` of each side, `√(Q'_x S_yy)`,
+  (`corrErr`, Chan's constants), for an `R` at least `√(Q' S)` of each side, `√(Q'_x S_yy)`,
   `√(Q'_y S_xx)` and `√(S_xx S_yy)`, when the co-moments of both sides are
   at least `L ≥ 8E` (and `L ≥ 2⁻⁵⁰⁰`, their product at most `2¹⁰⁰⁰`).
   Without such a lower bound `CORR` may be any double.
@@ -38,8 +40,9 @@ little. They hold for the two-pass algorithm (the reference's own,
 merge in any tree, in the order of operations that `chanVar_rel` and
 `chanCov_rel` state (with
 `core_var_chan`, `core_cov_chan` and `core_corr_chan` the
-properties themselves, the `CORR` formula of `core_corr_chan` included), all in
-`float-bounds/`. The textbook formula `Σx² − (Σx)²/n`
+properties themselves, the `CORR` formula of `core_corr_chan` included), and
+for Polars's two-pass blocks with Schubert and Gertz's merge at `StatTol.sg`
+(`core_var_polars`, `core_cov_polars`), all in `float-bounds/`. The textbook formula `Σx² − (Σx)²/n`
 cancels catastrophically and is not covered. A NaN or an infinity among the
 values gives the reference's own value. Finite values outside the range above
 (`Stat.fits`) allow any double: the reference's value there is the exact moments
@@ -49,8 +52,8 @@ differently (`[1e150, 3e150]`, `[1e308, 1e308]`; `polars-var-bound`,
 
 Since D30 the reference's own value is one value, the exact moments rounded
 once (`varOf`, `covOf`, `corrOf` in `Aggregate.lean`), and `StatProps` is what
-an engine's algorithm may give (`StatAlgo "GENERIC"` and `"WELFORD_CHAN"`,
-`core/Sverify/Core/AllowedP.lean`). The three axioms that made Lean's native
+an engine's algorithm may give (`StatAlgo "GENERIC"`, `"WELFORD_CHAN"` and
+`"SCHUBERT_GERTZ"`, `core/Sverify/Core/AllowedP.lean`). The three axioms that made Lean's native
 two-pass results meet these properties (`varOf_props`, `covOf_props`,
 `corrOf_props`) are retired with it.
 -/
@@ -80,17 +83,43 @@ def comoment (ps : List (Rat × Rat)) : Rat :=
 def varTol (n d : Nat) (r Q : Rat) : Rat :=
   (160 * n * u * r + 3970 * n ^ 2 * u ^ 2 * Q + 800 * n ^ 2 * u * tiny) / d
 
+/-- The constants of an algorithm's `COVAR_*` and `CORR` bounds (ruling 271):
+`covTol`'s leading coefficient and `corrErr`'s three. `VAR_*`'s `varTol` is
+the same for every algorithm. -/
+structure StatTol where
+  cov : Rat
+  corrR : Rat
+  corrQ : Rat
+  corrT : Rat
+
+/-- Welford's update with Chan's merge, and two-pass (`core_cov_chan`,
+`core_corr_chan`). -/
+def StatTol.chan : StatTol := ⟨71, 447, 11883, 2379⟩
+
+/-- Polars's two-pass blocks with Schubert and Gertz's merge
+(`core_cov_polars`, whose co-moment's leading constant is 106). Its `CORR`
+constants are Chan's until #1808 proves Polars's `CORR`. -/
+def StatTol.sg : StatTol := ⟨107, 447, 11883, 2379⟩
+
 /-- The error bound of `COVAR_*`, `C / d`, for `r₁ ≥ √(Q'_x S_yy)`,
 `r₂ ≥ √(Q'_y S_xx)`, `r_s ≥ √(S_xx S_yy)` and `r_q ≥ √(Q'_x Q'_y)`. -/
-def covTol (n d : Nat) (r1 r2 rs rq : Rat) : Rat :=
-  (71 * n * u * (r1 + r2) + 15 * n * u * rs + 3970 * n ^ 2 * u ^ 2 * rq
+def covTol (t : StatTol) (n d : Nat) (r1 r2 rs rq : Rat) : Rat :=
+  (t.cov * n * u * (r1 + r2) + 15 * n * u * rs + 3970 * n ^ 2 * u ^ 2 * rq
     + 800 * n ^ 2 * u * tiny) / d
+
+/-- Chan's `covTol` is the one before ruling 271. -/
+example : covTol .chan = fun (n d : Nat) (r1 r2 rs rq : Rat) => (71 * n * u * (r1 + r2)
+    + 15 * n * u * rs + 3970 * n ^ 2 * u ^ 2 * rq + 800 * n ^ 2 * u * tiny) / d := rfl
 
 /-- The error bound of the three co-moments of `CORR`, for an `R` at least
 `√(Q' S)` of each side, `√(Q'_x S_yy)`, `√(Q'_y S_xx)` and `√(S_xx S_yy)`, and
 `Q = Q'_x + Q'_y`. -/
-def corrErr (n : Nat) (R Q : Rat) : Rat :=
-  447 * n * u * R + 11883 * n ^ 2 * u ^ 2 * Q + 2379 * n ^ 2 * u * tiny
+def corrErr (t : StatTol) (n : Nat) (R Q : Rat) : Rat :=
+  t.corrR * n * u * R + t.corrQ * n ^ 2 * u ^ 2 * Q + t.corrT * n ^ 2 * u * tiny
+
+/-- Chan's `corrErr` is the one before ruling 271. -/
+example : corrErr .chan = fun (n : Nat) (R Q : Rat) =>
+    447 * n * u * R + 11883 * n ^ 2 * u ^ 2 * Q + 2379 * n ^ 2 * u * tiny := rfl
 
 /-- At most `2³²` doubles, each at most `2³⁹⁸` in magnitude (finite). -/
 def fits (cs : List Int) : Bool :=
@@ -127,8 +156,8 @@ def varProps (sample sqrt : Bool) (cs : List Int) (c : Int) : Prop :=
     if sqrt then sdNear (val c) (S / d) τ else absQ (val c - S / d) ≤ τ
 
 /-- The property of `COVAR_*` of the pairs `ps`, for a non-`NULL` result `c`:
-within `covTol` of `C / d` for every set of witnesses. -/
-def covProps (sample : Bool) (ps : List (Int × Int)) (c : Int) : Prop :=
+within `covTol t` of `C / d` for every set of witnesses. -/
+def covProps (t : StatTol) (sample : Bool) (ps : List (Int × Int)) (c : Int) : Prop :=
   let qs := ps.map fun p => (val p.1, val p.2)
   let d := if sample then ps.length - 1 else ps.length
   let sx := comoment (qs.map fun q => (q.1, q.1))
@@ -137,10 +166,10 @@ def covProps (sample : Bool) (ps : List (Int × Int)) (c : Int) : Prop :=
   let Qy := qsum (qs.map (·.2))
   ∀ r1 r2 rs rq : Rat, 0 ≤ r1 → 0 ≤ r2 → 0 ≤ rs → 0 ≤ rq →
     Qx * sy ≤ r1 * r1 → Qy * sx ≤ r2 * r2 → sx * sy ≤ rs * rs → Qx * Qy ≤ rq * rq →
-    absQ (val c - comoment qs / d) ≤ covTol ps.length d r1 r2 rs rq
+    absQ (val c - comoment qs / d) ≤ covTol t ps.length d r1 r2 rs rq
 
 /-- The property of `CORR` of the pairs `ps`, for a non-`NULL` result `c`. -/
-def corrProps (ps : List (Int × Int)) (c : Int) : Prop :=
+def corrProps (t : StatTol) (ps : List (Int × Int)) (c : Int) : Prop :=
   let qs := ps.map fun p => (val p.1, val p.2)
   let sx := comoment (qs.map fun q => (q.1, q.1))
   let sy := comoment (qs.map fun q => (q.2, q.2))
@@ -148,9 +177,9 @@ def corrProps (ps : List (Int × Int)) (c : Int) : Prop :=
   let Qy := qsum (qs.map (·.2))
   ∀ R L : Rat, 0 ≤ R →
     (∀ a ∈ [Qx, Qy, sx], ∀ b ∈ [sx, sy], a * b ≤ R * R) →
-    8 * corrErr ps.length R (Qx + Qy) ≤ L → 1 / 2 ^ 500 ≤ L → L ≤ sx → L ≤ sy →
+    8 * corrErr t ps.length R (Qx + Qy) ≤ L → 1 / 2 ^ 500 ≤ L → L ≤ sx → L ≤ sy →
       sx * sy ≤ 2 ^ 1000 →
-      absQ (val c) ≤ 1 + 3 * corrErr ps.length R (Qx + Qy) / L + 8 * u
+      absQ (val c) ≤ 1 + 3 * corrErr t ps.length R (Qx + Qy) / L + 8 * u
 
 end Stat
 
@@ -168,34 +197,35 @@ def varStat (sample sqrt : Bool) (vs : List Value) (v : Value) : Prop :=
   else if allInts vs ∧ nonFinite vs = none then True
   else v = (AggFn.var sample sqrt).apply vs
 
-/-- `COVAR_*` of `vs` may give `v`. -/
-def covStat (sample : Bool) (vs : List Value) (v : Value) : Prop :=
+/-- `COVAR_*` of `vs` may give `v`, at the constants `t`. -/
+def covStat (t : StatTol) (sample : Bool) (vs : List Value) (v : Value) : Prop :=
   if (pairsOf vs).isEmpty = true ∨ (sample = true ∧ (pairsOf vs).length = 1) then v = .null
   else if fits ((pairsOf vs).map (·.1) ++ (pairsOf vs).map (·.2)) = true then
-    ∃ c, v = .float c ∧ covProps sample (pairsOf vs) c
+    ∃ c, v = .float c ∧ covProps t sample (pairsOf vs) c
   else if nonFinite (pairCodes (pairsOf vs)) = none then True
   else v = (AggFn.cov sample).apply vs
 
-/-- `CORR` of `vs` may give `v`. -/
-def corrStat (vs : List Value) (v : Value) : Prop :=
+/-- `CORR` of `vs` may give `v`, at the constants `t`. -/
+def corrStat (t : StatTol) (vs : List Value) (v : Value) : Prop :=
   if (pairsOf vs).length < 2 ∨ ((pairsOf vs).map (·.1)).all
         (· == ((pairsOf vs).map (·.1)).headD 0) = true ∨
       ((pairsOf vs).map (·.2)).all (· == ((pairsOf vs).map (·.2)).headD 0) = true then
     v = .null
   else if fits ((pairsOf vs).map (·.1) ++ (pairsOf vs).map (·.2)) = true then
-    ∃ c, v = .float c ∧ corrProps (pairsOf vs) c
+    ∃ c, v = .float c ∧ corrProps t (pairsOf vs) c
   else if nonFinite (pairCodes (pairsOf vs)) = none then True
   else v = AggFn.corr.apply vs
 
 /-- The values a statistical aggregate `f` of `vs` may give: `NULL` where the
 reference says, otherwise a result with the generic properties for finite
 values in range, any double for finite values outside it (`Stat.fits`), and
-the reference's own value where a value is NaN or infinite. -/
-def StatProps (f : AggFn) (vs : List Value) (v : Value) : Prop :=
+the reference's own value where a value is NaN or infinite, at the
+constants `t`. -/
+def StatProps (t : StatTol) (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   match f with
   | .var sample sqrt => varStat sample sqrt vs v
-  | .cov sample => covStat sample vs v
-  | .corr => corrStat vs v
+  | .cov sample => covStat t sample vs v
+  | .corr => corrStat t vs v
   | _ => v = f.apply vs
 
 /-! ## The NaN guard of a written variance (DD-3)

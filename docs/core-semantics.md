@@ -722,7 +722,7 @@ is a choice that accepts every value the plan states.
 | `list_null_order` | all others | `NULL`, `GREATEST`, `LEAST` | `NULL` | choose |
 | `list_null_order` | `agg.order` | `NULL`, `GREATEST`, `LEAST` | `GREATEST` | choose |
 | `sum_order` | all others | `ANY`, `SEQUENTIAL`, `PAIRWISE`, `COMPENSATED`, `SCALED_CONSTANT`, `EXACT` | `EXACT` | choose |
-| `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN`, `EXACT` | `EXACT` | choose |
+| `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN`, `SCHUBERT_GERTZ`, `EXACT` | `EXACT` | choose |
 | `window_sum_algo` | all others | `RECOMPUTE`, `TREE`, `RUNNING_ADD`, `SLIDING` | `RECOMPUTE` | choose |
 | `stat_degenerate` | all others | `NULL`, `NAN`, `ERROR` | `NULL` | choose |
 | `quantile_interp` | all others | `BETWEEN`, `LINEAR`, `LINEAR_DIFF` | `BETWEEN` | leave open |

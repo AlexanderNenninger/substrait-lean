@@ -121,8 +121,11 @@ def options : List OptionSpec := [
     extra := [("SEQUENTIAL", "polars-sum-float"), ("PAIRWISE", "polars-sum-float"),
       ("COMPENSATED", "duckdb-kahan-sum"), ("SCALED_CONSTANT", "duckdb-sum-double")] },
   -- `EXACT`: the correctly rounded formula over the exact moments, the reference's (D30).
-  { id := "stat_algo", substrait := none, core := ["GENERIC", "WELFORD_CHAN", "EXACT"],
-    extra := [("WELFORD_CHAN", "duckdb-var-stddev")] },
+  -- `SCHUBERT_GERTZ`: two-pass blocks with Schubert and Gertz's merge, Polars's (ruling 271).
+  { id := "stat_algo", substrait := none,
+    core := ["GENERIC", "WELFORD_CHAN", "SCHUBERT_GERTZ", "EXACT"],
+    extra := [("WELFORD_CHAN", "duckdb-var-stddev"),
+      ("SCHUBERT_GERTZ", "polars-var-std-streaming")] },
   -- How an engine sums a window's frame of doubles (#1032): each frame
   -- anew (`RECOMPUTE`, the reference's), a tree of partial sums (`TREE`), an
   -- accumulator the frame only adds to (`RUNNING_ADD`), or one that adds the
