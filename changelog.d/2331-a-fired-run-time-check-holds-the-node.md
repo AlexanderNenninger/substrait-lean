@@ -1,0 +1,1 @@
+A run-time check that fires during `sverify refresh` (a product that overflows to infinity, a guard of the plan) now holds the node: exit 8 and the held alert, which names the check and says what to state in `requires=`. It was exit 6, the code for a crash. A direct `Report.run` still raises the engine's error, and `sverify check` says as before that the plan raises at run time.
