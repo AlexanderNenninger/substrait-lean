@@ -1,0 +1,13 @@
+{
+  "id": "F270",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "`.fdiv`'s `infIssue` excludes a zero divisor, as `.fdivIeee` already does (D39). A division by zero is `on_division_by_zero`'s issue, which `BinFn.issue` reports as `.divByZero` ahead of `infIssue`, and it is not an overflow to ±∞. `BinFn.issueAll` is unchanged at every input, so `Rel.eval`, `Rel.Allowed` and the profiles' error side are unchanged, and only the may-issue analysis gets sharper.",
+  "issues": [
+    1787
+  ],
+  "source": "fable-ruling-270-1787-fdiv-infissue.md",
+  "note": "No D-number: no recorded promise moves. Keeping the definition that counts one cause twice was declined. Conditions: V1, a theorem in `Issue.lean` proves `issueAll` equal to its previous form at every argument. V2, `Shim.makes_infinite` gains `f = .fdiv → canon b ≠ 0`, so the writer's guard chain (the zero guard, then `makes_infinite`) is stated as one lemma matching `issueAll`'s raise and kind; the Polars and Spark `float_overflow` rows cite it and stay proved, and a writer that checks `makes_infinite` before the zero guard is reported, never silently reordered. V3, the analysis fact that `x / DOUBLE(n)` with a nonzero integer `n` is finite for finite `x` comes from rounding monotonicity, with no new axiom, as an analysis lemma. V4, `#print axioms` of `makes_infinite`, `infIssue_eq` and the `Safety` theorems is unchanged. V5, `docs/core-semantics.md` says a division by zero is not an overflow. V6, the Improvement lines count the catalogue's assumed ±∞ checks before and after, and time the three modules' build."
+}
