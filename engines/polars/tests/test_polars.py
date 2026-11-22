@@ -585,7 +585,7 @@ def test_round_to_digits_matches_duckdb_bit_for_bit():
             run_plan(con, plan, "polars")
 
 
-def test_casts_to_bigint_truncate_and_refuse_nan():
+def test_a_floored_double_casts_to_bigint_and_nan_and_overflow_refuse():
     con = connect()
     con.create("r", F, [(x,) for x in DOUBLES])
     sql = "SELECT f, CAST(floor(f) AS BIGINT) AS i FROM r"
