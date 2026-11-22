@@ -11,9 +11,9 @@
   ],
   "description": [
     "The values are the same at both versions: `CAST(s AS STRUCT(b SMALLINT, a BIGINT))` of `{'a': 100000, 'b': 1}` is `{'b': 1, 'a': 100000}`, a target field the source lacks is NULL, a source field the target lacks is dropped, and `TRY_CAST` turns a field that does not fit into NULL. What moved is the error side (D70): `CAST(s AS STRUCT(b BIGINT, a SMALLINT))` raises `Conversion Error: Type INT32 with value 100000 can't be cast because the value is out of range for the target type INT16` at 2.0.1, and at 2.0.0 `INTERNAL Error: Scalar function \"__cast\" threw an execution error, but the function is not marked as can-throw`, after which the connection is invalidated. The 2.0.1 test `cast/struct_cast_can_throw.test` names the cause: the cast fallibility analysis paired the fields by position, where execution pairs them by name. The same holds for a struct inside a LIST or a MAP.",
-    "sverify's reference pairs a struct cast's fields by position: the replay of `cast/struct_cast_can_throw.test` (`engines/duckdb/replay/cast.json`, lines 79 and 84) gives `[{'b': 100000, 'a': 1}]` from the Lean evaluator and from the engine run of the lowered plan, where DuckDB gives `[{'b': 1, 'a': 100000}]` (or the conversion error). Both sides disagree with DuckDB's values, which are the same at both versions, so this is a deviation of the reference's struct cast and not a 2.0.1 change; it is recorded here because the replay at 2.0.1 is where it shows."
+    "The core's struct kind carries field kinds without names, so a cast of a list of structs to a target of the same field kinds (`STRUCT(b SMALLINT, a INTEGER)[]` of `STRUCT(a INTEGER, b SMALLINT)[]`) is read as the identity: the Lean evaluator keeps the source values. A direct struct cast is refused by design (ruling 186, `Parse.lean`). The replay of `cast/struct_cast_can_throw.test` (`engines/duckdb/replay/cast.json`, ledger lines 901 and 902; test lines 79 and 84) gives `[{'b': 100000, 'a': 1}]` from the Lean evaluator, `[{'a': 100000, 'b': 1}]` from the engine run of the written plan, and DuckDB's `[{'b': 1, 'a': 100000}]` (or the conversion error). All three differ, and DuckDB's values are the same at both versions, so this is a gap of the lift and the model, not a 2.0.1 change (#2376); it is recorded here because the replay at 2.0.1 is where it shows."
   ],
-  "reference": "A struct cast pairs the fields by position.",
+  "reference": "A cast of a list of structs between targets of the same field kinds is the identity (the field names are not modelled), where DuckDB pairs the fields by name.",
   "status": "deviation",
   "evidence": "probe",
   "provenance": [
@@ -52,6 +52,7 @@
     }
   ],
   "issues": [
-    2045
+    2045,
+    2376
   ]
 }

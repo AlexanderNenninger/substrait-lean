@@ -1260,9 +1260,28 @@ KNOWN: tuple[Known, ...] = (
             "sql_export/aggregate_results.test",
         ),
     ),
-    # `AND` runs in order in DuckDB's filter; in the reference both operands
-    # run, and the written plan's cast raises.
-    Known("duckdb-exec-short-circuit", ("cast/signed_cast_repro.test",)),
+    # `AND` runs in order in DuckDB's filter, and `CASE` and `COALESCE` run an operand only on
+    # the rows that reach it; in the reference both `AND` operands run, and the written plan's
+    # raising operand raises.
+    Known(
+        "duckdb-exec-short-circuit",
+        (
+            "cast/signed_cast_repro.test",
+            "error/test_try_in_clause.test",
+            "function/generic/constant_argument_errors.test",
+        ),
+    ),
+    # `MIN % -1` raised at 2.0.0 and is 0 at 2.0.1 (D70, error-side).
+    Known(
+        "duckdb-int-modulus-min-neg-one",
+        (
+            "function/numeric/test_mod_min_negative_one.test",
+            "function/numeric/test_modulo_min_by_minus_one.test",
+        ),
+    ),
+    # A cast of a list of structs to the same field kinds under other names is the identity in
+    # the model, and DuckDB pairs the fields by name (#2376).
+    Known("#2376", ("cast/struct_cast_can_throw.test",), r"STRUCT\("),
     # A double that overflows is ±inf in DuckDB; the reference raises.
     Known(
         "duckdb-double-overflow",
