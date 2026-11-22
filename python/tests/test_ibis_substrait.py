@@ -276,6 +276,26 @@ def test_mixed_comparisons_promote_the_integer(t):
     )
 
 
+@pytest.mark.parametrize("how", ["any", "all"])
+@settings(
+    max_examples=15, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture]
+)
+@given(t=t_rows())
+def test_drop_null_of_no_column(how, t):
+    """#2155: `drop_null([])` tests no column: `any` keeps every row, `all` none (Ibis's
+    `test_drop_null_table[empty-any]` and `[empty-all]`), as DuckDB does."""
+    expr = T.select("id", "qty", "amount").drop_null([], how=how)
+    con = connect()
+    con.create("t", T.schema(), t)
+    rows = list(zip(*(c.to_pylist() for c in duckdb_ibis(con, expr).columns), strict=True))
+    assert len(rows) == (len(t) if how == "any" else 0)
+    got = lean_values(json.dumps(inline_tables(to_substrait(expr), {"t": t})))
+    schema = expr.schema()
+    assert canonical(normalize(got, schema, lean=True)) == canonical(
+        normalize(rows, schema, lean=False)
+    )
+
+
 def test_timestamp_literals_are_not_local_time():
     expr = t.filter(t.ts > ibis.timestamp("2024-01-01 00:00:00"))
     cond = root(expr)["filter"]["condition"]
