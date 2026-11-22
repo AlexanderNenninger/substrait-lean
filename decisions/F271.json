@@ -1,0 +1,19 @@
+{
+  "id": "F271",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#1808: Polars's COVAR and CORR are proved under a new `stat_algo` value, `SCHUBERT_GERTZ`, with its own constants record (`StatTol.sg`) beside today's (`StatTol.chan`), through one parametrized definition. Polars's default `stat_algo` row becomes `SCHUBERT_GERTZ`. Carried forward from F220: `statsProvedOn` is per group and reads the row the plan reads, and Polars's `agg.var` row is proved by `core_var_polars`. The `agg.stat` row flips to proved once both the COVAR and the CORR proofs exist.",
+  "issues": [
+    1808
+  ],
+  "prs": [
+    2398
+  ],
+  "supersedes": [
+    "F220"
+  ],
+  "source": "fable-ruling-271-1808-polars-covar-sg.md",
+  "note": "Supersedes F220's clause \"Polars's COVAR row stays tested at 1.0\": the maintainer ruled that #1808 lands before 1.0. No D-number. The reference's value stays `EXACT`, and the ruling adds a value to an existing core option, as D35 did for `sum_order`. `GENERIC` and `WELFORD_CHAN` keep 71, `covTol` at `.chan` equals today's definition by `rfl`, and DuckDB and Spark are untouched. Polars's COVAR and CORR bounds loosen in their leading term from 71 to about 110, so a plan whose stated tolerance sits between the two can change from verified to not verified on Polars, and the changelog fragment says so. The constants come back to Fable if the covariance's coefficient passes 120 or a CORR constant more than doubles. Declined: removing the absolute underflow term, which has no sound route today, and keeping COVAR tested. Landing order: #2398 reshaped to take the constants record, then COVAR, then CORR. If the CORR proof stalls, the row stays tested at 1.0. Conditions K1–K7: the axioms match `core_var_polars`'s; DuckDB's and Spark's theorems are checked by `rfl` at `.chan`; the PR states the fuzz ratios; the `polars-var-std-streaming` note names `SCHUBERT_GERTZ`; the realizability rows are regenerated on main; the Improvement lines count the parametrization and the build time; and the PR says Part of #1808 until CORR lands."
+}
