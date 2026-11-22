@@ -1,0 +1,3 @@
+### A Flight source refuses a log that restarted
+
+A `FlightLog` that restarted numbers its batches from 1 again, and a `FlightSource` took it for the log its cursor was read from and skipped every new batch numbered up to the cursor. The log now has an identity (`FlightLog.id`, the `log` key of the stream's schema metadata), the cursor records it, and `read`, `restore` and the audit raise an error naming both logs when they differ; reading the log again is your choice, by starting the node on a new sink. Cursors recorded before this release name no log, so existing Flight cursors refuse once after the upgrade ([#2426](https://github.com/AlexanderNenninger/substrait-lean/issues/2426)).
