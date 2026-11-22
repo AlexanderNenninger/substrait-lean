@@ -1398,13 +1398,13 @@ structure CMergeSide (n : ℕ) (mx my Mx My Ax Ay C Ch E : ℝ) : Prop where
   Ax0 : 0 ≤ Ax
   Axb : Ax ≤ 2 ^ 432
   Axt : n * tiny ≤ Ax
-  MxA : |Mx| * n ≤ Ax
+  MxA : |Mx| * n + n * tiny ≤ Ax
   Mxb : |Mx| ≤ 2 ^ 400
   ex : |mx - Mx| ≤ 6 * u * Ax
   Ay0 : 0 ≤ Ay
   Ayb : Ay ≤ 2 ^ 432
   Ayt : n * tiny ≤ Ay
-  MyA : |My| * n ≤ Ay
+  MyA : |My| * n + n * tiny ≤ Ay
   Myb : |My| ≤ 2 ^ 400
   ey : |my - My| ≤ 6 * u * Ay
   Cb : |C| ≤ 2 ^ 830
@@ -1458,10 +1458,16 @@ theorem StdModel.chan_spec : CMergeSpec CConst.chan M.chan := by
   have hna1 : (1 : ℝ) ≤ na := by exact_mod_cast hla
   have hnb1 : (1 : ℝ) ≤ nb := by exact_mod_cast hlb
   have hnab : (na : ℝ) + nb ≤ 2 ^ 32 := by exact_mod_cast hN
-  obtain ⟨hmxa1, hmxab, hMxaA⟩ := mean_mag hna1 (by linarith) sa.Ax0 sa.Axb sa.MxA sa.Mxb sa.ex
-  obtain ⟨hmxb1, hmxbb, hMxbA⟩ := mean_mag hnb1 (by linarith) sb.Ax0 sb.Axb sb.MxA sb.Mxb sb.ex
-  obtain ⟨hmya1, hmyab, hMyaA⟩ := mean_mag hna1 (by linarith) sa.Ay0 sa.Ayb sa.MyA sa.Myb sa.ey
-  obtain ⟨hmyb1, hmybb, hMybA⟩ := mean_mag hnb1 (by linarith) sb.Ay0 sb.Ayb sb.MyA sb.Myb sb.ey
+  have hta : (0 : ℝ) ≤ na * tiny := mul_nonneg (Nat.cast_nonneg _) htn.le
+  have htb : (0 : ℝ) ≤ nb * tiny := mul_nonneg (Nat.cast_nonneg _) htn.le
+  obtain ⟨hmxa1, hmxab, hMxaA⟩ := mean_mag hna1 (by linarith) sa.Ax0 sa.Axb
+    (by have := sa.MxA; linarith) sa.Mxb sa.ex
+  obtain ⟨hmxb1, hmxbb, hMxbA⟩ := mean_mag hnb1 (by linarith) sb.Ax0 sb.Axb
+    (by have := sb.MxA; linarith) sb.Mxb sb.ex
+  obtain ⟨hmya1, hmyab, hMyaA⟩ := mean_mag hna1 (by linarith) sa.Ay0 sa.Ayb
+    (by have := sa.MyA; linarith) sa.Myb sa.ey
+  obtain ⟨hmyb1, hmybb, hMybA⟩ := mean_mag hnb1 (by linarith) sb.Ay0 sb.Ayb
+    (by have := sb.MyA; linarith) sb.Myb sb.ey
   refine ⟨rfl, ?_, ?_, ?_⟩
   · exact M.wmean_spec (ns := nb) (nt := na) hlb hla (by omega) (ms := mxb) (mt := mxa)
       (As := Axb) (At := Axa) hmxb1 hmxa1 sb.Axt sa.Axt hmxbb hmxab
@@ -1567,18 +1573,33 @@ theorem cInv_merge_of {C : CConst} {mg : WState → WState → WState} (hmg : CM
   have hlb32 : (b.length : ℝ) ≤ 2 ^ 32 := by exact_mod_cast (show b.length ≤ 2 ^ 32 by omega)
   have hLa' : Lw a.length ≤ 2 ^ 39 := by have := Lw_le (n := a.length) (by omega); linarith
   have hLb' : Lw b.length ≤ 2 ^ 39 := by have := Lw_le (n := b.length) (by omega); linarith
+  -- `n |M| ≤ Σ |x|`: the mean's magnitude below the values' sum, without `n·tiny`.
+  have hMP : ∀ (ps : List (ℝ × ℝ)),
+      |mx ps| * ps.length + ps.length * tiny ≤ mag (ps.map Prod.fst) ∧
+        |my ps| * ps.length + ps.length * tiny ≤ mag (ps.map Prod.snd) := by
+    intro ps
+    have h1 := length_mul_abs_mx_le (ps.map Prod.fst)
+    have h2 := length_mul_abs_mx_le (ps.map Prod.snd)
+    rw [List.length_map, mx_dupL_fst] at h1
+    rw [List.length_map, mx_dupL_snd] at h2
+    have h3 := mag_eq_sum_abs (ps.map Prod.fst)
+    have h4 := mag_eq_sum_abs (ps.map Prod.snd)
+    rw [List.length_map] at h3 h4
+    constructor <;> linarith
+  obtain ⟨hMPxa, hMPya⟩ := hMP a
+  obtain ⟨hMPxb, hMPyb⟩ := hMP b
   have sa : CMergeSide a.length mxa mya (mx a) (my a) (mag (a.map Prod.fst)) (mag (a.map Prod.snd))
       (comoment a) Sha _ :=
-    { one := hla, Ax0 := hAxa0, Axb := hAxab, Axt := hAxat, MxA := hMxa, Mxb := hMxab, ex := exa,
-      Ay0 := hAya0, Ayb := hAyab, Ayt := hAyat, MyA := hMya, Myb := hMyab, ey := eya,
+    { one := hla, Ax0 := hAxa0, Axb := hAxab, Axt := hAxat, MxA := hMPxa, Mxb := hMxab, ex := exa,
+      Ay0 := hAya0, Ayb := hAyab, Ayt := hAyat, MyA := hMPya, Myb := hMyab, ey := eya,
       Cb := le_trans (abs_comoment_le_sqrt a) (sqrt_le_830 hSxa0 hSya0 hSxab hSyab), com := hEa,
       Eb := cBoundC_le hla1 hla32 hAxa0 hAxab hAya0 hAyab hDxa0
         (Ds_le hDxa0 hSxa0 hLa' hSxab hDxa) hDya0 (Ds_le hDya0 hSya0 hLa' hSyab hDya)
         (Real.sqrt_nonneg _) (sqrt_le_830 hSxa0 hSya0 hSxab hSyab) hLa0' hLa' }
   have sb : CMergeSide b.length mxb myb (mx b) (my b) (mag (b.map Prod.fst)) (mag (b.map Prod.snd))
       (comoment b) Shb _ :=
-    { one := hlb, Ax0 := hAxb0, Axb := hAxbb, Axt := hAxbt, MxA := hMxb, Mxb := hMxbb, ex := exb,
-      Ay0 := hAyb0, Ayb := hAybb, Ayt := hAybt, MyA := hMyb, Myb := hMybb, ey := eyb,
+    { one := hlb, Ax0 := hAxb0, Axb := hAxbb, Axt := hAxbt, MxA := hMPxb, Mxb := hMxbb, ex := exb,
+      Ay0 := hAyb0, Ayb := hAybb, Ayt := hAybt, MyA := hMPyb, Myb := hMybb, ey := eyb,
       Cb := le_trans (abs_comoment_le_sqrt b) (sqrt_le_830 hSxb0 hSyb0 hSxbb hSybb), com := hEb,
       Eb := cBoundC_le hlb1 hlb32 hAxb0 hAxbb hAyb0 hAybb hDxb0
         (Ds_le hDxb0 hSxb0 hLb' hSxbb hDxb) hDyb0 (Ds_le hDyb0 hSyb0 hLb' hSybb hDyb)
