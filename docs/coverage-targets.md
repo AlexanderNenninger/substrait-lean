@@ -138,7 +138,7 @@ is what the probe gives.
 | math functions | in | covered | catalogue: math_funcs 5, math_transcendental 2 |  |
 | decimal arithmetic and aggregates | in | covered | catalogue: decimal 40 (TPC-H, TPC-DS, finance); double-entry pattern ([#749](https://github.com/AlexanderNenninger/substrait-lean/issues/749)) |  |
 | round of a decimal | in | — | money rounding: round(price * 1.19, 2); replay 28 | [#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27) |
-| DuckDB aliases: if, iff, len, substr, arbitrary | in | — | DuckDB style SQL; replay (binder tests) | [#328](https://github.com/AlexanderNenninger/substrait-lean/issues/328) |
+| DuckDB aliases: if, len, substr, arbitrary | in | covered | DuckDB style SQL; replay (binder tests) |  |
 | fp32 (FLOAT) | skipped | — | replay 427; Parquet files written by ML tools | [#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417) |
 | now, current_date, random, uuid | skipped | — | Ibis now, today, random, uuid | [#58](https://github.com/AlexanderNenninger/substrait-lean/issues/58) |
 | unsigned integers and HUGEINT | after 1.0 | — | replay 1,495, mostly DuckDB's own type tests | [#350](https://github.com/AlexanderNenninger/substrait-lean/issues/350) |
@@ -188,7 +188,7 @@ is what the probe gives.
 | make_date, last_day, dayname, monthname | in | covered | Ibis date from columns; calendar dimensions | [#809](https://github.com/AlexanderNenninger/substrait-lean/issues/809) |
 | timestamp - timestamp, and intervals from columns | in | — | sessionization gaps (ts - lag(ts) > INTERVAL 30 MINUTE); Ibis timestamp delta, column intervals; replay 307 | [#342](https://github.com/AlexanderNenninger/substrait-lean/issues/342) |
 | strptime, try_strptime, strftime | in | — | dates as text in raw data; Eurostat periods ([#771](https://github.com/AlexanderNenninger/substrait-lean/issues/771)); Ibis string to timestamp; replay 243 | [#347](https://github.com/AlexanderNenninger/substrait-lean/issues/347) |
-| time_bucket | in | — | catalogue time_bucket 1; metrics rollups; replay 74 | [#347](https://github.com/AlexanderNenninger/substrait-lean/issues/347) |
+| time_bucket | in | covered | catalogue time_bucket 1; metrics rollups; replay 74 | [#347](https://github.com/AlexanderNenninger/substrait-lean/issues/347) |
 | timestamps at s, ms and ns precision | in | — | Parquet and Arrow sources (the homelab cycling demo); replay 137 | [#323](https://github.com/AlexanderNenninger/substrait-lean/issues/323) |
 | time zones: AT TIME ZONE, TIMESTAMPTZ | skipped | — | catalogue ts-local-day-revenue; replay 46 |  |
 | INTERVAL output columns as months, days and microseconds | after 1.0 | — | DuckDB's types/interval tests | [#342](https://github.com/AlexanderNenninger/substrait-lean/issues/342) |

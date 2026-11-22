@@ -14,7 +14,7 @@ from ibis import _
 import sverify as sv
 from _pipelines import doubled, make_orders, paid
 from sverify import routes
-from sverify.engines import to_sql
+from sverify.engines.plan import to_sql
 from sverify.errors import (
     InferredWarning,
     RouteError,
@@ -152,7 +152,7 @@ def test_the_route_reference_is_now_translated(con, tmp_path) -> None:
 
 
 def test_a_route_names_translated_by_its_class_alone() -> None:
-    shim = routes.Route("polars", "translated", "reference", "why", cls="shim", evidence="tested")
+    shim = routes.Route("polars", "translated", "portable", "why", cls="shim", evidence="tested")
     assert str(shim) == "shim; evidence tested"
     exact = routes.Route("duckdb", "native", "duckdb", "why", cls="exact")
     assert str(exact) == "exact; native: why"

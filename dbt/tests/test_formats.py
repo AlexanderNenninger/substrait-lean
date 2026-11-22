@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import json
 import xml.etree.ElementTree as ET
+from pathlib import Path
+
+import pytest
+import sverify
 
 from sverify_dbt import formats
 from sverify_dbt.cli import BUDGET, main
@@ -83,3 +87,20 @@ def test_the_time_budget_is_off_unless_asked_for(tmp_path, monkeypatch) -> None:
     assert _timeout_asked(5.0)
     monkeypatch.setenv("SVERIFY_TIMEOUT", "60")
     assert _timeout_asked(None)
+
+
+def test_json_is_sverifys_envelope() -> None:
+    """`--format json` is `cli.schema.json`'s document: one tool reads both (#891 1.5)."""
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = json.loads((Path(sverify.__file__).parent / "schemas" / "cli.schema.json").read_text())
+    doc = _result().to_dict(1)
+    jsonschema.validate(doc, schema)
+    assert (doc["format"], doc["command"], doc["exit"], doc["status"]) == (
+        1,
+        "check",
+        1,
+        "not_proved",
+    )
+    assert [i["status"] for i in doc["items"]] == ["proved", "not_proved", "refused"]
+    assert {f["code"] for f in doc["findings"]} >= {"may_be_false", "unsupported"}
+    assert doc["dbt_version"] == "unknown" and doc["adapter"] == "duckdb"

@@ -134,7 +134,7 @@ def test_source_takes_tuples_dicts_or_arrow():
     assert not a.table.schema.field("id").nullable
     assert a.name == "orders" and a.version == 0
     with pytest.raises(TypeError, match="needs a schema"):
-        source([(1,)])
+        source([(1,)], name="t")
 
 
 # -- assert_contract -------------------------------------------------------------
@@ -342,6 +342,37 @@ def test_cases_meet_the_preconditions():
     check()
     # The repair keeps rows: the examples are not all empty.
     assert all(n > 0 for n in seen.values()), seen
+
+
+def test_cases_copy_a_composite_foreign_key_from_one_referenced_row():
+    """Each referencing row takes all its parts from one row of `p`: with p's
+    rows (1, 'a') and (2, 'b'), the row (1, 'b') never appears (#2223)."""
+    small = {"x": [_.x.isin([1, 2])], "y": [_.y.isin(["a", "b"])]}
+
+    @sv.transform(
+        requires={
+            "o": [*small["x"], *small["y"], sv.references("x", "y", to=("p", ["x", "y"]))],
+            "p": [*small["x"], *small["y"]],
+        }
+    )
+    def joined(o, p):
+        return o.join(p, [o.x == p.x, o.y == p.y]).select(o.x)
+
+    pairs = {"x": "int64", "y": "string"}
+    node = joined(source([], pairs, name="o"), source([], pairs, name="p"))
+    seen = 0
+
+    @settings(max_examples=60, deadline=None, derandomize=True)
+    @given(cases(node, max_rows=4))
+    def check(data):
+        nonlocal seen
+        referenced = set(zip(*data["p"].to_pydict().values(), strict=True))
+        for row in zip(*data["o"].to_pydict().values(), strict=True):
+            assert None in row or row in referenced, (row, referenced)
+            seen += None not in row
+
+    check()
+    assert seen > 0
 
 
 def test_cases_refuses_types_it_cannot_generate():

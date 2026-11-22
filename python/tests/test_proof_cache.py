@@ -97,7 +97,7 @@ def test_a_changed_profile_misses(cache: Path) -> None:
     _new_process()
     report, t = _verify(_query(), semantics="polars")
     assert t.calls["checker"] >= 1
-    assert report.semantics == "reference"  # polars is pending (#271)
+    assert report.semantics == "portable"  # polars is pending (#271)
 
 
 def test_another_version_misses(cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -173,7 +173,7 @@ def test_the_default_directory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 
 
 def test_an_unwritable_cache_is_skipped(cache: Path) -> None:
-    cache.write_text("a file where the directory would be")
+    cache.write_text("a file where the directory would be", encoding="utf-8")
     report, _ = _verify(_query())
     assert report.verdict == sv.Verdict.PROVED
 

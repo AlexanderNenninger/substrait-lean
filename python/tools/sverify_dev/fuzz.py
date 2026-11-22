@@ -462,6 +462,19 @@ def listed_issues(sql: str) -> list[str]:
     return [str(i) for i in report.issues + report.assumed]
 
 
+def reports_runtime_error(s: Session, sql: str) -> bool:
+    """Whether `verify` reports the possible runtime error on this input: it
+    names one, or the input breaks a precondition it needs (`x IS NULL OR x <> 0`), which the proof
+    rests on (#638, #2101)."""
+    report = verify(sql, tables=SCHEMAS)
+    if report.errors:
+        return True
+    return any(
+        duckdb_sql(s.con, f"SELECT 1 FROM {n.table} WHERE ({n.sql}) IS FALSE LIMIT 1").num_rows
+        for n in report.needs
+    )
+
+
 def check(
     query: Query,
     tables: Mapping[str, list[tuple]],
@@ -483,7 +496,7 @@ def check(
     except LeanRaised as e:
         # The reference raises (a zero divisor, an overflow): `verify` must
         # report the possible runtime error, as for an engine that raises.
-        if not verify(query.sql, tables=SCHEMAS).errors:
+        if not reports_runtime_error(s, query.sql):
             found("runtime", f"Lean raises {e}; verify reports no runtime error")
         return findings
     try:
@@ -492,10 +505,8 @@ def check(
     except Exception as e:  # noqa: BLE001 - recorded below
         df_table, df, df_error = None, None, e
 
-    if "runtime" in oracles and df_error is not None:
-        report = verify(query.sql, tables=SCHEMAS)
-        if not report.errors:
-            found("runtime", f"DuckDB raises {df_error!r}; verify reports no runtime error")
+    if "runtime" in oracles and df_error is not None and not reports_runtime_error(s, query.sql):
+        found("runtime", f"DuckDB raises {df_error!r}; verify reports no runtime error")
     if "rows" in oracles and df is not None and not same_rows(lean, df, query.ordered):
         found("rows", f"Lean:   {lean!r}\nDuckDB: {df!r}")
     if "engines" in oracles and df_error is None:
@@ -592,7 +603,7 @@ def note(case: tuple) -> None:
     still names the case it was on. Written whole, then renamed into place."""
     if path := os.environ.get("SVERIFY_FUZZ_PROGRESS"):
         tmp = f"{path}.tmp"
-        Path(tmp).write_text(json.dumps(case_json(case)))
+        Path(tmp).write_text(json.dumps(case_json(case)), encoding="utf-8")
         os.replace(tmp, path)
 
 

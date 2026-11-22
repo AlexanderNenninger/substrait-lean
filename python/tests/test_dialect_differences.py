@@ -17,12 +17,12 @@ from sverify import _dialect
 from sverify._unsupported import UnsupportedError
 from sverify.report import Report
 from sverify.sql_lift import lift
-from sverify.sql_lift._base import DUCKDB, REFERENCE
+from sverify.sql_lift._base import DUCKDB, PORTABLE
 
 SCHEMA = {"t": ibis.schema({"x": "float64", "d": "decimal(10,2)", "y": "float64"})}
 
 
-def _found(sql: str, semantics: str = "reference") -> list[str]:
+def _found(sql: str, semantics: str = "portable") -> list[str]:
     return [d.key for d in lift(sql, SCHEMA, semantics).differences]
 
 
@@ -32,10 +32,10 @@ def test_each_silent_difference_is_refused_or_listed() -> None:
     with neither fails."""
     keys = {
         f.name
-        for f in dataclasses.fields(REFERENCE)
+        for f in dataclasses.fields(PORTABLE)
         if f.name != "name"
-        and getattr(REFERENCE, f.name) != getattr(DUCKDB, f.name)
-        and "ERROR" not in (getattr(REFERENCE, f.name), getattr(DUCKDB, f.name))
+        and getattr(PORTABLE, f.name) != getattr(DUCKDB, f.name)
+        and "ERROR" not in (getattr(PORTABLE, f.name), getattr(DUCKDB, f.name))
     }
     assert keys | _dialect.NATIVE == set(_dialect.TABLE)
 
@@ -48,7 +48,7 @@ def test_each_silent_difference_is_refused_or_listed() -> None:
 )
 def test_a_narrower_rounding_cast_is_refused_with_its_spellings(sql: str, spelling: str) -> None:
     with pytest.raises(UnsupportedError) as e:
-        lift(sql, SCHEMA, "reference")
+        lift(sql, SCHEMA, "portable")
     assert spelling in str(e.value)
     assert "round(CAST(d AS DOUBLE))" not in str(e.value)
 
@@ -102,7 +102,7 @@ def test_the_corr_construct_is_listed() -> None:
 LISTS = {"t": ibis.schema({"l": "array<int64>", "x": "int64"})}
 
 
-def _found_lists(sql: str, semantics: str = "reference") -> list[str]:
+def _found_lists(sql: str, semantics: str = "portable") -> list[str]:
     return [d.key for d in lift(sql, LISTS, semantics).differences]
 
 
@@ -129,6 +129,30 @@ def test_the_report_lists_a_list_contains() -> None:
     assert (d.key, d.where) == ("list_contains_null_needle", "the query")
     assert "FALSE" in d.dialect and "NULL" in d.here
     assert Report.from_json(r.to_json()).dialect_differences == r.dialect_differences
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT l < CAST([1, NULL, 3] AS BIGINT[]) AS c FROM t",
+        "SELECT l >= l AS c FROM t",
+        "SELECT [1, 2] < [1, NULL, 3] AS c FROM t",
+        "SELECT greatest(l, CAST([1] AS BIGINT[])) AS c FROM t",
+        "SELECT l BETWEEN CAST([1] AS BIGINT[]) AND CAST([2, NULL] AS BIGINT[]) AS c FROM t",
+    ],
+)
+def test_an_ordering_of_lists_that_may_hold_a_null_element_is_listed(sql: str) -> None:
+    # D54, ruling 232 (#2163): the plan gives NULL where a NULL element decides the order.
+    assert _found_lists(sql) == ["list_null_order"]
+    assert _found_lists(sql, "duckdb") == ["list_null_order"]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    ["SELECT [1, 2] < [1, 3] AS c FROM t", "SELECT l = l AS c FROM t", "SELECT x < 1 AS c FROM t"],
+)
+def test_other_comparisons_are_not_listed_as_list_orders(sql: str) -> None:
+    assert _found_lists(sql) == []
 
 
 def test_a_construct_is_listed_once() -> None:
@@ -192,7 +216,7 @@ def test_a_difference_has_the_refusal_category_and_the_sql_as_written() -> None:
     assert str(d).startswith("CORR(t.x, t.y) in the query")
 
 
-@pytest.mark.parametrize("semantics", ["reference", "duckdb"])
+@pytest.mark.parametrize("semantics", ["portable", "duckdb"])
 @pytest.mark.parametrize(
     "sql",
     [

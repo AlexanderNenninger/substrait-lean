@@ -73,7 +73,7 @@ def _(mo):
 
 @app.cell
 def _(pa, sv):
-    from sverify.engines import delta_plans
+    from sverify.engines.plan import delta_plans
     from sverify.io import StaticSource
 
     def arrow_table(schema, rows):
@@ -222,7 +222,7 @@ def _(mo):
     frames the frames it touches. Left joins (a left join's NULL-padded rows
     must be retracted when a match turns up later), `LIMIT` (it depends on
     row order) and the rest are recomputed and diffed on every refresh
-    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)). Contracts work on all of them, and the result is
+    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-nodes.md#nodes-composing-storing-refreshing)). Contracts work on all of them, and the result is
     correct; a recomputed node costs a full run per refresh. `node.status()`
     says which kind of node you have:
     """)
@@ -279,7 +279,7 @@ def _(mo):
     any other: `view.table` is an Ibis table to query further, and
     `to_arrow()`, `to_polars()` and `to_pandas()` return its rows. Nodes
     are built from Ibis transforms, or from a SQL string with `sv.sql(query)`
-    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)).
+    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-nodes.md#nodes-composing-storing-refreshing)).
 
     ### Delta rules in brief
 
@@ -371,7 +371,7 @@ def _(mo):
     Lean proves the full rule once. `Rel.delta` generates the update plan
     as an ordinary plan that reads the old tables and the change tables,
     and `Rel.delta_correct` proves it computes exactly the change. Any
-    engine can run it. `sverify.engines.delta_plans(view.internal_plan)` returns the
+    engine can run it. `sverify.engines.plan.delta_plans(view.internal_plan)` returns the
     plan of our view. `orders$delta` and `customers$delta` are the change
     tables, with a trailing `__weight` column; old tables get weight 1
     (`Project +[1]`), and the join multiplies weights (`$3 * $6`):
@@ -698,7 +698,7 @@ def _(mo):
     rest through. With `on_violation="quarantine"` on the transform (or on
     the source), the refresh sets aside the rows that break a precondition,
     with the reason, and the node runs on the others
-    ([quarantine and hold](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#bad-rows-quarantine-and-hold)).
+    ([quarantine and hold](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-quarantine.md#bad-rows-quarantine-and-hold)).
     A row is set aside when a row condition is not TRUE on it, or when
     another row shares its key: both rows of a repeated `id` go, so the rule
     needs no order between them. Every precondition holds on the rows that
@@ -1002,7 +1002,7 @@ def _(mo):
     and the tests use DuckDB as their default oracle. DuckDB and Polars are
     characterized fact by fact, each fact with its evidence
     ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)). DuckDB and Polars run Lean's
-    written form of the plan (`sverify.engines.written_plan`), so what runs
+    written form of the plan (`sverify.engines.plan.written_plan`), so what runs
     is what was checked, and their translators spell out the reference's
     semantics explicitly, whatever the engine's defaults.
 
@@ -1015,7 +1015,8 @@ def _(mo):
 
 @app.cell
 def _(ibis, math, sv):
-    from sverify.engines import ENGINES, run, substrait_json, written_plan
+    from sverify.engines import ENGINES, run
+    from sverify.engines.plan import substrait_json, written_plan
 
     T_SCHEMA = ibis.schema({"k": "string", "qty": "int64", "v": "float64"})
     U_SCHEMA = ibis.schema({"k": "string", "label": "string"})
@@ -1270,8 +1271,8 @@ def _(mo):
     engine, and refuse the plan with the reason where nothing does
     ([how a route is chosen](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/verifying.md)).
     The route names the plan's class on the engine: `exact` (every result
-    the engine gives, the reference allows), `observed` (equal under an
-    observation the postcondition states, a float tolerance included),
+    the engine gives, the reference allows), `observed` (equal under
+    lenses the postcondition states, a float tolerance included),
     `shim` (after a proved translation) or `refused`. Before the plan runs, its preconditions
     are checked on the data. We take the join to Polars:
     """)
@@ -1393,7 +1394,7 @@ def _(mo):
     ### SQL for DuckDB, Snowflake and Spark
 
     When the data lives in a warehouse, the plan goes to the warehouse.
-    `sverify.engines.to_sql` writes a checked plan, or one of Lean's update
+    `sverify.engines.plan.to_sql` writes a checked plan, or one of Lean's update
     plans, as SQL whose result is `Rel.eval` of the plan. Columns are
     positional (`c0`, `c1`, …), filters keep only TRUE rows (`IS TRUE`),
     integers are checked at their declared width and every `ORDER BY` says where
@@ -1420,7 +1421,8 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(con, dialect, json, mo, sql_query, substrait_json):
     import sqlglot
-    from sverify.engines import UnsupportedError, to_sql
+    from sverify.engines import UnsupportedError
+    from sverify.engines.plan import to_sql
 
     try:
         _plan = json.loads(substrait_json(con, sql_query.value, semantics="duckdb"))

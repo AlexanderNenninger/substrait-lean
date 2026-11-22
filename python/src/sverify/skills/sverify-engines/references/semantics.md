@@ -17,7 +17,7 @@ the model on random tables.
   Snowflake and Spark, whose tables have no order, they are refused.
 * **Order.** Ties and the rows of a `LIMIT` are open, as the reference leaves
   them (`rows="multiset"`): the sort's keys order the rows, and a plan's last
-  sort orders its result. An observation with `rows="sequence"` carries the
+  sort orders its result. Lenses with `rows="sequence"` carry the
   model's row order in an ordinal column on DuckDB and refuses on Snowflake
   and Spark.
 * **Strings** count characters, not bytes, in lengths, positions and

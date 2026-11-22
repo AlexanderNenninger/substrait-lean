@@ -40,10 +40,16 @@ LEDGER = ROOT / "python" / "tests" / "odcs_examples.json"
 #: What each kind of unread rule, or refused round trip, waits on: an issue
 #: that would read it, or why sverify does not by design.
 WAITS_ON: tuple[tuple[str, dict[str, Any]], ...] = (
-    ("a relationship", {"issue": 1956}),
-    ("a composite foreign key", {"issue": 1956}),
-    ("is not supported; cast the column", {"issue": 1958}),
-    ("sverify reads no binary values", {"issue": 1958}),
+    ("a relationship that is not a foreign key", {"design": "sverify reads foreign keys"}),
+    (
+        "no single column the contract defines",
+        {"design": "it names nothing, or two columns, for sverify to check"},
+    ),
+    ("a foreign key from another table", {"design": "it constrains the table it starts from"}),
+    (
+        "a foreign key to the columns of several tables",
+        {"design": "a foreign key references one table"},
+    ),
     ("logicalTypeOptions.format", {"design": "a format for text, which no row breaks"}),
     ("a SQL rule of another shape", {"design": "a template the contract's runner fills in"}),
     ("a rule for engine", {"design": "another tool's own rule language"}),

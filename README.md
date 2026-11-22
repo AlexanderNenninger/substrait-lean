@@ -87,40 +87,23 @@ SQL string ─► SQLGlot lift ────────────────�
 
 ## Documents
 
-* [docs/getting-started.md](docs/getting-started.md): the install and ten
-  steps, each a step up: contracts, SQL, inferred preconditions, routes,
-  tolerances, reproducible sinks, engine profiles and Substrait's own
-  semantics.
-* [docs/tasks.md](docs/tasks.md): one section per task, from contracts to
-  Delta and Iceberg pipelines.
-* [docs/how-it-works.md](docs/how-it-works.md): the checker, incremental
-  maintenance, the producers and engines, what is proved and what is trusted.
-* [docs/reference-semantics.md](docs/reference-semantics.md): what `Rel.eval`
-  means, row by row, Ibis frontend included;
-  [docs/engine-profiles.md](docs/engine-profiles.md),
-  [docs/optimizations.md](docs/optimizations.md),
-  [docs/nested-values.md](docs/nested-values.md) and
-  [docs/float-bounds.md](docs/float-bounds.md) cover the engines,
-  proved optimizations, nested values and doubles.
-* [python/README.md](python/README.md): install, quick example and API overview.
-* [docs/prior-work.md](docs/prior-work.md): the work sverify builds on, with
-  citations, and related tools.
-* [docs/stability.md](docs/stability.md): what stays stable in 1.x: the formats
-  a running pipeline reads, the contracts proved, the Python API, and
-  [which engines](docs/stability.md#engines) sverify supports.
-* [docs/core-semantics.md](docs/core-semantics.md): the loose core, which
-  does a superset of operations, the profiles that refine it, the translations between them, and the
-  decisions behind the reference; [docs/realizability.md](docs/realizability.md): the
-  class of every option on each engine, generated.
-* [docs/proofs.md](docs/proofs.md): each guarantee with its theorem, what is
-  trusted, and one line per Lean module.
-* [docs/coverage-targets.md](docs/coverage-targets.md): the coverage list for
-  1.0 and where each target stands.
-* [characterization/README.md](characterization/README.md): how engine facts
-  are judged; [models/refresh/](models/refresh/README.md): the refresh
-  protocol, model-checked in TLA+.
-* [docs/layers.md](docs/layers.md): the order in which the Python modules
-  import each other, and the readings the frontends share.
+[docs/README.md](docs/README.md) maps every page by its kind: the tutorial
+([docs/getting-started.md](docs/getting-started.md), ten steps from a first
+contract to Substrait's own semantics), the how-to pages
+([docs/tasks.md](docs/tasks.md), one page per task), the reference
+([docs/reference-semantics.md](docs/reference-semantics.md),
+[docs/stability.md](docs/stability.md), which says what stays stable in 1.x
+and [which engines](docs/stability.md#engines) sverify supports), the
+explanations ([docs/how-it-works.md](docs/how-it-works.md),
+[docs/what-sverify-proves.md](docs/what-sverify-proves.md),
+[docs/prior-work.md](docs/prior-work.md)) and the pages for contributors
+([docs/core-semantics.md](docs/core-semantics.md),
+[docs/proofs.md](docs/proofs.md),
+[docs/coverage-targets.md](docs/coverage-targets.md),
+[docs/layers.md](docs/layers.md)).
+[python/README.md](python/README.md) is the user's entry. How engine facts
+are judged is in [characterization/README.md](characterization/README.md), and
+the refresh protocol, model-checked in TLA+, in [models/refresh/](models/refresh/README.md).
 
 ## The Lean project
 
@@ -154,7 +137,7 @@ How much of the Ibis API gets through, from
 `main` after every merge by `uv run python -m sverify_dev.coverage --write-readme`):
 
 <!-- coverage:start -->
-198 of 218 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis; *inc.* marks incremental maintenance).
+200 of 220 probed Ibis operations reach the checker (✓ verified, ✗ rejected by the checker, – fails in Ibis; *inc.* marks incremental maintenance).
 
 | Area | Operations |
 |---|---|
@@ -163,21 +146,21 @@ How much of the Ibis API gets through, from
 | aggregation | ✓ count() · ✓ group_by sum · ✓ count, max, mean · ✓ arithmetic over aggregates · ✓ nunique · ✓ first, last ordered · ✓ group_concat ordered · ✓ group_concat · ✗ approx_nunique · ✓ any, all · ✓ bit_and, bit_or, bit_xor · ✓ sum(where=) · ✓ having · ✓ value_counts · ✓ distinct · ✓ distinct(on=) · ✓ std · ✓ cov, corr · ✓ collect · ✓ collect ordered · ✗ collect include_null · ✓ scalar subquery · ✓ unnest · ✓ median, quantile · ✓ mode · ✓ mode of an expression · ✓ arbitrary · ✓ nunique of rows · ✓ argmin, argmax · ✗ approx_median · ✓ quantile of several |
 | lists | ✓ unnest column · ✓ unnest keep_empty · ✓ list literal *inc.* · ✓ list column *inc.* · ✓ pivot_longer *inc.* |
 | windows | ✓ row_number · ✓ lag · ✓ rank · ✓ dense_rank · ✓ cumsum · ✓ sum over group · ✓ rolling mean (rows) · ✓ rolling mean (interval) · ✓ ntile · ✓ first · ✓ percent_rank, cume_dist · ✓ running mean · ✓ rolling sum (interval) · ✓ rolling sum (range) · ✓ last, nth · ✓ max, count over frame · ✓ min over a sliding frame · ✓ window sum of an expression · ✓ window over expressions · ✓ group_concat over a window · ✓ stddev over group · ✓ rolling variance (rows) |
-| numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast double → int *inc.* |
+| numbers | ✓ +, -, * *inc.* · ✓ float division *inc.* · ✓ integer division *inc.* · ✓ mod *inc.* · ✓ abs *inc.* · ✓ round *inc.* · ✓ ceil, floor *inc.* · ✓ power *inc.* · ✓ greatest *inc.* · ✓ least *inc.* · ✓ clip *inc.* · ✓ cast int → double *inc.* · ✓ cast int → string *inc.* · ✓ cast boolean → string *inc.* · ✓ cast date → string *inc.* · ✓ cast double → int *inc.* |
 | math | ✓ sign *inc.* · ✓ sqrt *inc.* · ✓ exp *inc.* · ✓ ln *inc.* · ✓ log10, log2 *inc.* · ✓ log(base) *inc.* · ✓ trigonometry *inc.* · ✓ atan2 *inc.* · ✓ degrees, radians *inc.* · ✓ pi, e *inc.* · ✓ isinf *inc.* · ✓ bitwise *inc.* · ✓ shifts *inc.* · ✓ logical xor *inc.* |
 | nulls | ✓ fill_null *inc.* · ✓ coalesce *inc.* · ✓ nullif *inc.* |
 | strings | ✓ upper *inc.* · ✓ length *inc.* · ✓ concat *inc.* · ✓ substr *inc.* · ✓ contains *inc.* · ✓ startswith *inc.* · ✓ like *inc.* · ✓ re_search *inc.* · ✓ strip *inc.* · ✓ lpad *inc.* · ✓ rpad *inc.* · ✓ repeat *inc.* · ✓ reverse *inc.* · ✓ right *inc.* · ✓ replace *inc.* · ✓ replace '' *inc.* · ✓ ilike *inc.* · ✓ find from *inc.* · ✓ ascii *inc.* · ✓ join *inc.* · ✓ levenshtein *inc.* · ✓ find_in_set *inc.* · ✓ capitalize *inc.* · ✓ slice *inc.* · ✗ translate · ✓ re_extract *inc.* · ✓ re_replace *inc.* · ✓ hexdigest *inc.* · ✗ hash · ✗ host |
 | time | ✓ timestamp + interval *inc.* · ✓ compare with literal *inc.* · ✓ year *inc.* · ✓ date *inc.* · ✓ truncate *inc.* · ✓ date + days *inc.* · ✓ date - months *inc.* · ✓ date + years *inc.* · ✓ date - column days *inc.* · ✓ timestamp + months *inc.* · ✓ constant interval arithmetic *inc.* · ✓ date - date *inc.* · ✓ date delta *inc.* · ✓ date parts *inc.* · ✓ date truncate *inc.* · ✓ day_of_week *inc.* · ✓ day_of_week name *inc.* · ✓ iso_year *inc.* · ✓ epoch_seconds *inc.* · ✓ millisecond, microsecond *inc.* · ✓ timestamp + column interval *inc.* · ✓ date + column months *inc.* · ✓ timestamp delta *inc.* · ✓ bucket *inc.* · ✓ group_by_dynamic (no overlap) · ✓ rolling sum by time · ✓ offset_by months and days *inc.* · ✓ month end *inc.* · ✗ group_by_dynamic (overlapping) · ✓ time of day *inc.* · ✓ time parts *inc.* · ✓ compare times *inc.* · ✓ strftime *inc.* · ✓ timestamp from unix *inc.* · ✓ date from constants *inc.* · ✓ timestamp from constants *inc.* · ✓ date from columns *inc.* · ✗ string to timestamp · ✓ time + interval *inc.* · ✓ time truncate *inc.* · ✗ strftime other directives · – between_time |
 | generic | ✓ try_cast *inc.* · ✓ try_cast string *inc.* · ✗ param · ✓ typeof *inc.* · ✗ random · ✗ uuid · ✗ now · ✗ today |
 
-Every engine runs the plans of the 198 verified operations, except:
+Every engine runs the plans of the 200 verified operations, except:
 
 | Engine | Runs | Refuses |
 |---|---|---|
-| DuckDB | 198 | — |
-| Polars | 172 | first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · median, quantile · mode · mode of an expression · arbitrary · argmin, argmax · quantile of several · group_concat over a window · stddev over group · rolling variance (rows) · levenshtein · re_extract · re_replace · hexdigest · timestamp + column interval · date + column months · timestamp delta · date from columns · time + interval · time truncate · try_cast · try_cast string |
-| Snowflake | 154 | non-equi join · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · collect · collect ordered · unnest · median, quantile · mode · mode of an expression · arbitrary · argmin, argmax · quantile of several · unnest column · unnest keep_empty · list literal · sum over group · window sum of an expression · group_concat over a window · stddev over group · rolling variance (rows) · sqrt · exp · ln · log10, log2 · log(base) · trigonometry · atan2 · shifts · upper · capitalize · re_extract · re_replace · hexdigest · timestamp + column interval · date + column months · timestamp delta · date from columns · time + interval · time truncate · try_cast · try_cast string |
-| Spark | 165 | non-equi join · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · collect ordered · median, quantile · mode · mode of an expression · arbitrary · argmin, argmax · quantile of several · sum over group · window sum of an expression · group_concat over a window · stddev over group · rolling variance (rows) · atan2 · re_extract · re_replace · hexdigest · timestamp + column interval · date + column months · timestamp delta · time of day · time parts · compare times · date from columns · time + interval · time truncate · try_cast · try_cast string |
+| DuckDB | 200 | — |
+| Polars | 173 | first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · median, quantile · mode · mode of an expression · arbitrary · argmin, argmax · quantile of several · group_concat over a window · stddev over group · rolling variance (rows) · cast date → string · levenshtein · re_extract · re_replace · hexdigest · timestamp + column interval · date + column months · timestamp delta · date from columns · time + interval · time truncate · try_cast · try_cast string |
+| Snowflake | 155 | non-equi join · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · collect · collect ordered · unnest · median, quantile · mode · mode of an expression · arbitrary · argmin, argmax · quantile of several · unnest column · unnest keep_empty · list literal · sum over group · window sum of an expression · group_concat over a window · stddev over group · rolling variance (rows) · cast date → string · sqrt · exp · ln · log10, log2 · log(base) · trigonometry · atan2 · shifts · upper · capitalize · re_extract · re_replace · hexdigest · timestamp + column interval · date + column months · timestamp delta · date from columns · time + interval · time truncate · try_cast · try_cast string |
+| Spark | 166 | non-equi join · first, last ordered · group_concat ordered · group_concat · distinct(on=) · cov, corr · collect ordered · median, quantile · mode · mode of an expression · arbitrary · argmin, argmax · quantile of several · sum over group · window sum of an expression · group_concat over a window · stddev over group · rolling variance (rows) · cast date → string · atan2 · re_extract · re_replace · hexdigest · timestamp + column interval · date + column months · timestamp delta · time of day · time parts · compare times · date from columns · time + interval · time truncate · try_cast · try_cast string |
 <!-- coverage:end -->
 
 The engines refuse what they can't do as Lean does: `<` on strings is
@@ -187,7 +170,7 @@ ties and a `LIMIT`'s rows open, as the reference allows, and refuses
 `rows="sequence"` for them. A `SUM` or `AVG` of doubles runs natively on every engine, within the
 plan's bound of the reference's correctly rounded sum
 ([float-bounds.md](docs/float-bounds.md)). See
-[Engines and SQL](docs/tasks.md#engines-and-sql).
+[Engines and SQL](docs/how-to-engines-and-sql.md#engines-and-sql).
 
 ## Development
 

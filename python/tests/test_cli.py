@@ -186,6 +186,8 @@ def test_diff_shows_the_fix_and_fix_writes_it(tmp_path, capsys):
     code, out = run(capsys, "check", str(path), "--diff")
     assert code == 1
     assert '+@sv.transform(requires={"orders": [' in out
+    # It says what the fix does to the input (#881 1.4, ruling 219 D4).
+    assert "narrow the input each node accepts: its sources must meet them" in out
     assert path.read_text() == before
     code, doc = run_json(capsys, "check", str(path), "--fix")
     assert code == 0, doc
@@ -584,7 +586,9 @@ def test_github_annotations(tmp_path, capsys):
     [line] = out.splitlines()
     line_no = HEAD.count("\n") + 2  # the decorator, after the blank line
     assert line.startswith(
-        f"::error file={path},line={line_no},title=sverify may_be_false%3A paid::"
+        # A property value escapes `:` and `,` (GitHub's workflow commands): `C%3A\` on Windows.
+        f"::error file={str(path).replace(':', '%3A')},line={line_no},"
+        "title=sverify may_be_false%3A paid::"
     )
     assert "::amount > 20: it may be FALSE" in line and "%0Acounterexample: " in line
 
@@ -618,6 +622,32 @@ def test_sarif(tmp_path, capsys):
         fixed = fixed[:at] + rep["insertedContent"]["text"].encode() + fixed[at + n :]
     assert run(capsys, "check", str(path), "--fix")[0] in (0, 1)
     assert fixed == path.read_bytes()
+
+
+def test_fix_keeps_a_files_crlf_line_endings(tmp_path, capsys):
+    """A file with Windows line endings is fixed with them: no line gains a
+    second `\r`, and the diff removes only the decorators it rewrites (#183)."""
+    path = write(tmp_path, NEEDS + NOT_PROVED.replace("paid", "late").replace("p =", "q ="))
+    # Windows' text-mode write has `\r\n` already: normalise, then convert.
+    path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    code, out = run(capsys, "check", str(path), "--diff")
+    lines = out.splitlines()
+    removed = [line for line in lines if line.startswith("-") and not line.startswith("---")]
+    assert removed and all(line.startswith("-@sv.transform(") for line in removed), out
+    assert run(capsys, "check", str(path), "--fix")[0] in (0, 1)
+    fixed = path.read_bytes()
+    assert b"\r\r\n" not in fixed and fixed.count(b"\n") == fixed.count(b"\r\n")
+
+
+def test_sarif_is_valid(tmp_path, capsys):
+    from _sarif import jsonschema, valid_sarif
+
+    path = write(tmp_path, NEEDS + NOT_PROVED.replace("paid", "late").replace("p =", "q ="))
+    code, out = run(capsys, "check", str(path), "--format", "sarif")
+    assert code == 1
+    assert valid_sarif(out)["runs"][0]["results"]
+    with pytest.raises(jsonschema.ValidationError):  # the schema is not vacuous
+        valid_sarif('{"version": "2.1.0", "runs": 1}')
 
 
 def test_help_lists_the_exit_codes(capsys):
@@ -663,13 +693,14 @@ def test_refresh_exits_apart_when_rows_are_quarantined_or_held(
     assert got == code and "### paid" in out and "| id |" not in out
 
 
-def test_a_sql_file_is_a_usage_error_that_says_where_sql_goes(tmp_path, capsys):
-    """`sverify check revenue.sql` used to exit 6 with "not a Python file" (#1485)."""
+def test_a_sql_file_without_schemas_is_a_usage_error_that_names_the_flag(tmp_path, capsys):
+    """`sverify check revenue.sql` used to exit 6 with "not a Python file" (#1485); it needs
+    `--schema` (#1362)."""
     sql = tmp_path / "revenue.sql"
     sql.write_text("select 1")
     code, out = run(capsys, "check", str(sql))
     assert code == 2
-    assert "sv.sql" in out and "not a Python file" not in out
+    assert "--schema" in out and "not a Python file" not in out
 
 
 def test_the_double_cast_is_not_shown_around_an_aggregate(tmp_path, capsys):
@@ -726,3 +757,30 @@ def test_the_relaxations_name_each_setting_that_weakens_the_gate(tmp_path, capsy
     path = write(tmp_path, HEAD + body)
     _, doc = run_json(capsys, "check", f"{path}:p")
     assert doc["items"][0]["relaxations"] == ['on_inferred="ignore"', "check_requires=False"]
+
+
+def test_without_sigalrm_the_time_budget_raises_in_the_main_thread(monkeypatch):
+    """Windows has no SIGALRM: a timer raises SIGINT, which the budget turns
+    into `BudgetExceeded` in the main thread, so the partial report is
+    printed and the watchdog's hard stop is not needed (#183). Ctrl-C before
+    the timer stays a KeyboardInterrupt. Runs on every platform."""
+    import signal
+    import time
+
+    from sverify.cli._limits import Budget, BudgetExceeded
+
+    monkeypatch.delattr(signal, "SIGALRM", raising=False)
+    before = signal.getsignal(signal.SIGINT)  # Spark's, once a test has started it
+
+    def hard_stop() -> None:
+        raise AssertionError("the watchdog stopped the process")
+
+    budget = Budget(0.2, on_hard_stop=hard_stop)
+    end = time.monotonic() + 5
+    with pytest.raises(BudgetExceeded), budget.armed():
+        while time.monotonic() < end:  # Python code, where a raised signal lands on every platform
+            time.sleep(0.01)
+    assert budget.exceeded and time.monotonic() < end
+    with pytest.raises(KeyboardInterrupt), Budget(60, on_hard_stop=hard_stop).armed():
+        signal.raise_signal(signal.SIGINT)
+    assert signal.getsignal(signal.SIGINT) is before

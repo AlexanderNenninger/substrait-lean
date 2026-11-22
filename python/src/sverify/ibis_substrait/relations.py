@@ -472,10 +472,13 @@ def _physical_tables(op: Any) -> dict[str, Any]:
     return found
 
 
-def _lift(query: str, tables: Mapping[str, Any], semantics: str = "reference") -> Any:
-    from sverify.sql_lift import lift
+def _lift(
+    query: str, tables: Mapping[str, Any], semantics: str = "portable", dialect: str = "duckdb"
+) -> Any:
+    """The lift of `query` by the installed front-end of `dialect`."""
+    from sverify.profiles import sql_front_end
 
-    return lift(query, tables, semantics)
+    return sql_front_end(dialect)[1].lift(query, tables, semantics)
 
 
 def sql_view_schema(parent: Any, query: str) -> Any:
@@ -533,7 +536,7 @@ class SQLModel(ops.Relation):
     """A SQL query over named input relations (`sverify.sql`): the query reads
     each input by its name in `names`. The SQLGlot lift (`sverify.sql_lift`)
     plans it, as DuckDB's SQL (`dialect`, None meaning DuckDB), with the
-    `semantics` profile (None meaning `"reference"`, #411)."""
+    `semantics` profile (None meaning `"portable"`, #411)."""
 
     query: str
     inputs: VarTuple[ops.Relation]
@@ -544,14 +547,16 @@ class SQLModel(ops.Relation):
     values = FrozenOrderedDict()
 
 
-def sql_model_schema(query: str, tables: Mapping[str, Any], semantics: str = "reference") -> Any:
+def sql_model_schema(
+    query: str, tables: Mapping[str, Any], semantics: str = "portable", dialect: str = "duckdb"
+) -> Any:
     """The schema of `query` over tables of these (Ibis) schemas."""
-    return _lift(query, tables, semantics).schema
+    return _lift(query, tables, semantics, dialect).schema
 
 
 def _sql_model(op: Any) -> Json:
     tables = {n: i.schema for n, i in zip(op.names, op.inputs, strict=True)}
-    plan = _lift(op.query, tables, op.semantics or "reference").plan
+    plan = _lift(op.query, tables, op.semantics or "portable", op.dialect or "duckdb").plan
     return _splice(plan, dict(zip(op.names, op.inputs, strict=True)))
 
 

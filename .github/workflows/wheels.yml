@@ -364,6 +364,93 @@ jobs:
           dbt --no-use-colors compile --project-dir shop --profiles-dir shop
           sverify-dbt check shop --selectors
 
+  # Each extra of an I/O format or a tool, installed alone in a fresh venv
+  # from the run's wheel with no engine, imports what it brings and makes one
+  # call that needs it (`check_packages.py`'s `EXTRAS`, #183), so a missing
+  # transitive dependency shows up. One job: uv installs each in seconds.
+  extras:
+    needs: [nightly, build]
+    if: ${{ !inputs.notebooks && needs.nightly.outputs.build == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-ubuntu-latest
+          path: wheelhouse
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: engine-*
+          path: dist-engines
+          merge-multiple: true
+      - name: Install and check each extra alone
+        run: |
+          wheel=$(ls "$PWD"/wheelhouse/*.whl)
+          script="$PWD/python/scripts/check_packages.py"
+          extras=$(python3 "$script" --list-extras)
+          test -n "$extras"
+          cd "$RUNNER_TEMP"
+          failed=()
+          for extra in $extras; do
+            echo "::group::sverify[$extra]"
+            rm -rf venv
+            uv venv -q --python 3.12 venv
+            if VIRTUAL_ENV="$PWD/venv" uv pip install -q --find-links "$GITHUB_WORKSPACE/dist-engines" \
+                "sverify[$extra] @ file://$wheel" \
+              && venv/bin/python "$script" "$extra"; then
+              :
+            else
+              failed+=("$extra")
+            fi
+            echo "::endgroup::"
+          done
+          if [ ${#failed[@]} -gt 0 ]; then
+            echo "::error::extras that do not work alone: ${failed[*]}"
+            exit 1
+          fi
+
+  # The platform team's example against the built wheel (#749): the template's
+  # `check` proves every pipeline and exports each node to Substrait, proving
+  # the export again (`Report.from_substrait`). The release does not wait for
+  # it.
+  template-wheel:
+    needs: [nightly, build]
+    if: ${{ !inputs.notebooks && needs.nightly.outputs.build == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-ubuntu-latest
+          path: wheelhouse
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: engine-*
+          path: dist-engines
+          merge-multiple: true
+      - name: Check and export the template's pipelines with the wheel
+        run: |
+          wheel=$(ls "$PWD"/wheelhouse/*.whl)
+          uv venv --python 3.12 "$RUNNER_TEMP/venv"
+          . "$RUNNER_TEMP/venv/bin/activate"
+          uv pip install --find-links "$PWD/dist-engines" "sverify[delta,duckdb] @ file://$wheel"
+          cp -R templates/pipelines "$RUNNER_TEMP/template"
+          cd "$RUNNER_TEMP/template"
+          python scripts/lake.py check --require-proved --out check.json --comment comment.md --plans plans
+          ls plans | grep -q 'substrait.json'
+
   # The tour notebooks as molab runs them, before a release: each header
   # rewritten as `publish-notebooks` rewrites it (pinned to this version, no
   # `../python` source), resolving sverify, the engine packages and

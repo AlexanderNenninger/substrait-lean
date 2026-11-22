@@ -29,7 +29,7 @@ The core package depends on Lean core alone. Mathlib is used only by the separat
 and reports what was proved about it:
 
 ```python
-from sverify.engines import substrait_json
+from sverify.engines.plan import substrait_json
 
 plan = substrait_json(con, "select id, amount * 2 as doubled from orders where amount > 10")
 open("plan.json", "w").write(plan)
@@ -217,7 +217,7 @@ engines, a read after every refresh and a refresh that deletes a row pay the
 merge over the whole state each time.
 `SVERIFY_STATE_LOCATION` names where the parts live: a directory, or a URI
 that the driver and every executor read and write
-([Environment variables](tasks.md#environment-variables)).
+([Environment variables](how-to-command-line.md#environment-variables)).
 
 A node on DuckDB has DuckDB write its Delta and Iceberg sinks
 (`sverify.io._engine`). DuckDB writes the Parquet files of the state or of

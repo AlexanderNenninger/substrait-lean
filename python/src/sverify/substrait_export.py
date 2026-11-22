@@ -39,7 +39,9 @@ from importlib import resources
 from typing import TYPE_CHECKING, Any, Literal
 
 from sverify import _meta
+from sverify._plan_read import function_names
 from sverify._unsupported import SverifyError
+from sverify.plan_json import field_ref
 
 if TYPE_CHECKING:
     from sverify.report import Report
@@ -115,7 +117,8 @@ class ExportError(SverifyError, ValueError):
 
 @functools.cache
 def _extensions() -> dict[str, list[Json]]:
-    text = resources.files("sverify").joinpath("_substrait_extensions.json").read_text()
+    path = resources.files("sverify").joinpath("_substrait_extensions.json")
+    text = path.read_text(encoding="utf-8")
     return json.loads(text)["functions"]
 
 
@@ -626,11 +629,7 @@ class _Typer:
 
     def __init__(self, plan: Json):
         self.plan = plan
-        self.names = {
-            e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"]
-            for e in plan.get("extensions", [])
-            if "extensionFunction" in e
-        }
+        self.names = function_names(plan)
         self.anchors: dict[tuple[str, str], int] = {}
         self.calls: list[Call] = []
         self.canonical = False
@@ -715,11 +714,54 @@ class _Typer:
             return cols
         if kind == "set":
             outs = [self.rel(i) for i in b["inputs"]]
+            if any(o != outs[0] for o in outs[1:]):
+                outs = self._one_set_type(b, outs)
             return outs[0]
         raise ExportError(
             f"the plan has a {kind} relation, which to_substrait does not write for "
             f"other consumers yet; {_TO_SQL}"
         )
+
+    def _one_set_type(self, b: Json, outs: list[list[Ty]]) -> list[list[Ty]]:
+        """Give every input of a set relation one schema, which Substrait asks
+        (#1904): an input whose decimal column is narrower than another's, at the
+        same scale, gets a projection casting it to the widest precision, which
+        changes no value. Other differences stay a refusal."""
+        n = len(outs[0])
+        if any(len(o) != n for o in outs):
+            raise ExportError(
+                "the inputs of a set relation differ in their column count",
+                hint=_MALFORMED,
+            )
+        target = []
+        for j in range(n):
+            cs = [o[j] for o in outs]
+            wide = max(cs, key=lambda t: t.params[0] if t.name == "decimal" else 0)
+            if any(
+                c != wide
+                and not (c.name == wide.name == "decimal" and c.params[1] == wide.params[1])
+                for c in cs
+            ):
+                raise ExportError(
+                    "the inputs of a set relation differ in their column types (for example "
+                    "a decimal and an integer), which Substrait does not allow (#1904); "
+                    f"{_TO_SQL}"
+                )
+            target.append(wide)
+        for k, o in enumerate(outs):
+            todo = [j for j in range(n) if o[j] != target[j]]
+            if not todo:
+                continue
+            exprs = [_cast(field_ref(j), target[j]) for j in todo]
+            mapping = [n + todo.index(j) if j in todo else j for j in range(n)]
+            b["inputs"][k] = {
+                "project": {
+                    "common": {"emit": {"outputMapping": mapping}},
+                    "input": b["inputs"][k],
+                    "expressions": exprs,
+                }
+            }
+        return [target for _ in outs]
 
     def _exprs(self, b: Json, cols: list[Ty]) -> list[Ty]:
         if "filter" in b:
@@ -1536,7 +1578,7 @@ def _table_condition(j: Mapping[str, Any]) -> Any:
     fields = dict(j.get("fields") or {})
     if cls == "ArrivesWithin":
         fields["lateness"] = timedelta(seconds=fields["lateness"])
-    for k in ("cols",):
+    for k in ("cols", "others"):
         if k in fields:
             fields[k] = tuple(fields[k])
     if "n" in fields:
@@ -1603,7 +1645,7 @@ def _refuse_unverified(report: Report) -> None:
             reasons.append("the proof does not carry over to Substrait (see report.details())")
         reasons += [f"needs {n}" for n in report._needs_lines()]
         if report.floats_unmet:
-            reasons.append(f"no engine meets the observation's doubles: {report.floats_unmet}")
+            reasons.append(f"no engine meets the lenses' doubles: {report.floats_unmet}")
         raise ExportError(
             "not verified: " + "; ".join(reasons), hint="fix what it names and verify again"
         )
@@ -1626,14 +1668,14 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
     typer.run()
     if report.semantics == "substrait":
         handling = Handling()
-    elif report.semantics == "reference":
+    elif report.semantics == "portable":
         handling = _pin(report, typer, shims)
         # Shims add calls: type the plan again, for their URNs and types.
         _Typer(plan).run()
     else:
         raise ExportError(
             f"a plan verified with semantics={report.semantics!r} holds on that engine only; "
-            "verify it with semantics='reference' or 'substrait' to export it"
+            "verify it with semantics='portable' or 'substrait' to export it"
         )
     major, minor, patch = SUBSTRAIT_VERSION
     plan["version"] = {
@@ -1764,8 +1806,9 @@ _RENAMED = {
 
 
 def _manifest(m: Mapping[str, Any]) -> Json:
-    """The manifest in this version's format: a format 1 manifest's keys
-    renamed, `rows` an integer (a Struct holds every number as a double).
+    """The manifest in this version's format: an earlier format's keys
+    renamed and its `"reference"` semantics `"portable"`, `rows` an integer
+    (a Struct holds every number as a double).
 
     Raises:
         ValueError: The manifest's format is newer than this version reads.
@@ -1783,6 +1826,10 @@ def _manifest(m: Mapping[str, Any]) -> Json:
             {_RENAMED.get(k, k): v for k, v in u.items()} for u in out.get("up_to") or []
         ]
         out["format"] = FORMAT
+    if "semantics" in out:
+        from sverify.report_json import _portable
+
+        out["semantics"] = _portable(out["semantics"], fmt < FORMAT)
     if isinstance(out.get("rows"), float) and out["rows"].is_integer():
         out["rows"] = int(out["rows"])
     if isinstance(out.get("format"), float):
@@ -1949,7 +1996,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
             Issue(i["kind"], i["expr"], i["error"] or i["assumed"], assumed=i["assumed"])
             for i in out["issues"]
         ],
-        semantics=m.get("semantics", "reference"),
+        semantics=m.get("semantics", "portable"),
         requires=requires,
         ensures=checked,
         facts={

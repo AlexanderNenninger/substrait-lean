@@ -17,7 +17,7 @@ reference, is retired: what the reference computes is in
 [docs/core-semantics.md](../docs/core-semantics.md), what each engine does
 is in its facts under `engines/<engine>/facts/`
 ([how facts are judged](../characterization/README.md)), and the cross-engine pitfalls are in [pitfalls.toml](pitfalls.toml) and
-[docs/guide.md](../docs/guide.md).
+[docs/tasks.md](../docs/tasks.md).
 
 How to read the tables:
 

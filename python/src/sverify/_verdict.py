@@ -51,7 +51,7 @@ def verdict(
     from sverify.report import Report, black_boxes_from_json, class_places, tie_places
     from sverify.routes import probed_version
 
-    semantics = context.get("semantics", "reference")
+    semantics = context.get("semantics", "portable")
     return Report(
         issues=list(issues),
         # D48: the report's `deterministic` is the class level; a checker

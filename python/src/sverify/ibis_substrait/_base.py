@@ -46,6 +46,9 @@ from sverify.plan_json import decimal_dtype as _decimal
 #: translated: the input itself at 0, join tables at their join offsets.
 Offsets = Mapping[Any, int]
 
+#: What a refusal says where a constant is needed (#176).
+CONSTANT_FIX = "use a literal, or write each case with ifelse"
+
 
 class Exprs:
     """Translates value expressions over one input."""
@@ -315,7 +318,7 @@ def table_rules(
 def rel(op: Any) -> Json:
     rule = _RELS.get(type(op))
     if rule is None:
-        raise Unsupported(
+        raise ProducerUnsupported(
             f"{type(op).__name__} is not supported yet ({_ISSUE_60})",
             construct=op_construct(op),
         )
@@ -343,7 +346,7 @@ def _sort_key(x: Exprs, k: Any) -> Json:
 # Plans
 
 
-def to_substrait(expr: ir.Table, semantics: str = "reference") -> Json:
+def to_substrait(expr: ir.Table, semantics: str = "portable") -> Json:
     """The Substrait plan of an Ibis table expression, as protobuf JSON. Under
     `semantics="polars"`, integer `//` and `%` are Polars's: they state
     `division_type` = `FLOOR` (`Profile.polars`)."""
@@ -358,5 +361,5 @@ def to_substrait(expr: ir.Table, semantics: str = "reference") -> Json:
         return plan(compiler, rel(op), list(op.schema.names))
 
 
-def to_substrait_json(expr: ir.Table, semantics: str = "reference") -> str:
+def to_substrait_json(expr: ir.Table, semantics: str = "portable") -> str:
     return json.dumps(to_substrait(expr, semantics))

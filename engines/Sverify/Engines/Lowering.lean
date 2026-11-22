@@ -1,4 +1,5 @@
 import Sverify.Analysis.ProfileImpl
+import Sverify.Core.EvalDbl
 
 /-!
 # Lowerings: a table of proved templates (#241)
@@ -68,6 +69,21 @@ theorem Expr.subst_raises {p : Profile} {row : Row} {σ : List Expr} {i : Nat}
 theorem Outcome.agree_of_err {o o' : Outcome} (h : o.err?.isSome) (h' : o'.err?.isSome) :
     o.Agree o' := by
   cases o <;> cases o' <;> simp_all [Outcome.err?, Outcome.Agree]
+
+/-- The engine's outcome agrees with the reference's, or the engine raises:
+where the engine gives a value it is the reference's, and where the reference
+raises the engine raises too (ruling 250). Spark under ANSI raises at a zero
+divisor where IEEE division gives `±∞` (ruling 249). -/
+def Outcome.AgreeOrRaises : Outcome → Outcome → Prop
+  | .ok v, .ok w => v = w
+  | .ok _, .error _ => False
+  | .error _, _ => True
+
+theorem Outcome.agreeOrRaises_of_agree {o o' : Outcome} (h : o.Agree o') : o.AgreeOrRaises o' := by
+  cases o <;> cases o' <;> simp_all [Outcome.Agree, Outcome.AgreeOrRaises]
+
+theorem Outcome.agreeOrRaises_of_err {o o' : Outcome} (h : o.err?.isSome) : o.AgreeOrRaises o' := by
+  cases o <;> cases o' <;> simp_all [Outcome.AgreeOrRaises, Outcome.err?]
 
 /-! ## The guards' functions in the reference
 
@@ -224,17 +240,43 @@ theorem Lowering.shr_apply (a b : Int) : BitOp.apply .shr a b =
       simp only [hb, h1, and_self, h0, ite_true, ite_false]
     · simp only [h1, and_false, h0, ite_false]
 
-/-- A template for the unary function `f` under `p`. -/
+/-- A template for the unary function `f` under `p` (rulings 250 and 254).
+Where the template gives a value, it is the reference's, and where the
+reference raises, the template raises (`agree`). An `exact` template raises
+only where the reference does (`agree_exact`); one that is not may raise
+where the reference has a value. An `onDbl` template is stated on doubles'
+codes only (`Value.dbl`), which every value of a plan on doubles is
+(`Rel.eval_dbl`). -/
 structure UnEntry (p : Profile) (f : UnFn) where
   tmpl : Expr
   strict : 0 ∈ tmpl.must
-  agree : ∀ x, (tmpl.evalP p [x]).Agree (Profile.reference.un f x)
+  exact : Bool
+  onDbl : Bool
+  agree : ∀ x, (onDbl = true → x.dbl = true) →
+    (tmpl.evalP p [x]).AgreeOrRaises (Profile.reference.un f x)
+  agree_exact : exact = true → ∀ x, (onDbl = true → x.dbl = true) →
+    (tmpl.evalP p [x]).Agree (Profile.reference.un f x)
 
-/-- A template for the binary function `f` under `p`. -/
+/-- A template for the binary function `f` under `p`, as `UnEntry`. -/
 structure BinEntry (p : Profile) (f : BinFn) where
   tmpl : Expr
   strict : 0 ∈ tmpl.must ∧ 1 ∈ tmpl.must
-  agree : ∀ x y, (tmpl.evalP p [x, y]).Agree (Profile.reference.bin f x y)
+  exact : Bool
+  onDbl : Bool
+  agree : ∀ x y, (onDbl = true → x.dbl = true ∧ y.dbl = true) →
+    (tmpl.evalP p [x, y]).AgreeOrRaises (Profile.reference.bin f x y)
+  agree_exact : exact = true → ∀ x y, (onDbl = true → x.dbl = true ∧ y.dbl = true) →
+    (tmpl.evalP p [x, y]).Agree (Profile.reference.bin f x y)
+
+/-- An exact template on every value: what the generator proves. -/
+def UnEntry.ofAgree {p : Profile} {f : UnFn} (tmpl : Expr) (strict : 0 ∈ tmpl.must)
+    (h : ∀ x, (tmpl.evalP p [x]).Agree (Profile.reference.un f x)) : UnEntry p f :=
+  ⟨tmpl, strict, true, false, fun x _ => Outcome.agreeOrRaises_of_agree (h x), fun _ x _ => h x⟩
+
+def BinEntry.ofAgree {p : Profile} {f : BinFn} (tmpl : Expr) (strict : 0 ∈ tmpl.must ∧ 1 ∈ tmpl.must)
+    (h : ∀ x y, (tmpl.evalP p [x, y]).Agree (Profile.reference.bin f x y)) : BinEntry p f :=
+  ⟨tmpl, strict, true, false, fun x y _ => Outcome.agreeOrRaises_of_agree (h x y),
+    fun _ x y _ => h x y⟩
 
 /-- A lowering to an engine with profile `p`: a template for each function,
 or none where it is refused. -/
@@ -246,11 +288,117 @@ structure Lowering (p : Profile) where
 reference itself. -/
 def UnEntry.native {p : Profile} (f : UnFn) (h : ∀ x, (p.un f x).Agree (Profile.reference.un f x)) :
     UnEntry p f :=
-  ⟨.un f (.field 0), by simp [Expr.must], fun x => by simpa [Expr.evalP, bind, Except.bind] using h x⟩
+  .ofAgree (.un f (.field 0)) (by simp [Expr.must]) fun x => by
+    simpa [Expr.evalP, bind, Except.bind] using h x
 
 def BinEntry.native {p : Profile} (f : BinFn)
     (h : ∀ x y, (p.bin f x y).Agree (Profile.reference.bin f x y)) : BinEntry p f :=
-  ⟨.bin f (.field 0) (.field 1), by simp [Expr.must], fun x y => by simpa [Expr.evalP, bind, Except.bind] using h x y⟩
+  .ofAgree (.bin f (.field 0) (.field 1)) (by simp [Expr.must]) fun x y => by
+    simpa [Expr.evalP, bind, Except.bind] using h x y
+
+/-! ## The entries' flags (rulings 250, 254)
+
+`Lowering.AllExact` and `Lowering.NoneOnDbl` state them of a whole table, as
+the generator proves of DuckDB's and Polars's; `Lowering.exactOn` and
+`Lowering.dblFree` of the entries an expression uses. -/
+
+/-- Every entry of the table is exact. -/
+def Lowering.AllExact {p : Profile} (L : Lowering p) : Prop :=
+  (∀ f, (L.un f).all (·.exact) = true) ∧ ∀ f, (L.bin f).all (·.exact) = true
+
+/-- No entry of the table is stated on doubles only. -/
+def Lowering.NoneOnDbl {p : Profile} (L : Lowering p) : Prop :=
+  (∀ f, (L.un f).all (!·.onDbl) = true) ∧ ∀ f, (L.bin f).all (!·.onDbl) = true
+
+/-- Every entry the expression uses is exact. -/
+def Lowering.exactOn {p : Profile} (L : Lowering p) : Expr → Bool
+  | .lit _ | .field _ => true
+  | .un f a => (L.un f).all (·.exact) && L.exactOn a
+  | .bin f a b => (L.bin f).all (·.exact) && L.exactOn a && L.exactOn b
+  | .ifThen c t e => L.exactOn c && L.exactOn t && L.exactOn e
+  | .hof _ l b => L.exactOn l && L.exactOn b
+
+/-- No entry the expression uses is stated on doubles only. -/
+def Lowering.dblFree {p : Profile} (L : Lowering p) : Expr → Bool
+  | .lit _ | .field _ => true
+  | .un f a => (L.un f).all (!·.onDbl) && L.dblFree a
+  | .bin f a b => (L.bin f).all (!·.onDbl) && L.dblFree a && L.dblFree b
+  | .ifThen c t e => L.dblFree c && L.dblFree t && L.dblFree e
+  | .hof _ l b => L.dblFree l && L.dblFree b
+
+theorem Lowering.exactOn_of_allExact {p : Profile} {L : Lowering p} (h : L.AllExact) :
+    ∀ e, L.exactOn e = true
+  | .lit _ | .field _ => rfl
+  | .un f a => by simp [exactOn, h.1 f, exactOn_of_allExact h a]
+  | .bin f a b => by simp [exactOn, h.2 f, exactOn_of_allExact h a, exactOn_of_allExact h b]
+  | .ifThen c t e => by
+    simp [exactOn, exactOn_of_allExact h c, exactOn_of_allExact h t, exactOn_of_allExact h e]
+  | .hof _ l b => by simp [exactOn, exactOn_of_allExact h l, exactOn_of_allExact h b]
+
+theorem Lowering.dblFree_of_noneOnDbl {p : Profile} {L : Lowering p} (h : L.NoneOnDbl) :
+    ∀ e, L.dblFree e = true
+  | .lit _ | .field _ => rfl
+  | .un f a => by simp [dblFree, h.1 f, dblFree_of_noneOnDbl h a]
+  | .bin f a b => by simp [dblFree, h.2 f, dblFree_of_noneOnDbl h a, dblFree_of_noneOnDbl h b]
+  | .ifThen c t e => by
+    simp [dblFree, dblFree_of_noneOnDbl h c, dblFree_of_noneOnDbl h t, dblFree_of_noneOnDbl h e]
+  | .hof _ l b => by simp [dblFree, dblFree_of_noneOnDbl h l, dblFree_of_noneOnDbl h b]
+
+/-- Where an expression's arguments may be read: no entry it uses is on
+doubles only, or the row and the expression's literals are doubles. -/
+def Lowering.ArgsOk {p : Profile} (L : Lowering p) (e : Expr) (row : Row) : Prop :=
+  L.dblFree e = true ∨ (Row.Dbl row ∧ e.litDbl = true)
+
+theorem Lowering.argsOk_un {p : Profile} {L : Lowering p} {f : UnFn} {a : Expr} {row : Row}
+    {en : UnEntry p f} (hen : L.un f = some en) (h : L.ArgsOk (.un f a) row) :
+    L.ArgsOk a row ∧ (en.onDbl = true → (a.eval row).dbl = true) := by
+  rcases h with h | ⟨hr, h⟩
+  · simp only [dblFree, hen, Option.all_some, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
+      Bool.not_true] at h
+    exact ⟨.inl h.2, fun h' => by rw [h.1] at h'; cases h'⟩
+  · exact ⟨.inr ⟨hr, h⟩, fun _ => Expr.eval_dbl a h hr⟩
+
+theorem Lowering.argsOk_bin {p : Profile} {L : Lowering p} {f : BinFn} {a b : Expr} {row : Row}
+    {en : BinEntry p f} (hen : L.bin f = some en) (h : L.ArgsOk (.bin f a b) row) :
+    L.ArgsOk a row ∧ L.ArgsOk b row ∧
+      (en.onDbl = true → (a.eval row).dbl = true ∧ (b.eval row).dbl = true) := by
+  rcases h with h | ⟨hr, h⟩
+  · simp only [dblFree, hen, Option.all_some, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
+      Bool.not_true] at h
+    exact ⟨.inl h.1.2, .inl h.2, fun h' => by rw [h.1.1] at h'; cases h'⟩
+  · simp only [Expr.litDbl, Bool.and_eq_true] at h
+    exact ⟨.inr ⟨hr, h.1⟩, .inr ⟨hr, h.2⟩, fun _ => ⟨Expr.eval_dbl a h.1 hr, Expr.eval_dbl b h.2 hr⟩⟩
+
+theorem Lowering.argsOk_ifThen {p : Profile} {L : Lowering p} {c t e : Expr} {row : Row}
+    (h : L.ArgsOk (.ifThen c t e) row) : L.ArgsOk c row ∧ L.ArgsOk t row ∧ L.ArgsOk e row := by
+  rcases h with h | ⟨hr, h⟩
+  · simp only [dblFree, Bool.and_eq_true] at h; exact ⟨.inl h.1.1, .inl h.1.2, .inl h.2⟩
+  · simp only [Expr.litDbl, Bool.and_eq_true] at h
+    exact ⟨.inr ⟨hr, h.1.1⟩, .inr ⟨hr, h.1.2⟩, .inr ⟨hr, h.2⟩⟩
+
+/-- A lambda's body reads the list's elements, which are doubles where the list is. -/
+theorem Lowering.argsOk_hof {p : Profile} {L : Lowering p} {f : HoFn} {l b : Expr} {row : Row}
+    (h : L.ArgsOk (.hof f l b) row) :
+    L.ArgsOk l row ∧ ∀ x ∈ (l.eval row).elems, L.ArgsOk b (x :: row) := by
+  rcases h with h | ⟨hr, h⟩
+  · simp only [dblFree, Bool.and_eq_true] at h; exact ⟨.inl h.1, fun _ _ => .inl h.2⟩
+  · simp only [Expr.litDbl, Bool.and_eq_true] at h
+    refine ⟨.inr ⟨hr, h.1⟩, fun x hx => .inr ⟨fun v hv => ?_, h.2⟩⟩
+    rcases List.mem_cons.mp hv with rfl | hv
+    · have hl := Expr.eval_dbl l h.1 hr
+      cases hle : l.eval row <;> rw [hle] at hx hl <;> simp [Value.elems] at hx
+      simp only [Value.dbl_list] at hl; exact hl _ hx
+    · exact hr v hv
+
+theorem Lowering.exactOn_un {p : Profile} {L : Lowering p} {f : UnFn} {a : Expr}
+    {en : UnEntry p f} (hen : L.un f = some en) (h : L.exactOn (.un f a) = true) :
+    en.exact = true ∧ L.exactOn a = true := by
+  simpa [exactOn, hen] using h
+
+theorem Lowering.exactOn_bin {p : Profile} {L : Lowering p} {f : BinFn} {a b : Expr}
+    {en : BinEntry p f} (hen : L.bin f = some en) (h : L.exactOn (.bin f a b) = true) :
+    en.exact = true ∧ L.exactOn a = true ∧ L.exactOn b = true := by
+  simp only [exactOn, hen, Option.all_some, Bool.and_eq_true] at h; exact ⟨h.1.1, h.1.2, h.2⟩
 
 /-! ## Guards
 
@@ -489,13 +637,18 @@ theorem Lowering.lowerWith_correct {p : Profile} (L : Lowering p) {keep : String
     (hG : L.GuardsFor keep) :
     ∀ (e t : Expr), L.lowerWith keep e = some t → ∀ row : Row,
       (∀ q ∈ e.issues row, q.1.assumed = true ∨ keep q.1.name = true) →
+      L.exactOn e = true → L.ArgsOk e row →
       Outcome.Agree (t.evalP p row) (e.evalP Profile.reference row)
-  | .lit _, t, h, _, _ => by simp only [lowerWith, Option.some.injEq] at h; subst h; exact Outcome.agree_refl _
-  | .field _, t, h, _, _ => by simp only [lowerWith, Option.some.injEq] at h; subst h; exact Outcome.agree_refl _
-  | .un f a, t, h, row, hk => by
+  | .lit _, t, h, _, _, _, _ => by
+    simp only [lowerWith, Option.some.injEq] at h; subst h; exact Outcome.agree_refl _
+  | .field _, t, h, _, _, _, _ => by
+    simp only [lowerWith, Option.some.injEq] at h; subst h; exact Outcome.agree_refl _
+  | .un f a, t, h, row, hk, hX, hD => by
     simp only [lowerWith, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
     obtain ⟨en, hen, a', ha, rfl⟩ := h
-    have iha := L.lowerWith_correct hG a a' ha row fun q hq => hk q (by simp [Expr.issues, hq])
+    obtain ⟨hex, hXa⟩ := exactOn_un hen hX
+    obtain ⟨hDa, hdbl⟩ := argsOk_un hen hD
+    have iha := L.lowerWith_correct hG a a' ha row (fun q hq => hk q (by simp [Expr.issues, hq])) hXa hDa
     cases hx : a'.evalP p row with
     | error k =>
       have hr : (a.evalP Profile.reference row).err?.isSome := by
@@ -515,16 +668,19 @@ theorem Lowering.lowerWith_correct {p : Profile} (L : Lowering p) {keep : String
         simp only [h', Outcome.Agree] at iha; subst iha
         simp only [Expr.evalP, h', bind, Except.bind]
         rw [Expr.evalP_subst (vs := [x]) (fun i => by cases i <;> simp [hx, Expr.evalP])]
-        refine Expr.keepGuards_agree (fun k hik => ?_) _ ((hG.1 f en hen).2 x) (en.agree x)
         have hxe : x = a.eval row := Expr.evalP_reference_ok h'
+        refine Expr.keepGuards_agree (fun k hik => ?_) _ ((hG.1 f en hen).2 x)
+          (en.agree_exact hex x fun ho => hxe ▸ hdbl ho)
         rcases hk (k, .un f a) (by simp [Expr.issues, ← hxe, UnFn.issueAll, hik]) with ha | hn
         · rw [Issue.not_assumed_of_un hik] at ha; exact absurd ha (by decide)
         · exact hn
-  | .bin f a b, t, h, row, hk => by
+  | .bin f a b, t, h, row, hk, hX, hD => by
     simp only [lowerWith, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
     obtain ⟨en, hen, a', ha, b', hb, rfl⟩ := h
-    have iha := L.lowerWith_correct hG a a' ha row fun q hq => hk q (by simp [Expr.issues, hq])
-    have ihb := L.lowerWith_correct hG b b' hb row fun q hq => hk q (by simp [Expr.issues, hq])
+    obtain ⟨hex, hXa, hXb⟩ := exactOn_bin hen hX
+    obtain ⟨hDa, hDb, hdbl⟩ := argsOk_bin hen hD
+    have iha := L.lowerWith_correct hG a a' ha row (fun q hq => hk q (by simp [Expr.issues, hq])) hXa hDa
+    have ihb := L.lowerWith_correct hG b b' hb row (fun q hq => hk q (by simp [Expr.issues, hq])) hXb hDb
     cases hx : a'.evalP p row with
     | error k =>
       have hr : (a.evalP Profile.reference row).err?.isSome := by
@@ -562,17 +718,21 @@ theorem Lowering.lowerWith_correct {p : Profile} (L : Lowering p) {keep : String
             simp only [Expr.evalP, h', h'', bind, Except.bind]
             rw [Expr.evalP_subst (vs := [x, y]) (fun i => by
               rcases i with _ | _ | i <;> simp [hx, hy, Expr.evalP])]
-            refine Expr.keepGuards_agree (fun k hik => ?_) _ ((hG.2 f en hen).2 x y) (en.agree x y)
             have hxe : x = a.eval row := Expr.evalP_reference_ok h'
             have hye : y = b.eval row := Expr.evalP_reference_ok h''
+            refine Expr.keepGuards_agree (fun k hik => ?_) _ ((hG.2 f en hen).2 x y)
+              (en.agree_exact hex x y fun ho => hxe ▸ hye ▸ hdbl ho)
             rcases hk (k, .bin f a b) (by simp [Expr.issues, ← hxe, ← hye, BinFn.issueAll, hik])
               with ha | hn
             · rw [Issue.not_assumed_of_bin hik] at ha; exact absurd ha (by decide)
             · exact hn
-  | .ifThen c t' e, t, h, row, hk => by
+  | .ifThen c t' e, t, h, row, hk, hX, hD => by
     simp only [lowerWith, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
     obtain ⟨c', hc, t'', ht, e', he, rfl⟩ := h
-    have ihc := L.lowerWith_correct hG c c' hc row fun q hq => hk q (by simp [Expr.issues, hq])
+    simp only [exactOn, Bool.and_eq_true] at hX
+    obtain ⟨hDc, hDt, hDe⟩ := argsOk_ifThen hD
+    have ihc := L.lowerWith_correct hG c c' hc row (fun q hq => hk q (by simp [Expr.issues, hq]))
+      hX.1.1 hDc
     simp only [Expr.evalP]
     cases hr : c.evalP Profile.reference row with
     | error k =>
@@ -590,15 +750,18 @@ theorem Lowering.lowerWith_correct {p : Profile} (L : Lowering p) {keep : String
         simp only [bind, Except.bind]
         cases hct : v'.isTrue
         · simp only [Bool.false_eq_true, ↓reduceIte]
-          exact L.lowerWith_correct hG e e' he row fun q hq =>
-            hk q (by simp [Expr.issues, ← hv, hct, hq])
+          exact L.lowerWith_correct hG e e' he row (fun q hq =>
+            hk q (by simp [Expr.issues, ← hv, hct, hq])) hX.2 hDe
         · simp only [↓reduceIte]
-          exact L.lowerWith_correct hG t' t'' ht row fun q hq =>
-            hk q (by simp [Expr.issues, ← hv, hct, hq])
-  | .hof f l b, t, h, row, hk => by
+          exact L.lowerWith_correct hG t' t'' ht row (fun q hq =>
+            hk q (by simp [Expr.issues, ← hv, hct, hq])) hX.1.2 hDt
+  | .hof f l b, t, h, row, hk, hX, hD => by
     simp only [lowerWith, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
     obtain ⟨l', hl, b', hb, rfl⟩ := h
-    have ihl := L.lowerWith_correct hG l l' hl row fun q hq => hk q (by simp [Expr.issues, hq])
+    simp only [exactOn, Bool.and_eq_true] at hX
+    obtain ⟨hDl, hDb⟩ := argsOk_hof hD
+    have ihl := L.lowerWith_correct hG l l' hl row (fun q hq => hk q (by simp [Expr.issues, hq]))
+      hX.1 hDl
     simp only [Expr.evalP]
     cases hr : l.evalP Profile.reference row with
     | error k =>
@@ -614,28 +777,165 @@ theorem Lowering.lowerWith_correct {p : Profile} (L : Lowering p) {keep : String
         simp only [hl', Outcome.Agree] at ihl; subst ihl
         have hv : v' = l.eval row := Expr.evalP_reference_ok hr
         simp only [bind, Except.bind]
-        exact HoFn.applyP_agree f v' fun x hx => L.lowerWith_correct hG b b' hb (x :: row) fun q hq =>
-          hk q (by
+        exact HoFn.applyP_agree f v' fun x hx => L.lowerWith_correct hG b b' hb (x :: row)
+          (fun q hq => hk q (by
             simp only [Expr.issues, List.mem_append, List.mem_flatMap]
-            exact .inr ⟨x, hv ▸ hx, hq⟩)
+            exact .inr ⟨x, hv ▸ hx, hq⟩)) hX.2 (hDb x (hv ▸ hx))
 
 /-- **A lowered expression has the reference's outcome** under the engine's
-profile: the same value, or an error. -/
+profile: the same value, or an error, where every entry it uses is exact. -/
 theorem Lowering.lower_correct {p : Profile} (L : Lowering p) (e t : Expr) (h : L.lower e = some t)
-    (row : Row) : Outcome.Agree (t.evalP p row) (e.evalP Profile.reference row) :=
-  L.lowerWith_correct L.guardsFor_all e t h row fun _ _ => .inr rfl
+    (row : Row) (hX : L.exactOn e = true) (hD : L.ArgsOk e row) :
+    Outcome.Agree (t.evalP p row) (e.evalP Profile.reference row) :=
+  L.lowerWith_correct L.guardsFor_all e t h row (fun _ _ => .inr rfl) hX hD
 
-/-- **A lowered expression is exact** under the engine's profile. -/
-theorem Lowering.lower_exact {p : Profile} (L : Lowering p) {e t : Expr} (hs : L.lower e = some t) :
-    Expr.Exact p t e := by
-  intro row v h
-  have hag := L.lower_correct e t hs row
+omit [Boxes.Ambient] in
+/-- A lambda whose outcome agrees with another's or raises, element by
+element, gives a higher-order function that does. -/
+theorem HoFn.applyP_agreeOrRaises (f : HoFn) (v : Value) {p q : Value → Outcome}
+    (h : ∀ x ∈ v.elems, (p x).AgreeOrRaises (q x)) : (f.applyP v p).AgreeOrRaises (f.applyP v q) := by
+  unfold HoFn.applyP
+  cases hp : v.elems.findSome? (fun x => (p x).err?) with
+  | some k => trivial
+  | none =>
+    have hok : ∀ x ∈ v.elems, ∃ w, p x = .ok w ∧ q x = .ok w := by
+      intro x hx
+      have hn := List.findSome?_eq_none_iff.mp hp x hx
+      have hx' := h x hx
+      cases hpx : p x with
+      | error k => simp [hpx, Outcome.err?] at hn
+      | ok w =>
+        rw [hpx] at hx'
+        cases hqx : q x with
+        | error _ => rw [hqx] at hx'; exact hx'.elim
+        | ok w' => rw [hqx] at hx'; exact ⟨w, rfl, by rw [hx']⟩
+    have hq : v.elems.findSome? (fun x => (q x).err?) = none :=
+      List.findSome?_eq_none_iff.mpr fun x hx => by
+        obtain ⟨w, -, hq⟩ := hok x hx; simp [hq, Outcome.err?]
+    rw [hq]
+    show f.apply v (fun x => (p x).val) = f.apply v (fun x => (q x).val)
+    exact HoFn.apply_congr f v fun x hx => by
+      obtain ⟨w, hp', hq'⟩ := hok x hx; simp [hp', hq', Outcome.val]
+
+/-- **A lowered expression agrees with the reference or raises** (ruling 252),
+for any table, with every guard kept: where it gives a value, the value is
+the reference's, and where the reference raises, it raises. An argument that
+raises makes the template raise by the template's strictness
+(`Expr.subst_raises`, `UnEntry.strict`): no `CASE` drops an argument. -/
+theorem Lowering.lower_agreeOrRaises {p : Profile} (L : Lowering p) :
+    ∀ (e t : Expr), L.lower e = some t → ∀ row : Row, L.ArgsOk e row →
+      (t.evalP p row).AgreeOrRaises (e.evalP Profile.reference row)
+  | .lit _, t, h, _, _ => by
+    simp only [lower, lowerWith, Option.some.injEq] at h; subst h
+    exact Outcome.agreeOrRaises_of_agree (Outcome.agree_refl _)
+  | .field _, t, h, _, _ => by
+    simp only [lower, lowerWith, Option.some.injEq] at h; subst h
+    exact Outcome.agreeOrRaises_of_agree (Outcome.agree_refl _)
+  | .un f a, t, h, row, hD => by
+    simp only [lower, lowerWith, Expr.keepGuards_all, bind, Option.bind_eq_some_iff,
+      Option.some.injEq] at h
+    obtain ⟨en, hen, a', ha, rfl⟩ := h
+    obtain ⟨hDa, hdbl⟩ := argsOk_un hen hD
+    have iha := L.lower_agreeOrRaises a a' ha row hDa
+    cases hx : a'.evalP p row with
+    | error k =>
+      exact Outcome.agreeOrRaises_of_err (Expr.subst_raises (p := p) (row := row) (σ := [a'])
+        (i := 0) (by simp [hx, Outcome.err?]) _ en.strict)
+    | ok x =>
+      rw [hx] at iha
+      cases h' : a.evalP Profile.reference row with
+      | error k => rw [h'] at iha; exact iha.elim
+      | ok x' =>
+        rw [h'] at iha; simp only [Outcome.AgreeOrRaises] at iha; subst iha
+        simp only [Expr.evalP, h', bind, Except.bind]
+        rw [Expr.evalP_subst (vs := [x]) (fun i => by cases i <;> simp [hx, Expr.evalP])]
+        have hxe : x = a.eval row := Expr.evalP_reference_ok h'
+        exact en.agree x fun ho => hxe ▸ hdbl ho
+  | .bin f a b, t, h, row, hD => by
+    simp only [lower, lowerWith, Expr.keepGuards_all, bind, Option.bind_eq_some_iff,
+      Option.some.injEq] at h
+    obtain ⟨en, hen, a', ha, b', hb, rfl⟩ := h
+    obtain ⟨hDa, hDb, hdbl⟩ := argsOk_bin hen hD
+    have iha := L.lower_agreeOrRaises a a' ha row hDa
+    have ihb := L.lower_agreeOrRaises b b' hb row hDb
+    cases hx : a'.evalP p row with
+    | error k =>
+      exact Outcome.agreeOrRaises_of_err (Expr.subst_raises (p := p) (row := row)
+        (σ := [a', b']) (i := 0) (by simp [hx, Outcome.err?]) _ en.strict.1)
+    | ok x =>
+      cases hy : b'.evalP p row with
+      | error k =>
+        exact Outcome.agreeOrRaises_of_err (Expr.subst_raises (p := p) (row := row)
+          (σ := [a', b']) (i := 1) (by simp [hy, Outcome.err?]) _ en.strict.2)
+      | ok y =>
+        rw [hx] at iha; rw [hy] at ihb
+        cases h' : a.evalP Profile.reference row with
+        | error k => rw [h'] at iha; exact iha.elim
+        | ok x' =>
+          cases h'' : b.evalP Profile.reference row with
+          | error k => rw [h''] at ihb; exact ihb.elim
+          | ok y' =>
+            rw [h'] at iha; rw [h''] at ihb
+            simp only [Outcome.AgreeOrRaises] at iha ihb; subst iha; subst ihb
+            simp only [Expr.evalP, h', h'', bind, Except.bind]
+            rw [Expr.evalP_subst (vs := [x, y]) (fun i => by
+              rcases i with _ | _ | i <;> simp [hx, hy, Expr.evalP])]
+            have hxe : x = a.eval row := Expr.evalP_reference_ok h'
+            have hye : y = b.eval row := Expr.evalP_reference_ok h''
+            exact en.agree x y fun ho => hxe ▸ hye ▸ hdbl ho
+  | .ifThen c t' e, t, h, row, hD => by
+    simp only [lower, lowerWith, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
+    obtain ⟨c', hc, t'', ht, e', he, rfl⟩ := h
+    obtain ⟨hDc, hDt, hDe⟩ := argsOk_ifThen hD
+    have ihc := L.lower_agreeOrRaises c c' hc row hDc
+    cases hl : c'.evalP p row with
+    | error k => exact Outcome.agreeOrRaises_of_err (by simp [Expr.evalP, hl, bind, Except.bind, Outcome.err?])
+    | ok v =>
+      rw [hl] at ihc
+      cases hr : c.evalP Profile.reference row with
+      | error k => rw [hr] at ihc; exact ihc.elim
+      | ok v' =>
+        rw [hr] at ihc; simp only [Outcome.AgreeOrRaises] at ihc; subst ihc
+        simp only [Expr.evalP, hl, hr, bind, Except.bind]
+        split
+        · exact L.lower_agreeOrRaises t' t'' ht row hDt
+        · exact L.lower_agreeOrRaises e e' he row hDe
+  | .hof f l b, t, h, row, hD => by
+    simp only [lower, lowerWith, bind, Option.bind_eq_some_iff, Option.some.injEq] at h
+    obtain ⟨l', hl, b', hb, rfl⟩ := h
+    obtain ⟨hDl, hDb⟩ := argsOk_hof hD
+    have ihl := L.lower_agreeOrRaises l l' hl row hDl
+    cases hl' : l'.evalP p row with
+    | error k => exact Outcome.agreeOrRaises_of_err (by simp [Expr.evalP, hl', bind, Except.bind, Outcome.err?])
+    | ok v =>
+      rw [hl'] at ihl
+      cases hr : l.evalP Profile.reference row with
+      | error k => rw [hr] at ihl; exact ihl.elim
+      | ok v' =>
+        rw [hr] at ihl; simp only [Outcome.AgreeOrRaises] at ihl; subst ihl
+        have hv : v = l.eval row := Expr.evalP_reference_ok hr
+        simp only [Expr.evalP, hl', hr, bind, Except.bind]
+        exact HoFn.applyP_agreeOrRaises f v fun x hx =>
+          L.lower_agreeOrRaises b b' hb (x :: row) (hDb x (hv ▸ hx))
+
+/-- A lowered expression computes the reference's value on a row where it
+does not raise. -/
+theorem Lowering.lower_exactAt {p : Profile} (L : Lowering p) {e t : Expr}
+    (hs : L.lower e = some t) {row : Row} (hD : L.ArgsOk e row) : Expr.ExactAt p t e row := by
+  intro v h
+  have hag := L.lower_agreeOrRaises e t hs row hD
   rw [h] at hag
   cases hr : e.evalP Profile.reference row with
-  | error k => rw [hr] at hag; simp [Outcome.Agree] at hag
+  | error k => rw [hr] at hag; exact hag.elim
   | ok w =>
-    rw [hr] at hag; simp only [Outcome.Agree] at hag; subst hag
+    rw [hr] at hag; simp only [Outcome.AgreeOrRaises] at hag; subst hag
     exact (Expr.evalI_of_evalP h).trans (Expr.evalP_reference_ok hr)
+
+/-- **A lowered expression is exact** under the engine's profile, where no
+entry it uses is stated on doubles only. -/
+theorem Lowering.lower_exact {p : Profile} (L : Lowering p) {e t : Expr} (hs : L.lower e = some t)
+    (hN : L.dblFree e = true) : Expr.Exact p t e :=
+  fun _ => L.lower_exactAt hs (.inl hN)
 
 /-- Every function has an entry. -/
 def Lowering.Total {p : Profile} (L : Lowering p) : Prop :=
@@ -674,23 +974,16 @@ def Lowering.lowerEWith {p : Profile} (L : Lowering p) (keep : String → Bool) 
 /-- The lowering of an expression, for a total table. -/
 def Lowering.lowerE {p : Profile} (L : Lowering p) (e : Expr) : Expr := (L.lower e).getD e
 
-/-- `t` computes `e`'s value on `row` wherever it does not raise there. -/
-def Expr.ExactAt (p : Profile) (t e : Expr) (row : Row) : Prop :=
-  ∀ v, t.evalP p row = .ok v → t.eval row p.impl = e.eval row
-
-theorem Expr.ExactAt.eq {p : Profile} {t e : Expr} {row : Row} (hx : Expr.ExactAt p t e row)
-    (h : ¬t.RaisesOn p row) : t.eval row p.impl = e.eval row := by
-  obtain ⟨v, hv⟩ := Expr.ok_of_not_raises h
-  exact hx v hv
 
 theorem Lowering.lowerEWith_exactAt {p : Profile} {L : Lowering p} (hL : L.Total)
     {keep : String → Bool} (hG : L.GuardsFor keep) (e : Expr) (row : Row)
-    (hk : ∀ q ∈ e.issues row, q.1.assumed = true ∨ keep q.1.name = true) :
+    (hk : ∀ q ∈ e.issues row, q.1.assumed = true ∨ keep q.1.name = true)
+    (hX : L.exactOn e = true) (hD : L.ArgsOk e row) :
     Expr.ExactAt p (L.lowerEWith keep e) e row := by
   obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp (lowerWith_isSome hL keep e)
   simp only [lowerEWith, ht, Option.getD_some]
   intro v hv
-  have hag := L.lowerWith_correct hG e t ht row hk
+  have hag := L.lowerWith_correct hG e t ht row hk hX hD
   rw [hv] at hag
   cases hr : e.evalP Profile.reference row with
   | error k => rw [hr] at hag; simp [Outcome.Agree] at hag
@@ -698,9 +991,14 @@ theorem Lowering.lowerEWith_exactAt {p : Profile} {L : Lowering p} (hL : L.Total
     rw [hr] at hag; simp only [Outcome.Agree] at hag; subst hag
     exact (Expr.evalI_of_evalP hv).trans (Expr.evalP_reference_ok hr)
 
-theorem Lowering.lowerE_exact {p : Profile} {L : Lowering p} (hL : L.Total) (e : Expr) :
-    Expr.Exact p (L.lowerE e) e :=
-  fun row => lowerEWith_exactAt hL L.guardsFor_all e row fun _ _ => .inr rfl
+theorem Lowering.lowerE_exactAt {p : Profile} {L : Lowering p} (hL : L.Total) (e : Expr)
+    {row : Row} (hD : L.ArgsOk e row) : Expr.ExactAt p (L.lowerE e) e row := by
+  obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp (lower_isSome hL e)
+  simpa only [lowerE, ht, Option.getD_some] using L.lower_exactAt ht hD
+
+theorem Lowering.lowerE_exact {p : Profile} {L : Lowering p} (hL : L.Total) (hN : L.NoneOnDbl)
+    (e : Expr) : Expr.Exact p (L.lowerE e) e :=
+  fun _ => lowerE_exactAt hL e (.inl (dblFree_of_noneOnDbl hN e))
 
 /-- A plan lowered with the table, with the guards `keep` keeps. -/
 def Lowering.lowerRelWith {p : Profile} (L : Lowering p) (keep : String → Bool) (r : Rel) : Rel :=
@@ -721,10 +1019,25 @@ theorem Lowering.lowerRelWith_all {p : Profile} (L : Lowering p) :
 its expressions raises on a row the engine evaluates it on, the engine's
 functions give `Rel.eval`'s rows, on every catalog. Trusted: that `p` is the
 engine's profile, and that the SQL printer is faithful. -/
-theorem Lowering.lowerRel_sound {p : Profile} {L : Lowering p} (hL : L.Total) {cat : Catalog}
-    {r : Rel} (h : ¬(L.lowerRel r).Raises p cat) :
+theorem Lowering.lowerRel_sound {p : Profile} {L : Lowering p} (hL : L.Total) (hN : L.NoneOnDbl)
+    {cat : Catalog} {r : Rel} (h : ¬(L.lowerRel r).Raises p cat) :
     (L.lowerRel r).eval cat p.impl = r.eval cat :=
-  Rel.evalI_mapExprs (lowerE_exact hL) (fun _ => rfl) h
+  Rel.evalI_mapExprs (lowerE_exact hL hN) (fun _ => rfl) h
+
+/-- The constants of a plan are doubles: its literals, `VALUES` rows and window
+defaults (`Rel.litDbl`), and the literals of its mapped expressions. -/
+def Rel.ConstsDbl (r : Rel) : Prop := r.litDbl = true ∧ ∀ e ∈ r.mappedExprs, e.litDbl = true
+
+/-- **`Lowering.lowerRel_sound` for a table with entries on doubles only**
+(ruling 254): on a catalog of doubles, for a plan whose constants are doubles,
+every row the plan's expressions are evaluated on holds doubles only
+(`Rel.exprRows_dbl`), where every entry agrees. -/
+theorem Lowering.lowerRel_sound_dbl {p : Profile} {L : Lowering p} (hL : L.Total) {cat : Catalog}
+    (hcat : cat.Dbl) {r : Rel} (hc : r.ConstsDbl) (h : ¬(L.lowerRel r).Raises p cat) :
+    (L.lowerRel r).eval cat p.impl = r.eval cat :=
+  Rel.evalI_mapExprs_rows (Q := fun e => e.litDbl = true) (R := Row.Dbl)
+    (fun e he _ hr => lowerE_exactAt hL e (.inr ⟨hr, he⟩)) (fun _ => rfl)
+    (Rel.exprRows_dbl hcat r hc.1) hc.2 h
 
 /-! ## A partial table
 
@@ -753,23 +1066,44 @@ def Lowering.lowerRel? {p : Profile} (L : Lowering p) (r : Rel) : Except (List S
   else .error (r.mappedExprs.flatMap L.missing).eraseDups
 
 /-- A lowered expression is exact wherever the table lowers it. -/
-theorem Lowering.lowerE_exact_of {p : Profile} (L : Lowering p) {e : Expr}
-    (he : (L.lower e).isSome) : Expr.Exact p (L.lowerE e) e := by
+theorem Lowering.lowerE_exactAt_of {p : Profile} (L : Lowering p) {e : Expr}
+    (he : (L.lower e).isSome) {row : Row} (hD : L.ArgsOk e row) :
+    Expr.ExactAt p (L.lowerE e) e row := by
   obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp he
-  simpa only [lowerE, ht, Option.getD_some] using L.lower_exact ht
+  simpa only [lowerE, ht, Option.getD_some] using L.lower_exactAt ht hD
+
+theorem Lowering.lowerE_exact_of {p : Profile} (L : Lowering p) (hN : L.NoneOnDbl) {e : Expr}
+    (he : (L.lower e).isSome) : Expr.Exact p (L.lowerE e) e :=
+  fun _ => L.lowerE_exactAt_of he (.inl (dblFree_of_noneOnDbl hN e))
 
 /-- **A plan the partial table lowers runs correctly on the engine, or
 raises.** As `Lowering.lowerRel_sound`, for a table that need not be total:
 the plan's own expressions have entries. -/
-theorem Lowering.lowerRel?_sound {p : Profile} {L : Lowering p} {cat : Catalog} {r r' : Rel}
-    (hr : L.lowerRel? r = .ok r') (h : ¬r'.Raises p cat) : r'.eval cat p.impl = r.eval cat := by
+theorem Lowering.lowerRel?_sound {p : Profile} {L : Lowering p} (hN : L.NoneOnDbl) {cat : Catalog}
+    {r r' : Rel} (hr : L.lowerRel? r = .ok r') (h : ¬r'.Raises p cat) :
+    r'.eval cat p.impl = r.eval cat := by
   unfold lowerRel? at hr
   split at hr
   · rename_i hall
     cases hr
     exact Rel.evalI_mapExprs_on (Q := fun e => (L.lower e).isSome = true)
-      (fun _ he => L.lowerE_exact_of he) (fun _ => rfl)
+      (fun _ he => L.lowerE_exact_of hN he) (fun _ => rfl)
       (fun e he => List.all_eq_true.mp hall e he) h
+  · cases hr
+
+/-- `Lowering.lowerRel?_sound` for a table with entries on doubles only
+(ruling 254), on a catalog of doubles and a plan whose constants are doubles. -/
+theorem Lowering.lowerRel?_sound_dbl {p : Profile} {L : Lowering p} {cat : Catalog} (hcat : cat.Dbl)
+    {r r' : Rel} (hc : r.ConstsDbl) (hr : L.lowerRel? r = .ok r') (h : ¬r'.Raises p cat) :
+    r'.eval cat p.impl = r.eval cat := by
+  unfold lowerRel? at hr
+  split at hr
+  · rename_i hall
+    cases hr
+    exact Rel.evalI_mapExprs_rows (Q := fun e => (L.lower e).isSome = true ∧ e.litDbl = true)
+      (R := Row.Dbl) (fun _ he _ hrow => L.lowerE_exactAt_of he.1 (.inr ⟨hrow, he.2⟩))
+      (fun _ => rfl) (Rel.exprRows_dbl hcat r hc.1)
+      (fun e he => ⟨List.all_eq_true.mp hall e he, hc.2 e he⟩) h
   · cases hr
 
 /-- With a total table, `lowerRel?` lowers every plan, as `lowerRel` does. -/
@@ -905,19 +1239,21 @@ rows, on every catalog. With the guards of the issues the checker cannot rule
 out kept, data that breaks a precondition makes the run raise, as the
 reference does, rather than return the engine's own value. -/
 theorem Lowering.lowerRelWith_sound {p : Profile} {L : Lowering p} (hL : L.Total)
+    (hX : L.AllExact) (hN : L.NoneOnDbl)
     {keep : String → Bool} (hG : L.GuardsFor keep) {cat : Catalog} {r : Rel}
     (hs : r.looseSub = true)
     (hk : ∀ q, r.HasIssue cat false q → q.1.assumed = true ∨ keep q.1.name = true)
     (h : ¬(L.lowerRelWith keep r).Raises p cat) :
     (L.lowerRelWith keep r).eval cat p.impl = r.eval cat :=
   Rel.evalI_mapExprs_of (P := fun i => i.assumed = true ∨ keep i.name = true)
-    (fun e row he => lowerEWith_exactAt hL hG e row he) (fun _ => rfl) hs hk h
+    (fun e row he => lowerEWith_exactAt hL hG e row he (exactOn_of_allExact hX e)
+      (.inl (dblFree_of_noneOnDbl hN e))) (fun _ => rfl) hs hk h
 
 /-- **`Lowering.lowerRelWith_sound` from the checker's report**, in the shape of
 `Rel.guardFree_sound`: on a catalog that satisfies the preconditions, a guard
 may be dropped for every issue `Rel.mayIssues` does not report. -/
 theorem Lowering.lowerRelWith_mayIssues_sound {p : Profile} {L : Lowering p} (hL : L.Total)
-    {keep : String → Bool} (hG : L.GuardsFor keep) {cat : Catalog} (hcat : cat.WF)
+    (hX : L.AllExact) (hN : L.NoneOnDbl) {keep : String → Bool} (hG : L.GuardsFor keep) {cat : Catalog} (hcat : cat.WF)
     {A : String → List AVal} {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
@@ -925,8 +1261,72 @@ theorem Lowering.lowerRelWith_mayIssues_sound {p : Profile} {L : Lowering p} (hL
     (hm : (r.mayIssues cat A F T false).all (fun q => q.1.assumed || keep q.1.name) = true)
     (h : ¬(L.lowerRelWith keep r).Raises p cat) :
     (L.lowerRelWith keep r).eval cat p.impl = r.eval cat :=
-  lowerRelWith_sound hL hG hs (fun q hq => by
+  lowerRelWith_sound hL hX hN hG hs (fun q hq => by
     have := List.all_eq_true.mp hm q (Rel.mayIssues_sound hcat hA hF hT hwf hsmall q hq)
     simpa only [Bool.or_eq_true] using this) h
+
+/-! ## `round` and `ceil` without IEEE's `-0.0` (`round_zero_sign`)
+
+DuckDB and Polars give IEEE's `-0.0` for a negative double that rounds to
+zero, where the reference gives `0.0`: one template, proved once for any
+profile whose comparisons and `AND` are the reference's. -/
+
+/-- `CASE WHEN x < 0 AND f(x) = 0 THEN 0.0 ELSE f(x) END`: `round` or `ceil`
+on an engine that gives IEEE's `-0.0` for a negative value that rounds to zero,
+where the reference gives `0.0` (`round_zero_sign`). -/
+def Lowering.zeroTemplate (f : UnFn) : Expr :=
+  .ifThen (.bin .and (.bin .lt (.field 0) (.lit (.float 0)))
+      (.bin .eq (.un f (.field 0)) (.lit (.float 0))))
+    (.lit (.float 0)) (.un f (.field 0))
+
+def Lowering.froundTemplate : Expr := Lowering.zeroTemplate .fround
+def Lowering.fceilTemplate : Expr := Lowering.zeroTemplate .fceil
+
+omit [Boxes.Ambient] in
+/-- The templates read their argument, for the entries' strictness. -/
+theorem Lowering.froundTemplate_must : 0 ∈ Lowering.froundTemplate.must := by
+  simp [Expr.must, Lowering.froundTemplate, Lowering.zeroTemplate]
+
+omit [Boxes.Ambient] in
+theorem Lowering.fceilTemplate_must : 0 ∈ Lowering.fceilTemplate.must := by
+  simp [Expr.must, Lowering.fceilTemplate, Lowering.zeroTemplate]
+
+/-- `zeroTemplate f` agrees with the reference on a double, under a profile
+whose `<`, `=` and `AND` are the reference's and whose `f` is a rounding `g`
+of the codes, `-0.0` below zero: `-0.0` and the negative NaN stay, and a
+canonical code rounds to a canonical one. -/
+theorem Lowering.zeroTemplate_float {p : Profile} {f : UnFn} {g : Int → Int}
+    (hlt : ∀ x y, p.bin .lt x y = .ok (BinFn.apply .lt x y))
+    (heq : ∀ x y, p.bin .eq x y = .ok (BinFn.apply .eq x y))
+    (hand : ∀ x y, p.bin .and x y = .ok (and3 x y))
+    (hun : ∀ c, p.un f (.float c) =
+      (if c < 0 ∧ g c = 0 then some (Except.ok (.float FloatCode.negZero)) else none).getD
+        (.ok (.float (g c))))
+    (href : ∀ c, Profile.reference.un f (.float c) = .ok (.float (g c)))
+    (hz : g FloatCode.negZero = FloatCode.negZero) (hn : g FloatCode.negNan = FloatCode.negNan)
+    (hcan : ∀ c, FloatCode.canon c = c → FloatCode.canon (g c) = g c) (c : Int) :
+    ((Lowering.zeroTemplate f).evalP p [.float c]).Agree
+      (Profile.reference.un f (.float c)) := by
+  have hlt' : ∀ a b : Int, BinFn.apply .lt (.float a) (.float b) =
+      .bool (decide (FloatCode.canon a < FloatCode.canon b)) := fun _ _ => rfl
+  have heq' : ∀ a b : Int, BinFn.apply .eq (.float a) (.float b) =
+      .bool (FloatCode.canon a == FloatCode.canon b) := fun _ _ => rfl
+  have hZ := FloatCode.negZero_eq'; have hY := FloatCode.negNan_eq'
+  have hq : FloatCode.nan = 2 * (FloatCode.maxMag : Int) + 5 := fp64.nan_eq
+  simp only [Lowering.zeroTemplate, Expr.evalP, List.getD_cons_zero, Outcome.ok_bind,
+    hlt, heq, hand, hun, href, hlt']
+  rcases FloatCode.canon_cases c with ⟨rfl, h0⟩ | ⟨rfl, h0⟩ | h0
+  · have : ¬ (FloatCode.negZero = 0) := by omega
+    simp [Outcome.ok_bind, heq', this, h0, hz, FloatCode.canon_zero, and3, Value.isTrue,
+      Outcome.Agree]
+  · have : ¬ (FloatCode.negNan = 0) := by omega
+    have hn1 : ¬ (FloatCode.nan < 0) := by omega
+    simp [Outcome.ok_bind, heq', this, hn1, h0, hn, FloatCode.canon_zero, and3,
+      Value.isTrue, Outcome.Agree]
+  · have hr := hcan c h0
+    have hb : (g c == 0) = decide (g c = 0) := rfl
+    by_cases hneg : c < 0 <;> by_cases hr0 : g c = 0 <;>
+      simp [Outcome.ok_bind, heq', h0, hr, hneg, hr0, hb, FloatCode.canon_zero,
+        FloatCode.canon_negZero', and3, Value.isTrue, Outcome.Agree]
 
 end Substrait

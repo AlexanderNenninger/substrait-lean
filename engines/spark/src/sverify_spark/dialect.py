@@ -433,7 +433,7 @@ class SparkDialect(Dialect):
                 f"decimal division (an AVG of decimals) to DECIMAL({k.p}, {ks}) on Spark: "
                 "past 12 decimal places, 32 integer digits, or 37 digits at more than 6 "
                 "places, Spark rounds a step of the exact quotient (spark-decimal-arith)",
-                "see #739",
+                "see #27, after 1.0",
                 "cast it to fewer digits",
             )
         n = self.cast(f"NULLIF({b}, 0)", Dec(20, 0))  # `-n` and `2n` past 64 bits

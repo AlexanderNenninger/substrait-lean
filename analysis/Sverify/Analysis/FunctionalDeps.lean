@@ -190,8 +190,9 @@ def copyFds (n : Nat) (es : List Expr) : List (List Nat × Nat) :=
 def gpos (gs : List Expr) (c : Nat) : Option Nat :=
   (List.range gs.length).find? fun q => gs[q]? == some (.field c)
 
-/-- An input dependency among plain grouping columns, at their group
-positions. -/
+/-- An input dependency among the plain column references `$c` of `gs`, at
+their positions in `gs`: an aggregate's grouping columns, or the columns a
+projection appends. -/
 def aggFds (gs : List Expr) (fds : List (List Nat × Nat)) : List (List Nat × Nat) :=
   fds.filterMap fun fd => do
     let X ← fd.1.mapM (gpos gs)
@@ -407,6 +408,20 @@ theorem copyFds_sound {n : Nat} {es : List Expr} {rows : Relation}
     · simp at h
   | _ => simp at h
 
+/-- A projection's appended copies keep the input's dependencies among the
+columns they copy, shifted past the input's `n` columns: an emit that keeps the
+copies and drops the originals keeps them (#1992). -/
+theorem copiedFds_sound {n : Nat} {es : List Expr} {fds : List (List Nat × Nat)}
+    {rows : Relation} (hn : ∀ x ∈ rows, x.length = n) (hd : FDsOn fds rows) :
+    FDsOn ((aggFds es fds).map (shiftFd n)) (rows.map fun y => y ++ es.map (·.eval y)) := by
+  refine FDsOn.append_right (rows := rows.map fun y => es.map (·.eval y))
+    (fun o ho => ?_) (FDsOn.agg (fun o ho => ?_) hd)
+  · obtain ⟨y, hy, rfl⟩ := List.mem_map.mp ho
+    exact ⟨y, _, List.mem_map_of_mem hy, rfl, hn y hy⟩
+  · obtain ⟨y, hy, rfl⟩ := List.mem_map.mp ho
+    refine ⟨y, hy, fun {c q} hq => ?_⟩
+    simp [List.getD_eq_getElem?_getD, List.getElem?_map, hq, Expr.eval]
+
 /-! ## One node's dependencies -/
 
 /-- One node's dependencies from its inputs' arities (`na`, `nb`; at a read, the
@@ -426,7 +441,8 @@ def Rel.fdsNode :
   | .filter _ c, _, _, _, _, fa, _ => fa ++ eqFds c.eqCols
   | .fetch .., _, _, _, _, fa, _ | .orderBy .., _, _, _, _, fa, _
   | .distinct _, _, _, _, _, fa, _ | .semi .., _, _, _, _, fa, _ => fa
-  | .project _ es, na, _, _, _, fa, _ => fa.filter (inRange na) ++ copyFds na es
+  | .project _ es, na, _, _, _, fa, _ =>
+      fa.filter (inRange na) ++ copyFds na es ++ (aggFds es fa).map (shiftFd na)
   | .window .., na, _, _, _, fa, _ => fa.filter (inRange na)
   | .emit _ m, _, _, _, _, fa, _ => fa.flatMap (emitFd m)
   | .cross .., na, nb, ka, kb, fa, fb =>

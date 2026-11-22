@@ -81,6 +81,8 @@ QUERIES = [
     # does; bool_and and bool_or are min and max of booleans.
     "SELECT customer, string_agg(customer, '-' ORDER BY id) AS s, list(qty ORDER BY id) AS l,"
     " bool_and(amount > 2) AS ba, bool_or(qty > 3) AS bo FROM orders GROUP BY customer",
+    # `arbitrary` is DuckDB's other name of `first` (#328).
+    "SELECT id, arbitrary(customer) AS a FROM orders GROUP BY id",
     "SELECT first(qty ORDER BY id) AS f, last(qty ORDER BY id DESC) AS l,"
     " first(price ORDER BY placed) AS fp, last(customer ORDER BY day) AS lc,"
     " list(customer ORDER BY id) AS lst, array_agg(qty ORDER BY amount DESC) AS aa,"
@@ -116,7 +118,7 @@ def test_oracles_a_and_c(query):
 
 @pytest.mark.parametrize("query", [q for q in QUERIES if isinstance(q, str)])
 def test_the_reference_lift_is_checked_too(query):
-    plan = json.dumps(lift(query, SCHEMAS, "reference").plan)
+    plan = json.dumps(lift(query, SCHEMAS, "portable").plan)
     code, out, err = run_checker((), plan)
     assert code == 0, err or out
 
@@ -268,7 +270,7 @@ def test_corr_of_one_pair_is_nan_with_duckdbs_semantics_and_null_with_the_refere
 
     ((r,),) = lean("duckdb")
     assert math.isnan(r)
-    assert lean("reference") == [(None,)]
+    assert lean("portable") == [(None,)]
 
 
 # `SUM` and `AVG` of doubles with infinities and NaN (#341), through oracles A and C.
@@ -301,7 +303,7 @@ def test_sum_of_both_infinities_is_no_domain_error_under_duckdbs_semantics():
     for fn in ("sum", "avg"):
         query = f"SELECT {fn}(f) AS v FROM f"
         duck = sv.verify(sv.sql(query, f=t, semantics="duckdb"))
-        ref = sv.verify(sv.sql(query, f=t, semantics="reference"))
+        ref = sv.verify(sv.sql(query, f=t, semantics="portable"))
         assert not [i for i in duck.issues if "domain error" in str(i)], (fn, duck)
         assert [i for i in ref.issues if "domain error" in str(i)], (fn, ref)
 
@@ -352,7 +354,7 @@ def test_a_double_sum_checks_for_a_nan_total_with_no_nan_input(fn):
     from sverify.sql import to_sql
 
     t = ibis.table({"f": "float64"}, name="f")
-    plan = sv.verify(sv.sql(f"SELECT {fn}(f) AS v FROM f", f=t, semantics="reference"))
+    plan = sv.verify(sv.sql(f"SELECT {fn}(f) AS v FROM f", f=t, semantics="portable"))
     assert plan.internal_plan is not None
     written = to_sql(plan.internal_plan, "duckdb")
     assert "isnan" in written.lower() and "overflow to infinity" in written, written

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import stat
+import sys
 from pathlib import Path
 
 import ibis
@@ -59,6 +60,8 @@ def test_report_without_the_field_reads() -> None:
 
 
 def _fake(tmp_path: Path, text: str) -> str:
+    if sys.platform == "win32":
+        pytest.skip("a fake checker is a /bin/sh script, which Windows cannot run")
     path = tmp_path / "substrait-check"
     path.write_text(f"#!/bin/sh\necho '{text}'\n")
     path.chmod(path.stat().st_mode | stat.S_IEXEC)

@@ -1,0 +1,12 @@
+{
+  "id": "F203",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "D57's decisions.md section waits for its implementing PR; the other missing sections are written in D58's shape and checked by the theory advisor before merge.",
+  "prs": [
+    2063
+  ],
+  "source": "fable-ruling-203-ledger-decisions-sections.md"
+}

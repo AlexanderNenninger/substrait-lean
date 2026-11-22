@@ -391,12 +391,12 @@ def _table(r: _Reader, types: Sequence[Type] | None) -> tuple[tuple[Type, ...], 
 
 def parse_file(path: Path, root: Path) -> list[Case]:
     """The cases of one `.test` file."""
-    rel = str(path.relative_to(root))
+    rel = path.relative_to(root).as_posix()
     kind = ""
     include = ""
     frames: dict[str, tuple] = {}
     cases: list[Case] = []
-    for n, raw_line in enumerate(path.read_text().splitlines(), 1):
+    for n, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = raw_line.strip()
         if m := re.match(r"### SUBSTRAIT_(SCALAR|AGGREGATE|WINDOW)_TEST", line):
             kind = m.group(1).lower()
@@ -450,7 +450,7 @@ def parse_all(root: Path) -> tuple[list[Case], list[tuple[str, str]]]:
         try:
             cases += parse_file(path, root)
         except (FormatError, KeyError, IndexError) as e:
-            errors.append((str(path.relative_to(root)), str(e)))
+            errors.append((path.relative_to(root).as_posix(), str(e)))
     return cases, errors
 
 
@@ -1131,11 +1131,11 @@ def ledger(
 
 
 def read_ledger(path: Path = LEDGER) -> Json:
-    return json.loads(path.read_text()) if path.exists() else {}
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
 
 
 def write_ledger(data: Json, path: Path = LEDGER) -> None:
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 def table(data: Json) -> str:

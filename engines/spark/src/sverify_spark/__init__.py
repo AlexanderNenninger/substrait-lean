@@ -27,7 +27,7 @@ from typing import Any, Literal
 
 from sverify import _meta
 
-if getattr(_meta, "PLUGIN_API", None) != 3:
+if getattr(_meta, "PLUGIN_API", None) != 5:
     raise ImportError(
         f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
         f"needs a sverify of its own build, found sverify {_meta.VERSION}: "

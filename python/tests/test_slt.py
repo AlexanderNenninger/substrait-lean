@@ -431,7 +431,7 @@ def test_the_reference_replay_agrees_where_the_reference_raises(tmp_path, monkey
     DuckDB gives NaN agrees, and a `verify` issue agrees as static (no value
     differs here since #1484's refusal of the rounding casts, so `disagree` has
     no cheap case)."""
-    monkeypatch.setenv(slt.SEMANTICS_ENV, "reference")
+    monkeypatch.setenv(slt.SEMANTICS_ENV, "portable")
     path = tmp_path / "ref.test"
     path.write_text(
         textwrap.dedent(
@@ -558,3 +558,19 @@ def test_a_time_of_24_00_is_refused(tmp_path):
         "tables: column t of times holds 24:00:00, "
         "which the rows inlined for Lean (Python times) cannot",
     )
+
+
+def test_a_tagged_list_sum_raise_is_checked_against_its_domain_issue(monkeypatch):
+    """`list_sum` past BIGINT raises sverify's tagged check; the report lists
+    it as a domain error and the checker reports `Issue.domain` (#2162)."""
+    from sverify import _lean_eval, engine
+    from sverify_dev.checked import checked
+
+    monkeypatch.setattr(_lean_eval, "lean_assumed", lambda plan: None)
+    monkeypatch.setattr(
+        engine, "run_checker", lambda args, plan: (0, "error: Substrait.Issue.domain", "")
+    )
+    msg = "Invalid Input Error: sverify: list_sum out of range: 9223372036854775812"
+    got = checked(msg, ["domain error: LIST_SUM(i)"], "{}")
+    assert got and got.startswith("checked: domain error")
+    assert checked(msg, [], "{}") is None

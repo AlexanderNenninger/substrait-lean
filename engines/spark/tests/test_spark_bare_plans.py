@@ -7,7 +7,7 @@ import pyarrow as pa
 import pytest
 
 from sverify.engine import connect, plan_json, put_table, run_plan, written_plan
-from sverify.engines import to_sql
+from sverify.engines.plan import to_sql
 from sverify.io import StaticSource
 from sverify_spark.dialect import SPARK
 

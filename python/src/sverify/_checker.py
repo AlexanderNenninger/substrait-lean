@@ -18,7 +18,6 @@ import subprocess
 import sys
 import threading
 import time
-import warnings
 from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
@@ -38,6 +37,9 @@ def checker_refusal(mode: str, err: str) -> UnsupportedError:
     """A plan the checker refuses (`mode`, its message `err`), with its exit
     (`sverify.engine.checker_failed` adds the stale-build check)."""
     msg = err.strip().removeprefix("error: ") or "(no message)"
+    if "by design" in msg:
+        # A refusal by design (an opaque column's use) waits on no issue.
+        return UnsupportedError(f"substrait-check {mode} refuses the plan: {msg}")
     return UnsupportedError(
         f"substrait-check {mode} refuses the plan: {msg}. Lean's model does not cover it "
         f"yet: rewrite the step, or find its issue among the open coverage issues "
@@ -106,27 +108,13 @@ def generated_proofs() -> bool | None:
     return _generated_proofs(str(_checker_file()))
 
 
-def checker_env() -> str | None:
-    """`$SVERIFY_CHECKER`, else the deprecated `$SVERIFY_CHECK` with a
-    `DeprecationWarning`, else None."""
-    if env := os.environ.get("SVERIFY_CHECKER"):
-        return env
-    if env := os.environ.get("SVERIFY_CHECK"):
-        warnings.warn(
-            "SVERIFY_CHECK is deprecated; set SVERIFY_CHECKER", DeprecationWarning, stacklevel=3
-        )
-        return env
-    return None
-
-
 def checker_path() -> Path:
     """`$SVERIFY_CHECKER` if set, else the checker an installed engine
     profile from outside names (`sverify.profiles`), else the
     `substrait-check` the wheel ships with (a symlink to the lake build in
     an editable install). The first call for a path checks that the checker
     speaks this sverify's protocol
-    (`CheckerVersionError` if not). `SVERIFY_CHECK`, its name before 1.0, is
-    read with a `DeprecationWarning`."""
+    (`CheckerVersionError` if not)."""
     path = _checker_file()
     _check_protocol(str(path))
     return path
@@ -136,14 +124,15 @@ def _checker_file() -> Path:
     """`checker_path` without the protocol check: the cache's answers were
     given by a checker of this protocol (`sverify._proof_cache`), so a hit
     needs no process."""
-    if env := checker_env():
+    if env := os.environ.get("SVERIFY_CHECKER"):
         return Path(env)
     from sverify import profiles
 
     # A profile from outside ships a checker over the built-in profiles and its own.
     if plugged := profiles.checker():
         return plugged
-    path = Path(__file__).parent / "_bin" / "substrait-check"
+    name = "substrait-check.exe" if os.name == "nt" else "substrait-check"
+    path = Path(__file__).parent / "_bin" / name
     if not path.exists():
         raise FileNotFoundError(f"{path} is missing; reinstall sverify or set SVERIFY_CHECKER")
     return path

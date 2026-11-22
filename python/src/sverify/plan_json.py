@@ -167,11 +167,17 @@ def _type_json(dtype: Any) -> Json:
         return {"list": {"type": type_json(dtype.value_type), **NULLABLE}}
     if dtype.is_struct():
         return {"struct": {"types": [type_json(t) for t in dtype.types], **NULLABLE}}
+    # An opaque column (D67): carried, and never read.
     if dtype.is_binary():
-        raise Unsupported(
-            "sverify reads no binary values (#1918): encode them as text at the source "
-            "(hex or base64), or leave the column out"
-        )
+        return {"binary": NULLABLE}
+    if dtype.is_map():
+        return {
+            "map": {
+                "key": type_json(dtype.key_type),
+                "value": type_json(dtype.value_type),
+                **NULLABLE,
+            }
+        }
     if dtype.is_uuid():
         raise Unsupported(
             "type uuid is not supported; read it as text with CAST(column AS VARCHAR) in the "
@@ -203,6 +209,11 @@ def _instant(value: dt_.datetime) -> str:
 
 
 def literal(value: Any, dtype: Any) -> Json:
+    if dtype.is_binary():
+        raise ProducerUnsupported(
+            "sverify reads no binary values (#1918): it carries a binary column, but a binary "
+            "constant is not modelled; encode it as text at the source (hex or base64)"
+        )
     if value is None or dtype.is_null():
         return {"literal": {"null": type_json(dtype)}}
     if dtype.is_boolean():
@@ -253,8 +264,6 @@ def literal(value: Any, dtype: Any) -> Json:
     if dtype.is_struct():
         fields = [literal(value.get(f), t)["literal"] for f, t in dtype.items()]
         return {"literal": {"struct": {"fields": fields}}}
-    if dtype.is_binary():
-        type_json(dtype)  # refuses, saying why (#1918)
     raise ProducerUnsupported(f"literal of type {dtype} is not supported")
 
 
@@ -392,7 +401,7 @@ def call(name: str, args: Iterable[Json]) -> Json:
 
 #: The profile the plan being built is read under (`verify(semantics=...)`):
 #: under `"polars"`, integer `//` and `%` are Polars's (`floor_call`).
-_SEMANTICS: contextvars.ContextVar[str] = contextvars.ContextVar("_SEMANTICS", default="reference")
+_SEMANTICS: contextvars.ContextVar[str] = contextvars.ContextVar("_SEMANTICS", default="portable")
 
 
 def semantics() -> str:
@@ -673,18 +682,13 @@ def is_plain(e: Json) -> bool:
     return all(is_plain(a["value"]) for a in fn["arguments"])
 
 
-#: How many levels of nested `AND` and `OR` the lift guards (D50, interim): a connective
-#: below this many enclosing lifted ones is written eager. Step D50-d removes the cap.
-LIFT_LEVELS = 3
-
-
 def logical(name: str, operands: list[Json], eager: bool = False) -> Json:
     """`AND` or `OR` (`name`) of `operands`, in order (D50). Where every operand
     is plain, or the plan is read as DuckDB reads it (`eager`), the eager connective
     (`chain`); otherwise `sverify_and` or `sverify_or`, which the checker reads as
     a guard: each operand runs only where the earlier ones do not decide the
-    result (`Expr.andG`, `Guard.lean`). Only the top `LIFT_LEVELS` levels of a nest
-    are lifted."""
+    result (`Expr.andG`, `Guard.lean`). The checker's parser decides how deep a
+    nest it lifts with the chain and binds the rest (D50-d, `Parse.liftLevels`)."""
     if eager or len(operands) == 1 or semantics() == "duckdb" or all(is_plain(o) for o in operands):
         return chain(name, operands)
     names = {a: n for n, a in _COMPILER.get().functions.items()}
@@ -695,23 +699,7 @@ def logical(name: str, operands: list[Json], eager: bool = False) -> Json:
             spliced += [a["value"] for a in fn["arguments"]]  # a guard chain inside is one chain
         else:
             spliced.append(o)
-    return _cap_lift(call(f"sverify_{name}", spliced), names, 0)
-
-
-def _cap_lift(e: Any, names: dict[int, str], level: int) -> Any:
-    """`e` with every `sverify_and` and `sverify_or` at `LIFT_LEVELS` or more lifted
-    ones above it written as the eager `and` and `or`."""
-    if isinstance(e, list):
-        return [_cap_lift(x, names, level) for x in e]
-    if not isinstance(e, dict):
-        return e
-    fn = e.get("scalarFunction")
-    n = names.get(fn["functionReference"]) if fn is not None else None
-    if fn is not None and n in ("sverify_and", "sverify_or"):
-        below = level + 1
-        args = [_cap_lift(a["value"], names, below) for a in fn["arguments"]]
-        return chain(n.removeprefix("sverify_"), args) if level >= LIFT_LEVELS else call(n, args)
-    return {k: _cap_lift(v, names, level) for k, v in e.items()}
+    return call(f"sverify_{name}", spliced)
 
 
 def chain(name: str, args: list[Json]) -> Json:
@@ -766,7 +754,7 @@ def values_rel(schema: Any, rows: list[list[Json]]) -> Json:
 
 
 @contextlib.contextmanager
-def compiling(semantics: str = "reference") -> Iterator[Compiler]:
+def compiling(semantics: str = "portable") -> Iterator[Compiler]:
     """A fresh `Compiler` for the plan built inside the block, read under
     `semantics`."""
     compiler = Compiler()

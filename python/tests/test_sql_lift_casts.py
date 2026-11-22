@@ -35,6 +35,12 @@ QUERIES = [
     "SELECT id, CAST(cost AS BIGINT) AS i, CAST(cost AS INTEGER) AS n,"
     " CAST(cost AS DECIMAL(15, 1)) AS d, CAST(cost AS DECIMAL(5, 0)) AS w FROM orders",
     "SELECT CAST(2.5 AS BIGINT) AS a, CAST(-2.5 AS BIGINT) AS b, CAST(0.49 AS BIGINT) AS c",
+    # Booleans and dates to text (#346): DuckDB's own `true`/`false` and `YYYY-MM-DD`, NULLs kept.
+    "SELECT id, CAST(qty > 3 AS VARCHAR) AS b, CAST(NOT (qty > 3) AS VARCHAR) AS n,"
+    " CAST(day AS VARCHAR) AS d FROM orders",
+    "SELECT CAST(TRUE AS VARCHAR) AS t, CAST(FALSE AS VARCHAR) AS f,"
+    " CAST(DATE '0001-01-01' AS VARCHAR) AS lo, CAST(DATE '9999-12-31' AS VARCHAR) AS hi,"
+    " CAST(DATE '1970-01-01' AS VARCHAR) AS epoch",
 ]
 
 
@@ -48,12 +54,12 @@ def test_oracles_a_and_c(query):
 
 @pytest.mark.parametrize("query", [q for q in QUERIES if isinstance(q, str)])
 def test_the_reference_lift_is_checked_too(query):
-    plan = json.dumps(lift(query, SCHEMAS, "reference").plan)
+    plan = json.dumps(lift(query, SCHEMAS, "portable").plan)
     code, out, err = run_checker((), plan)
     assert code == 0, err or out
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 def test_a_double_cast_to_bigint_rounds_half_to_even(semantics):
     # DuckDB's cast rounds (R9), and the lifted text means DuckDB's value under both
     # semantics (D54, D55): the plan is the cast of the half-even round.
@@ -62,7 +68,7 @@ def test_a_double_cast_to_bigint_rounds_half_to_even(semantics):
     assert '"rounding"' in plan and "TIE_TO_EVEN" in plan
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 def test_a_narrower_integer_cast_of_a_double_is_refused_with_its_spellings(semantics):
     with pytest.raises(Refused, match=r"CAST\(x AS BIGINT\)"):
         lift("SELECT CAST(price AS INTEGER) AS i FROM orders", SCHEMAS, semantics)
@@ -278,15 +284,15 @@ FLOAT_CASTS = [
 def test_a_float_cast_to_an_integer_is_refused_as_a_double_one(query):
     """The model's cast truncates: 0 for `0.55::FLOAT`, where DuckDB gives 1.
     A REAL is refused as a DOUBLE is, under both semantics (D54)."""
-    for semantics in ("duckdb", "reference"):
+    for semantics in ("duckdb", "portable"):
         with pytest.raises(Refused, match=r"float32 .* rounds .*CAST\(x AS DOUBLE\)"):
             lift(query, {}, semantics)
 
 
 def test_a_float_column_cast_to_an_integer_is_refused():
     schema = {"t": ibis.schema({"x": "float32"})}
-    for semantics in ("duckdb", "reference"):
+    for semantics in ("duckdb", "portable"):
         with pytest.raises(Refused, match=r"float32 .* rounds .*CAST\(x AS DOUBLE\)"):
             lift("SELECT CAST(x AS INTEGER) AS i FROM t", schema, semantics)
     # The hint's spelling lifts.
-    lift("SELECT CAST(round(CAST(x AS DOUBLE)) AS BIGINT) AS i FROM t", schema, "reference")
+    lift("SELECT CAST(round(CAST(x AS DOUBLE)) AS BIGINT) AS i FROM t", schema, "portable")

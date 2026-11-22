@@ -150,7 +150,7 @@ def batch(suite: str, seed: int, seconds: float, out: Path, timeout: float, rss_
     env = {**env, "SVERIFY_FUZZ_PROGRESS": str((out / "progress.json").resolve())}
     start = time.monotonic()
     peak, status = 0, "ok"
-    with open(out / "log.txt", "w") as log:
+    with open(out / "log.txt", "w", encoding="utf-8") as log:
         proc = subprocess.Popen(
             argv,
             cwd=PYTHON_DIR,
@@ -290,7 +290,7 @@ def findings(batch_dir: Path) -> list[dict[str, Any]]:
                         "repro": DUCKDB_REPLAY,
                     }
                 )
-            if r.get("cls") != "disagree":
+            if r.get("cls") != "disagree" or covered_by_verify(r):
                 continue
             found.append(
                 {
@@ -335,8 +335,20 @@ def findings(batch_dir: Path) -> list[dict[str, Any]]:
 # --- explanations (#747) --------------------------------------------------------------
 
 
+def covered_by_verify(r: dict[str, Any]) -> bool:
+    """A `duckdb_fuzz` disagreement on a query `verify` flags (its `reason`
+    lists the issues) where one side raises or the query divides by zero: the
+    reference raises or is open there, and `verify` says so, as the checker's
+    own `--raises` does for the `runtime` oracle (#2101)."""
+    reason = r.get("reason") or ""
+    raised = str(r.get("lean", "")).startswith("error:") or str(r.get("duckdb", "")).startswith(
+        "error:"
+    )
+    return reason.startswith("verify:") and (raised or "division by zero" in reason)
+
+
 def load_rules(path: Path = EXPLAINED) -> list[dict[str, Any]]:
-    return json.loads(path.read_text())["rules"] if path.exists() else []
+    return json.loads(path.read_text(encoding="utf-8"))["rules"] if path.exists() else []
 
 
 def rule_problems(rules: list[dict[str, Any]], repo: Path = REPO) -> list[str]:

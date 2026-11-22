@@ -1,0 +1,20 @@
+{
+  "id": "F247",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#271: a lowering row is at 0 when its evidence is a Lean theorem of its claim for every plan the generated lowering emits, or a Lean refusal lemma; reruns, tests and Python checks do not count, and no construct users run today is refused to reach 0 without the maintainer's OK.",
+  "issues": [
+    27,
+    271,
+    444,
+    899,
+    900
+  ],
+  "amends": [
+    "F235"
+  ],
+  "source": "fable-ruling-247-271-what-row-at-zero-means.md",
+  "note": "Brings back the five relational Polars rows that ruling 235 put After 1.0, after the maintainer's ruling for complete lowerings. Spark's 24 rows follow the same rules (P1-P4). No D-number."
+}

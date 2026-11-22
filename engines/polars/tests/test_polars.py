@@ -31,7 +31,8 @@ from sverify.engine import (
     substrait_json,
     written_plan,
 )
-from sverify.engines import ENGINES, delta_plans
+from sverify.engines import ENGINES
+from sverify.engines.plan import delta_plans
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import WEIGHT, IncrementalView
 from sverify.io import Changes
@@ -320,7 +321,7 @@ def test_polars_view_matches_duckdb_view(name, data):
 def polars_rows(con, sql: str) -> list[tuple]:
     # The reference's semantics, and the model's integer `power`: Polars
     # against the model.
-    plan = integer_powers(json.loads(substrait_json(con, sql, "reference")))
+    plan = integer_powers(json.loads(substrait_json(con, sql, "portable")))
     return rows_of(run_plan(con, written_plan(json.dumps(plan)), "polars"))
 
 
@@ -489,11 +490,12 @@ def test_unknown_function_is_refused():
             substrait_json(con, "SELECT id FROM orders WHERE amount > 10", semantics="duckdb")
         )
     )
-    plan["extensions"][0]["extensionFunction"]["name"] = "sqrt"
+    fn = plan["extensions"][0]["extensionFunction"]
+    fn["name"] = "sqrt"
     filt = plan["relations"][0]["root"]["input"]["project"]["input"]["filter"]
     filt["condition"] = {
         "scalarFunction": {
-            "functionReference": 1,
+            "functionReference": fn["functionAnchor"],
             "arguments": [filt["condition"]["scalarFunction"]["arguments"][0]],
         }
     }
@@ -587,7 +589,7 @@ def test_casts_to_bigint_truncate_and_refuse_nan():
     con = connect()
     con.create("r", F, [(x,) for x in DOUBLES])
     sql = "SELECT f, CAST(floor(f) AS BIGINT) AS i FROM r"
-    duck, pl_rows = on_both(con, written_plan(substrait_json(con, sql, "reference")))
+    duck, pl_rows = on_both(con, written_plan(substrait_json(con, sql, "portable")))
     assert duck == pl_rows
     con.create("r", F, [(1.0,), (math.nan,)])
     with pytest.raises(polars_engine.BadCast):

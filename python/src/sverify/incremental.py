@@ -54,7 +54,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
@@ -67,6 +66,7 @@ import sqlglot as sg
 from sverify import _exact_sum, _linear, _quarantine, _retention, _semi, _touched, profiles
 from sverify._engines import LOCAL
 from sverify._pipe import Pipeable
+from sverify._plan_read import function_names
 from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify._run_schema import table_problems
@@ -579,14 +579,14 @@ an entry; two changes in different releases give different digests."""
 
 
 def plan_digest(
-    plan: str, changes: tuple[str, ...] | None = None, profile: str = "reference"
+    plan: str, changes: tuple[str, ...] | None = None, profile: str = "portable"
 ) -> str:
     """The sha256 of a plan's canonical form and of the changes of meaning
     (`MEANING_CHANGES`, or `changes`): its JSON with sorted keys, no
-    `extensions` (the list of every function the writer knows, which grows with
-    each release), each `functionReference` replaced by the function's name.
+    `extensions` (which once listed every function the writer knows, and grew
+    with each release), each `functionReference` replaced by the function's name.
     The profile the plan was verified under is a component of its own, left out
-    for the reference (`verify(semantics=...)`): the same plan under two profiles
+    for `"portable"` (`verify(semantics=...)`): the same plan under two profiles
     has two digests. With no changes recorded the digest is that of the plan alone. It is the
     same across releases that change nothing the plan computes, so a sink
     written by one is resumed by the next; sinks record it, and `Stored`
@@ -595,11 +595,7 @@ def plan_digest(
     digest)."""
     changes = MEANING_CHANGES if changes is None else changes
     p = json.loads(plan)
-    names = {
-        f["functionAnchor"]: f["name"]
-        for e in p.get("extensions", [])
-        if isinstance(f := e.get("extensionFunction"), dict)
-    }
+    names = function_names(p)
 
     def canon(node: Any) -> Any:
         if isinstance(node, dict):
@@ -615,7 +611,7 @@ def plan_digest(
     text = json.dumps(canon(p), sort_keys=True, separators=(",", ":"))
     if changes:
         text += "\n" + json.dumps(list(changes))
-    if profile != "reference":
+    if profile != "portable":
         text += "\nprofile:" + profile
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -695,10 +691,8 @@ class StaticSource(Pipeable):
     Args:
         table: The table's contents.
         name: The table's name in the plans that read it. Required: two
-            sources of one name in a pipeline would collide. (Before 1.0 it
-            defaulted to `"table"`, which warns for one release.)
-        version: The version of these contents, by keyword (positional
-            warns for one release). Default: 0.
+            sources of one name in a pipeline would collide.
+        version: The version of these contents. Default: 0.
         on_violation: What a refresh does with a batch that breaks a
             precondition on this source, for transforms that set no
             `on_violation` of their own: `"error"`, `"quarantine"` or
@@ -718,27 +712,11 @@ class StaticSource(Pipeable):
     def __init__(
         self,
         table: pa.Table,
-        *args: int,
-        name: str | None = None,
+        *,
+        name: str,
         version: int = 0,
         on_violation: Policy | None = None,
     ) -> None:
-        if args:
-            warnings.warn(
-                "StaticSource(table, version) is deprecated; write "
-                "StaticSource(table, name=..., version=...)",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            (version,) = args
-        if name is None:
-            warnings.warn(
-                'StaticSource without name= is deprecated (it defaulted to "table"); '
-                "name the table as the plans read it",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            name = "table"
         self.name = name
         self.on_violation = _quarantine.check_policy(on_violation)
         self._log: ChangeLog[pa.Table] = ChangeLog()
@@ -1032,9 +1010,9 @@ class IncrementalView:
         windows without a row-order tiebreak; set by a stored node."""
         self.query = query
         contract = None if isinstance(query, str) else view_contract(query)
-        self.profile: str = contract.profile if contract else "reference"
+        self.profile: str = contract.profile if contract else "portable"
         """The profile the view's plan was verified under; the plan's digest
-        includes it unless it is the reference."""
+        includes it unless it is `"portable"`."""
         self.deterministic: bool = contract.deterministic if contract else False
         """Its report proves the result determined up to row order and the
         members of a class: the same on every engine."""

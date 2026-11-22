@@ -37,8 +37,9 @@ class TestResult:
     """Tests on the inputs under which it would be proved: per input, the
     column and the test's YAML."""
     conditions: list[Any] = field(default_factory=list, repr=False)
-    blocker: str | None = field(default=None, repr=False)
-    """`CheckedCondition.reason` of the condition that is not proved."""
+    reason: str | None = None
+    """sverify's code for why the condition is not proved (`may_be_false`,
+    `not_a_key`, ...): the one `sverify explain` takes; `why` is the prose."""
 
     def skip(self, why: str) -> None:
         self.status, self.why = "not checked", why
@@ -122,6 +123,9 @@ class CheckResult:
     relations: dict[str, Relation] = field(default_factory=dict, repr=False)
     selected: bool = False
     """Whether the check reported on some models only (`check(select=...)`)."""
+    adapter: str = "duckdb"
+    dbt_version: str = "unknown"
+    """The dbt-core version that compiled the project."""
 
     def suggestions(self) -> list[Suggestion]:
         """The tests sverify suggests adding, so that it proves more: what
@@ -229,19 +233,38 @@ class CheckResult:
         lines.append(self.summary())
         return "\n".join(lines)
 
-    def to_dict(self) -> dict[str, Any]:
-        """The result as JSON-ready data."""
-        out = []
+    def to_dict(self, exit_code: int = 0) -> dict[str, Any]:
+        """The result as JSON-ready data: the envelope of `sverify check
+        --format json` (`cli.schema.json`), with each model as an item and
+        the dbt project's own keys beside it. `exit_code` is the exit the
+        CLI returns."""
+        from importlib.metadata import version
+
+        from sverify_dbt import formats
+
+        items = []
         for m in self.models:
             d = asdict(m)
             for t in d["tests"] + d["constraints"]:
                 t.pop("conditions", None)
             d.pop("sql", None)
-            out.append(d)
+            items.append(_item(m) | d)
         return {
+            "format": 1,
+            "sverify": version("sverify"),
+            "command": "check",
+            "exit": exit_code,
+            "status": EXIT_STATUS.get(exit_code, "error"),
+            "file": self.root,
+            "target": None,
+            "items": items,
+            "findings": formats.findings(self),
+            "unchecked": [],
+            "error": None,
             "project": self.project,
+            "adapter": self.adapter,
+            "dbt_version": self.dbt_version,
             "summary": self.summary(),
-            "models": out,
             "unit_tests": self.unit_tests,
         }
 
@@ -282,11 +305,11 @@ class CheckResult:
         path = Path(path)
         data: dict[str, Any] = {}
         if path.is_file():
-            data = yaml.safe_load(path.read_text()) or {}
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         selectors = [s for s in data.get("selectors") or [] if s.get("name") != name]
         selectors.append(self.selector(name))
         data["selectors"] = selectors
-        path.write_text(yaml.safe_dump(data, sort_keys=False))
+        path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
         return path
 
 
@@ -426,3 +449,34 @@ def _test_lines(tests: list[Suggestion], pad: str) -> list[str]:
         out += [f"{pad}# {why}" for why in s.because]
         out.append(f"{pad}- {s.test}")
     return out
+
+
+#: `status` of the JSON envelope by exit code, as `sverify check` words them.
+EXIT_STATUS = {
+    0: "proved",
+    1: "not_proved",
+    2: "usage",
+    3: "unsupported",
+    4: "budget_exceeded",
+    6: "error",
+}
+
+
+def _item(m: ModelResult) -> dict[str, Any]:
+    """A model as an item of `cli.schema.json`: `proved` when every test and
+    constraint is, `refused` when sverify cannot read it, else `not_proved`."""
+    rest = [t for t in m.tests + m.constraints if t.status != "proved"]
+    status = "refused" if m.refused else "not_proved" if rest or m.contract else "proved"
+    return {
+        "name": m.name,
+        "nodes": [m.name],
+        "status": status,
+        "summary": {
+            "guarantees": [t.label for t in m.tests + m.constraints if t.status == "proved"],
+            "checks": [],
+            "not_proved": [f"{t.label}: {t.why}" if t.why else t.label for t in rest]
+            + [f"{i.column}: {i.problem}" for i in m.contract or []],
+        },
+        "links": [],
+        "report": None,
+    }

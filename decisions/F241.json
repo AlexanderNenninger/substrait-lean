@@ -1,0 +1,16 @@
+{
+  "id": "F241",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Every ST-4 comparison shim of the Substrait export is NULL-strict by construction, and is accepted on the exhaustive eight-value table over DuckDB and Polars.",
+  "issues": [
+    741
+  ],
+  "prs": [
+    2201
+  ],
+  "source": "fable-ruling-241-2201-st4-order-null.md",
+  "note": "A soundness defect of the export that blocks 'Fixes #741' until the table passes; the equality and key shims get the same table before 1.0. No D-number."
+}

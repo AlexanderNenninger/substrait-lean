@@ -48,6 +48,12 @@ LIST_QUERIES = [
     "SELECT a, [a, 1] AS x, [a, NULL, a + 1] AS y, list_concat(l, [a]) AS z,"
     " list_concat(l, NULL) AS w, array_cat(NULL, l) AS v FROM t",
     "SELECT a FROM t WHERE list_contains(l, 2) OR len(l) > 1",
+    # #327: append and prepend (a NULL list is empty, a NULL value an element),
+    # the ends of a list, and flatten.
+    "SELECT a, list_append(l, a) AS x, list_prepend(a, l) AS y, array_append(l, NULL) AS z,"
+    " array_prepend(0, l) AS w FROM t",
+    "SELECT a, list_first(l) AS f, list_last(l) AS z FROM t",
+    "SELECT a, flatten([l, [a], l]) AS f, flatten([[a]]) AS g FROM t",
 ]
 
 

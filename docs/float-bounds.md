@@ -167,7 +167,7 @@ sequential sum. They cost a few integer operations per measure.
 - A `SUM` needs one. `sv.max_rows(n)` in `requires` caps an input
   and is checked on the data (`COUNT(*) <= n`), or proved from the record
   counts of a Delta or Iceberg table's files. The same cap proves integer
-  `SUM`s fit 64 bits ([Row caps](tasks.md#row-caps)). The checker reads capped
+  `SUM`s fit 64 bits ([Row caps](how-to-bounds.md#row-caps)). The checker reads capped
   tables through a `FETCH` of `n` rows (`Rel.capReads`), which keeps their
   rows (`Rel.capReads_eval`), and bounds every relation's rows from it
   (`Rel.maxRows`, `Rel.maxRows_sound`). With a cap `n`, a `SUM` of doubles
@@ -355,7 +355,11 @@ after the nearest multiple of `2⁻¹⁰⁷⁴`, is a `StdModel` (`FloatBridge.m
 and that on multiples of `2⁻¹⁰⁷⁴`, the values the core adds, it is `ofExact`
 (`model_fl_grid`). So the theorems here about `StdModel.fl` hold of the
 core's codes with no trusted link; `NativeLink` remains the link for Lean's
-`Float`.
+`Float`. `float-bounds/FloatBridge/Sums.lean` carries it to the core's sums:
+a `FloatSums` sum (`ANY`, `PAIRWISE`, `SEQUENTIAL`) of finite doubles is a
+`TreeSum` of their values (`FloatSums.treeSum`), so it meets the core's
+`SumBound` (`FloatSums.sumBound`), which `Rel.AllowedP` otherwise takes as
+given.
 
 `exp` is the platform's `libm` on both sides, which IEEE 754 does not
 require to round correctly. `NativeLink.exp` trusts it to one ulp, as glibc's

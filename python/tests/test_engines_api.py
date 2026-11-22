@@ -8,7 +8,7 @@ import pytest
 from ibis import _
 
 import sverify as sv
-from sverify.engines import substrait_json, to_sql, written_plan
+from sverify.engines.plan import substrait_json, to_sql, written_plan
 from sverify.errors import RouteError, UnverifiedRunError
 from sverify.io import StaticSource
 from sverify.sql import dialect_of
@@ -64,7 +64,7 @@ def test_report_to_sql_writes_engine_semantics_only_for_its_engine():
     report = _report(semantics="duckdb")
     assert report.verdict == sv.Verdict.PROVED
     assert "SELECT" in report.to_sql("duckdb")
-    with pytest.raises(RouteError, match="only for plans verified under the reference"):
+    with pytest.raises(RouteError, match="only for plans verified under portable semantics"):
         report.to_sql("snowflake")
 
 
@@ -111,35 +111,33 @@ def test_connection_create_and_rows():
         con.rows("missing")
 
 
-def test_create_table_and_table_rows_are_deprecated():
-    from sverify.engines import create_table, table_rows
+def test_the_plan_layer_is_its_own_module():
+    """#881 1.6 (ruling 219): the plan layer is `sverify.engines.plan`,
+    outside the 1.x promise; `sverify.engines` re-exports none of it, and
+    `create_table`, `table_rows` and the old `Unsupported` are gone."""
+    import sverify.engines
+    import sverify.engines.plan as plan
 
-    con = sv.connect()
-    with pytest.warns(DeprecationWarning, match=r"con\.create\(name, schema, rows\)"):
-        create_table(con, "t", SCHEMA, [(1, 2)])
-    with pytest.warns(DeprecationWarning, match=r"con\.rows\(name\)"):
-        assert table_rows(con, "t") == [(1, 2)]
+    assert set(plan.__all__) == {"delta_plans", "substrait_json", "to_sql", "written_plan"}
+    for name in [*plan.__all__, "create_table", "table_rows", "Unsupported"]:
+        assert not hasattr(sverify.engines, name), name
 
 
-def test_connection_arrow_and_ibis_are_deprecated():
+def test_connection_arrow_and_ibis_are_gone():
     con = _con()
-    with pytest.warns(DeprecationWarning, match=r"con\.get\(name\)"):
-        assert con.arrow["orders"].num_rows == 2
-    with pytest.warns(DeprecationWarning, match=r"get_backend\(\)"):
-        backend = con.ibis
-    assert backend is con.table("orders").get_backend()
+    assert not hasattr(con, "arrow") and not hasattr(con, "ibis")
+    assert con.table("orders").get_backend() is con._ibis
 
 
 def test_substrait_json_defaults_to_the_reference():
     con = _con()
     sql = "SELECT id // 2 AS h FROM orders"
-    assert substrait_json(con, sql) == substrait_json(con, sql, "reference")
+    assert substrait_json(con, sql) == substrait_json(con, sql, "portable")
 
 
 def test_run_spark_is_gone():
     """`run_spark`, deprecated since 0.5, is gone (#1288): `run(con, plan, "spark")`."""
-    with pytest.raises(AttributeError):
-        sv.engines.run_spark  # noqa: B018
+    assert not hasattr(sv.engines, "run_spark")
 
 
 def test_rows_and_tables_column_by_column():

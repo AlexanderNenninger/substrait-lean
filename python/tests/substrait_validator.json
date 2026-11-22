@@ -8,8 +8,8 @@
   },
   "sverify_substrait": "0.106.0",
   "summary": {
-    "agree": 332,
-    "disagree": 10,
+    "agree": 333,
+    "disagree": 9,
     "refused": 190,
     "skipped": 146
   },
@@ -65,10 +65,6 @@
     "0001 not yet implemented: PrecisionTimestamp literals are not yet implemented": {
       "plans": 7,
       "record": "ST-19"
-    },
-    "4005 mismatched types: all set inputs must have matching schemas: N vs. N on parameter path N.precision": {
-      "plans": 1,
-      "record": "#1904"
     }
   },
   "results": {
@@ -671,10 +667,7 @@
       "outcome": "agree"
     },
     "catalogue/tpcds-q51 [annotate]": {
-      "outcome": "disagree",
-      "findings": [
-        "4005 mismatched types: all set inputs must have matching schemas: N vs. N on parameter path N.precision"
-      ]
+      "outcome": "agree"
     },
     "catalogue/tpcds-q51 [apply]": {
       "outcome": "refused",

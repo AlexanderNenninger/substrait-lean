@@ -22,6 +22,9 @@ refresh.
    branch, then the `pages` workflow publishes the catalog at
    `https://<you>.github.io/<repository>/`, one page per table with what
    sverify proved, its lineage, its freshness, a chart and a query box.
+   Each pipeline also gets a status page for a phone, `status-<file>.html`:
+   the last run, the rows each node wrote and stores, the contract and the
+   next scheduled run.
 4. Protect `main`: Settings, Rules, a ruleset for the default branch that
    requires a pull request and the `check` status check. Merging is then
    the approval of a proved contract.

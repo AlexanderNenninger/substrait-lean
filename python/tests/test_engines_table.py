@@ -39,9 +39,10 @@ def _engine_profiles() -> set[str]:
 
 def test_semantics_are_the_checker_s_profiles() -> None:
     """A plan is verified under any profile of the checker but the core: the
-    reference, DuckDB's through its lift, and each plugin's that has one
-    (`ProfilePlugin.profile`, #1189)."""
-    assert set(semantics_names()) == set(_checker_profiles()) - {"core"}
+    reference (`"portable"` to the user), DuckDB's through its lift, and each
+    plugin's that has one (`ProfilePlugin.profile`, #1189)."""
+    named = {"portable" if p == "reference" else p for p in _checker_profiles()}
+    assert set(semantics_names()) == named - {"core"}
     with_profile = {e for e, p in profiles.plugins().items() if p.verifiable}
     assert with_profile == set(_checker_profiles()) - {"core", "reference", "duckdb"}
 
@@ -157,7 +158,8 @@ def test_an_engine_from_outside_runs_as_the_built_ins_do(twin: ProfilePlugin) ->
     import pyarrow as pa
 
     import sverify as sv
-    from sverify.engines import run, to_sql, written_plan
+    from sverify.engines import run
+    from sverify.engines.plan import to_sql, written_plan
     from sverify.sql import dialect_of
 
     con = sv.connect("twin")  # type: ignore[arg-type]
@@ -209,7 +211,7 @@ _NAME_TESTS = {
 
 def _name_tests(path: Path) -> int:
     n = 0
-    for node in ast.walk(ast.parse(path.read_text())):
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
         if isinstance(node, ast.Compare):
             for side in [node.left, *node.comparators]:
                 consts = side.elts if isinstance(side, (ast.Tuple, ast.Set, ast.List)) else [side]
@@ -254,7 +256,7 @@ _NAME_LISTS = {
 
 def _name_lists(path: Path) -> int:
     n = 0
-    for node in ast.walk(ast.parse(path.read_text())):
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
         if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
             elts: list = node.elts
         elif isinstance(node, ast.Dict):

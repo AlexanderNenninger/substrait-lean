@@ -2,13 +2,14 @@
 
 `sv.verify(sql)` reads the text as DuckDB's and the functions as the
 reference's. The reference gives a value DuckDB does not in the fields of
-`Profile` below. The report lists `corr` and `list_contains` (`Report.dialect_differences`).
-The raises of the
-reference (`domain_error`, `log_zero`) and of DuckDB (`min_mod_neg_one`, listed as a guard's
-issue) are not here: a raise is visible and the inferred preconditions name its inputs.
+`Profile` below. The report lists `corr`, `list_contains` and the order of lists, BETWEEN
+included (`Report.dialect_differences`).
+The raises of the reference (`domain_error`, `log_zero`) and of DuckDB (`min_mod_neg_one`,
+listed as a guard's issue) are not here: a raise is visible and the inferred preconditions name
+its inputs.
 
 One table, keyed by the `Profile` field. `tests/test_dialect_differences.py`
-derives the key set from `REFERENCE` and `DUCKDB` and fails when a field joins
+derives the key set from `PORTABLE` and `DUCKDB` and fails when a field joins
 it not listed.
 """
 
@@ -23,7 +24,7 @@ class DialectDifference:
 
     key: str
     """The `Profile` field the lift read, or a `NATIVE` key: `float_to_int`, `corr_degenerate` or
-    `list_contains_null_needle`."""
+    `list_contains_null_needle` or `list_null_order`."""
     construct: str
     """The construct's category, as `UnsupportedError.construct` spells it:
     `function corr`, `CAST`."""
@@ -50,7 +51,7 @@ class DialectDifference:
 
 #: The listed differences that are no `Profile` field: DuckDB's own reading of a construct differs
 #: from the plan's under every semantics, at the engine versions named (D54, ruling 208).
-NATIVE: frozenset[str] = frozenset({"list_contains_null_needle"})
+NATIVE: frozenset[str] = frozenset({"list_contains_null_needle", "list_null_order"})
 
 #: Each `Profile` field the lift lists: how the two readings differ, with an
 #: example and the spellings that mean the same.
@@ -66,6 +67,12 @@ TABLE: dict[str, dict[str, str]] = {
         "dialect": "FALSE (2.0.1; NULL at 2.0.0)",
         "example": "list_contains([], NULL), the empty list and a needle that is NULL",
         "spellings": "a needle that is not NULL, or list_contains(l, x) with x tested for NULL",
+    },
+    "list_null_order": {
+        "here": "NULL",
+        "dialect": "TRUE",
+        "example": "a NULL element decides the order ([1,2] < [1,NULL,3])",
+        "spellings": "",
     },
 }
 

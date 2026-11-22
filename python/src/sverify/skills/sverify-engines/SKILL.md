@@ -67,7 +67,7 @@ for dialect in ("duckdb", "snowflake", "spark"):
 
 `sverify.engines.run(con, node.internal_plan, engine)` runs the plan over a
 connection's tables; `engine="spark"` or a Spark session configured with
-`SPARK_CONF` runs it on Spark. `sverify.engines.to_sql(plan, dialect)` writes
+`SPARK_CONF` runs it on Spark. `sverify.engines.plan.to_sql(plan, dialect)` writes
 any plan in sverify's internal form, and is outside the 1.x promise.
 
 ## Why a plan is refused
@@ -87,10 +87,10 @@ print(numbered(orders).to_sql("snowflake")[:6])  # ties are open: the report is 
 ```
 
 * **Snowflake and Spark tables have no row order.** Under the default
-  observation (`rows="multiset"`) the SQL leaves ties and the rows of a
+  lenses (`rows="multiset"`) the SQL leaves ties and the rows of a
   `LIMIT` open, as the reference does, and writes no ordinal: a plan's last
   sort orders its result, and the report's `deterministic` says whether a
-  rerun can return other rows. An observation with `rows="sequence"` asks for
+  rerun can return other rows. Lenses with `rows="sequence"` ask for
   the model's list order, which these engines refuse. `SUM` or `AVG` of
   doubles is Spark's own, within the plan's bound of the reference's sum.
 * **Snowflake has no interval type**: interval-valued expressions are refused.

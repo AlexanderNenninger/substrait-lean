@@ -86,7 +86,7 @@ CODES: dict[str, str] = {
         "allows more at some option; the report names the options."
     ),
     "floats": (
-        "No engine's doubles meet the observation's tolerance. Widen the tolerance in "
+        "No engine's doubles meet the lenses' tolerance. Widen the tolerance in "
         "`sv.equivalent(floats=sv.within(...))`, or cap the rows (`sv.max_rows`)."
     ),
     "checked_only": (
@@ -99,7 +99,7 @@ CODES: dict[str, str] = {
         "The file defines a contracted transform but never applies it, so it has no input "
         'schemas to be proved on. Declare them in the decorator, `@sv.transform(schemas={"orders": '
         "{...}})`, which `sverify check` proves, pipe a source into it (`orders.pipe(paid)`), or "
-        "test it with `paid.check(orders={...})`."
+        "test it with `paid.verify(orders={...})`."
     ),
     "unsupported": (
         "sverify refuses a construct of the file: a function, type or operator outside "

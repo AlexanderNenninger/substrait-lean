@@ -131,7 +131,7 @@ Sverify's words claim no more than these theorems give
   bounds hold over the reals in `float-bounds/`; the link from them to the
   core's codes is [#1196](https://github.com/AlexanderNenninger/substrait-lean/issues/1196), and `contract_sound_runs` for double
   aggregates beyond a root `SUM` or `AVG` is [#929](https://github.com/AlexanderNenninger/substrait-lean/issues/929).
-- Under `semantics="reference"`, the default for SQL, the lift from SQL is
+- Under `semantics="portable"`, the default for SQL, the lift from SQL is
   tested Python. The generated `liftReference` entries are unused, and no
   theorem states that the reference's reading is DuckDB's value wherever the
   reference gives one (`DuckFn.reference_refines_duckdb`,
@@ -183,7 +183,10 @@ Sverify's words claim no more than these theorems give
 - The frontends produce the plan the user meant: the Ibis producer
   (`python/src/sverify/ibis_substrait/`) and the SQLGlot lift for DuckDB's
   SQL (`python/src/sverify/sql_lift/`), which writes each function's options explicitly from the source
-  dialect.
+  dialect. A plugin's SQL front-end (`ProfilePlugin.sql`, a dialect's parse name and
+  its lift) decides what that dialect's SQL means, so it is in the trusted base
+  as DuckDB's is, and a report of SQL it read names its package and version
+  (`Report.notes`).
 - The parser and the writer, `Parse.lean` and `Write.lean`. The CLI checks
   that every plan it writes parses back to the same `Rel`, and the golden
   tests (`tests/run.sh`) run that round trip on every fixture. That shows the
@@ -200,7 +203,11 @@ Sverify's words claim no more than these theorems give
   own constructor of `Value` ([a value has its kind](decisions.md#d29-a-value-has-its-kind)).
 - The code that writes a checked plan for an engine: the SQL printers
   (`Pretty.lean`, `python/src/sverify/sql/`), a shimmed plan's `isNum` as
-  `IS NOT NULL` included, and the Polars translator. Golden, round-trip and
+  `IS NOT NULL` included, and the Polars translator. The interpreters of the
+  generated lowering tables are among them: `sverify/sql/lowering.py` writes a
+  DuckDB template as SQL, and `sverify_polars/lowering.py` a Polars template
+  as a `pl.Expr`, which the Polars translator takes over from its hand-written
+  shims in #271's step 2. Golden, round-trip and
   differential tests cover them
   ([the translations](engine-profiles.md#the-translations-today)).
 - The CLI's glue, `Main.lean`, `SubstraitCheck.lean`, `ContractCheck.lean` and `ShardCheck.lean`:
@@ -356,12 +363,19 @@ Sverify's words claim no more than these theorems give
   its formula in Python's doubles.
 
   Beside `Engine.Runs`, the bound on
-  [summation orders](float-bounds.md): the engines' summation algorithms meet
-  `SumBound` (a double `SUM` within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of the exact
-  sum), which `Rel.AllowedP` takes for every non-`EXACT` `sum_order`. It is
-  justified by `float-bounds`' `StdModel.Summed.near`, `epsilon_sum_cr` and
-  `Rnd.kahan_near` on the engines' facts; a link from `float-bounds` to the
-  core's codes, [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/1196), retires it.
+  [summation orders](float-bounds.md): `Rel.AllowedP` takes `SumBound` (a
+  double `SUM` within `(γₙ + u) · Σ(|xᵢ| + 2⁻¹⁰²²)` of the exact sum) for every
+  non-`EXACT` `sum_order`, of the codes as they are and of the canonical codes
+  (`-0.0` read as `+0.0`; D35, amended 2026-11-21 by ruling 242). For the
+  orders with a shape (`ANY`, `PAIRWISE`, `SEQUENTIAL`: `FloatSums`) both
+  clauses are proved from the shape under the core's rounding
+  (`FloatBridge.FloatSums.sumBound`, `float-bounds/FloatBridge/Sums.lean`; the
+  canonical one by `FloatSums.canonV`, since IEEE addition treats the two zeros
+  alike but for the sign of a zero result). For Kahan's sum (`COMPENSATED`)
+  and a constant run's product (`SCALED_CONSTANT`) both are justified by
+  `float-bounds`' `Rnd.kahan_near` and `TreeSum.const` over the reals; those
+  algorithms written on the core's codes,
+  [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/1196), retire the rest.
 - Black boxes are DuckDB's functions: each black box means the function
   DuckDB computes under its name, and keeps its row's laws, tested by
   `python/tests/test_black_box.py` (DuckDB on the SQL against DuckDB on the

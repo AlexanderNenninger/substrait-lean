@@ -33,7 +33,7 @@ from sverify.engine import (
     run_plan,
     substrait_json,
 )
-from sverify.engines import written_plan
+from sverify.engines.plan import written_plan
 from sverify.errors import PostconditionError, PreconditionError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import IncrementalView, arrow_rows, delta_plans, read_tables
@@ -389,7 +389,7 @@ def test_sum_of_both_infinities_is_nan_under_the_duckdb_lens():
     lens = sv.verify(query, tables={"floats": con.table("floats")}, semantics="duckdb")
     assert "domain error" not in lens.details()
     assert [math.isnan(r["s"]) for r in lens.run(con).to_pylist()] == [True]
-    ref = sv.verify(query, tables={"floats": con.table("floats")}, semantics="reference")
+    ref = sv.verify(query, tables={"floats": con.table("floats")}, semantics="portable")
     assert "may fail: domain error: sum(f)" in ref.details()
 
 
@@ -417,7 +417,7 @@ def test_runtime_errors_raise(sql, a, b):
     """Where the reference raises, Lean's value is NULL (and `Safety.lean`
     reports the plan); the SQL fails too instead of answering."""
     r = pa.table({"a": pa.array([a], pa.int64()), "b": pa.array([b], pa.int64()), "f": [math.nan]})
-    plan_json = plan_of(sql, {"r": r}, "reference")
+    plan_json = plan_of(sql, {"r": r}, "portable")
     with pytest.raises(duckdb.Error):
         duckdb_rows(plan_json, {"r": r})
 
@@ -430,12 +430,34 @@ def test_remainder_by_minus_one_is_zero(width):
     low = -(2 ** (width.bit_width - 1))
     r = pa.table({"a": pa.array([low, 5, None], width), "b": pa.array([-1, -1, -1], width)})
     sql = "SELECT a % b AS m FROM r"
-    assert check_three_ways(sql, {"r": r}, "reference") == [(0,), (0,), (None,)]
+    assert check_three_ways(sql, {"r": r}, "portable") == [(0,), (0,), (None,)]
     with pytest.raises(duckdb.Error, match="MIN % -1"):
         duckdb_rows(plan_of(sql, {"r": r}), {"r": r})
     # Without the MIN row the lens runs and agrees with Lean.
     rest = r.slice(1)
     assert check_three_ways(sql, {"r": rest}) == [(0,), (None,)]
+
+
+@pytest.mark.parametrize(
+    ("alias", "name"),
+    [
+        ("len(s)", "length(s)"),
+        ("substr(s, 2, 3)", "substring(s, 2, 3)"),
+        ("substr(s, -2)", "substring(s, -2)"),
+        ("main.lower(s)", "lower(s)"),
+        ("main.len(s)", "length(s)"),
+        ("system.main.length(s)", "length(s)"),
+    ],
+)
+def test_an_alias_is_the_function_it_names(alias, name):
+    """#328: `len`, `substr` and a call qualified by its built-in schema lift
+    to the plan of the function they name, and DuckDB and Lean agree on it."""
+    r = pa.table({"s": pa.array(["héllo", "", "ab", None], pa.string())})
+    tables, sql = {"r": r}, f"SELECT {alias} AS u FROM r"
+    assert plan_of(sql, tables) == plan_of(f"SELECT {name} AS u FROM r", tables)
+    native = duckdb.connect()
+    native.register("r", r)
+    assert check_three_ways(sql, tables) == native.execute(sql).fetchall()
 
 
 def test_a_lens_power_with_a_zero_exponent_is_strict():
@@ -493,14 +515,14 @@ def test_rounding_and_casts_match_lean(sql):
             ),
         }
     )
-    check_three_ways(sql, {"r": r}, "reference")
+    check_three_ways(sql, {"r": r}, "portable")
 
 
 def test_round_to_digits_is_duckdbs():
     """`round(x, d)` is DuckDB's (#335): the written plan on DuckDB is DuckDB's own."""
     r = pa.table({"f": pa.array(ROUNDING, pa.float64())})
     sql = "SELECT f, round(f, 2) AS x, round(f, -1) AS y, round(f, -400) AS z FROM r"
-    plan = plan_of(sql, {"r": r}, "reference")
+    plan = plan_of(sql, {"r": r}, "portable")
     native = duckdb.connect()
     native.register("r", r)
     # DuckDB's own result keeps -0.0, which `canonical` reads as 0.0.
@@ -514,7 +536,7 @@ def test_double_division_by_zero_raises_unless_ieee():
     creates a NaN, which raises (D37)."""
     r = ints(a=[7, -7, 0, 1], b=[2, 0, 0, 3])
     sql = "SELECT CAST(a AS DOUBLE) / CAST(b AS DOUBLE) AS q FROM r"
-    plan_json = plan_of(sql, {"r": r}, "reference")
+    plan_json = plan_of(sql, {"r": r}, "portable")
     with pytest.raises(duckdb.Error, match="division by zero"):
         duckdb_rows(plan_json, {"r": r})
     plan = json.loads(plan_json)

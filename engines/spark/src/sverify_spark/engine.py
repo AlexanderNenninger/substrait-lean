@@ -108,6 +108,11 @@ def spark_type(t: pa.DataType) -> str:
         return SPARK.type_name("str")
     if pa.types.is_list(t) or pa.types.is_large_list(t):
         return f"ARRAY<{spark_type(t.value_type)}>"
+    # Opaque columns (D67): carried, never read (`spark-opaque-carry`).
+    if pa.types.is_binary(t) or pa.types.is_large_binary(t):
+        return "BINARY"
+    if pa.types.is_map(t):
+        return f"MAP<{spark_type(t.key_type)}, {spark_type(t.item_type)}>"
     raise TypeError(f"no Spark type for {t}")
 
 
@@ -124,6 +129,10 @@ def arrow_type(t: pa.DataType) -> pa.DataType:
         return pa.string()
     if pa.types.is_list(t) or pa.types.is_large_list(t):
         return pa.list_(arrow_type(t.value_type))
+    if pa.types.is_large_binary(t):
+        return pa.binary()
+    if pa.types.is_map(t):
+        return pa.map_(arrow_type(t.key_type), arrow_type(t.item_type))
     return t
 
 
@@ -184,7 +193,7 @@ def run(
 ) -> pa.Table:
     """Run a Substrait JSON plan on Spark over `tables` (temporary views).
 
-    The plan is written as Spark SQL by `sverify.engines.to_sql` in the
+    The plan is written as Spark SQL by `sverify.engines.plan.to_sql` in the
     `sverify_spark.dialect.SPARK` dialect. `sverify.engines.run(con, plan,
     "spark")` runs a plan over a connection's tables the same way.
 
@@ -198,7 +207,7 @@ def run(
         deterministic: Promise that no two rows tie on any window's
             `PARTITION BY` and `ORDER BY` columns (what a contract report's
             `deterministic` says), so windows run without a row-order
-            tiebreak (see `sverify.engines.to_sql`). Default False.
+            tiebreak (see `sverify.engines.plan.to_sql`). Default False.
         finite: Check that no operation on finite doubles gives `±∞`, the
             reference's precondition (#575); False for a plan verified
             under a profile that allows `±∞`, as Spark's does. Default True.

@@ -46,10 +46,11 @@ def _export() -> Mapping[str, Json]:
 
 
 @functools.cache
-def table() -> Mapping[str, Json]:
+def table(engine: str = SETTING) -> Mapping[str, Json]:
     """The templates by function (`"fdiv"`, `"fmath:sqrt"`, `"fit:silent:64"`,
-    `"bit:bitwise_shift_left"`)."""
-    return {e["fn"]: e["template"] for e in _export()[SETTING]}
+    `"bit:bitwise_shift_left"`): DuckDB's at its `SETTING`, or `"polars"`'s
+    (`sverify_polars.lowering`)."""
+    return {e["fn"]: e["template"] for e in _export()[engine]}
 
 
 def floor_table() -> Mapping[str, Json]:

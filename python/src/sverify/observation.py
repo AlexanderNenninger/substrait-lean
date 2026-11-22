@@ -32,7 +32,6 @@ from __future__ import annotations
 import math
 import struct
 import unicodedata
-import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -536,8 +535,9 @@ def _component(dtype: Any) -> str | None:
     if dtype.is_integer() or dtype.is_boolean() or dtype.is_date() or dtype.is_time():
         return None
     # Every other type is a kind `mayHoldList` (`ContractCheck.lean`) counts:
-    # a list or struct, and `Kind.other`, which `Parse.typeKind` gives a map,
-    # an interval, NULL, JSON, a UUID and any type it does not know (#2005).
+    # a list or struct, `Kind.opaque`, which `Parse.typeKind` gives a map, a
+    # binary and a UUID (D67), and `Kind.other`, which it gives an interval,
+    # NULL, JSON and any type it does not know (#2005).
     return "elements"
 
 
@@ -609,23 +609,5 @@ def why(components: Sequence[str]) -> str:
             f"depends on {' and '.join(names[c] for c in opened)}, which the plan leaves open"
         )
     if ignored:
-        parts.append(f"depends on {', '.join(ignored)}, which the observation ignores")
+        parts.append(f"depends on {', '.join(ignored)}, which the lenses ignore")
     return "; ".join(parts)
-
-
-def _deterministic_arg(
-    where: str, deterministic: bool | None, reproducible: Observation | None
-) -> Observation | None:
-    """`reproducible`, with the deprecated `deterministic=True` (B5 of the
-    1.0 API review) read as `sv.equivalent()`."""
-    if deterministic is None:
-        return reproducible
-    warnings.warn(
-        f"{where}(deterministic=...) is deprecated; write reproducible=sv.equivalent() "
-        "(Report.deterministic stays as the fact)",
-        DeprecationWarning,
-        stacklevel=3,
-    )
-    if deterministic and reproducible is None:
-        return Observation()
-    return reproducible

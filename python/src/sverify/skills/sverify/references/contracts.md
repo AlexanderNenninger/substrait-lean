@@ -24,7 +24,7 @@ constants, `IN` lists, `=` and `<>` filters, `CASE`, `COALESCE` and
 
 Not tracked: what is inside a string (`LIKE`, lengths), relations beyond
 "column plus constant", counts across rows
-([guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#contracts)).
+([guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-contracts.md#contracts)).
 
 ## SQL transformations
 
