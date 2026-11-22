@@ -110,6 +110,7 @@ A page of this kind runs its Python examples in `tests/test_readme.py`, and the 
 | [layers.md](layers.md) | The layers of the Python package |
 | [teaching.md](teaching.md) | How each feature is taught: its sentence, first contact, notebook and theorem; every refusal with its exit |
 | [build-performance.md](build-performance.md) | The Lean build's time and memory per module, how they are measured, and the budget CI checks |
+| [release-notes-1.0.0rc1.md](release-notes-1.0.0rc1.md) | A draft of 1.0.0rc1's notes: what an upgrade from 0.8.0 changes, from the changelog fragments |
 
 ## Where each topic lives
 
