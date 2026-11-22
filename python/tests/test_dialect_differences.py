@@ -63,7 +63,7 @@ def test_the_rounding_cast_is_refused_with_its_spellings(sql: str, spelling: str
 )
 def test_a_round_with_digits_is_not_integral_and_is_refused(sql: str) -> None:
     """`round(2.567, 2)` is 2.57, which DuckDB's cast rounds to 3 and the plan truncates to 2."""
-    with pytest.raises(UnsupportedError, match="DuckDB's cast"):
+    with pytest.raises(UnsupportedError, match="rounds half to even"):
         lift(sql, SCHEMA, "reference")
 
 

@@ -17,6 +17,7 @@ import Sverify.DuckDB.Lift.Reference.Math
 import Sverify.DuckDB.Lift.Reference.Table
 import Sverify.DuckDB.LiftCache
 import Sverify.DuckDB.LiftHint
+import Sverify.DuckDB.LiftRefines
 import Sverify.DuckDB.LiftSearch
 import Sverify.DuckDB.Lowering
 import Sverify.DuckDB.LoweringCache
