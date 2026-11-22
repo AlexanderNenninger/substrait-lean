@@ -27,7 +27,7 @@ import os
 import re
 import time
 import uuid
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import PurePosixPath, PureWindowsPath
