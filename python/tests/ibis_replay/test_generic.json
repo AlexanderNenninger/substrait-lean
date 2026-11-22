@@ -5,9 +5,9 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_generic",
   "summary": {
-    "agree": 181,
+    "agree": 183,
     "disagree": 1,
-    "refused": 33,
+    "refused": 31,
     "unproved": 1,
     "skipped": 17
   },
@@ -90,14 +90,10 @@
       "reason": "executes nothing"
     },
     "test_drop_null_table[duckdb-empty-all]": {
-      "outcome": "refused",
-      "construct": "IndexError: list index out of range",
-      "issue": 2155
+      "outcome": "agree"
     },
     "test_drop_null_table[duckdb-empty-any]": {
-      "outcome": "refused",
-      "construct": "IndexError: list index out of range",
-      "issue": 2155
+      "outcome": "agree"
     },
     "test_drop_null_table[duckdb-none-all]": {
       "outcome": "agree"

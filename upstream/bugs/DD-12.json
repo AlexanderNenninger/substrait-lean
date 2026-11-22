@@ -1,0 +1,28 @@
+{
+  "id": "DD-12",
+  "project": "duckdb",
+  "kind": "bug",
+  "version": "2.0.1",
+  "status": "confirmed",
+  "status_note": "Reproduces on 2.0.0 and 2.0.1 (the pinned release) with the `iceberg` extension from DuckDB's repository. No issue in duckdb/duckdb or duckdb/duckdb-iceberg names it (searched 2026-11-22). The extension's own version was not checked against its main.",
+  "title": "iceberg_scan fails with \"Invalid Avro file block count or size\" on a table whose snapshot has no manifests",
+  "summary": [
+    "`iceberg_scan` on the metadata of an Iceberg table that was overwritten with no rows raises `Invalid Input Error: Invalid Avro file block count or size`. The table's snapshot has a manifest list with no entries, which is valid Avro (fastavro reads it as an empty list) and which pyiceberg scans as 0 rows. DuckDB's reader takes the file with no data blocks as corrupt.",
+    "A table emptied by a delete that leaves a position-delete file reads as an empty result; the failure needs a snapshot with no manifests at all."
+  ],
+  "repro": "`t = catalog.create_table('db.t', schema=pa.schema([('id', pa.int64())])); t.append(pa.table({'id': [1]})); t.overwrite(pa.table({'id': pa.array([], pa.int64())}))`, then `INSTALL iceberg; LOAD iceberg; SELECT * FROM iceberg_scan('<t.metadata_location>')` (pyiceberg 0.10 with a SQLite catalog, DuckDB 2.0.1): the error. The same call before the overwrite returns `(1,)`.",
+  "handling": "None in sverify: it reads Iceberg with pyiceberg. The test of the quarantine table's readers (`python/tests/test_io_sink_readers.py`) reads an emptied quarantine table with pyiceberg only and says why.",
+  "found_by": "#2423: DuckDB's iceberg_scan as an outside reader of the quarantine table",
+  "files": [
+    "python/tests/test_io_sink_readers.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-22",
+      "against": {
+        "duckdb": "2.0.1"
+      },
+      "note": "repro run on the pinned release, with fastavro reading the manifest list; the extension's main not checked"
+    }
+  ]
+}

@@ -449,4 +449,320 @@ theorem Refresh.zombie_reachable : ∃ s, Reachable s ∧ s.log.length = 1 ∧ s
   have r6 := r5.step (.zombieLands _ ⟨⟨0, 0⟩, .replace, .none, 0⟩ (by exact .head _) rfl)
   exact ⟨_, r6, rfl, rfl, rfl⟩
 
+/-! ## What a write reads, and the order of the commits
+
+`ReadIsHead` and `Monotone` of `models/refresh/Refresh.tla`, for every scope.
+A write in flight remembers the log's length when it read the sink's record
+(`Out.head`). While the log still has that length, it is the log the write
+read: commits only add to it. So the write's change was computed from the
+newest commit of the node, and its state is above that commit's. -/
+
+namespace Refresh
+
+/-- Two adjacent commits of the node under one plan: the later one is of a
+later version of the source. A commit that follows another application's rows
+may write the same state again (a repair), so only adjacent commits count. -/
+def AdjOK : List Commit → Prop
+  | c' :: c :: rest =>
+      (c'.app = true → c.app = true → c.key.plan = c'.key.plan → c.key.ver < c'.key.ver) ∧
+        AdjOK (c :: rest)
+  | _ => True
+
+/-- What a write in flight read, while the log is still the one it read: the
+newest commit of the node under its plan is of an earlier version, and a
+change was computed from that very commit's state. -/
+def Reads (s : World) (o : Out) : Prop :=
+  s.log.length = o.head →
+    (∀ c rest, s.log = c :: rest → c.app = true → c.key.plan = o.key.plan →
+        c.key.ver < o.key.ver) ∧
+    (o.mode = .merge → kept s.log = true ∧ ∃ r, record s.log = some r ∧ o.base = r.tbl)
+
+def Inv2 (s : World) : Prop := AdjOK s.log ∧ ∀ o, Pending s o → Reads s o
+
+theorem record_cons {c : Commit} {rest : List Commit} (h : c.app = true) :
+    record (c :: rest) = some c.key := by
+  simp [record, List.find?, h]
+
+theorem kept_cons {c : Commit} {rest : List Commit} (h : c.app = true) :
+    kept (c :: rest) = true := by
+  simp [kept, h]
+
+/-- `next` writes under the record's plan only a later version. -/
+theorem next_ver {r : Key} {w : Writer} {m : Mode} {wr : Option Key}
+    (h : next (some r) true w = .write m wr) (hp : r.plan = w.plan) : r.ver < w.ver := by
+  by_cases hv : w.ver ≤ r.ver
+  · simp [next, hp, hv] at h
+  · omega
+
+theorem inv2_of_keep {s t : World} (hs : Inv2 s) (hlog : t.log = s.log)
+    (hp : ∀ o, Pending t o → Pending s o) : Inv2 t := by
+  refine ⟨by rw [hlog]; exact hs.1, fun o ho => ?_⟩
+  have := hs.2 o (hp o ho)
+  unfold Reads at this ⊢
+  rw [hlog]
+  exact this
+
+/-- A commit of `o` on the log `o` read. -/
+theorem inv2_of_commit {s t : World} {o : Out} (hi : Inv s) (hs : Inv2 s) (hpo : Pending s o)
+    (hc : s.log.length = o.head) (hlog : t.log = ⟨true, o.key⟩ :: s.log)
+    (hp : ∀ o', Pending t o' → Pending s o') : Inv2 t := by
+  have hr := hs.2 o hpo hc
+  refine ⟨?_, fun o' ho' => ?_⟩
+  · rw [hlog]
+    have h1 := hs.1
+    cases hl : s.log with
+    | nil => simp [AdjOK]
+    | cons c rest =>
+      rw [hl] at h1
+      exact ⟨fun _ hca hpl => hr.1 c rest hl hca hpl, h1⟩
+  · have hh := (hi.2 o' (hp o' ho')).1
+    intro heq
+    exfalso
+    rw [hlog] at heq
+    have heq' : s.log.length + 1 = o'.head := heq
+    omega
+
+theorem inv2_step {s t : World} (hi : Inv s) (hs : Inv2 s) (h : Step s t) : Inv2 t := by
+  cases h with
+  | start i _ =>
+    exact inv2_of_keep hs rfl fun o ho => pending_upd (by intro o' h; cases h) ho
+  | stop i _ _ =>
+    exact inv2_of_keep hs rfl fun o ho => pending_upd (by intro o' h; cases h) ho
+  | refresh i _ =>
+    exact inv2_of_keep hs rfl fun o ho => pending_upd (by intro o' h; cases h) ho
+  | prepare i hr =>
+    cases hnext : next (record s.log) (kept s.log) (s.ws i) with
+    | skip wr =>
+      simp only [World.prepare, hnext]
+      exact inv2_of_keep hs rfl fun o ho => pending_upd (by intro o' h; cases h) ho
+    | write m wr =>
+      simp only [World.prepare, hnext]
+      refine ⟨hs.1, fun o ho => ?_⟩
+      rcases ho with ⟨j, hj⟩ | hz
+      · dsimp only at hj
+        by_cases hji : j = i
+        · subst hji
+          rw [upd_same] at hj
+          simp only [Phase.writing.injEq] at hj
+          subst hj
+          intro _
+          refine ⟨fun c rest hl hca hpl => ?_, fun hm => ?_⟩
+          · have hrec : record s.log = some c.key := by rw [hl]; exact record_cons hca
+            have hk : kept s.log = true := by rw [hl]; exact kept_cons hca
+            rw [hrec, hk] at hnext
+            exact next_ver hnext hpl
+          · simp only at hm
+            subst hm
+            obtain ⟨r, hrec, hwr, hk⟩ := next_merge hnext
+            subst hwr
+            exact ⟨hk, r, hrec, rfl⟩
+        · rw [upd_other _ _ hji] at hj
+          exact hs.2 o (Or.inl ⟨j, hj⟩)
+      · exact hs.2 o (Or.inr hz)
+  | land i o hw hc =>
+    refine inv2_of_commit hi hs (Or.inl ⟨i, hw⟩) hc rfl fun o' ho' => ?_
+    exact pending_upd (s := s.commit o) (by intro o' h; cases h) ho'
+  | landLostAck i o hw hc =>
+    refine inv2_of_commit hi hs (Or.inl ⟨i, hw⟩) hc rfl fun o' ho' => ?_
+    have hw' : ∀ o'', ({ s.ws i with phase := .idle } : Writer).phase ≠ .writing o'' := by
+      intro o'' h; cases h
+    exact pending_upd (s := s.commit o) hw' ho'
+  | fail i o _ =>
+    exact inv2_of_keep hs rfl fun o' ho' => pending_upd (by intro o'' h; cases h) ho'
+  | conflict i o _ _ =>
+    exact inv2_of_keep hs rfl fun o' ho' => pending_upd (by intro o'' h; cases h) ho'
+  | crash i _ =>
+    apply inv2_of_keep (t := s.crash i) hs rfl
+    intro o ho
+    unfold World.crash at ho
+    rcases ho with ⟨j, hj⟩ | hz
+    · dsimp only at hj
+      by_cases hji : j = i
+      · subst hji; simp [upd_same] at hj
+      · exact Or.inl ⟨j, by simpa [upd_other _ _ hji] using hj⟩
+    · simp only at hz
+      split at hz
+      · next o' hph =>
+        rcases List.mem_cons.mp hz with rfl | hz
+        · exact Or.inl ⟨i, hph⟩
+        · exact Or.inr hz
+      · exact Or.inr hz
+  | zombieLands o hz hc =>
+    refine inv2_of_commit hi hs (Or.inr hz) hc rfl fun o' ho' => ?_
+    rcases ho' with ⟨j, hj⟩ | hz'
+    · exact Or.inl ⟨j, hj⟩
+    · exact Or.inr (List.mem_of_mem_erase hz')
+  | sourceChanges =>
+    exact inv2_of_keep hs rfl fun o ho => ho
+  | foreignWrite =>
+    refine ⟨?_, fun o ho => ?_⟩
+    · show AdjOK (⟨false, ⟨0, 0⟩⟩ :: s.log)
+      have h1 := hs.1
+      cases hl : s.log with
+      | nil => simp [AdjOK]
+      | cons c rest =>
+        rw [hl] at h1
+        exact ⟨fun h => absurd h (by simp), h1⟩
+    · have h' := (hi.2 o ho).1
+      intro heq
+      exfalso
+      have heq' : s.log.length + 1 = o.head := heq
+      omega
+  | deploy =>
+    exact inv2_of_keep hs rfl fun o ho => ho
+
+theorem inv2_reachable {s : World} (h : Reachable s) : Inv2 s := by
+  induction h with
+  | init => exact ⟨trivial, fun o ho => by rcases ho with ⟨_, h⟩ | h <;> cases h⟩
+  | step hr hst ih => exact inv2_step (inv_reachable hr) ih hst
+
+end Refresh
+
+/-- A change that lands applies to the newest commit of the node: while the
+log is still the one the write read, that commit is the sink's record, still
+the newest, and the change was computed against its table (#933, invariant 3:
+`ReadIsHead`). -/
+theorem Refresh.read_is_head {s : World} {o : Out} (h : Reachable s) (hp : Pending s o)
+    (hm : o.mode = .merge) (hc : s.log.length = o.head) :
+    kept s.log = true ∧ ∃ r, record s.log = some r ∧ o.base = r.tbl :=
+  ((inv2_reachable h).2 o hp hc).2 hm
+
+/-- Under one plan, adjacent commits of the node are of strictly increasing
+source versions: no state is committed twice in a row, and none goes back
+(#933, invariants 1 and 5: `Monotone`, and #889's `NoRewriteUnchanged`, which
+is the same fact: a state is a function of the plan and the version). -/
+theorem Refresh.monotone {s : World} (h : Reachable s) : AdjOK s.log :=
+  (inv2_reachable h).1
+
+/-! ## #889: what a new process does with the sink's record -/
+
+/-- A process whose view is the record's version commits nothing. -/
+theorem Refresh.next_unchanged {r : Key} {w : Writer} (hp : r.plan = w.plan)
+    (hv : w.ver = r.ver) : next (some r) true w = .skip (some r) := by
+  simp [next, hp, hv]
+
+/-- A process that holds the record as its own writes at most a change on it,
+never the whole table again (#889's `NoNeedlessRewrite`). -/
+theorem Refresh.next_resumes {r : Key} {w : Writer} (hp : r.plan = w.plan)
+    (hv : r.ver ≤ w.ver) (hw : w.written = some r) (wr : Option Key) :
+    next (some r) true w ≠ .write .replace wr := by
+  intro h
+  have hw0 : (if w.pend.isSome && w.pend == some r then w.pend else w.written) = some r := by
+    split
+    · next hc =>
+      simp [Option.isSome_iff_exists] at hc
+      exact hc.2
+    · exact hw
+  have hlt : ¬ w.ver ≤ r.ver ∨ w.ver = r.ver := by omega
+  simp only [next, hw0] at h
+  rcases hlt with hlt | heq
+  · simp [hp, hlt] at h
+  · simp [hp, heq] at h
+
+/-- A process's first refresh resumes from the record when it is the node's
+newest commit, under the process's plan, and not ahead of the source: what it
+commits next is a change on it or nothing. -/
+theorem Refresh.no_needless_rewrite (s : World) (i : Nat) (hf : (s.ws i).first = true)
+    {r : Key} (hk : kept s.log = true) (hr : record s.log = some r)
+    (hp : r.plan = (s.ws i).plan) (hv : r.ver ≤ s.src) (wr : Option Key) :
+    next (record (s.refresh i).log) (kept (s.refresh i).log) ((s.refresh i).ws i) ≠
+      .write .replace wr := by
+  simp only [World.refresh, upd_same, hf, hr, hk, hp, hv, decide_true, Bool.and_self,
+    ite_true, beq_self_eq_true]
+  exact next_resumes
+    (w := { s.ws i with phase := .ready, first := false, ver := s.src, written := some r })
+    hp hv rfl wr
+
+/-! ## Observably a failure-free run
+
+The failure-free system has one writer and no crash, zombie, lost
+acknowledgement, failed write or race of writers. Other applications still
+write to the sink, the source still changes and plans are still deployed. -/
+
+/-- One step of the failure-free system. -/
+inductive Step₀ : World → World → Prop where
+  | start (s : World) : (s.ws 0).phase = .down → Step₀ s (s.start 0)
+  | refresh (s : World) : (s.ws 0).phase = .idle → Step₀ s (s.refresh 0)
+  | prepare (s : World) : (s.ws 0).phase = .ready → Step₀ s (s.prepare 0)
+  | land (s : World) (o : Out) : (s.ws 0).phase = .writing o → s.log.length = o.head →
+      Step₀ s { s.commit o with
+        ws := upd s.ws 0 { s.ws 0 with phase := .idle, written := some o.key, pend := none } }
+  | sourceChanges (s : World) : Step₀ s { s with src := s.src + 1 }
+  | foreignWrite (s : World) : Step₀ s { s with log := ⟨false, ⟨0, 0⟩⟩ :: s.log, tbl := .foreign }
+  | deploy (s : World) : Step₀ s { s with deployed := s.deployed + 1 }
+
+inductive Reachable₀ : World → Prop where
+  | init : Reachable₀ {}
+  | step {s t} : Reachable₀ s → Step₀ s t → Reachable₀ t
+
+theorem Step₀.step {s t : World} (h : Step₀ s t) : Step s t := by
+  cases h with
+  | start => exact .start _ 0 ‹_›
+  | refresh => exact .refresh _ 0 ‹_›
+  | prepare => exact .prepare _ 0 ‹_›
+  | land o hw hc => exact .land _ 0 o hw hc
+  | sourceChanges => exact .sourceChanges _
+  | foreignWrite => exact .foreignWrite _
+  | deploy => exact .deploy _
+
+theorem record_foreign (k : Key) (log : List Commit) :
+    record (⟨false, k⟩ :: log) = record log := by
+  simp [record, List.find?]
+
+/-- What an observer of the sink sees: its table and the node's record. -/
+def obs (s : World) : Tbl × Option Key := (s.tbl, record s.log)
+
+/-- A failure-free run commits the state `p`, `v`: the source at version `v`,
+the plan `p` deployed. -/
+theorem reach₀_committed (k : Key) :
+    ∃ s, Reachable₀ s ∧ s.tbl = k.tbl ∧ record s.log = some k := by
+  have e0 : ∀ m, Reachable₀ ({ src := m } : World) := by
+    intro m
+    induction m with
+    | zero => exact .init
+    | succ m ih => exact ih.step (.sourceChanges _)
+  have e1 : ∀ n, Reachable₀ ({ src := k.ver, deployed := n } : World) := by
+    intro n
+    induction n with
+    | zero => exact e0 k.ver
+    | succ n ih => exact ih.step (.deploy _)
+  have r1 := (e1 k.plan).step (.start _ rfl)
+  have r2 := r1.step (.refresh _ rfl)
+  have r3 := r2.step (.prepare _ rfl)
+  have r4 := r3.step (.land _ ⟨k, .replace, .none, 0⟩ rfl rfl)
+  exact ⟨_, r4, rfl, rfl⟩
+
+/-- Every state of the sink an observer can see, in a run with crashes, zombies,
+lost acknowledgements and racing writers, is one a failure-free run reaches.
+It holds of the observation, the table and the node's record, and not of the
+run's steps: a failure-free run reaches the state by another order of source
+changes and deploys (#933: refinement). -/
+theorem Refresh.observable {s : World} (h : Reachable s) :
+    ∃ s₀, Reachable₀ s₀ ∧ obs s₀ = obs s := by
+  have ht := (inv_reachable h).1
+  unfold TblOK at ht
+  cases hl : s.log with
+  | nil =>
+    rw [hl] at ht
+    exact ⟨{}, .init, by simp [obs, hl, ht, record]⟩
+  | cons c rest =>
+    rw [hl] at ht
+    by_cases hc : c.app = true
+    · simp only [hc, ↓reduceIte] at ht
+      obtain ⟨s₀, h₀, e₁, e₂⟩ := reach₀_committed c.key
+      exact ⟨s₀, h₀, by simp [obs, hl, ht, e₁, e₂, record_cons hc]⟩
+    · have hc' : c.app = false := by simpa using hc
+      simp only [hc', Bool.false_eq_true, ↓reduceIte] at ht
+      cases hr : record s.log with
+      | none =>
+        refine ⟨_, Reachable₀.step .init (.foreignWrite _), ?_⟩
+        show (Tbl.foreign, record (⟨false, ⟨0, 0⟩⟩ :: ([] : List Commit))) = (s.tbl, record s.log)
+        rw [record_foreign, ht, hr]
+        rfl
+      | some k =>
+        obtain ⟨s₀, h₀, e₁, e₂⟩ := reach₀_committed k
+        refine ⟨_, h₀.step (.foreignWrite s₀), ?_⟩
+        show (Tbl.foreign, record (⟨false, ⟨0, 0⟩⟩ :: s₀.log)) = (s.tbl, record s.log)
+        rw [record_foreign, ht, hr, e₂]
+
 end Substrait

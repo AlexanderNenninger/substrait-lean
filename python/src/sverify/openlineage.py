@@ -1013,9 +1013,16 @@ def read(source: str | Path | Iterable[Mapping[str, Any]]) -> Events:
     """
     if isinstance(source, str | Path):
         text = Path(source).read_text(encoding="utf-8")
-        stripped = text.lstrip()
-        if stripped.startswith("["):
-            return Events(json.loads(text))
+        if text.lstrip().startswith(("[", "{")):
+            # One JSON document: a list, or one event over any number of lines.
+            try:
+                whole = json.loads(text)
+            except ValueError:
+                whole = None  # JSON lines, read below
+            if isinstance(whole, list):
+                return Events(whole)
+            if isinstance(whole, dict):
+                return Events([whole])
         events = []
         for line in text.splitlines():
             if line.strip():
