@@ -599,43 +599,90 @@ _BUCKET_ORIGIN = 946_857_600_000_000
 
 
 def _time_bucket(lf: _Lift, node: sge.DateBin, sub: Sub, scope: list[Column]) -> E:
-    """`time_bucket(width, ts[, origin])` for a constant width of days or less: `date_bin` from
-    DuckDB's default origin (2000-01-03), a constant timestamp origin, or the default plus a
-    constant interval (#347). Months, dates and a computed origin are refused."""
+    """`time_bucket(width, ts[, origin])` for a constant width (#347). A width of days or less is
+    `date_bin` from DuckDB's default origin (2000-01-03), a constant timestamp or date origin, or
+    the default plus a constant interval. A width of months floors the month count from the
+    origin's month (default 2000-01) to a multiple of the width. A DATE gives a DATE unless the
+    origin is a timestamp, and takes a width of whole days or months."""
     width = sub(node.this)
     if (
         not (width.constant and isinstance(width.value, tuple))
-        or width.value[0]
-        or width.value[1] <= 0
+        or (width.value[0] and width.value[1])
+        or width.value[0] + width.value[1] <= 0
     ):
         raise SqlUnsupported(
-            f"{_shown(node)}: time_bucket needs a constant width of days or less "
-            "(months are not supported yet)",
-            hint="use a width in days or less, such as INTERVAL 7 DAY, or write the step in Ibis",
+            f"{_shown(node)}: time_bucket needs a constant width of months, or of days or less",
+            hint="use a width such as INTERVAL 7 DAY or INTERVAL 3 MONTH, or write it in Ibis",
             construct="function time_bucket",
         )
+    months, width_us = width.value
     ts = _when(sub(node.expression))
-    if ts.type.is_date():
+    is_date = ts.type.is_date()
+    if is_date and width_us % _DAY:
         raise SqlUnsupported(
-            f"{_shown(node)}: time_bucket of a DATE is not supported yet; cast it to TIMESTAMP",
+            f"{_shown(node)}: time_bucket of a DATE needs a width of whole days or months",
+            hint="cast the date to TIMESTAMP, or use a width in days or months",
             construct="function time_bucket",
         )
-    origin = _BUCKET_ORIGIN
-    if (o := node.args.get("unit")) is not None:
-        o = sub(o)
-        if o.type.is_interval() and o.constant and not o.value[0]:
-            origin += o.value[1]
-        elif o.type.is_timestamp() and o.constant and (m := _timestamp_micros(o)) is not None:
-            origin = m
-        else:
+    o = None
+    if (o_node := node.args.get("unit")) is not None:
+        o = sub(o_node)
+        if not (
+            o.constant and (_origin_micros(o) is not None or o.type.is_interval() and not months)
+        ):
             raise SqlUnsupported(
                 f"{_shown(node)}: time_bucket needs a constant origin",
-                hint="give a constant timestamp or interval as the origin, or leave it out",
+                hint="give a constant timestamp or date as the origin, or leave it out",
                 construct="function time_bucket",
             )
+    if months:
+        return _month_bucket(lf, months, ts, o)
+    origin = _BUCKET_ORIGIN
+    stamp = False
+    if o is not None:
+        if o.type.is_interval():
+            origin += o.value[1]
+        else:
+            origin, stamp = _origin_micros(o), o.type.is_timestamp()
     origin_json = {"literal": {"precisionTimestamp": {"precision": 6, "value": str(origin)}}}
     a = lf.to(ts, _TS)
-    return E(_fn("date_bin", [interval_json(0, width.value[1]), a.json, origin_json], _TS), _TS)
+    out = _fn("date_bin", [interval_json(0, width_us), a.json, origin_json], _TS)
+    if is_date and not stamp:
+        return E(lf.to(E(out, _TS), dt.date).json, dt.date)
+    return E(out, _TS)
+
+
+def _month_bucket(lf: _Lift, months: int, ts: E, origin: E | None) -> E:
+    """The first of the month, `months` wide, counted from the origin's month: with the month
+    count `t` since year 0 and the origin's `c`, `c + ⌊(t - c) / months⌋ · months`. A year
+    outside 1 to 9999 raises, where DuckDB goes below year 1."""
+    c = 2000 * 12
+    if origin is not None:
+        c = _origin_date(origin).year * 12 + _origin_date(origin).month - 1
+    d = _day(lf, ts)
+    t = call("add", [call("multiply", [_part("year", d), _i64(12)]), _part("month", d)])
+    t = call("subtract", [t, _i64(1 + c)])
+    b = call("add", [call("multiply", [_floor_div(t, months), _i64(months)]), _i64(c)])
+    year = _floor_div(b, 12)
+    month = call("add", [call("subtract", [b, call("multiply", [year, _i64(12)])]), _i64(1)])
+    first = make_date_json(year, month, _i64(1))
+    if ts.type.is_date() and not (origin is not None and origin.type.is_timestamp()):
+        return E(first, dt.date)
+    return lf.to(E(first, dt.date), _TS)
+
+
+def _origin_date(e: E) -> dt_.date:
+    v = e.value
+    return v.date() if isinstance(v, dt_.datetime) else v
+
+
+def _origin_micros(e: E) -> int | None:
+    """The microseconds of a constant timestamp or date origin."""
+    if e.type.is_timestamp():
+        return _timestamp_micros(e)
+    if e.type.is_date() and isinstance(e.value, dt_.date):
+        return (e.value - dt_.date(1970, 1, 1)).days * _DAY
+    return None
 
 
 def _timestamp_micros(e: E) -> int | None:

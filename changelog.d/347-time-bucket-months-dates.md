@@ -1,0 +1,3 @@
+### The SQL lift reads `time_bucket` by months and of a DATE
+
+DuckDB SQL with `time_bucket(width, ts[, origin])` now lifts for a constant width in months or years, and for a `DATE` argument (part of [#347](https://github.com/AlexanderNenninger/substrait-lean/issues/347)). A month width counts from the origin's month (default 2000-01) and returns the first of the bucket's first month; a `DATE` with a width of whole days or months stays a `DATE`, unless the origin is a timestamp. A year before 1 or after 9999 raises where DuckDB goes below year 1. A width mixing months and days, a sub-day width of a `DATE`, and an interval origin of a month width are refused.
