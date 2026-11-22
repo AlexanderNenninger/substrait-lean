@@ -27,6 +27,7 @@ import Sverify.DuckDB.LoweringOn.Guards
 import Sverify.DuckDB.LoweringOn.Integers
 import Sverify.DuckDB.LoweringOn.Math
 import Sverify.DuckDB.LoweringOn.Native
+import Sverify.DuckDB.LoweringOn.Other
 import Sverify.DuckDB.LoweringOn.Powers
 import Sverify.DuckDB.LoweringOn.Table
 import Sverify.DuckDB.LoweringSchemas
