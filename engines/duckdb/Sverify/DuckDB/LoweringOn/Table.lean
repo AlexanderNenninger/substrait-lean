@@ -11,6 +11,7 @@ import Init.Data.List.Nat.Range
 import Sverify.Core.Profile
 import Sverify.DuckDB.LoweringOn.Native
 import Sverify.DuckDB.LoweringOn.Math
+import Sverify.DuckDB.LoweringOn.Other
 import Sverify.DuckDB.LoweringOn.Integers
 import Sverify.DuckDB.LoweringOn.Arith
 import Sverify.DuckDB.LoweringOn.Powers
@@ -181,7 +182,7 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("UnFn.wrap", "native", 0),
   ("UnFn.itos", "native", 0),
   ("UnFn.dtext", "native", 0),
-  ("UnFn.dtextFull", "native", 0),
+  ("UnFn.dtextFull", "hand-written schema: dtext of the decimal widened by one digit", 0),
   ("UnFn.dwiden", "native", 0),
   ("UnFn.widen", "native", 0),
   ("UnFn.atUtc", "native", 0),

@@ -194,17 +194,6 @@ abbrev Substrait.duckdbOn.dtext : Substrait.UnEntry (Substrait.Profile.duckdb (S
   Substrait.UnEntry.native Substrait.UnFn.dtext
   (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.dtext_native)
 
-theorem Substrait.duckdbOn.dtextFull_native : ∀ (x : Substrait.Value),
-  Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-      Substrait.UnFn.dtextFull x =
-    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.dtextFull x := by
-  native_tac
-
-abbrev Substrait.duckdbOn.dtextFull : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-  Substrait.UnFn.dtextFull :=
-  Substrait.UnEntry.native Substrait.UnFn.dtextFull
-  (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.dtextFull_native)
-
 theorem Substrait.duckdbOn.dwiden_native : ∀ (x : Substrait.Value),
   Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
       Substrait.UnFn.dwiden x =
