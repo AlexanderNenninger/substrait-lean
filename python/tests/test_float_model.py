@@ -131,7 +131,7 @@ def test_a_tolerance_below_the_bound_is_refused_at_verify(con, tol) -> None:
     assert f"lenses: equivalent(floats={tol}); the plan's bound on its doubles is " in text
     assert "NOT met: no engine meets the tolerance" in text
     assert "or looser in ensures" in text
-    with pytest.raises(RouteError, match="no engine meets the observation's tolerance"):
+    with pytest.raises(RouteError, match="no engine meets the lenses' tolerance"):
         report.run(con, "duckdb")
     with pytest.raises(ExportError, match="no engine meets"):
         report.to_substrait()
