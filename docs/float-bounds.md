@@ -359,7 +359,14 @@ core's codes with no trusted link; `NativeLink` remains the link for Lean's
 a `FloatSums` sum (`ANY`, `PAIRWISE`, `SEQUENTIAL`) of finite doubles is a
 `TreeSum` of their values (`FloatSums.treeSum`), so it meets the core's
 `SumBound` (`FloatSums.sumBound`), which `Rel.AllowedP` otherwise takes as
-given.
+given. `float-bounds/FloatBridge/Orders.lean` does the same for the two orders
+without a shape in `SumOrder`. Kahan's sum on codes (`kahanSum`) is `Rnd.kahan`
+step by step, so it meets `SumOrder` under `COMPENSATED`
+(`KahanSums.sumOrder`). A tree of sums whose constant runs enter as one
+product (`FloatSumsK`) is a `TreeSum` with `const` nodes, so it meets it under
+`SCALED_CONSTANT` (`FloatSumsK.sumOrder`). Both take the values to be doubles'
+codes (`FloatCode.Dbl`, ruling 268), which the reference keeps
+(`Rel.eval_dbl`, `Expr.eval_dbl`).
 
 `exp` is the platform's `libm` on both sides, which IEEE 754 does not
 require to round correctly. `NativeLink.exp` trusts it to one ulp, as glibc's
