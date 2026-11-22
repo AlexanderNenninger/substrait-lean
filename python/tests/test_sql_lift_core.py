@@ -187,6 +187,22 @@ def test_a_division_by_zero_in_a_between_raises_shared_or_in_place(operand):
     assert ok[0] is not None and ok[0] == ok[1], query
 
 
+@pytest.mark.parametrize(
+    "rows",
+    [[(1, 0), (2, 0)], [(-1, 0), (-2, 0)], [(1, 0), (-1, 0), (None, 0)], [(-1, 1), (3, 1)]],
+    ids=["lower passes", "lower is false", "mixed, with NULL", "no zero divisor"],
+)
+def test_a_division_by_zero_in_the_upper_bound_agrees_with_duckdb(rows):
+    """The upper bound is lifted without sharing (#2339): it is not bound below
+    the SELECT list, where it would be evaluated on rows the `AND` may not reach.
+    DuckDB and Lean give the same answer on every row set. Both raise by a zero
+    divisor even where the lower comparison is FALSE (neither short-circuits)."""
+    query = "SELECT x BETWEEN 0 AND 1 // y AS b FROM t"
+    duck, lean = _duckdb_and_lean(query, rows)
+    assert duck == lean
+    assert (duck is None) == any(y == 0 for _, y in rows)
+
+
 def test_nested_double_arithmetic_checks_quickly():
     # The check end to end, in a subprocess with a timeout: six divisions took
     # 193 s before #1952, ten now take a few seconds.
