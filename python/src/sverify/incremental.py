@@ -41,7 +41,7 @@ snapshot and records its version, and a refresh applies the format's change
 feed from the recorded version to the latest, advancing the version in the
 same commit. The feed is trusted to turn the old snapshot into the new one
 (`ChangeFeed`, `Rel.cdf_sound` in `analysis/Sverify/Analysis/TableFormat.lean`), and
-every `RefreshReport` says so; where the feed is unavailable, the new
+every `BatchRefresh` says so; where the feed is unavailable, the new
 snapshot is diffed against the view's state instead and the views reading it
 are recomputed (`ChangeFeed.of_diff`). A source whose schema changed is read
 in the schema the views were checked against where its data still fits
@@ -893,7 +893,7 @@ class SourceRefresh:
 
 
 @dataclass
-class RefreshReport:
+class BatchRefresh:
     """What one refresh did to a node's state: what it read from each
     source, how the preconditions on the batch were established, and how
     each view was brought up to date. `str()` gives one line per fact;
@@ -2162,7 +2162,7 @@ class Pipeline:
         audit: bool = False,
         until: Mapping[str, int] | None = None,
         retire: bool = True,
-    ) -> RefreshReport:
+    ) -> BatchRefresh:
         """Bring every source table to its latest version (or the version
         `until` names for it), and the views with it.
 
@@ -2365,7 +2365,7 @@ class Pipeline:
                 self.versions[t] = versions[t]
         for t, fs in snapshot_facts.items():
             register_facts(self.con, t, fs)
-        return RefreshReport(
+        return BatchRefresh(
             report,
             pending.found,
             {v.name: v.versions for v in self._views},
