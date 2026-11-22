@@ -744,7 +744,7 @@ def test_covariance_agrees_with_duckdb(rows):
         assert all(near(a, b) for a, b in zip(g, e, strict=True)), (g, e)
 
 
-B = ibis.table({"g": "int64", "year": "int64"}, name="t")
+BOOLS = ibis.table({"g": "int64", "year": "int64"}, name="t")
 
 
 def booleans_cov(t, fn: str, where: bool, how: str):
@@ -762,11 +762,11 @@ def test_covariance_of_booleans_is_written_and_agrees(fn, where, how):
     and compared with an integer zero. Lean, the written plan on DuckDB and
     Ibis's own DuckDB give the same value."""
     rows = [(10, 2009), (40, 2015), (50, 2015), (None, 2015), (20, 2000), (35, 2009)]
-    expr = booleans_cov(B, fn, where, how).name("v").as_table()
+    expr = booleans_cov(BOOLS, fn, where, how).name("v").as_table()
     plan = to_substrait_json(expr)
     (lean,) = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows})))
     con = connect()
-    con.create("t", B.schema(), rows)
+    con.create("t", BOOLS.schema(), rows)
     (written,) = sv.verify(expr, on_inferred="warn").run(con, "duckdb").column("v").to_pylist()
     memtable = ibis.memtable(pa.table({"g": [r[0] for r in rows], "year": [r[1] for r in rows]}))
     expected = ibis.duckdb.connect().execute(booleans_cov(memtable, fn, where, how))
