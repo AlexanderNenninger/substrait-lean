@@ -1,6 +1,7 @@
-"""A column of a precision other than microseconds is refused by the checker (#2004): the model's
-timestamps count microseconds, so a plan that compares `precision_timestamp(9)` with
-`precision_timestamp(6)` would compare raw counts of different units."""
+"""A column of a precision other than microseconds or nanoseconds is refused by the checker
+(#2004), and nanoseconds are a kind of their own (D61): a plan that compares
+`precision_timestamp(9)` with `precision_timestamp(6)` would compare raw counts of different
+units."""
 
 import json
 
@@ -38,10 +39,15 @@ def test_microseconds_are_read():
     assert code in (0, 4), err
 
 
-@pytest.mark.parametrize("precision", [0, 3, 9])
+@pytest.mark.parametrize("precision", [0, 3])
 def test_a_precision_other_than_microseconds_is_refused(precision):
     code, _, err = run_checker((), _patched(precision))
     assert code != 0 and "microseconds" in err, (code, err)
+
+
+def test_nanoseconds_compared_with_microseconds_are_refused():
+    code, _, err = run_checker((), _patched(9))
+    assert code != 0 and "nanoseconds" in err and "2262-04-11" in err, (code, err)
 
 
 def _casts(x):

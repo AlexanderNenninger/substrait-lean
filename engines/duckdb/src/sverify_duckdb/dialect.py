@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import ClassVar
 
+from sverify._unsupported import DECIMAL_38_38
 from sverify.black_box import BlackBox
 from sverify.sql.core import (
     I64_MAX,
@@ -179,6 +180,16 @@ class DuckDBDialect(Dialect):
             return f"CAST({x} AS HUGEINT)"
         whole = f"CAST(TRUNC({x}) AS HUGEINT) * {10**s}"
         return f"({whole} + CAST(({x} - TRUNC({x})) * {10**s} AS HUGEINT))"
+
+    def decimal_to_str(self, a: str, p: int, s: int) -> str:
+        """DuckDB prints a `DECIMAL(p, p)` without its integer part (`.500`): the text of the
+        decimal at one more digit of precision has it (D72, `UnFn.dwiden`, ruling 245). A
+        `DECIMAL(38, 38)` has no wider type."""
+        if p != s:
+            return super().decimal_to_str(a, p, s)
+        if p >= 38:
+            raise Unsupported(DECIMAL_38_38)
+        return self.cast(self.cast(a, Dec(p + 1, s)), "str")
 
     def decimal_div(self, a: str, b: str, sa: int, k: Dec) -> str:
         """As the base writes it, with the quotient `⌊(2·|u|·10ᵏ + |n|) / 2|n|⌋`

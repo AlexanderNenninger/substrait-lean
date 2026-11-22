@@ -4,7 +4,7 @@ The parser used to evaluate each row with the total evaluator at parse time,
 so an overflow or a zero divisor in a computed row vanished from the safety
 analysis, and it never compared a cell or a literal with its declared type, so
 `--write` could emit a plan no consumer accepts. A hand-written plan reaches
-this through `substrait-check` and `sverify.from_substrait`.
+this through `substrait-check` and `Report.from_substrait`.
 """
 
 import json

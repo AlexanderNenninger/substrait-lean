@@ -816,7 +816,7 @@ class Report:
             ValueError: The plan carries no sverify contract, or the
                 checker rejects the plan.
         """
-        return _hooks.export().recheck(data)
+        return _hooks.export()._recheck(data)
 
     @overload
     def to_substrait(
@@ -2624,9 +2624,12 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
     """Rows of a bound table where `cond` is not TRUE (FALSE or NULL), or for
     `unique`, rows beyond the first for each repeated key.
 
-    With an engine named, the condition's plan runs there, over the tables of
-    the connection `table` is bound to, and counts the rows in the engine
-    (no row reaches Python); otherwise Ibis counts on that connection."""
+    The condition's plan, as the checker wrote it, runs on `engine`, or with
+    none named on the engine of the connection `table` is bound to, over that
+    connection's tables, and counts the rows in the engine (no row reaches
+    Python; F219). A table of another Ibis backend is counted by Ibis there."""
+    if engine is None:
+        engine = _own_engine(table)
     if not isinstance(cond, TableCondition) and engine is not None:
         con = connection_of(table)
         if con is None:
@@ -2650,6 +2653,14 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         return int(backend.raw_sql(query).fetchall()[0][0])
     count: Any = table.filter(~resolve(cond, table).fill_null(ibis.literal(False))).count()
     return _count(count)
+
+
+def _own_engine(table: ir.Table) -> Engine | None:
+    """The engine of the `sverify.connect()` connection `table` is bound to,
+    which runs its data checks when none is named; None for a table of
+    another Ibis backend."""
+    con = connection_of(table)
+    return None if con is None else con.engine
 
 
 def _table_violations(table: ir.Table, cond: TableCondition, engine: str | None) -> int:
@@ -2708,8 +2719,10 @@ def violation_counts(
     per table where each condition had one. A plan that raises is a violation
     of the first condition that raises alone. A condition the writer refuses
     for the engine refuses the check (`SverifyError`), with no fallback to
-    Ibis. Without an `engine`, Ibis counts each condition on the table's own
-    backend (`violations`)."""
+    Ibis. Without an `engine`, the connection's engine runs them; Ibis counts
+    each condition on a table of another backend (`violations`)."""
+    if engine is None:
+        engine = _own_engine(table)
     counts: dict[int, tuple[int, str | None]] = {}
     on_table = [i for i, c in enumerate(conds) if isinstance(c, TableCondition)]
     if on_table:

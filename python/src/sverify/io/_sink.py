@@ -67,6 +67,7 @@ class SinkChange:
 
     def __init__(
         self,
+        *,
         view: IncrementalView,
         contract: Contract,
         schema: pa.Schema,
@@ -393,7 +394,12 @@ class Sink:
             # of a crashed one). Replace the rows (#963).
             self._written = None
         since = None if self._written is None else view.changes_since(self._written)
-        change = SinkChange(view, contract, sink_schema(view, contract.not_null), since)
+        change = SinkChange(
+            view=view,
+            contract=contract,
+            schema=sink_schema(view, contract.not_null),
+            change=since,
+        )
         self._pending = (view.serial, contract)
         try:
             out = self.write(change)
