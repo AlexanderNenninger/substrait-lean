@@ -130,6 +130,10 @@ def _sql(q: ibis.Table, two: bool, **kw) -> str:
 WRITTEN = {name: (_sql(q, False), _sql(q, True)) for name, q in SHAPES.items()}
 
 
+#: The errors a grouped double `SUM` or `AVG` raises.
+RAISES = {"domain error", "overflow to infinity"}
+
+
 def _run(sql: str, rows: list[tuple], extra: list[tuple]) -> object:
     con = duckdb.connect()
     k, s, x, y = zip(*rows, strict=True) if rows else ([], [], [], [])
@@ -143,8 +147,10 @@ def _run(sql: str, rows: list[tuple], extra: list[tuple]) -> object:
         out = con.execute(sql).fetchall()
     except duckdb.Error as e:
         kind = re.search(r"sverify: ([a-z ]+):", str(e))
-        assert kind, e
-        return ("refused", kind.group(1))
+        assert kind and kind.group(1) in RAISES, e
+        # Which error a run reports is open: the reference says that the plan
+        # raises, not which group's error comes first (`Issue` is a set).
+        return "raised"
     # NaN is equal to itself here, and rows come in any order.
     return sorted(repr(r) for r in out)
 
@@ -170,8 +176,9 @@ def _nonfinite_groups(rows: list[tuple]) -> int:
 @example(rows=[(1, "a", None, None), (2, "b", 1.0, 2.0)], extra=[(2, 1.0)])
 @example(rows=[], extra=[])
 def test_two_stages_give_what_one_stage_gives(shape, rows, extra):
-    """B2: on every input, two stages give the one-stage form's rows, or a
-    refusal of the same kind (a domain error, an overflow to infinity)."""
+    """B2: on every input, two stages give the one-stage form's rows, or both
+    raise. Where groups fail differently (one overflows, one is a domain error)
+    each plan may report either error: the reference leaves the order open."""
     target(_nonfinite_groups(rows), label="groups whose sum is not finite")
     one, two = WRITTEN[shape]
     assert "WITH" in two and "WITH" not in one  # B3: the two-stage form was written
