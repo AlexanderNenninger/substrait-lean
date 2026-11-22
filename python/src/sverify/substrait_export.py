@@ -250,7 +250,9 @@ def ty_of(j: Json) -> Ty:
 
 # -- the YAMLs' type expressions ---------------------------------------------
 
-_TOKEN = re.compile(r"\s*(\d+|[A-Za-z_!][A-Za-z_0-9!]*|&&|\|\||[<>=!]=|[-+*/(),?:<>!])")
+# The two-character operators first, so `!=` is no `!`; a name may hold `!`
+# (a user type's `u!name`) but not start with it, so `!x` is a negation.
+_TOKEN = re.compile(r"\s*(\d+|&&|\|\||[<>=!]=|[A-Za-z_][A-Za-z_0-9!]*|[-+*/(),?:<>!])")
 
 
 def _tokens(s: str) -> list[str]:
