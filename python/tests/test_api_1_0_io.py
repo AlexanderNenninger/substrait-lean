@@ -101,8 +101,7 @@ def test_a_transform_has_a_report() -> None:
     t = ibis.table({"k": "int64"}, name="t")
     _quiet(keep, t)
     assert keep.report is not None and keep.report.verdict == sv.Verdict.PROVED
-    with pytest.warns(DeprecationWarning, match=r"read \.report"):
-        assert keep.last_report is keep.report
+    assert not hasattr(keep, "last_report")
     assert keep.report.preconditions == []
 
 
@@ -169,12 +168,12 @@ def test_maintain_takes_the_constructors_names(tmp_path) -> None:
 def test_a_static_source_needs_a_name() -> None:
     t = pa.table({"k": [1]})
     assert _quiet(StaticSource, t, name="k", version=2).version == 2
-    with pytest.warns(DeprecationWarning, match="without name="):
-        assert StaticSource(t).name == "table"
-    with pytest.warns(DeprecationWarning, match=r"StaticSource\(table, version\)"):
-        assert StaticSource(t, 3, name="k").version == 3  # type: ignore[misc]
-    with pytest.warns(DeprecationWarning, match="without name="):
-        source(t)
+    with pytest.raises(TypeError):
+        StaticSource(t)  # type: ignore[call-arg]
+    with pytest.raises(TypeError):
+        StaticSource(t, 3, name="k")  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        source(t)  # type: ignore[call-arg]
 
 
 # -- E5: snake_case values ----------------------------------------------------------------

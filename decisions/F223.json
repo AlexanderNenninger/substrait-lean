@@ -4,12 +4,17 @@
   "decided_by": "fable",
   "scope": "engines",
   "status": "in-force",
-  "summary": "On a checked translated run under the reference, Report.run writes checker-marked expressions without their checks, finite included, on each engine with a checked instance of Rel.evalG_marks; DuckDB's whole-plan guard_free stays refused; order of #1787's research items 1a, 2, 1b, 3, with 4 after its lemma. Amends nothing; applies ruling 150's C1 and keeps rulings 195 and 212.",
+  "summary": "On a checked translated run under the reference, `Report.run` writes checker-marked expressions without their checks, `finite` included, on each engine with a checked instance of `Rel.evalG_marks`; DuckDB's whole-plan `guard_free` stays refused; #1787's research order is 1a, 2, 1b, 3, then 4.",
   "issues": [
     1787
   ],
-  "source": "fable-ruling-223-1787-research-note-order-and-marks.md",
+  "prs": [
+    2112
+  ],
   "amended_by": [
-    "F226"
-  ]
+    "F226",
+    "F238"
+  ],
+  "source": "fable-ruling-223-1787-research-note-order-and-marks.md",
+  "note": "Applies ruling 150's C1 and keeps rulings 195 and 212. No D-number."
 }

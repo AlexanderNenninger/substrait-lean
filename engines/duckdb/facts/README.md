@@ -177,7 +177,7 @@ cd python && uv run python -m sverify_dev.slt --jobs 2
 ```
 
 <!-- slt:start -->
-Totals over 46634 queries of DuckDB's tests: 12923 agree, 32 disagree, 21245 refused, 12434 skipped (1042 files skipped whole). The fuzzer's ledgers (`fuzz/*`) hold 75299 generated queries: 75299 agree, 0 disagree.
+Totals over 46634 queries of DuckDB's tests: 12926 agree, 29 disagree, 21245 refused, 12434 skipped (1042 files skipped whole). The fuzzer's ledgers (`fuzz/*`) hold 75299 generated queries: 75299 agree, 0 disagree.
 
 | Area | Agree | Oracle A only | Disagree | Disagree side | Refused | Skipped | Files skipped | Refused by |
 |---|---:|---:|---:|---|---:|---:|---:|---|
@@ -213,7 +213,7 @@ Totals over 46634 queries of DuckDB's tests: 12923 agree, 32 disagree, 21245 ref
 | [function/generic](../replay/function__generic.json) | 52 | 4 | 0 |  | 219 | 153 | 2 | lift 214, checker 4 |
 | [function/index](../replay/function__index.json) | 0 | 0 | 0 |  | 27 | 20 | 0 | lift 27 |
 | [function/interval](../replay/function__interval.json) | 8 | 0 | 0 |  | 29 | 131 | 0 | lift 29 |
-| [function/list](../replay/function__list.json) | 130 | 10 | 4 | both 4 | 1826 | 1563 | 11 | lift 1736, tables 54 |
+| [function/list](../replay/function__list.json) | 133 | 4 | 1 | both 1 | 1826 | 1563 | 11 | lift 1736, tables 54 |
 | [function/nested](../replay/function__nested.json) | 0 | 0 | 0 |  | 32 | 10 | 0 | lift 32 |
 | [function/numeric](../replay/function__numeric.json) | 55 | 0 | 0 |  | 230 | 199 | 0 | lift 229, tables 1 |
 | [function/operator](../replay/function__operator.json) | 68 | 2 | 0 |  | 98 | 74 | 0 | lift 98 |

@@ -171,7 +171,7 @@ def load(project: str | Path, target_path: str | Path = "target") -> Project:
     path = target / "manifest.json"
     if not path.is_file():
         raise ProjectError(f"no {path}: run `dbt compile` in {root} first")
-    manifest = json.loads(path.read_text())
+    manifest = json.loads(path.read_text(encoding="utf-8"))
     meta = manifest.get("metadata", {})
     schema = str(meta.get("dbt_schema_version") or "")
     if not schema.endswith("/manifest/v12.json"):
@@ -295,7 +295,7 @@ def _catalog(path: Path) -> dict[str, dict[str, str]]:
     """The column types of each relation in catalog.json, by unique id."""
     if not path.is_file():
         return {}
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     out = {}
     for uid, entry in [*data.get("nodes", {}).items(), *data.get("sources", {}).items()]:
         cols = sorted((entry.get("columns") or {}).values(), key=lambda c: c.get("index", 0))

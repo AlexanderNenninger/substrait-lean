@@ -14,5 +14,5 @@
     "F59"
   ],
   "source": "fable-ruling-322-rounding-cast.md",
-  "note": "Ruling 106. D55 'replaces the dated amendment to D42 of my 2026-11-18 ruling'; D42's rounding row gets a pointer to D55. Follows ruling 105 with the user's (b). Snowflake: details in the private evidence."
+  "note": "Ruling 106. D55 'replaces the dated amendment to D42 of my 2026-11-18 ruling'; D42's rounding row gets a pointer to D55. Follows ruling 105 with the user's (b). It lifts the 2026-11-18 cast ruling's two refusals (the bare CAST(x AS BIGINT) and decimal to integer); the composition over round, floor, ceil and trunc stands. Snowflake: details in the private evidence."
 }

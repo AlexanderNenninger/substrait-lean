@@ -4,7 +4,7 @@
   "decided_by": "fable",
   "scope": "engines",
   "status": "in-force",
-  "summary": "Ruling 80's point 5: #1690 gets no pyspark version refusal; the reference raises before Spark's collated form sees one, so the guard is one set on every supported pyspark.",
+  "summary": "#1690 gets no pyspark version refusal: the 28 scalars of fact L2 lie inside the reference's raise sets on every probed pyspark, so one guard set serves all.",
   "prs": [
     1690
   ],
@@ -12,5 +12,5 @@
     "F80"
   ],
   "source": "fable-rulings-night-1117.md, entry 83",
-  "note": "Log entry 83."
+  "note": "Log entry 83; closes ruling 80's point 5. D70 later refuses versions outside the probed minor on its own grounds; ruling 83 is about the case tables only."
 }

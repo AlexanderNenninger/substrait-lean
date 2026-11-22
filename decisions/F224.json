@@ -1,0 +1,16 @@
+{
+  "id": "F224",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "Sverify sets no nest-depth limit for Spark; Spark's `FAILED_TO_PARSE_TOO_COMPLEX` on sverify-written SQL becomes a sverify error, and the parse limit is an engine fact.",
+  "prs": [
+    2030
+  ],
+  "amends": [
+    "F222"
+  ],
+  "source": "fable-ruling-224-2030-r4-spark-parser-depth.md",
+  "note": "Replaces ruling 222's 'did not finish in 600 s' wording."
+}

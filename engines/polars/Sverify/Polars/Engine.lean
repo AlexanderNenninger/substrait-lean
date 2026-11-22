@@ -1,4 +1,5 @@
 import Sverify.Polars.Profile
+import Sverify.Polars.Lowering
 import Sverify.Polars.Tables
 import Sverify.Engines.Sound
 
@@ -82,6 +83,48 @@ theorem Polars.written_within : Polars.written.Within Profile.polars.table := by
         cases f <;> simp [nanCase] at hn <;> first | exact extraAt_of_all Profile.polars_extras (by decide) | exact absurd rfl hp | exact absurd rfl hi
     · exact .inl rfl
   · exact .inl rfl
+
+/-- **`Profile.polars`'s unary functions are within Polars's table** (S1,
+ruling 235): each is the reference's, but `round` and `ceil`'s IEEE `-0.0`
+for a negative value that rounds to zero, in the scope of `round_zero_sign`,
+which Polars's table allows (`IEEE`, D34). -/
+theorem Profile.polars_un_within (f : UnFn) (v w : Value) (h : Profile.polars.un f v = .ok w) :
+    w = f.apply v ∨ CallExtra Profile.polars.table (.un f) [v] := by
+  have hx : ∀ g : UnFn, g = .fround ∨ g = .fceil →
+      extraAtB Profile.polars.table (.un g) "round_zero_sign" = true := by
+    rintro g (rfl | rfl) <;> decide
+  cases hf : f.polarsTmpl with
+  | none => simp only [Profile.polars, hf] at h; exact .inl (raiseIf_ok h)
+  | some t =>
+    have hfc : f = .fround ∨ f = .fceil := by
+      cases f <;> simp only [UnFn.polarsTmpl, reduceCtorEq] at hf <;> simp
+    rcases hfc with rfl | rfl
+    · cases v
+      case float c =>
+        rw [Profile.polars_un_negZero (f := .fround) rfl (fun _ => rfl) FloatCode.round_negZero
+          FloatCode.round_negNan (fun _ h => FloatCode.canon_round h)] at h
+        by_cases hc : c < 0 ∧ FloatCode.round c = 0
+        · simp only [hc, and_self, ↓reduceIte, Option.getD_some, Except.ok.injEq] at h
+          subst h
+          exact .inr (callExtra_of_at (hx _ (.inl rfl)) (by
+            simp [optionScope, Functions.Ctor.result, UnFn.apply, Value.hasZero,
+              FloatCode.isZeroCode, hc.2]))
+        · simp only [hc, ↓reduceIte, Option.getD_none, Except.ok.injEq] at h
+          exact .inl (by rw [← h]; rfl)
+      all_goals exact .inl (raiseIf_ok ((Profile.polars_un_not_float _ _ (fun _ h => by cases h)).symm.trans h))
+    · cases v
+      case float c =>
+        rw [Profile.polars_un_negZero (f := .fceil) rfl (fun _ => rfl) FloatCode.ceil_negZero
+          FloatCode.ceil_negNan (fun _ h => FloatCode.canon_ceil h)] at h
+        by_cases hc : c < 0 ∧ FloatCode.ceil c = 0
+        · simp only [hc, and_self, ↓reduceIte, Option.getD_some, Except.ok.injEq] at h
+          subst h
+          exact .inr (callExtra_of_at (hx _ (.inr rfl)) (by
+            simp [optionScope, Functions.Ctor.result, UnFn.apply, Value.hasZero,
+              FloatCode.isZeroCode, hc.2]))
+        · simp only [hc, ↓reduceIte, Option.getD_none, Except.ok.injEq] at h
+          exact .inl (by rw [← h]; rfl)
+      all_goals exact .inl (raiseIf_ok ((Profile.polars_un_not_float _ _ (fun _ h => by cases h)).symm.trans h))
 
 /-- Polars, as the translation writes the plan (`Polars.written`). -/
 def Engine.polars : Engine where

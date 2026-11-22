@@ -1,0 +1,13 @@
+{
+  "id": "F233",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "The replay's 32-bit narrowing raise in `signed_cast_repro` is D54's error side: DuckDB's INT arithmetic raises natively and its filter skipped the operand; no lens change.",
+  "issues": [
+    747
+  ],
+  "source": "fable-ruling-233-234-replay-cast-and-sum.md",
+  "note": "In ruling 230's harness class: the harness reads `issues()` on a sverify-tagged raise (C1); a raise with no listed issue is a gap (C2)."
+}

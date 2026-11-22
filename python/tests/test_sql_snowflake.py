@@ -32,7 +32,7 @@ import sqlglot
 import sverify as sv
 from _repo import needs_repo
 from sverify.engine import run_checker
-from sverify.engines import substrait_json
+from sverify.engines.plan import substrait_json
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import delta_plans
 from sverify.sql import Dialect, Unsupported, to_sql
@@ -112,7 +112,7 @@ def accepted_fixtures() -> list[Path]:
 
 def fixture_plan(path: Path) -> dict:
     """A fixture's plan."""
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def pipeline_plans() -> dict[str, dict]:
@@ -646,8 +646,11 @@ def run_semantics(cur) -> None:
     )
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def fakesnow_cursor():
+    # Per test: fakesnow patches `snowflake.connector.connect` while it is
+    # open, and a module-wide patch would turn the real leg below into
+    # another emulated run.
     fakesnow = pytest.importorskip("fakesnow")
     import snowflake.connector
 
@@ -725,9 +728,8 @@ def test_real_snowflake_matches_lean():
         schema = f"SVERIFY_{uuid.uuid4().hex[:12].upper()}"
         try:
             cur.execute(f'CREATE SCHEMA "{schema}"')
-        except snowflake.connector.errors.ProgrammingError as e:
-            if e.errno != 3001:  # insufficient privileges
-                raise
+        except snowflake.connector.errors.ProgrammingError:
+            # The role may not create a schema: the temporary tables isolate the run.
             schema = None
         try:
             if schema:

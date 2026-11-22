@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import warnings
 from collections.abc import Iterable, Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -37,7 +36,6 @@ from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.chec
     CheckerVersionError,
     _checker_file,
     _run_checker,
-    checker_env,
     checker_path,
     checker_refusal,
     run_checker,
@@ -112,7 +110,7 @@ class _Refusal:
 
 
 class _Arrow(MutableMapping[str, pa.Table]):
-    """`Connection.arrow`: the connection's tables as Arrow tables. A table
+    """`Connection._arrow`: the connection's tables as Arrow tables. A table
     DuckDB reads where it is (a `Scan` or `Resident`) is read into Arrow
     when it is first looked up here, and is held as that Arrow table from
     then on."""
@@ -169,10 +167,6 @@ class Connection:
 
     Attributes:
         engine: The engine that runs plans unless a call names another.
-        arrow: Deprecated: the tables by name, as Arrow tables; `get`,
-            `rows` and `put` read and write them.
-        ibis: Deprecated: the Ibis DuckDB backend the bound tables read
-            through; `table(name).get_backend()` is the same backend.
 
     Raises:
         ValueError: `engine` is unknown.
@@ -182,15 +176,10 @@ class Connection:
         from sverify import profiles
 
         plugin = profiles.find(engine if engine is not None else _engines.default())
-        if plugin is not None and plugin.runner is not None and not plugin.local:
-            missing = [m for m in plugin.modules or (plugin.engine,) if not _importable(m)]
-            if missing:
-                raise ImportError(
-                    f"engine {plugin.engine!r} cannot run plans here: {', '.join(missing)} "
-                    f"is not installed (pip install 'sverify[{plugin.engine}]')"
-                )
         if plugin is None or not plugin.local:
-            raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
+            raise _engines.not_installed(plugin.engine if plugin else engine) or ValueError(
+                f"unknown engine {engine!r}; expected one of {ENGINES}"
+            )
         self.engine: Engine = plugin.engine  # type: ignore[assignment] - an installed engine's name
         self._tables: dict[str, pa.Table | Native] = {}
         self._views: dict[str, Any] = {}
@@ -219,27 +208,6 @@ class Connection:
         """
         schema = ibis.Schema.from_pyarrow(self.schema(name))
         return ops.DatabaseTable(name, schema=schema, source=self._source).to_expr()
-
-    @property
-    def arrow(self) -> MutableMapping[str, pa.Table]:
-        """Deprecated: the tables by name, as Arrow tables."""
-        warnings.warn(
-            "Connection.arrow is deprecated; read a table with con.get(name) or "
-            "con.rows(name), and write one with con.put(name, table)",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._arrow
-
-    @property
-    def ibis(self) -> Any:
-        """Deprecated: the Ibis DuckDB backend the bound tables read through."""
-        warnings.warn(
-            "Connection.ibis is deprecated; con.table(name).get_backend() is the same Ibis backend",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._ibis
 
     @property
     def _ibis(self) -> Any:
@@ -451,8 +419,9 @@ def lift_sql(schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "ref
 def lift_sql_plan(
     schemas: Mapping[str, ibis.Schema], sql: str, semantics: str = "reference"
 ) -> Any:
-    """The lift of `sql` (`sverify.sql_lift.Lifted`) over the tables of
-    `schemas` it reads."""
+    """The lift of `sql`, DuckDB's SQL (`sverify.sql_lift.Lifted`), over the
+    tables of `schemas` it reads. A string of `verify` is DuckDB's; `sverify.sql`
+    reads other dialects through their front-ends (`ProfilePlugin.sql`)."""
     from sverify.sql_lift import full_name, lift
 
     try:
@@ -490,7 +459,7 @@ def canonical(table: pa.Table) -> pa.Table:
 class NotIncrementalError(SverifyError):
     """The plan is outside the fragment with verified delta rules.
 
-    Raised by `sverify.engines.delta_plans` for a plan with an operator
+    Raised by `sverify.engines.plan.delta_plans` for a plan with an operator
     without a delta rule (a left join, aggregate, window, `DISTINCT` or
     `LIMIT`). A node over such a plan is recomputed and diffed instead, so
     refreshing it does not raise this. (A view that ends in `COUNT` and `SUM`
@@ -512,7 +481,7 @@ def delta_plans(plan_json: str) -> list[str]:
 
     Args:
         plan_json: A Substrait plan as protobuf JSON, as
-            `sverify.engines.substrait_json` or a node's `plan` write it.
+            `sverify.engines.plan.substrait_json` or a node's `plan` write it.
 
     Returns:
         The delta plan, a Substrait JSON plan in Lean's written form, as a
@@ -599,7 +568,7 @@ def written_plan(plan_json: str) -> str:
     (`substrait-check --write`; the golden tests check this round trip), once
     the checker has found it well-formed.
 
-    This is the form `sverify.engines.run` and `sverify.engines.to_sql`
+    This is the form `sverify.engines.run` and `sverify.engines.plan.to_sql`
     take, and what a node's `plan` holds.
 
     Args:
@@ -664,16 +633,16 @@ def run_plan(
     on the local Spark session (`sverify_spark.engine.session`), and a Spark
     session as `engine` runs it there.
 
-    DuckDB runs the SQL `sverify.engines.to_sql` writes for the plan, Polars
+    DuckDB runs the SQL `sverify.engines.plan.to_sql` writes for the plan, Polars
     a translation to a lazy frame, Spark the Spark SQL
-    `sverify.engines.to_sql` writes in Spark's dialect
+    `sverify.engines.plan.to_sql` writes in Spark's dialect
     (`sverify_spark.dialect.SPARK`); each gives the result `Rel.eval` gives.
     This is `sverify.engines.run`.
 
     Args:
         con: The connection whose tables the plan reads.
         plan_json: A plan in Lean's written form (a node's `plan`, or
-            `sverify.engines.written_plan`'s output).
+            `sverify.engines.plan.written_plan`'s output).
         engine: `"duckdb"`, `"polars"`, `"spark"`, or a Spark session.
             Default: the connection's engine.
         keep: On DuckDB, leave the result in DuckDB, as a `Resident` table.
@@ -744,22 +713,30 @@ def _run_plan(
     tie_free: bool = False,
     asof: Sequence[dict] = (),
     unchecked: dict | None = None,
+    rows: Literal["sequence", "multiset"] | None = None,
 ) -> pa.Table | Resident:
     """`run_plan`, and with `unchecked` the plan's marks (`Rel.marks`):
     `Report.run` passes them on a checked run, to an engine the checker names
-    a `"marks_theorem"` for (ruling 223), whose runner takes the keyword."""
+    a `"marks_theorem"` for (ruling 223), whose runner takes the keyword.
+    `rows` is `to_sql`'s, for a runner whose `ProfilePlugin.rows` is
+    `"sequence"`: `Report.run` passes `"multiset"` where the result needs no
+    ordinal (`Report._ordinal_free`)."""
     from sverify import profiles
 
     engine = engine or con.engine
     plugin = profiles.find(engine)
     if plugin is None or plugin.runner is None:
-        raise ValueError(f"unknown engine {engine!r}; expected one of {ENGINES}")
+        raise _engines.not_installed(engine) or ValueError(
+            f"unknown engine {engine!r}; expected one of {ENGINES}"
+        )
     # A session of the caller's (Spark's) runs the plan there; a name, on the
     # engine's own.
     session = None if isinstance(engine, str) else engine
     extra: dict[str, Any] = {"asof": asof} if asof else {}
     if unchecked is not None:
         extra["unchecked"] = unchecked
+    if rows is not None:
+        extra["rows"] = rows
     out = plugin.runner(
         con, plan_json, session, keep=keep, finite=finite, tie_free=tie_free, **extra
     )
@@ -767,14 +744,20 @@ def _run_plan(
 
 
 def run_guard_free(
-    con: Connection, plan_json: str, engine: str, theorem: str | None, *, finite: Finite = True
+    con: Connection,
+    plan_json: str,
+    engine: str,
+    theorem: str | None,
+    *,
+    finite: Finite = True,
+    rows: Literal["sequence", "multiset"] | None = None,
 ) -> pa.Table:
     """Run a plan whose contract report is `guard_free` on `engine` without
     its other per-row checks, on data that meets its preconditions. The
     assumed issues keep their checks. The engine's plugin names the theorem
     that covers its writer without them (`ProfilePlugin.guard_free_theorem`),
     and the checker names it per engine (`"guard_free_theorem"`,
-    `SubstraitLean/Realize.lean`).
+    `SubstraitLean/Realize.lean`). `rows`: as `_run_plan`'s.
 
     Raises:
         ValueError: No theorem covers the engine's writer without them, or
@@ -791,7 +774,8 @@ def run_guard_free(
             + (f" ({theorem} is not its writer's)" if theorem and covers else "")
         )
     tables = {t: con._arrow[t] for t in read_tables(json.loads(plan_json))}
-    return run(plan_json, tables, guard_free=True, finite=finite)
+    extra = {"rows": rows} if rows is not None else {}
+    return run(plan_json, tables, guard_free=True, finite=finite, **extra)
 
 
 def _rename_tables(node: object, names: dict[str, str]) -> None:
@@ -1020,24 +1004,3 @@ def to_arrow(rows, schema: pa.Schema) -> pa.Table:
         return pa.Table.from_pylist([{} for _ in rows], schema=schema)
     arrays = [pa.array(c, type=f.type) for c, f in zip(columns, schema, strict=True)]
     return pa.Table.from_arrays(arrays, schema=schema)
-
-
-def create_table(con: Connection, name: str, schema: ibis.Schema | pa.Schema, rows=()) -> None:
-    """Deprecated: `con.create(name, schema, rows)`."""
-    warnings.warn(
-        "sverify.engines.create_table(con, ...) is deprecated; "
-        "write con.create(name, schema, rows)",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    con.create(name, schema, rows)
-
-
-def table_rows(con: Connection, name: str) -> list[tuple]:
-    """Deprecated: `con.rows(name)`."""
-    warnings.warn(
-        "sverify.engines.table_rows(con, name) is deprecated; write con.rows(name)",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    return con.rows(name)

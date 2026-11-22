@@ -33,9 +33,10 @@ Input (JSON):
   "ranges": {"<table>": [{"by": [<col>, ...], "lo": <col>, "hi": <col>}, ...]},
       -- non-overlapping ranges (`sv.non_overlapping`, #814, `RangeOn`)
   "ensures_keys": [[<col>, ...], ...],        -- keys to prove on the output
-  "references": {"<table>": [[<col>, "<table>", <col>], ...]},
-      -- input foreign keys: every non-NULL value of the column occurs in the
-      -- other table's column (`ForeignKeys.Hold`)
+  "references": {"<table>": [[[<col>, ...], "<table>", [<col>, ...]], ...]},
+      -- input foreign keys: every row whose parts are all non-NULL has a row of
+      -- the other table with equal parts; one-column ones are `ForeignKeys.Hold`
+      -- (a bare <col> reads as a list of one)
   "max_rows": {"<table>": <n>},
       -- row caps (`sv.max_rows`): the postconditions, facts and issues are
       -- checked on the plan with these reads capped (`Rel.capReads`), which is the plan
@@ -498,12 +499,29 @@ def rangeConds (j : Json) : List RangeCond :=
     pure ⟨(← (r.getObjValAs? (Array Nat) "by").toOption).toList,
       ← (r.getObjValAs? Nat "lo").toOption, ← (r.getObjValAs? Nat "hi").toOption⟩
 
+/-- One side of a foreign key: its column positions, or a bare position as
+0.x manifests wrote it. -/
+def fkParts (j : Json) : Option (List Nat) :=
+  match j.getNat?.toOption with
+  | some n => some [n]
+  | none => j.getArr?.toOption.bind (·.toList.mapM (·.getNat?.toOption))
+
+/-- The foreign keys of one-column entries. `ForeignKeys` states one column per
+key, so a composite entry (#2223) is skipped: it is still checked on the
+data, and a hypothesis left out assumes less. -/
 def foreignKeys (j : Json) : ForeignKeys := fun t =>
   (((j.getObjVal? t).toOption.bind (·.getArr?.toOption)).getD #[]).toList.filterMap fun fk =>
     match fk.getArr?.toOption.map Array.toList with
-    | some [c, s, p] => do
-      pure ((← c.getNat?.toOption), (← s.getStr?.toOption), (← p.getNat?.toOption))
+    | some [c, s, p] =>
+      match fkParts c, s.getStr?.toOption, fkParts p with
+      | some [c], some s, some [p] => some (c, s, p)
+      | some (_ :: _ :: _), some _, some (_ :: _ :: _) => none  -- composite: skipped
+      | _, _, _ => none
     | _ => none
+
+#guard foreignKeys ((Json.parse
+    "{\"t\": [[[0], \"u\", [1]], [2, \"u\", 3], [[0, 1], \"u\", [1, 2]]]}").toOption.getD .null)
+    "t" == [(0, "u", 1), (2, "u", 3)]
 
 variable [Boxes.Ambient]
 /-- The predicates `r` implies on each base table it reads (`Rel.need` from
@@ -701,6 +719,44 @@ def mayHoldList : Kind → Bool
   | .list _ | .struct _ | .other => true
   | _ => false
 
+-- The two theorems belong to `Substrait`, beside the ones they extend.
+end Substrait.ContractCheck
+
+namespace Substrait
+variable [Boxes.Ambient]
+
+omit [Boxes.Ambient] in
+/-- A value of a kind that holds no list is flat. -/
+theorem Value.flat_of_hasKind {k : Kind} {v : Value} (hv : v.hasKind k = true)
+    (hk : ContractCheck.mayHoldList k = false) : v.Flat = true := by
+  cases v <;> cases k <;> simp_all [Value.hasKind, Value.Flat, ContractCheck.mayHoldList]
+
+/-- **What `postIgnores` spares of `"elements"` is sound** (#2005). On rows of
+the plan's kinds `ks` (`Row.HasKinds`, which `Rel.kinds_sound` gives a
+well-kinded plan's output), a postcondition is robust under `q` when `q`
+coarsens none of its components but zeros and the order of elements, and the
+order of elements only where no column it reads other than through
+`cardinality` may hold a list: the `listy` test of `postIgnores`. -/
+theorem Expr.robust_of_kinds {q : Obs} {ctx : ObsCtx} {e : Expr} {ks : List Kind}
+    (h : (e.dependsC ctx).all (fun c => c == "zeros" || c == "elements" || !q.coarsens c) = true)
+    (hl : q.coarsens "elements" = true →
+      (e.listCols.any fun c => ContractCheck.mayHoldList (ks.getD c .other)) = false)
+    {r r' : Row} (hk : Row.HasKinds ks r) (hr : Row.DoubleCodes ctx r)
+    (hr' : Row.DoubleCodes ctx r') (he : Row.Equiv q ctx r r')
+    (ht : (e.eval r).isTrue = true) : (e.eval r').isTrue = true :=
+  Expr.robust_of_depends_flat h (fun hq i hi => Value.flat_of_hasKind (hk i) <| by
+    have := hl hq
+    simp only [List.any_eq_false, Bool.not_eq_true] at this
+    exact this i hi) hr hr' he ht
+
+end Substrait
+
+namespace Substrait.ContractCheck
+
+open Lean (Json)
+open Parse
+variable [Boxes.Ambient]
+
 /-- The columns of a plan `T.select(c, …)`, as expressions over `T`'s
 output, with `T`'s column kinds; `none` for another shape. -/
 def postExprs (cat : Catalog) (tables : Tables) : Rel → Option (List Expr × List Kind)
@@ -767,9 +823,9 @@ the observation's ignored components it depends on, but for `"zeros"`
 (`Expr.robust_of_depends_canon`) and `"floats"` under the plan's bound or an
 `approx` condition (`floatsOk`). `"elements"` stays where the condition reads
 a column that may hold a list (`mayHoldList`) other than as the argument of
-`cardinality` (`Expr.listCols`): `Expr.robust_of_depends_canon` needs it exact
-in every other column read, so the checker spares only the columns that hold
-no list (#2005). -/
+`cardinality` (`Expr.listCols`): the checker spares it only where every such
+column holds no list, which `Expr.robust_of_kinds` proves sound on rows of the
+plan's kinds (#2005). -/
 def postIgnores (cat : Catalog) (tables : Tables) (r : Rel) (n : Nat) (coarsens : List String)
     (floatsOk : Bool) : List (Option (List String × List String)) :=
   match postExprs cat tables r with
@@ -1439,7 +1495,7 @@ def Request.analyses (R : Request) (envs : List (List AVal)) (kenv : KnowledgeEn
       if p.root.checkWF cat then
         let w := p.writtenRoot
         if w.checkWF cat && w.looseSub && (w == p.root || w == p.root.bindArgs cat) then
-          w.marksJson (w.marks cat A F T false)
+          w.marksJson (w.marks cat A F T caps false)
         else .null
       else .null
     | none => .null

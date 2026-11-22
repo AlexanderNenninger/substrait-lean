@@ -1,0 +1,17 @@
+{
+  "id": "F250",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#271: every lowering entry states `Outcome.AgreeOrRaises` on arguments whose floats are doubles, with exactness kept as data: a decidable check lists the non-exact entries (today Spark's `fdivIeee`), and the search tries an exact template first.",
+  "issues": [
+    271
+  ],
+  "amends": [
+    "F248",
+    "F249"
+  ],
+  "source": "fable-ruling-250-271-one-entry-relation.md",
+  "note": "Amends ruling 248's G4 and ruling 249's H1-H3 (J1-J4); `Pre` goes unless an entry needs another precondition. D31's amendment says every lowering entry is stated on double arguments. No D-number."
+}

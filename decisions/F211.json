@@ -1,0 +1,15 @@
+{
+  "id": "F211",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#2084 conforms to D70 and V1-V8; `Pipeline.refresh(unverified=True)` covers a refusal by version (C1), and the docs name Spark 4.3 (C2).",
+  "issues": [
+    2052
+  ],
+  "prs": [
+    2084
+  ],
+  "source": "fable-ruling-211-2084-d70-version-guard.md"
+}

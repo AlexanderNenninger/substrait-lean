@@ -160,9 +160,9 @@ class Node:
     def internal_plan(self) -> str:
         """The Substrait plan (JSON) of the node's stage, as Lean checked and
         wrote it: what every engine runs. It uses sverify's own extension
-        URNs, so only sverify reads it (`sverify.engines.to_sql`, `run`,
+        URNs, so only sverify reads it (`sverify.engines.plan.to_sql`, `run`,
         `delta_plans`); `Report.to_substrait()` is the portable plan.
-        `sverify.engines.delta_plans(plan)` are the plans that maintain it
+        `sverify.engines.plan.delta_plans(plan)` are the plans that maintain it
         from changes.
 
         The stage reads the sources and stored nodes upstream under their
@@ -244,7 +244,7 @@ class Node:
                 proved.
             sverify.errors.RouteError: No route takes the plan to the
                 dialect's engine.
-            sverify.errors.Unsupported: The dialect cannot express the plan.
+            sverify.errors.UnsupportedError: The dialect cannot express the plan.
 
         Examples:
             ```python
@@ -262,7 +262,7 @@ class Node:
             self.internal_plan,
             d,
             deterministic=report._exact,
-            rows="sequence" if report.lenses.rows == "sequence" else "multiset",
+            rows=report._rows,
         )
 
     def pipe(self, step: Step, /, **inputs: Any) -> Node:
@@ -414,8 +414,7 @@ class Node:
                 applying it. Default False.
             route: `"auto"` (the default) chooses a route for each node
                 with a contract; `"native"`, `"translated"`, `"transfer"` or
-                `"recheck"` takes that one or refuses (`"reference"` is a
-                deprecated alias of `"translated"`).
+                `"recheck"` takes that one or refuses.
             unverified: Refresh nodes whose contract is not proved anyway;
                 their route is `"unverified"`, with what was not proved, and
                 an `UnverifiedRunWarning` says so. Default False: such a

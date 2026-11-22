@@ -1,0 +1,13 @@
+{
+  "id": "F201",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "process",
+  "status": "in-force",
+  "summary": "Check of the ledger's first PR: five of its seven judgement calls right; ruling 199 builds on D70 without amending it; entries added or corrected for rulings 83, 167, 196, 197 and 200 and for D65 and D66.",
+  "prs": [
+    2060
+  ],
+  "source": "fable-ledger-check-2060.md",
+  "note": "A check of the record; no ruling changes."
+}

@@ -475,13 +475,98 @@ abbrev FiniteMonoConv := fp64.FiniteMonoConv
 `2¹⁰²³`. -/
 abbrev IntToDouble := fp64.IntConv
 
+/-! ### An integer's double is a double (ruling 248) -/
+
+/-- `roundTo2 s n` is a multiple of `2ˢ`, at most `2ᵖ` of them where `n < 2ᵖ · 2ˢ`. -/
+theorem roundTo2_form (s n p : Nat) (h : n < 2 ^ p * 2 ^ s) :
+    ∃ k, k ≤ 2 ^ p ∧ roundTo2 s n = k * 2 ^ s := by
+  have hq : n / 2 ^ s < 2 ^ p := (Nat.div_lt_iff_lt_mul (Nat.two_pow_pos s)).mpr h
+  unfold roundTo2
+  split
+  · exact ⟨_, by omega, rfl⟩
+  · exact ⟨_, by omega, rfl⟩
+
+set_option exponentiation.threshold 2100 in
+/-- `roundSig n`, scaled by any power of two, has at most 53 significant bits. -/
+theorem magDbl_roundSig_mul (n t : Nat) : fp64.magDbl (roundSig n * 2 ^ t) = true := by
+  unfold roundSig
+  split
+  · rename_i hn
+    rw [bitLen_min hn]
+    have h1 : n < 2 ^ 53 * 2 ^ (bitLen 1100 n - 53) := by
+      rw [← Nat.pow_add]
+      exact Nat.lt_of_lt_of_le (lt_two_pow_bitLen _ _ hn) (Nat.pow_le_pow_right (by decide) (by omega))
+    obtain ⟨k, hk, he⟩ := roundTo2_form _ n 53 h1
+    rw [he, Nat.mul_assoc, ← Nat.pow_add]
+    exact fp64.magDbl_mul (by decide) (by exact hk) _
+  · rw [show (2 : Nat) ^ 1100 * 2 ^ t = 1 * 2 ^ (1100 + t) by rw [Nat.one_mul, Nat.pow_add]]
+    exact fp64.magDbl_mul (by decide) (by decide) _
+
+set_option exponentiation.threshold 2100 in
+theorem roundSig_pos {n : Nat} (h : 0 < n) : 0 < roundSig n := by
+  unfold roundSig
+  split
+  · rename_i hn
+    rw [bitLen_min hn]
+    have h2 := two_pow_bitLen_le 1100 n (by omega)
+    have h3 := lt_two_pow_bitLen 1100 n hn
+    have hL : 1 ≤ bitLen 1100 n := by
+      rcases Nat.eq_zero_or_pos (bitLen 1100 n) with h0 | h0
+      · rw [h0] at h3; omega
+      · exact h0
+    have hs : 2 ^ (bitLen 1100 n - 53) ≤ n := by
+      have e : 2 ^ bitLen 1100 n = 2 * 2 ^ (bitLen 1100 n - 1) := by
+        rw [← Nat.pow_succ']; congr 1; omega
+      have : 2 ^ (bitLen 1100 n - 53) ≤ 2 ^ (bitLen 1100 n - 1) :=
+        Nat.pow_le_pow_right (by decide) (by omega)
+      omega
+    have hq : 1 ≤ n / 2 ^ (bitLen 1100 n - 53) :=
+      (Nat.le_div_iff_mul_le (Nat.two_pow_pos _)).mpr (by omega)
+    have hp := Nat.two_pow_pos (bitLen 1100 n - 53)
+    unfold roundTo2
+    split
+    · exact Nat.mul_pos (by omega) hp
+    · exact Nat.mul_pos (by omega) hp
+  · exact Nat.two_pow_pos _
+
+set_option exponentiation.threshold 2100 in
+/-- **An integer's double is a double.** -/
+theorem dbl_ofIntExact (i : Int) : fp64.Dbl (ofIntExact i) := by
+  by_cases i0 : i = 0
+  · have : ofIntExact i = 0 := by
+      have := maxMag_pos; simp only [ofIntExact, ofIntRaw, i0, ↓reduceIte]; omega
+    rw [this]; exact fp64.dbl_zero
+  have hpos : 0 < roundSig i.natAbs * 2 ^ 1074 :=
+    Nat.mul_pos (roundSig_pos (by omega)) (Nat.two_pow_pos _)
+  have hM := maxMag_pos
+  have hd : fp64.magDbl (min (roundSig i.natAbs * 2 ^ 1074) maxMag) = true := by
+    rcases Nat.le_total (roundSig i.natAbs * 2 ^ 1074) maxMag with h | h
+    · rw [Nat.min_eq_left h]; exact magDbl_roundSig_mul _ _
+    · rw [Nat.min_eq_right h]; exact fp64.magDbl_maxMag (by decide)
+  have key : ofIntExact i = fp64.ofMag (decide (i < 0)) (min (roundSig i.natAbs * 2 ^ 1074) maxMag) := by
+    have hn : min (roundSig i.natAbs * 2 ^ 1074) maxMag ≠ fp64.nanMag := by
+      unfold FloatFormat.nanMag; have := Nat.min_le_right (roundSig i.natAbs * 2 ^ 1074) maxMag
+      show _ ≠ maxMag + 2; omega
+    have h0 : min (roundSig i.natAbs * 2 ^ 1074) maxMag ≠ 0 := by
+      rcases Nat.le_total (roundSig i.natAbs * 2 ^ 1074) maxMag with h | h
+      · rw [Nat.min_eq_left h]; omega
+      · rw [Nat.min_eq_right h]; omega
+    simp only [ofIntExact, ofIntRaw, i0, ↓reduceIte, FloatFormat.ofMag, h0, hn, ne_eq,
+      not_false_eq_true, and_true, decide_eq_true_eq]
+    generalize roundSig i.natAbs * 2 ^ 1074 = M at hpos ⊢
+    rcases Nat.le_total M maxMag with h | h
+    · rw [Nat.min_eq_left h]; split <;> omega
+    · rw [Nat.min_eq_right h]; split <;> omega
+  rw [key]
+  exact fp64.dbl_ofMag (Nat.min_le_right _ _) hd
+
 set_option exponentiation.threshold 1100 in
 /-- `ofIntExact`, behind a constant the kernel does not unfold: proofs about
 plans use only the properties above, as they did of the native conversion
 before, and type-checking them never computes a rounding. -/
 opaque intToDouble : IntToDouble :=
   ⟨⟨ofIntExact, ofIntExact_bounds, ofIntExact_mono⟩, ofIntExact_ne_zero, ofIntExact_exact,
-    ofIntExact_rel⟩
+    ofIntExact_rel, dbl_ofIntExact⟩
 
 /-- An integer as a double (`ofIntExact`). -/
 def ofInt (i : Int) : Int := intToDouble.conv i

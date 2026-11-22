@@ -82,10 +82,13 @@ def test_a_black_box_is_under_sverifys_urn():
     written = json.loads(written_plan(json.dumps(plan)))
     ref = {e["extensionFunction"]["name"]: e["extensionFunction"] for e in written["extensions"]}
     anchors = {b.name: 700 + i for i, b in enumerate(black_box.TABLE)}
-    assert ref["base64"]["functionAnchor"] == 700
-    assert ref["entropy"]["functionAnchor"] == anchors["entropy"]
-    assert ref["entropy"]["extensionUrnReference"] == 1
-    assert "extensionUrnReference" not in ref["add"]
+    # The written plan declares the functions it calls, each box at its fixed
+    # anchor under the URN, and no unused one (#1787 item 5).
+    assert ref["base64"]["functionAnchor"] == anchors["base64"] == 700
+    assert ref["base64"]["extensionUrnReference"] == 1
+    assert "entropy" not in ref
+    for name, f in ref.items():
+        assert ("extensionUrnReference" in f) == (name in anchors), name
 
 
 def test_a_scalar_black_box_through_oracles_a_and_c():
@@ -570,7 +573,7 @@ def test_327_lists_through_oracles_a_and_c(query):
 def test_list_sum_raises_past_a_bigint():
     # DuckDB's own is a HUGEINT; the model's a BIGINT, as `SUM`'s.
     plan = written_plan(json.dumps(lift(LISTS[0], _VEC_SCHEMAS).plan))
-    with pytest.raises(Exception, match="sverify: CAST to a 64-bit integer out of range"):
+    with pytest.raises(Exception, match="sverify: list_sum out of range"):
         duckdb_engine.run(plan, _VECS)
     report = sv.verify(LISTS[0], tables=_VEC_SCHEMAS)
     assert any("domain" in str(e) for e in report.errors), report

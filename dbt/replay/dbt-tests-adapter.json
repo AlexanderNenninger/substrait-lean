@@ -1,0 +1,1007 @@
+{
+  "source": "dbt-tests-adapter",
+  "repo": "https://github.com/dbt-labs/dbt-adapters",
+  "tag": "1.20.0",
+  "commit": "",
+  "packages": [],
+  "project": "dbt.tests.adapter",
+  "license": "Apache-2.0",
+  "summary": {
+    "proved": 8,
+    "not proved": 11,
+    "not checked": 85,
+    "refused": 11,
+    "input": 13
+  },
+  "unsound": 0,
+  "results": {
+    "aliases.test_aliases.BaseAliases::expect_value_alias_in_project_tablename__project_alias.523d6f61eb": {
+      "test": "expect_value",
+      "model": "alias_in_project",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for expect_value; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "fail",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "aliases.test_aliases.BaseAliases::expect_value_alias_in_project_with_override_tablename__override_alias.d8db2e0fc2": {
+      "test": "expect_value",
+      "model": "alias_in_project_with_override",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for expect_value; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "aliases.test_aliases.BaseAliases::expect_value_foo_alias_tablename__foo.209c82916a": {
+      "test": "expect_value",
+      "model": "foo_alias",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for expect_value; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "aliases.test_aliases.BaseAliases::expect_value_ref_foo_alias_tablename__ref_foo_alias.8eef0e8db5": {
+      "test": "expect_value",
+      "model": "ref_foo_alias",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for expect_value; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "aliases.test_aliases.BaseSameAliasDifferentDatabases::expect_value_model_a_tablename__duped_alias.779e689683": {
+      "test": "expect_value",
+      "model": "model_a",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for expect_value; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "fail",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "aliases.test_aliases.BaseSameAliasDifferentDatabases::expect_value_model_b_tablename__duped_alias.f3ca50528b": {
+      "test": "expect_value",
+      "model": "model_b",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for expect_value; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "fail",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "aliases.test_aliases.BaseSameAliasDifferentSchemas::expect_value_model_a_tablename__duped_alias.779e689683": {
+      "test": "expect_value",
+      "model": "model_a",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for expect_value; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "aliases.test_aliases.BaseSameAliasDifferentSchemas::expect_value_model_b_tablename__duped_alias.f3ca50528b": {
+      "test": "expect_value",
+      "model": "model_b",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for expect_value; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "aliases.test_aliases.BaseSameAliasDifferentSchemas::expect_value_model_c_tablename__duped_alias.2f2b607ec3": {
+      "test": "expect_value",
+      "model": "model_c",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for expect_value; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "basic.test_adapter_methods.BaseAdapterMethod::get_columns_in_relation": {
+      "test": "singular test",
+      "model": "model",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "basic.test_docs_generate.BaseDocsGenerate::not_null_model_id.d01cc630e6": {
+      "test": "not_null(id)",
+      "model": "model",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "basic.test_docs_generate.BaseDocsGenerate::test_nothing_model_.5d38568946": {
+      "test": "test.nothing",
+      "model": "model",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for test.nothing; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "basic.test_docs_generate.BaseDocsGenerate::unique_model_id.67b76558ff": {
+      "test": "unique(id)",
+      "model": "model",
+      "outcome": "not proved",
+      "why": "the tests upstream do not make it a key",
+      "dbt": "pass"
+    },
+    "basic.test_generic_tests.BaseGenericTests::not_null_base_id.910041d42f": {
+      "test": "not_null(id)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "basic.test_generic_tests.BaseGenericTests::not_null_table_model_id.74214535fa": {
+      "test": "not_null(id)",
+      "model": "table_model",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "skipped"
+    },
+    "basic.test_generic_tests.BaseGenericTests::not_null_view_model_id.c9346154f2": {
+      "test": "not_null(id)",
+      "model": "view_model",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "skipped"
+    },
+    "basic.test_singular_tests.BaseSingularTests::failing": {
+      "test": "singular test",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "basic.test_singular_tests.BaseSingularTests::passing": {
+      "test": "singular test",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "basic.test_singular_tests_ephemeral.BaseSingularTestsEphemeral::failing": {
+      "test": "singular test",
+      "model": "ephemeral",
+      "outcome": "not checked",
+      "why": "dbt runs no test on an ephemeral model",
+      "dbt": "fail",
+      "design": "dbt does not run the test"
+    },
+    "basic.test_singular_tests_ephemeral.BaseSingularTestsEphemeral::passing": {
+      "test": "singular test",
+      "model": "ephemeral",
+      "outcome": "not checked",
+      "why": "dbt runs no test on an ephemeral model",
+      "dbt": "pass",
+      "design": "dbt does not run the test"
+    },
+    "column_types.test_column_types.BasePostgresColumnTypes::is_type_model__integer_number____integer_number____integer_number____float_number____float_number____numeric_number____string_not_number____string_not_number_.42875d0964": {
+      "test": "is_type",
+      "model": "model",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for is_type; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "constraints.test_constraints.BaseConstraintQuotedColumn::unique_my_model_id.7a8b3e1711": {
+      "test": "unique(id)",
+      "model": "my_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "constraints.test_constraints.BaseConstraintsRollback::unique_my_model_error_id.8d2ff7a7b1": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseConstraintsRollback::unique_my_model_id.7a8b3e1711": {
+      "test": "unique(id)",
+      "model": "my_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "constraints.test_constraints.BaseConstraintsRollback::unique_my_model_wrong_name_id.ca0635fa7d": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseConstraintsRollback::unique_my_model_wrong_order_id.605135652f": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseConstraintsRuntimeDdlEnforcement::unique_my_model_error_id.8d2ff7a7b1": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseConstraintsRuntimeDdlEnforcement::unique_my_model_id.7a8b3e1711": {
+      "test": "unique(id)",
+      "model": "my_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "constraints.test_constraints.BaseConstraintsRuntimeDdlEnforcement::unique_my_model_wrong_name_id.ca0635fa7d": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseConstraintsRuntimeDdlEnforcement::unique_my_model_wrong_order_id.605135652f": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsColumnsEqual::unique_my_model_error_id.8d2ff7a7b1": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsColumnsEqual::unique_my_model_id.7a8b3e1711": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsColumnsEqual::unique_my_model_wrong_name_id.ca0635fa7d": {
+      "test": "unique(id)",
+      "model": "my_model_wrong_name",
+      "outcome": "not checked",
+      "why": "the model has no column id",
+      "dbt": "skipped",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsColumnsEqual::unique_my_model_wrong_order_id.605135652f": {
+      "test": "unique(id)",
+      "model": "my_model_wrong_order",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRollback::unique_my_model_error_id.8d2ff7a7b1": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRollback::unique_my_model_id.7a8b3e1711": {
+      "test": "unique(id)",
+      "model": "my_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRollback::unique_my_model_wrong_name_id.ca0635fa7d": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRollback::unique_my_model_wrong_order_id.605135652f": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRuntimeDdlEnforcement::unique_my_model_error_id.8d2ff7a7b1": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRuntimeDdlEnforcement::unique_my_model_id.7a8b3e1711": {
+      "test": "unique(id)",
+      "model": "my_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRuntimeDdlEnforcement::unique_my_model_wrong_name_id.ca0635fa7d": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRuntimeDdlEnforcement::unique_my_model_wrong_order_id.605135652f": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseTableConstraintsColumnsEqual::unique_my_model_error_id.8d2ff7a7b1": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseTableConstraintsColumnsEqual::unique_my_model_id.7a8b3e1711": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseTableConstraintsColumnsEqual::unique_my_model_wrong_name_id.ca0635fa7d": {
+      "test": "unique(id)",
+      "model": "my_model_wrong_name",
+      "outcome": "not checked",
+      "why": "the model has no column id",
+      "dbt": "skipped",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "constraints.test_constraints.BaseTableConstraintsColumnsEqual::unique_my_model_wrong_order_id.605135652f": {
+      "test": "unique(id)",
+      "model": "my_model_wrong_order",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "constraints.test_constraints.BaseViewConstraintsColumnsEqual::unique_my_model_error_id.8d2ff7a7b1": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseViewConstraintsColumnsEqual::unique_my_model_id.7a8b3e1711": {
+      "test": "unique(id)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseViewConstraintsColumnsEqual::unique_my_model_wrong_name_id.ca0635fa7d": {
+      "test": "unique(id)",
+      "model": "my_model_wrong_name",
+      "outcome": "not checked",
+      "why": "the model has no column id",
+      "dbt": "skipped",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "constraints.test_constraints.BaseViewConstraintsColumnsEqual::unique_my_model_wrong_order_id.605135652f": {
+      "test": "unique(id)",
+      "model": "my_model_wrong_order",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "dbt_clone.test_dbt_clone.BaseClone::not_null_view_model_id.c9346154f2": {
+      "test": "not_null(id)",
+      "model": "view_model",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "dbt_clone.test_dbt_clone.BaseClone::unique_view_model_id.3435ca859c": {
+      "test": "unique(id)",
+      "model": "view_model",
+      "outcome": "not proved",
+      "why": "the tests upstream do not make it a key",
+      "dbt": "pass"
+    },
+    "dbt_clone.test_dbt_clone.BaseCloneNotPossible::not_null_view_model_id.c9346154f2": {
+      "test": "not_null(id)",
+      "model": "view_model",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "dbt_clone.test_dbt_clone.BaseCloneNotPossible::unique_view_model_id.3435ca859c": {
+      "test": "unique(id)",
+      "model": "view_model",
+      "outcome": "not proved",
+      "why": "the tests upstream do not make it a key",
+      "dbt": "pass"
+    },
+    "hooks.test_model_hooks.BasePrePostModelHooksOnSeeds::not_null_example_seed_new_col.413b9ccb59": {
+      "test": "not_null(new_col)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "hooks.test_model_hooks.BasePrePostModelHooksOnSeedsPlusPrefixed::not_null_example_seed_new_col.413b9ccb59": {
+      "test": "not_null(new_col)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "hooks.test_model_hooks.BasePrePostModelHooksOnSnapshots::not_null_example_snapshot_new_col.f9e7cb7265": {
+      "test": "not_null(new_col)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "hooks.test_model_hooks.BasePrePostSnapshotHooksInConfigKwargs::not_null_example_snapshot_new_col.f9e7cb7265": {
+      "test": "not_null(new_col)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "simple_seed.test_seed_type_override.BaseSimpleSeedColumnOverride::column_type_seed_enabled_birthday__date.469fb34d40": {
+      "test": "column_type(birthday)",
+      "outcome": "input",
+      "dbt": "fail"
+    },
+    "simple_seed.test_seed_type_override.BaseSimpleSeedColumnOverride::column_type_seed_enabled_seed_id__text.5a27807aa5": {
+      "test": "column_type(seed_id)",
+      "outcome": "input",
+      "dbt": "fail"
+    },
+    "simple_seed.test_seed_type_override.BaseSimpleSeedColumnOverride::column_type_seed_tricky_a_bool__boolean.e074376c04": {
+      "test": "column_type(a_bool)",
+      "outcome": "input",
+      "dbt": "fail"
+    },
+    "simple_seed.test_seed_type_override.BaseSimpleSeedColumnOverride::column_type_seed_tricky_a_date__timestamp_without_time_zone.a2a938d096": {
+      "test": "column_type(a_date)",
+      "outcome": "input",
+      "dbt": "fail"
+    },
+    "simple_seed.test_seed_type_override.BaseSimpleSeedColumnOverride::column_type_seed_tricky_looks_like_a_bool__text.0fa2b6aa0e": {
+      "test": "column_type(looks_like_a_bool)",
+      "outcome": "input",
+      "dbt": "fail"
+    },
+    "simple_seed.test_seed_type_override.BaseSimpleSeedColumnOverride::column_type_seed_tricky_looks_like_a_date__text.fd3deb273a": {
+      "test": "column_type(looks_like_a_date)",
+      "outcome": "input",
+      "dbt": "fail"
+    },
+    "simple_seed.test_seed_type_override.BaseSimpleSeedColumnOverride::column_type_seed_tricky_relative__text.58b746e3dd": {
+      "test": "column_type(relative)",
+      "outcome": "input",
+      "dbt": "fail"
+    },
+    "simple_seed.test_seed_type_override.BaseSimpleSeedColumnOverride::column_type_seed_tricky_seed_id__integer.b3da09efb0": {
+      "test": "column_type(seed_id)",
+      "outcome": "input",
+      "dbt": "fail"
+    },
+    "simple_seed.test_seed_type_override.BaseSimpleSeedColumnOverride::column_type_seed_tricky_seed_id_str__text.1225b332d1": {
+      "test": "column_type(seed_id_str)",
+      "outcome": "input",
+      "dbt": "fail"
+    },
+    "simple_seed.test_seed_type_override.BaseSimpleSeedColumnOverride::column_type_seed_tricky_weekday__text.d3303cb0bc": {
+      "test": "column_type(weekday)",
+      "outcome": "input",
+      "dbt": "fail"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsExceptions::store_failures_as_error": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "error",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsGeneric::accepted_values_chipmunks_name__alvin__simon__theodore.8f684c89ff": {
+      "test": "accepted_values(name)",
+      "model": "chipmunks",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "fail"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsGeneric::not_null_chipmunks_name.d45ff6fbbb": {
+      "test": "not_null(name)",
+      "model": "chipmunks",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsGeneric::not_null_chipmunks_shirt.184bd66564": {
+      "test": "not_null(shirt)",
+      "model": "chipmunks",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "fail"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsInteractions::ephemeral_false": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsInteractions::ephemeral_true": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsInteractions::ephemeral_unset": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsInteractions::table_false": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsInteractions::table_true": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsInteractions::table_unset": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsInteractions::unset_false": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsInteractions::unset_true": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsInteractions::unset_unset": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsInteractions::view_false": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsInteractions::view_true": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsInteractions::view_unset": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsInteractions::view_unset_pass": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsProjectLevelEphemeral::results_true": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsProjectLevelEphemeral::results_unset": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsProjectLevelEphemeral::results_view": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsProjectLevelOff::results_ephemeral": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsProjectLevelOff::results_table": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsProjectLevelOff::results_unset": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsProjectLevelOff::results_view": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsProjectLevelView::results_false": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsProjectLevelView::results_true": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.basic.StoreTestFailuresAsProjectLevelView::results_unset": {
+      "test": "singular test",
+      "model": "chipmunks",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.test_store_test_failures.BaseStoreTestFailures::failing_test": {
+      "test": "singular test",
+      "model": "fine_model",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.test_store_test_failures.BaseStoreTestFailures::passing_test": {
+      "test": "singular test",
+      "model": "fine_model",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.test_store_test_failures.StoreTestFailuresBase::failing_test": {
+      "test": "singular test",
+      "model": "fine_model",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "fail",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "store_test_failures_tests.test_store_test_failures.StoreTestFailuresBase::passing_test": {
+      "test": "singular test",
+      "model": "fine_model",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "utils.test_any_value.BaseAnyValue::assert_equal_test_any_value_actual__expected.c7c4b759cc": {
+      "test": "assert_equal",
+      "model": "test_any_value",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: unknown function ARBITRARY(): DuckDB SQL here has no such function; check the name against DuckDB's functions, or write the step in Ibi",
+      "dbt": "pass",
+      "issue": 1920
+    },
+    "utils.test_bool_or.BaseBoolOr::assert_equal_test_bool_or_actual__expected.5825e33c74": {
+      "test": "assert_equal",
+      "model": "test_bool_or",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_cast.BaseCast::assert_equal_test_cast_actual__expected.fe8a9b0c02": {
+      "test": "assert_equal",
+      "model": "test_cast",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_cast_bool_to_text.BaseCastBoolToText::assert_equal_test_cast_bool_to_text_actual__expected.ba39b04e21": {
+      "test": "assert_equal",
+      "model": "test_cast_bool_to_text",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_concat.BaseConcat::assert_equal_test_concat_actual__expected.5d1e85c563": {
+      "test": "assert_equal",
+      "model": "test_concat",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_date.BaseDate::assert_equal_test_date_date_day__expected.64ec9de7c7": {
+      "test": "assert_equal",
+      "model": "test_date",
+      "outcome": "refused",
+      "construct": "sverify cannot read multiply of int64 and interval(…) yet (write this step in Ibis)",
+      "dbt": "pass",
+      "issue": 83
+    },
+    "utils.test_date_spine.BaseDateSpine::assert_equal_test_date_spine_date_day__expected.c74a9651a8": {
+      "test": "assert_equal",
+      "model": "test_date_spine",
+      "outcome": "refused",
+      "construct": "DuckDB cannot plan the compiled SQL: Binder Error: Could not choose a best candidate function for the function call …. In order to select one, please add explic",
+      "dbt": "skipped",
+      "design": "DuckDB itself refuses the compiled SQL"
+    },
+    "utils.test_date_trunc.BaseDateTrunc::assert_equal_test_date_trunc_actual__expected.9e4a655ed1": {
+      "test": "assert_equal",
+      "model": "test_date_trunc",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_dateadd.BaseDateAdd::assert_equal_test_dateadd_actual__expected.4ea7d753ac": {
+      "test": "assert_equal",
+      "model": "test_dateadd",
+      "outcome": "refused",
+      "construct": "sverify cannot read multiply of int64 and interval(…) yet (write this step in Ibis)",
+      "dbt": "pass",
+      "issue": 83
+    },
+    "utils.test_datediff.BaseDateDiff::assert_equal_test_datediff_actual__expected.aad6d09b99": {
+      "test": "assert_equal",
+      "model": "test_datediff",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_escape_single_quotes.BaseEscapeSingleQuotesBackslash::assert_equal_test_escape_single_quotes_actual__expected.4598eda04f": {
+      "test": "assert_equal",
+      "model": "test_escape_single_quotes",
+      "outcome": "refused",
+      "construct": "the compiled SQL does not parse: Error tokenizing …",
+      "dbt": "skipped",
+      "design": "another adapter's SQL (a backslash-escaped quote) that DuckDB does not read either"
+    },
+    "utils.test_escape_single_quotes.BaseEscapeSingleQuotesBackslash::assert_equal_test_escape_single_quotes_actual_length__expected_length.5de185d0cf": {
+      "test": "assert_equal",
+      "model": "test_escape_single_quotes",
+      "outcome": "refused",
+      "construct": "the compiled SQL does not parse: Error tokenizing …",
+      "dbt": "skipped",
+      "design": "another adapter's SQL (a backslash-escaped quote) that DuckDB does not read either"
+    },
+    "utils.test_escape_single_quotes.BaseEscapeSingleQuotesQuote::assert_equal_test_escape_single_quotes_actual__expected.4598eda04f": {
+      "test": "assert_equal",
+      "model": "test_escape_single_quotes",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_escape_single_quotes.BaseEscapeSingleQuotesQuote::assert_equal_test_escape_single_quotes_actual_length__expected_length.5de185d0cf": {
+      "test": "assert_equal",
+      "model": "test_escape_single_quotes",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_generate_series.BaseGenerateSeries::assert_equal_test_generate_series_generated_number__expected.e8eadde6d3": {
+      "test": "assert_equal",
+      "model": "test_generate_series",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_get_intervals_between.BaseGetIntervalsBetween::assert_equal_test_get_intervals_between_intervals__expected.d963d622d9": {
+      "test": "assert_equal",
+      "model": "test_get_intervals_between",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "utils.test_get_powers_of_two.BaseGetPowersOfTwo::assert_equal_test_powers_of_two_actual__expected.ae998713ba": {
+      "test": "assert_equal",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "utils.test_hash.BaseHash::assert_equal_test_hash_actual__expected.7f1d583c21": {
+      "test": "assert_equal",
+      "model": "test_hash",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_last_day.BaseLastDay::assert_equal_test_last_day_actual__expected.aa2245171b": {
+      "test": "assert_equal",
+      "model": "test_last_day",
+      "outcome": "refused",
+      "construct": "sverify cannot read multiply of int64 and interval(…) yet (write this step in Ibis)",
+      "dbt": "pass",
+      "issue": 83
+    },
+    "utils.test_length.BaseLength::assert_equal_test_length_actual__expected.b08d3642f5": {
+      "test": "assert_equal",
+      "model": "test_length",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_listagg.BaseListagg::assert_equal_test_listagg_actual__expected.f9e89b8ae3": {
+      "test": "assert_equal",
+      "model": "test_listagg",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: unknown function LIST_AGGR(): DuckDB SQL here has no such function; check the name against DuckDB's functions, or write the step in Ibi",
+      "dbt": "pass",
+      "issue": 348
+    },
+    "utils.test_null_compare.BaseMixedNullCompare::assert_equal_test_mixed_null_compare_actual__expected.81c4f75c4d": {
+      "test": "assert_equal",
+      "model": "test_mixed_null_compare",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "fail",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_null_compare.BaseNullCompare::assert_equal_test_null_compare_actual__expected.f02285c920": {
+      "test": "assert_equal",
+      "model": "test_null_compare",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_position.BasePosition::assert_equal_test_position_actual__expected.c969781919": {
+      "test": "assert_equal",
+      "model": "test_position",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_replace.BaseReplace::assert_equal_test_replace_actual__expected.1e5221a8fe": {
+      "test": "assert_equal",
+      "model": "test_replace",
+      "outcome": "refused",
+      "construct": "sverify cannot check it: replace needs a constant pattern and replacement",
+      "dbt": "pass",
+      "issue": 319
+    },
+    "utils.test_right.BaseRight::assert_equal_test_right_actual__expected.87b3c36271": {
+      "test": "assert_equal",
+      "model": "test_right",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_safe_cast.BaseSafeCast::assert_equal_test_safe_cast_actual__expected.03f677544a": {
+      "test": "assert_equal",
+      "model": "test_safe_cast",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_split_part.BaseSplitPart::assert_equal_test_split_part_actual__expected.f4e691c6f7": {
+      "test": "assert_equal",
+      "model": "test_split_part",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "utils.test_string_literal.BaseStringLiteral::assert_equal_test_string_literal_actual__expected.1489044678": {
+      "test": "assert_equal",
+      "model": "test_string_literal",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for assert_equal; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    }
+  },
+  "unextracted": {
+    "dbt.tests.adapter.aliases.test_aliases.BaseAliasErrors": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_aliases_test_aliases_BaseAliasErrors/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_aliases_test_aliase",
+    "dbt.tests.adapter.constraints.test_constraints.BaseIncrementalForeignKeyConstraint": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_constraints_test_constraints_BaseIncrementalForeignKeyConstraint/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests",
+    "dbt.tests.adapter.constraints.test_constraints.BaseModelConstraintsRuntimeEnforcement": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_constraints_test_constraints_BaseModelConstraintsRuntimeEnforcement/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_te",
+    "dbt.tests.adapter.dbt_debug.test_dbt_debug.BaseDebugProfileVariable": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_dbt_debug_test_dbt_debug_BaseDebugProfileVariable/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_dbt_de",
+    "dbt.tests.adapter.ephemeral.test_ephemeral.BaseEphemeralErrorHandling": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_ephemeral_test_ephemeral_BaseEphemeralErrorHandling/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_ephe",
+    "dbt.tests.adapter.ephemeral.test_ephemeral.BaseEphemeralMulti": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_ephemeral_test_ephemeral_BaseEphemeralMulti/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_ephemeral_te",
+    "dbt.tests.adapter.functions.test_js_udfs.BasicJSAggregateUDF": "NotImplementedError: Subclass must provide functions fixture",
+    "dbt.tests.adapter.functions.test_js_udfs.BasicJSUDF": "NotImplementedError: Subclass must provide functions fixture",
+    "dbt.tests.adapter.functions.test_js_udfs.JSAggregateUDFBase": "NotImplementedError: Subclass must provide functions fixture",
+    "dbt.tests.adapter.functions.test_js_udfs.JSAggregateUDFVolatilityIgnored": "NotImplementedError: Subclass must provide functions fixture",
+    "dbt.tests.adapter.functions.test_js_udfs.JSUDFBase": "NotImplementedError: Subclass must provide functions fixture",
+    "dbt.tests.adapter.functions.test_js_udfs.JSUDFDefaultArgSupport": "NotImplementedError: Subclass must provide functions fixture",
+    "dbt.tests.adapter.functions.test_js_udfs.JSUDFDeterministicVolatility": "NotImplementedError: Subclass must provide functions fixture",
+    "dbt.tests.adapter.functions.test_js_udfs.JSUDFMultiLineBody": "NotImplementedError: Subclass must provide functions fixture",
+    "dbt.tests.adapter.functions.test_js_udfs.JSUDFNonDeterministicVolatility": "NotImplementedError: Subclass must provide functions fixture",
+    "dbt.tests.adapter.functions.test_js_udfs.JSUDFStableVolatilityWarns": "NotImplementedError: Subclass must provide functions fixture",
+    "dbt.tests.adapter.functions.test_udafs.UDAFBase": "NotImplementedError: Test subclass must implement functions",
+    "dbt.tests.adapter.grants.test_incremental_grants.BaseIncrementalGrants": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_grants_test_incremental_grants_BaseIncrementalGrants/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_gra",
+    "dbt.tests.adapter.grants.test_model_grants.BaseModelGrants": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_grants_test_model_grants_BaseModelGrants/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_grants_test_mod",
+    "dbt.tests.adapter.grants.test_seed_grants.BaseSeedGrants": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_grants_test_seed_grants_BaseSeedGrants/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_grants_test_seed_",
+    "dbt.tests.adapter.grants.test_snapshot_grants.BaseSnapshotGrants": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_grants_test_snapshot_grants_BaseSnapshotGrants/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_grants_te",
+    "dbt.tests.adapter.hooks.test_model_hooks.BaseDuplicateHooksInConfigs": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_hooks_test_model_hooks_BaseDuplicateHooksInConfigs/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_hooks",
+    "dbt.tests.adapter.hooks.test_model_hooks.BaseHooksRefsOnSeeds": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_hooks_test_model_hooks_BaseHooksRefsOnSeeds/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_hooks_test_m",
+    "dbt.tests.adapter.hooks.test_run_hooks.BasePrePostRunHooks": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_hooks_test_run_hooks_BasePrePostRunHooks/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_hooks_test_run_",
+    "dbt.tests.adapter.incremental.test_incremental_microbatch.BaseMicrobatch": "LookupError: models needs the pytest fixture microbatch_model_sql, input_model_sql",
+    "dbt.tests.adapter.python_model.test_python_model.BasePythonEmptyTests": "LookupError: models needs the pytest fixture model_that_refs_input_py, input_model_sql",
+    "dbt.tests.adapter.python_model.test_python_model.BasePythonModelTests": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_python_model_test_python_model_BasePythonModelTests/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_pyth",
+    "dbt.tests.adapter.python_model.test_python_model.BasePythonSampleTests": "LookupError: models needs the pytest fixture model_that_refs_input_py, input_model_sql",
+    "dbt.tests.adapter.python_model.test_python_model._BaseSkipRefFiltering": "LookupError: models needs the pytest fixture model_that_refs_input_py, input_model_sql",
+    "dbt.tests.adapter.query_comment.test_query_comment.BaseMacroInvalidQueryComments": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_query_comment_test_query_comment_BaseMacroInvalidQueryComments/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_a",
+    "dbt.tests.adapter.sample_mode.test_sample_mode.BaseSampleModeTest": "LookupError: models needs the pytest fixture model_that_samples_input_sql, input_model_sql",
+    "dbt.tests.adapter.simple_seed.test_seed.BaseBasicSeedTests": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.BaseSeedConfigFullRefreshOff": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.BaseSeedConfigFullRefreshOn": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.BaseSeedCustomSchema": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.BaseSeedSpecificFormats": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.BaseSeedWithEmptyDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.BaseSeedWithUniqueDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.BaseSeedWithWrongDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.SeedTestBase": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.SeedUniqueDelimiterTestBase": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.TestBasicSeedTests": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.TestSeedConfigFullRefreshOff": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.TestSeedConfigFullRefreshOn": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.TestSeedCustomSchema": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.TestSeedSpecificFormats": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.TestSeedWithEmptyDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.TestSeedWithUniqueDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.simple_seed.test_seed.TestSeedWithWrongDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
+    "dbt.tests.adapter.unit_testing.test_quoted_reserved_word_column_names.BaseUnitTestQuotedReservedWordColumnNames": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_unit_testing_test_quoted_reserved_word_column_names_BaseUnitTestQuotedReservedWordColumnNames/target/manifest.json: run … ",
+    "dbt.tests.adapter.unit_testing.test_types.BaseUnitTestingTypes": "not replayed: no /tmp/tmp8bvb2up6/dbt_tests_adapter_unit_testing_test_types_BaseUnitTestingTypes/target/manifest.json: run … in /tmp/tmp8bvb2up6/dbt_tests_adapter_unit_testin"
+  }
+}

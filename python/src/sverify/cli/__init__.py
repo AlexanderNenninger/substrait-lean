@@ -6,6 +6,7 @@ a CI job or an agent.
     sverify check pipelines/orders.py --full     # with each node's full report
     sverify check pipelines/orders.py --fix      # write needed preconditions into requires=
     sverify check pipelines/orders.py --diff     # show what --fix would write
+    sverify check models/orders.sql --schema schemas.yaml   # one SQL query
     sverify check path/to/dbt_project            # a dbt project, through sverify-dbt
     sverify refresh pipelines/orders.py:paid     # run a node, report what changed
     sverify explain may_be_false                 # what a [code] of check's output means

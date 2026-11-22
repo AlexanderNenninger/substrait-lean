@@ -22,7 +22,7 @@ Closed in substrait-lean#685:
 
 | Note | Addition |
 |---|---|
-| 1 | `sverify.errors.Unsupported(ValueError)`, the base of every refusal (the lift's, the producer's, the SQL writer's, the Polars translator's); `sverify.engines.Unsupported` is the same class |
+| 1 | `sverify.errors.Unsupported(ValueError)`, the base of every refusal (the lift's, the producer's, the SQL writer's, the Polars translator's); `sverify.engines.Unsupported` was the same class until 1.0 removed that name (#881) |
 | 4 | `CheckedCondition.reason -> Literal["observation", "not_a_key", "ties", "always_false", "may_be_false", "may_be_null", "not_proved_kind", "unknown"] \| None` |
 | 5 | `Report.needs -> list[Needed]`, `Needed(table, column, op, value, sql, label, code, issue)`, `code` being the Python for `requires` (`_.qty != 0`) for an editor's quick fix (`sverify.contracts.Needed`) |
 | 13 | `verify(tables={"t": {"id": "BIGINT", "s": "VARCHAR NOT NULL"}})`: DuckDB's type names beside Ibis's (`sverify.contracts.input_schema`) |
@@ -77,7 +77,7 @@ Proposed: one `Unsupported`, exported from `sverify.errors`, that every
 refusal raises (the lift, the producer, the checker), with the others as
 aliases of it.
 
-Closed in substrait-lean#685: `sverify.errors.Unsupported`. Sverify-dbt still catches `ValueError`, since a bad condition raises one too (note 2).
+Closed in substrait-lean#685: `sverify.errors.Unsupported`, now `UnsupportedError`; 1.0 removed `sverify.engines.Unsupported` (#881). Sverify-dbt still catches `ValueError`, since a bad condition raises one too (note 2).
 
 ### 2. A bad condition and an unreadable query raise the same error
 
@@ -431,4 +431,4 @@ would give suggestions for more kinds of postcondition.
 
 ### sverify-dbt reads sverify's finding codes and budgets from `sverify.cli`
 
-`--format github|sarif|junit`, `--timeout` and `--memory-limit` (#891) use `sverify.cli._explain` (the text and level of a finding code) and `sverify.cli._limits` (`Budget`, `timeout_from`, `memory_limit_from`), both private. The `==` pin keeps them working. Proposed: a public `sverify.limits` and `sverify.explain`, so that a package on sverify's API needs no underscore module.
+`--format github|sarif|junit`, `--timeout` and `--memory-limit` (#891) use `sverify.cli._explain` (the text and level of a finding code) and `sverify.cli._limits` (`Budget`, `timeout_from`, `memory_limit_from`), both private. The `==` pin keeps them working. Two more names are not public: `sverify._duckdb.memory_limit_error` (DuckDB out of memory as a `MemoryLimitError`) and Ibis's `DuckDBType.to_string`, which turns a type of `Report.output` into DuckDB's name for it. `tests/test_public_api.py` lists every such name and fails on a new one. Proposed: a public `sverify.limits`, `sverify.explain`, `MemoryLimitError` raised for DuckDB's out-of-memory error `Report.output_types(dialect="duckdb")` and a public exit-status mapping (`EXIT_STATUS` in `sverify_dbt/result.py` repeats the table of `sverify.cli`'s `_main.py`), so that a package on sverify's API needs no underscore module.

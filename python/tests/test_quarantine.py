@@ -433,10 +433,10 @@ def test_a_node_without_quarantine_writes_no_quarantine_table(tmp_path):
 # -- one vocabulary for the on_* parameters (API review C1, C2) ---------------------
 
 
-def test_old_spellings_of_on_unproved_and_on_inferred_warn():
-    with pytest.warns(DeprecationWarning, match='on_unproved="check"'):
-        t = sv.transform(on_unproved="runtime")(lambda orders: orders)  # type: ignore[arg-type]
-    assert t.on_unproved == "check"
+def test_old_spellings_of_on_unproved_and_on_inferred_are_refused():
+    # `"runtime"` is gone with no alias (#881 1.2, ruling 219 C2).
+    with pytest.raises(ValueError, match="on_unproved must be 'error', 'check' or 'warn'"):
+        sv.transform(on_unproved="runtime")(lambda orders: orders)  # type: ignore[arg-type]
     import ibis
 
     orders = ibis.table({"a": "int64", "b": "int64"}, name="orders")
