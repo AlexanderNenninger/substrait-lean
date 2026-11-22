@@ -328,16 +328,49 @@ def test_the_docs_state_the_default_observation() -> None:
     assert rows == {name: str(getattr(PLAN_BOUND, name)) for name, _ in _COMPONENTS}
 
 
-def test_a_lens_on_element_order_keeps_a_condition_on_a_list_column_dependent():
-    """`ensures list_position(pair, a) = 1` changes between results equal up
-    to `elements="multiset"`, so a condition reading a list column depends on
-    the order of its elements; one reading a scalar does not (#2005)."""
-    from sverify.observation import PLAN_BOUND, dependencies
+def test_a_table_condition_depends_on_the_open_columns_it_reads() -> None:
+    """A table condition on a column the reference leaves open (a `FIRST` without an order) depends
+    on which row it picks; the checker reports it (`Report.tableIgnores`, #1071)."""
+    expr = T.group_by("k").aggregate(first_x=T.x.first(), n=T.k.count())
+    report = sv.verify(
+        expr,
+        requires={"t": [sv.max_rows(1000)]},
+        ensures=[sv.unique("first_x"), sv.unique("n")],
+        counterexamples=0,
+    )
+    picked, counted = report.ensures
+    assert picked.ignores == ("picks",)
+    assert counted.ignores == ()
 
-    cols = {"pair": ibis.dtype("array<int64>"), "a": ibis.dtype("int64")}
-    assert dependencies(PLAN_BOUND, object(), cols, ["pair", "a"]) == ["elements"]
-    assert dependencies(PLAN_BOUND, object(), cols, ["a"]) == []
-    assert dependencies(Lenses(), object(), cols, ["pair"]) == []
+
+def test_a_table_condition_on_a_nanosecond_timestamp_depends_on_the_timestamps() -> None:
+    """A nanosecond timestamp falls under `timestamps` as a microsecond one does
+    (`ContractCheck.kindComponent`, #1071)."""
+    n = ibis.table({"k": "int64", "ts": "timestamp(9)"}, name="n")
+    report = sv.verify(
+        n.group_by("k").aggregate(last=n.ts.max()),
+        requires={"n": [sv.max_rows(1000)]},
+        ensures=[sv.equivalent(timestamps="s"), sv.unique("last")],
+        counterexamples=0,
+    )
+    (cond,) = report.ensures
+    assert cond.ignores == ("timestamps",)
+
+
+def test_a_proved_table_condition_keeps_the_order_of_the_lists_it_reads() -> None:
+    """`unique(k, xs)` is proved by the key `k`, but reads a list column whose element order the
+    default observation ignores: it depends on "elements" whether or not `xs` is also an open
+    `collect` (an open column applies only where a condition is unproved)."""
+    expr = T.group_by("k").aggregate(xs=T.x.collect())
+    report = sv.verify(
+        expr,
+        requires={"t": [sv.max_rows(1000)]},
+        ensures=[sv.unique("k", "xs")],
+        counterexamples=0,
+    )
+    (cond,) = report.ensures
+    assert cond.proved
+    assert cond.ignores == ("elements",)
 
 
 #: Scalars whose engines' `UPPER` or `LOWER` values differ in `strings="ascii"`'s key

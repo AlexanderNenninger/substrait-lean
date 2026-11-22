@@ -1422,8 +1422,7 @@ def _(mo):
     * `TIMESTAMP` is the session time zone's, and so is what `date_trunc`
       returns, so the SQL stays in `TIMESTAMP_NTZ`.
     * `POWER` of doubles is Java's `Math.pow` (within 1 ulp of C's) and is
-      refused, as are sorts and windows of a plan whose report is not
-      `deterministic`.
+      refused.
 
     Spark runs locally, unlike Snowflake. The tests run every coverage case
     and every query of the Snowflake suite on a local Spark session
