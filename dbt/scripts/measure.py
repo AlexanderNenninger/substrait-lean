@@ -87,8 +87,15 @@ def _compile(project: Path, limit: int = 150) -> list[str]:
         )
         if done.returncode == 0:
             break
-        found = re.search(r"Compilation Error in model (\w+)", done.stdout + done.stderr)
+        text = done.stdout + done.stderr
+        found = re.search(r"(?:Compilation|Database|Parsing|Runtime) Error in model (\w+)", text)
         if not found or found[1] in left_out:
+            print(
+                "dbt compile stopped:",
+                *text.strip().splitlines()[-12:],
+                sep="\n  ",
+                file=sys.stderr,
+            )
             break
         left_out.append(found[1])
     return left_out
