@@ -39,6 +39,14 @@
         "substrait-extensions": "v0.108.0"
       },
       "note": "relations/basics.md orderedness and algebra.proto SortField on main; the gap is there"
+    },
+    {
+      "checked_at": "2026-11-22",
+      "against": {
+        "substrait": "main@c7b8e0383eab",
+        "substrait-extensions": "v0.109.0"
+      },
+      "note": "relations/basics.md L52-L73 and algebra.proto SortDirection L1893-L1900 on main (= v0.109.0): unchanged, the gap is there; proposal drafted as a comment on #213 (#1093)"
     }
   ],
   "upstream": [

@@ -43,6 +43,14 @@
         "substrait-extensions": "v0.108.0"
       },
       "note": "functions_arithmetic.yaml fp impls and tests/cases/arithmetic/{add,subtract,multiply,divide,sum,exp}.test on main; the tests answer the default (±inf), the ERROR option and sum's overflow on floats are open"
+    },
+    {
+      "checked_at": "2026-11-22",
+      "against": {
+        "substrait": "main@c7b8e0383eab",
+        "substrait-extensions": "v0.109.0"
+      },
+      "note": "functions_arithmetic.yaml and tests/cases/arithmetic on main (= v0.109.0): fp impls have no overflow option, tests expect +/-inf by default, sum's fp overflow values undefined for floats; proposal drafted as a new issue (#1093)"
     }
   ],
   "upstream": [
