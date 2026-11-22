@@ -187,8 +187,8 @@ contract added are not compared: the sink's record does not store them.
 `actions/check/` in this repository is a composite action that runs
 `sverify check --format sarif` on each target with the default 30 s timeout,
 merges the logs into one SARIF run and uploads it to code scanning, so the
-findings appear on the pull request's lines. The job's exit code is the worst
-of the targets', in the order of the template's `lake.py`.
+findings appear on the pull request's lines. The job's exit code is the greatest
+of the targets': the codes grow with severity.
 
 ```yaml
 permissions:

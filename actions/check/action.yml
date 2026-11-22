@@ -33,7 +33,7 @@ inputs:
     default: sverify.sarif
 outputs:
   exit-code:
-    description: The worst exit code of the targets (0 proved, 1 not proved, 2 usage, 3 unsupported, 4 budget, 5 quarantined, 6 error, 7 refused, 8 held).
+    description: The worst exit code of the targets (0 proved, 1 not proved, 2 usage, 3 unsupported, then the budget, refusal, quarantine, hold and error codes `sverify check --help` lists for the installed version).
     value: ${{ steps.check.outputs.exit-code }}
   sarif-file:
     description: The SARIF file.
@@ -84,20 +84,18 @@ runs:
         REQUIRE_PROVED: ${{ inputs.require-proved }}
         SARIF_FILE: ${{ inputs.sarif-file }}
       run: |
-        # One `sverify check` per target; the job's code is the worst of theirs, in the order of
-        # the template's `lake.py` (`worst`). Their SARIF logs are merged into one run.
+        # One `sverify check` per target; the job's code is the greatest of theirs (the codes
+        # grow with severity from sverify 0.9.0). Their SARIF logs are merged into one run.
         parts="$(mktemp -d)"
         flags=(--timeout "$TIMEOUT")
         [ "$REQUIRE_PROVED" = "true" ] && flags+=(--require-proved)
-        order=(0 1 2 3 7 4 5 8 6)
-        rank() { for i in "${!order[@]}"; do [ "${order[$i]}" = "$1" ] && echo "$i" && return; done; echo 99; }
         worst=0
         n=0
         for target in $TARGETS; do
           n=$((n + 1))
           code=0
           sverify check "${flags[@]}" --format sarif "$target" > "$parts/$n.sarif" || code=$?
-          if [ "$(rank "$code")" -gt "$(rank "$worst")" ]; then worst=$code; fi
+          [ "$code" -gt "$worst" ] && worst=$code
         done
         [ "$n" -gt 0 ] || { echo "::error::targets is empty"; exit 2; }
         python "$GITHUB_ACTION_PATH/merge_sarif.py" "$SARIF_FILE" "$parts"/*.sarif
