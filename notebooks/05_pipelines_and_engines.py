@@ -73,7 +73,6 @@ def _(mo):
 
 @app.cell
 def _(pa, sv):
-    from sverify.engines.plan import delta_plans
     from sverify.io import StaticSource
 
     def arrow_table(schema, rows):
@@ -105,7 +104,6 @@ def _(pa, sv):
         StaticSource,
         arrow_table,
         customers,
-        delta_plans,
         orders,
         orders_with_city,
         view,
@@ -371,35 +369,11 @@ def _(mo):
     Lean proves the full rule once. `Rel.delta` generates the update plan
     as an ordinary plan that reads the old tables and the change tables,
     and `Rel.delta_correct` proves it computes exactly the change. Any
-    engine can run it. `sverify.engines.plan.delta_plans(view.internal_plan)` returns the
-    plan of our view. `orders$delta` and `customers$delta` are the change
-    tables, with a trailing `__weight` column; old tables get weight 1
-    (`Project +[1]`), and the join multiplies weights (`$3 * $6`):
+    engine can run it. In the update plan of our view, `orders$delta` and
+    `customers$delta` are the change tables, with a trailing `__weight`
+    column; old tables get weight 1, and the join multiplies weights
+    ([how it works](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md)).
     """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(delta_plans, mo, view):
-    import subprocess
-
-    from sverify.engine import checker_path
-
-    def _tree(plan):
-        out = subprocess.run(
-            [str(checker_path()), "/dev/stdin"],
-            input=plan,
-            capture_output=True,
-            text=True,
-            check=False,
-        ).stdout
-        return out.split("tables:")[0].rstrip()
-
-    mo.hstack(
-        [mo.md(f"```text\n{_tree(p)}\n```") for p in delta_plans(view.internal_plan)],
-        justify="start",
-        wrap=True,
-    )
     return
 
 
@@ -1002,21 +976,19 @@ def _(mo):
     and the tests use DuckDB as their default oracle. DuckDB and Polars are
     characterized fact by fact, each fact with its evidence
     ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)). DuckDB and Polars run Lean's
-    written form of the plan (`sverify.engines.plan.written_plan`), so what runs
-    is what was checked, and their translators spell out the reference's
-    semantics explicitly, whatever the engine's defaults.
+    written form of the plan, so what runs is what was checked, and their
+    translators spell out the reference's semantics, whatever the engine's
+    defaults.
 
-    We'll line the engines up. Pick a query, and each engine runs the same
-    checked plan (`sverify.engines.run(con, plan, engine)`) next to Lean's
-    reference interpreter:
+    We'll line the engines up. Pick a query: `sv.verify` checks it once, and
+    `report.run(con, engine)` runs the same checked plan on each engine:
     """)
     return
 
 
 @app.cell
 def _(ibis, math, sv):
-    from sverify.engines import ENGINES, run
-    from sverify.engines.plan import substrait_json, written_plan
+    from sverify.engines import ENGINES
 
     T_SCHEMA = ibis.schema({"k": "string", "qty": "int64", "v": "float64"})
     U_SCHEMA = ibis.schema({"k": "string", "label": "string"})
@@ -1033,9 +1005,6 @@ def _(ibis, math, sv):
         U_ROWS,
         U_SCHEMA,
         con,
-        run,
-        substrait_json,
-        written_plan,
     )
 
 
@@ -1065,17 +1034,13 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(ENGINES, con, display, json, mo, query, run, substrait_json, written_plan):
-    from sverify.testing import canonical, inline_tables, lean_rows
-
-    _plan = substrait_json(con, query.value, semantics="duckdb")
-    _written = written_plan(_plan)
-    _cols = json.loads(_plan)["relations"][0]["root"]["names"]
+def _(ENGINES, con, display, mo, query, sv):
+    _report = sv.verify(query.value, tables={"t": con.table("t"), "u": con.table("u")})
     _panels, _results = [], {}
     for _engine in ENGINES:
         try:
-            _t = run(con, _written, _engine)
-            _results[_engine] = [tuple(r.values()) for r in _t.to_pylist()]
+            _t = _report.run(con, _engine)
+            _results[_engine] = sorted(repr(tuple(r.values())) for r in _t.to_pylist())
             _panels.append(display.arrow(_t, title=_engine))
         except Exception as _e:
             _panels.append(
@@ -1089,17 +1054,15 @@ def _(ENGINES, con, display, json, mo, query, run, substrait_json, written_plan)
                     ]
                 )
             )
-    if " v" not in query.value and "+ 1" not in query.value:  # see the note below
-        _data = {t: con.rows(t) for t in ("t", "u")}
-        _lean = lean_rows(json.dumps(inline_tables(json.loads(_plan), _data)))
-        _panels.insert(0, display.table(_lean, _cols, title="Lean's Rel.eval"))
-    _same = len({repr(canonical(r)) for r in _results.values()}) == 1 and len(_results) == 3
+    _same = len({repr(r) for r in _results.values()}) == 1 and len(_results) == len(ENGINES)
     mo.vstack(
         [
             mo.md(f"```sql\n{query.value}\n```"),
             display.side_by_side(*_panels),
             mo.callout(
-                mo.md("All three engines agree." if _same else "The engines disagree; see below."),
+                mo.md(
+                    "The engines agree." if _same else "The engines disagree, or refuse; see below."
+                ),
                 kind="success" if _same else "warn",
             ),
         ]
@@ -1120,15 +1083,9 @@ def _(mo):
     * NaN is one value, equal to itself and above every number, so
       `NaN > 0` is TRUE. The next section covers doubles.
     * `qty + 1` on the largest integer is where engines differ most:
-      Polars' own `+` wraps around to the smallest integer, while the
-      Polars and DuckDB translators raise, as the reference does. An integer that
+      Polars' own `+` wraps around to the smallest integer. An integer that
       leaves its declared width is an error, and `verify` reports it
-      beforehand.
-
-    Lean's column is missing for the last two queries. The model stores a
-    double as a very large integer code (`core/Sverify/Core/Float.lean`), so
-    the checker's printer can't tell a double from an integer beyond 64
-    bits. The test suite compares doubles through the engines.
+      beforehand with the bound to declare, so no engine runs the plan.
 
     ### Choosing the engine for a node
 
@@ -1185,8 +1142,9 @@ def _(mo):
 
 
 @app.cell
-def _(pa, substrait_json, sv):
+def _(pa, sv):
     from sverify.engines import run_sharded
+    from sverify.engines.plan import substrait_json
 
     def _readings(rows):
         return pa.table(
@@ -1394,8 +1352,8 @@ def _(mo):
     ### SQL for DuckDB, Snowflake and Spark
 
     When the data lives in a warehouse, the plan goes to the warehouse.
-    `sverify.engines.plan.to_sql` writes a checked plan, or one of Lean's update
-    plans, as SQL whose result is `Rel.eval` of the plan. Columns are
+    `report.to_sql(dialect)` writes the plan the report checked as SQL whose
+    result is `Rel.eval` of the plan. Columns are
     positional (`c0`, `c1`, …), filters keep only TRUE rows (`IS TRUE`),
     integers are checked at their declared width and every `ORDER BY` says where
     NULLs go. Each engine's differences go through a `Dialect`:
@@ -1409,7 +1367,7 @@ def _(mo):
         ["duckdb", "snowflake", "spark"], value="duckdb", label="dialect", inline=True
     )
     sql_query = mo.ui.text_area(
-        value="select k, qty * 2 as doubled from t where qty > 0",
+        value="select k, qty * 2 as doubled from t where qty between 0 and 1000",
         label="query over t(k, qty, v)",
         full_width=True,
         rows=2,
@@ -1419,14 +1377,12 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(con, dialect, json, mo, sql_query, substrait_json):
+def _(con, dialect, mo, sql_query, sv):
     import sqlglot
     from sverify.engines import UnsupportedError
-    from sverify.engines.plan import to_sql
 
     try:
-        _plan = json.loads(substrait_json(con, sql_query.value, semantics="duckdb"))
-        _sql = to_sql(_plan, dialect.value)
+        _sql = sv.verify(sql_query.value, tables={"t": con.table("t")}).to_sql(dialect.value)
         _pretty = sqlglot.transpile(_sql, read=dialect.value, pretty=True)[0]
         _out = mo.md(f"```sql\n{_pretty}\n```")
     except UnsupportedError as _e:
@@ -1440,12 +1396,9 @@ def _(con, dialect, json, mo, sql_query, substrait_json):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Try `select k, row_number() over (partition by k order by qty) as rn from t`
-    in each dialect. DuckDB gets an ordinal column, so ties break the way
-    Lean's stable sort breaks them. Snowflake and Spark refuse, because
-    their tables have no row order. When a contract report says
-    `deterministic` (chapter 4), `node.to_sql(dialect)` writes the window
-    without a tiebreak, since the report proves there are no ties.
+    A query `verify` does not prove, as `qty * 2` without the bound on
+    `qty`, is refused with what it needs. `node.to_sql(dialect)` writes a
+    node's plan the same way.
 
     Snowflake: integers are `NUMBER(38,0)` checked against the 64-bit
     range, timestamps are `TIMESTAMP_NTZ(6)`, every identifier is quoted,
@@ -1520,18 +1473,16 @@ def _(con, ibis, math):
 
 
 @app.cell(hide_code=True)
-def _(con, display):
-    from sverify.testing import duckdb_ibis, duckdb_sql
-
+def _(con, display, sv):
     display.arrow(
-        duckdb_sql(
-            con,
+        sv.verify(
             "select v, v > 0 as positive, v = 'NaN'::double as equals_nan,"
             " v < 'Infinity'::double as below_inf from m order by v",
-        ),
+            tables={"m": con.table("m")},
+        ).run(con, "duckdb"),
         title="the table's doubles, as the model has them",
     )
-    return duckdb_ibis, duckdb_sql
+    return
 
 
 @app.cell(hide_code=True)
@@ -1795,18 +1746,14 @@ def _(mo):
     Strings are sequences of Unicode characters in the model. `substring`,
     `strpos`, `character_length`, `trim`, `||` and `LIKE` are computed
     exactly, and the test suite checks them against DuckDB on random
-    strings. Here is Lean's `Rel.eval` next to DuckDB, running Ibis's own
-    SQL, on some awkward words:
+    strings. Here is the checked plan on DuckDB and on Polars, on some
+    awkward words:
     """)
     return
 
 
 @app.cell
-def _(con, display, duckdb_ibis, ibis, json):
-    from sverify.ibis_substrait import to_substrait_json
-    from sverify.testing import inline_tables as _inline_tables
-    from sverify.testing import lean_rows as _lean_rows
-
+def _(con, display, ibis, sv):
     con.create("w", ibis.schema({"word": "string"}), [("Grüße",), ("naïve ",), ("a%b",), (None,)])
     _w = con.table("w")
     _words = _w.select(
@@ -1817,12 +1764,12 @@ def _(con, display, duckdb_ibis, ibis, json):
         trimmed=_w.word.strip(),
         eszett=_w.word.find("ß"),
     )
-    _plan = json.loads(to_substrait_json(_words))
-    _cols = _plan["relations"][0]["root"]["names"]
-    _lean = _lean_rows(json.dumps(_inline_tables(_plan, {"w": con.rows("w")})))
+    _report = sv.verify(_words)
     display.side_by_side(
-        display.table(_lean, _cols, title="Lean"),
-        display.arrow(duckdb_ibis(con, _words), title="DuckDB"),
+        *(
+            display.arrow(_report.run(con, _engine), title=_engine)
+            for _engine in ("duckdb", "polars")
+        )
     )
     return
 

@@ -43,6 +43,8 @@ one commit per release; don't edit it by hand. The sources are in
 _HEADER = re.compile(r"^# /// script\n(.*?)^# ///$", re.S | re.M)
 _SVERIFY = re.compile(r'^(#\s+)"(sverify(?:-dbt)?)(\[[^\]]*\])?"(,?)$', re.M)
 _UP_LINK = re.compile(r"\]\(\.\./([^)\s]+)\)")
+#: A link to main's tree, which runs ahead of the release the notebook pins.
+_MAIN_LINK = re.compile(re.escape(REPO) + r"/(blob|tree)/main/")
 
 
 def header(text: str) -> dict:
@@ -82,6 +84,7 @@ def rewrite(text: str, version: str) -> str:
         raise ValueError("expected one sverify dependency")
     body = _SVERIFY.sub(rf'\1"\2\3=={version}"\4', deps)
     text = text[: m.start(1)] + body + text[m.end(1) :]
+    text = _MAIN_LINK.sub(rf"{REPO}/\1/v{version}/", text)
     return _UP_LINK.sub(rf"]({REPO}/blob/v{version}/\1)", text)
 
 

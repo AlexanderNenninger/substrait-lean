@@ -38,6 +38,7 @@ def test_every_notebook_installs_the_release(script, tmp_path):
         assert deps, nb.name
         assert all(d.endswith("==0.2.0") for d in deps), (nb.name, deps)
         assert "](../" not in nb.read_text(), nb.name
+        assert "/main/" not in nb.read_text(), nb.name
     assert (tmp_path / "README.md").read_text().startswith("# Published notebooks")
 
 
@@ -107,3 +108,18 @@ def test_sverify_dbt_is_pinned_with_sverify(script):
         "sverify[duckdb]==0.2.0",
         "sverify-dbt==0.2.0",
     ]
+
+
+def test_links_to_main_point_at_the_release(script):
+    nb = f"""# /// script
+# dependencies = [
+#     "sverify",
+# ]
+# ///
+
+mo.md("[guide]({script.REPO}/blob/main/docs/tasks.md), [tour]({script.REPO}/tree/main/notebooks)")
+"""
+    assert script.rewrite(nb, "0.7.0").endswith(
+        f'mo.md("[guide]({script.REPO}/blob/v0.7.0/docs/tasks.md),'
+        f' [tour]({script.REPO}/tree/v0.7.0/notebooks)")\n'
+    )
