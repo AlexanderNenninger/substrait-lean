@@ -221,7 +221,7 @@ constraint of an enforced contract, beside dbt's own result, in
 
 | Source | Proved | Not proved | Not checked | Refused | Inputs |
 |---|---|---|---|---|---|
-| dbt-utils 1.4.1 | 3 | 13 | 45 | 15 | 37 |
+| dbt-utils 1.4.1 | 3 | 13 | 46 | 14 | 37 |
 | dbt-expectations 0.10.10 | 0 | 33 | 9 | 115 | 0 |
 | dbt-tests-adapter 1.20.0 | 37 | 11 | 98 | 10 | 13 |
 | dbt-core v1.12.6 | 22 | 12 | 38 | 35 | 3 |
