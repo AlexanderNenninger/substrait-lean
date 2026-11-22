@@ -19,6 +19,7 @@ Jobs and tools read these formats that sverify writes:
 | The command line's JSON | what `sverify check`, `refresh` and `explain` print with `--format json`, with each node's report as `Report.to_json()` writes it; the exit codes are part of it | `format` 2 in the document | [`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json) |
 | The quarantine table | a Delta or Iceberg table next to a node's sink; each write's record in a Delta commit's `commitInfo`, or an Iceberg snapshot's summary, under the key `sverify.quarantine` | `format` 1 in the record | [`quarantine.schema.json`](../python/src/sverify/schemas/quarantine.schema.json) |
 | The refresh report's JSON | `Refresh.to_json()` | `format` 2 in the document | [`refresh.schema.json`](../python/src/sverify/schemas/refresh.schema.json) |
+| The OpenLineage facet | the dataset facet `sverify_contract` of each refreshed node's OpenLineage events (`sverify.openlineage`) | `format` 3 in the facet | [`openlineage-contract-facet.schema.json`](../python/src/sverify/schemas/openlineage-contract-facet.schema.json) |
 
 Within 1.x each format follows these rules:
 
@@ -33,8 +34,9 @@ Within 1.x each format follows these rules:
   metadata, which 1.0 renamed twice; 5 for the report's JSON, which 1.0
   renamed, gave a verdict, gave its lenses and facts their 1.0 shape, and
   then renamed a route's keys; 2 for the command line's JSON and the refresh
-  report, which 1.0 renamed a write's counts in; and 1 for the quarantine
-  record, which has had one shape since it was added. A reader refuses a
+  report, which 1.0 renamed a write's counts in; 3 for the OpenLineage
+  facet, which 1.0 renamed twice; and 1 for the quarantine record, which has
+  had one shape since it was added. A reader refuses a
   format newer than it knows, with an error that says to upgrade sverify.
 - A value from a fixed set, such as the manifest's `class` or a condition's
   `kind`, may gain new values. A reader that meets one it does not know
@@ -65,8 +67,9 @@ earlier formats:
   `"reference"` for the semantics 1.0 calls `"portable"` (`semantics`, and
   a route's `semantics`), and a reader maps it.
 
-The OpenLineage facet `sverify_contract` follows the same name: its format
-2 says `lenses` where format 1 said `equivalence`.
+The OpenLineage facet `sverify_contract` follows the same names: its format
+2 says `lenses` where format 1 said `equivalence`, and its format 3 says a
+route's `taken` where format 2 said `kind`.
 
 The report's JSON of format 1 was in no release, and `Report.from_json`
 refuses it. Format 3 replaced `Report.proved` with `Report.verdict`: `verdict`

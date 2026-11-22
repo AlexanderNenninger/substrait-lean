@@ -603,13 +603,13 @@ def _cli_json(argv: list[str], capsys: pytest.CaptureFixture[str]) -> dict:
 
 
 def test_cli_formats_only_rename_keys(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """Format 2 of the command line's JSON and of the refresh report differ
-    from format 1 (stored before 1.0 under `formats/main-portable/cli`) only
-    in the keys `CLI_KEYS_1` renames: every other key keeps its name."""
+    """Format 2 of the command line's JSON keeps every key of format 1
+    (stored before 1.0 under `formats/main-portable/cli`), under the names
+    `CLI_KEYS_1` gives the moved ones."""
     fix = tmp_path / "fix.py"
     fix.write_text(
         CLI_HEAD
-        + '\n\n@sv.transform(requires={"other": []} if False else {})\n'
+        + "\n\n@sv.transform(requires={})\n"
         + "def doubled(orders):\n    return orders.select(orders.id, doubled=orders.amount * 2)\n"
         + "\n\nd = orders.pipe(doubled)\n"
     )
@@ -630,7 +630,8 @@ def test_cli_formats_only_rename_keys(tmp_path: Path, capsys: pytest.CaptureFixt
         assert (old["format"], now["format"]) == (1, 2)
         _valid(now, "cli.schema.json")
         assert _renamed(_paths(old)) != _paths(old), f"{name}: no renamed key stored"
-        assert _renamed(_paths(old)) == _paths(now), name
+        # Within 1.x a format may gain optional keys: every old key is kept, renamed.
+        assert _renamed(_paths(old)) <= _paths(now), name
 
 
 def test_refresh_report_only_renames_a_writes_counts(tmp_path: Path) -> None:
@@ -645,3 +646,36 @@ def test_refresh_report_only_renames_a_writes_counts(tmp_path: Path) -> None:
         assert old["format"] == 1
         write = {CLI_KEYS_1["write"].get(k, k) for k in old["nodes"][0]["write"]}
         assert write <= set(now["nodes"][0]["write"]), version
+
+
+def test_the_lineage_facet_keeps_its_keys(tmp_path: Path) -> None:
+    """Format 3 of the `sverify_contract` facet keeps every key of format 2
+    (stored before 1.0 under `formats/main-portable/openlineage`), with the
+    route's `kind` named `taken` as in the report JSON (#2345). sverify
+    never reads the facet's route back."""
+    from ibis import _
+
+    import sverify.openlineage as ol
+    from sverify.io import DeltaSink, StaticSource
+
+    orders = StaticSource(
+        pa.table({"id": [1, 2, 3], "cust": [10, 20, 10], "amount": [30, 5, 50]}), name="orders"
+    )
+
+    @sv.transform(
+        requires={"orders": [_.amount >= 0, _.amount < 1000, sv.key("id")]},
+        ensures=[_.amount > 10, sv.key("id")],
+    )
+    def paid(orders):
+        return orders.filter(orders.amount > 10)
+
+    log = tmp_path / "events.jsonl"
+    node = orders.pipe(paid).write(DeltaSink(str(tmp_path / "paid")))
+    node.refresh(lineage=ol.Lineage(log, namespace="shop"))
+    done = json.loads(log.read_text().splitlines()[-1])
+    now = done["outputs"][0]["facets"]["sverify_contract"]
+    old = json.loads((FORMATS / "main-portable" / "openlineage" / "facet.json").read_text())
+    assert (old["format"], now["format"]) == (2, 3)
+    assert "kind" in old["route"] and now["route"]["taken"] == old["route"]["kind"]
+    renamed = {("route", "taken") if p == ("route", "kind") else p for p in _paths(old)}
+    assert renamed <= _paths(now)

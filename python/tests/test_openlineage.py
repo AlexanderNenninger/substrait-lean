@@ -146,7 +146,7 @@ def test_refresh_emits_start_and_complete(tmp_path):
     assert facets["version"]["datasetVersion"] == str(write.version)
     assert out["outputFacets"]["outputStatistics"]["rowCount"] == 2
     c = facets["sverify_contract"]
-    assert c["format"] == 2 and c["node"] == "paid" and c["proved"] is True
+    assert c["format"] == 3 and c["node"] == "paid" and c["proved"] is True
     assert c["_schemaURL"] == ol.FACET_SCHEMA_URL
     assert {e["label"]: e["status"] for e in c["ensures"]} == {
         "(_.amount > 10)": "proved",

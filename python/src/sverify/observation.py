@@ -471,7 +471,7 @@ def equivalent(
             `collect` without an order leaves it.
 
     Returns:
-        An `Lenses`, for `ensures`.
+        A `Lenses`, for `ensures`.
 
     Raises:
         ValueError: A component's level is unknown.

@@ -85,8 +85,9 @@ SPEC_VERSION = "2-0-2"
 #: tests run against.
 CLIENT_VERSION = "1.55.0"
 #: The version of the `sverify_contract` facet's format. Format 2 (1.0)
-#: names `equivalence` `lenses` (`Report.lenses`).
-FACET_FORMAT = 2
+#: names `equivalence` `lenses` (`Report.lenses`), and format 3 a route's
+#: `kind` `taken`, as the report JSON does (#2345).
+FACET_FORMAT = 3
 #: The `_schemaURL` of the `sverify_contract` facet: its JSON schema's `$id`
 #: (`sverify/schemas/openlineage-contract-facet.schema.json`).
 FACET_SCHEMA_URL = (
@@ -396,7 +397,7 @@ def _with_refresh(facet: Mapping[str, Any], entry: StageRefresh) -> dict[str, An
     out = dict(facet)
     if entry.route is not None:
         r = entry.route
-        out["route"] = {"engine": r.engine, "kind": r.taken, "class": r.cls}
+        out["route"] = {"engine": r.engine, "taken": r.taken, "class": r.cls}
     out["outcome"] = entry.outcome
     out["quarantined"] = entry.quarantined
     if entry.held is not None:

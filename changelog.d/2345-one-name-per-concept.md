@@ -24,6 +24,7 @@ Formats, each bumped once; the two that sverify reads back, the report and the s
 
 - The report's JSON is format 5. A route's keys `kind`, `reason`, `facts`, `version` and `proved_facts` are `taken`, `why`, `engine_facts`, `probed_version` and `theorem_facts`. `Report.from_json` reads formats 2 to 4.
 - The sink's contract record is format 3. Its key `profile` is `semantics`. `Contract.from_json` reads formats 1 and 2.
+- The OpenLineage facet `sverify_contract` is format 3. Its route's `kind` is `taken`, as in the report JSON; its `_schemaURL` is `…/schemas/openlineage-contract-facet/3.json`.
 - The command line's JSON is format 2, and the refresh report's JSON (`Refresh.to_json`) is format 2. A write's `inserted` and `deleted` are `inserts` and `deletes`, and in the command line's JSON a fix's `reason` (`check --fix`, `--diff`) is `why`. The refresh report's `$schema` is `…/schemas/refresh/2.json`. Jobs that read these documents read the new keys.
 
 Command line: `--json` is removed. Write `--format json`. `sverify-dbt check --format json` writes format 2 of the same document.
