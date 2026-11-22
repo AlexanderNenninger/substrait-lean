@@ -101,8 +101,9 @@ replays (`evidence`) and the dbt packages' replay step run when the
 package's code (not its I/O, CLI, skills or schemas), an engine package's
 code, the lock files, their own ledgers or a Lean input change. The Wheels
 workflow runs its wheel tests on release branches, tags, merge batches and
-its schedule, and Docs builds on a pull request only when a file the site
-reads changes. The header of `ci.yml` has the paths. A test that reads repository
+its schedule. Docs builds on a pull request only when its docs, README,
+site config or packaging change, not for code: a docstring that breaks the
+API reference shows on main. The header of `ci.yml` has the paths. A test that reads repository
 files (docs, the catalogue, facts, Lean sources) carries `needs_repo`
 (`tests/_repo.py`); a test dependency the package doesn't bring goes into
 that script's list, or the test uses `pytest.importorskip`. Run it locally
