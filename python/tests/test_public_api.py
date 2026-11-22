@@ -96,7 +96,7 @@ EXCLUDED = {
     "sverify.black_box.BlackBox": "Dialect's SQL-writing methods",
     "sverify.sql.core._base.Dec": "Dialect's SQL-writing methods",
     "sverify.sql.core._base.Lst": "Dialect's SQL-writing methods",
-    "sverify.sql.core._base.Unsupported": "Dialect's SQL-writing methods; a deprecated alias",
+    "sverify.sql.core._base.Unsupported": "Dialect's SQL-writing methods: the writer's refusal",
     # A `Native` table `run_plan(keep=True)` returns. It goes with the
     # exception in `docs/stability.md` that keeps `Native`'s members outside
     # the promise while the native scans move into the engine packages.

@@ -4072,10 +4072,6 @@ def _coalesce(a: Expr, rest: list[Expr]) -> Expr:
     return If(Un("not", Un("is_null", a)), a, _coalesce(rest[0], rest[1:]))
 
 
-def _pick(better: Callable[[Expr, Expr], Expr], a: Expr, b: Expr) -> Expr:
-    return If(Un("is_null", a), b, If(Un("is_null", b), a, If(better(a, b), b, a)))
-
-
 def _option(f: dict, name: str, default: str) -> str:
     """`Parse.optionPref`: the first preference of option `name`, or `default`
     when the plan omits it."""

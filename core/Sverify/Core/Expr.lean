@@ -1120,8 +1120,8 @@ theorem Value.pick_eq (better : Value → Value → Bool) (v w : Value) :
       else if better v w then w else v := by
   cases v <;> cases w <;> simp [Value.pick, UnFn.apply, Value.isTrue]
 
-/-- `GREATEST` as one operation is the conditional `Parse` used to write
-(`Parse.mkCall.pick`): `b` if `a` is `NULL`, `a` if `b` is, else the larger. -/
+/-- `GREATEST` as one operation is the conditional `Parse` used to write:
+`b` if `a` is `NULL`, `a` if `b` is, else the larger. -/
 theorem Expr.eval_greatest (row : Row) (a b : Expr) :
     (Expr.bin .greatest a b).eval row =
       (Expr.ifThen (.un .isNull a) b

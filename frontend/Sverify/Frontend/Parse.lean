@@ -66,8 +66,6 @@ def valuesKey (n : Nat) (rows : Relation) : String :=
   s!"$values {n} {rows.length}:" ++
     String.join (rows.map fun row => s!"{row.length}:" ++ String.join (row.map valueKey))
 
-def isValuesKey (t : String) : Bool := t.startsWith "$values "
-
 /-- The entry in `Tables` of the kinds a projection's source plan declares for
 its expressions, where they say more than `Expr.kind`: the model has a
 timestamp, a double's `0.0` and a typed `NULL` as plain values (#96). Its
