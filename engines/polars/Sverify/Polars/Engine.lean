@@ -171,30 +171,85 @@ theorem Profile.polars_bin_ok {f : BinFn} {t : Expr} (ht : f.polarsTmpl = some t
   exact Expr.evalP_reference_ok h
 
 omit [Boxes.Ambient] in
-theorem Polars.tdiv_of_dvd {a b : Int} (h : b ∣ a) : a.tdiv b = a.fdiv b := by
-  rw [Int.tdiv_eq_ediv_of_dvd h, Int.fdiv_eq_ediv_of_dvd h]
-
+theorem Polars.apply_lt_int (x y : Int) :
+    BinFn.apply .lt (.int x) (.int y) = .bool (decide (x < y)) := rfl
 omit [Boxes.Ambient] in
-theorem Polars.tmod_of_dvd {a b : Int} (h : b ∣ a) : a.tmod b = a.fmod b := by
-  rw [(Int.dvd_iff_tmod_eq_zero ..).mp h, (Int.dvd_iff_fmod_eq_zero ..).mp h]
+theorem Polars.apply_add_int (x y : Int) : BinFn.apply .add (.int x) (.int y) = .int (x + y) := rfl
+omit [Boxes.Ambient] in
+theorem Polars.apply_sub_int (x y : Int) : BinFn.apply .sub (.int x) (.int y) = .int (x - y) := rfl
+omit [Boxes.Ambient] in
+theorem Polars.apply_idiv_ne {x y : Int} (hy : y ≠ 0) :
+    BinFn.apply .idiv (.int x) (.int y) = .int (x.tdiv y) := by
+  simp [BinFn.apply, hy]
+omit [Boxes.Ambient] in
+theorem Polars.apply_imod_ne {x y : Int} (hy : y ≠ 0) :
+    BinFn.apply .imod (.int x) (.int y) = .int (x.tmod y) := by
+  simp [BinFn.apply, hy]
 
 /-- The floored quotient of integers, in Lean's functions: `NULL` by zero, else
 `fdiv`. -/
 theorem Polars.floorDivT_eval (a b : Int) :
     Polars.floorDivT.eval [.int a, .int b] = if b = 0 then .null else .int (a.fdiv b) := by
-  sorry
+  by_cases hb : b = 0
+  · subst hb
+    simp only [Polars.floorDivT, Expr.floorDivOf, Expr.eval, List.getD, List.getElem?_cons_zero,
+      List.getElem?_cons_succ, Option.getD_some, ↓reduceIte]
+    split <;> (try split) <;> (try split) <;> rfl
+  · simp only [hb, ↓reduceIte, Polars.floorDivT, Expr.floorDivOf, Expr.eval, List.getD,
+      List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Polars.apply_lt_int,
+      Polars.apply_add_int, Polars.apply_sub_int, Polars.apply_idiv_ne hb, Polars.isTrue_bool,
+      decide_eq_true_eq]
+    by_cases c1 : a < 0 ∧ 0 < b
+    · simp only [c1.1, c1.2, ↓reduceIte, (Polars.fdiv_fmod_neg_pos c1.1 c1.2).1]
+    by_cases c2 : 0 < a ∧ b < 0
+    · simp only [show ¬a < 0 by omega, c2.1, c2.2, ↓reduceIte,
+        (Polars.fdiv_fmod_pos_neg c2.1 c2.2).1]
+    · rw [(Polars.fdiv_fmod_same c1 c2).1]
+      by_cases d1 : a < 0 <;> by_cases d2 : 0 < b <;> by_cases d3 : b < 0 <;>
+        by_cases d4 : 0 < a <;> simp only [d1, d2, d3, d4, ↓reduceIte] <;> omega
 
 /-- The floored remainder of integers, in Lean's functions. -/
 theorem Polars.floorModT_eval (a b : Int) :
     Polars.floorModT.eval [.int a, .int b] = if b = 0 then .null else .int (a.fmod b) := by
-  sorry
+  by_cases hb : b = 0
+  · subst hb
+    simp only [Polars.floorModT, Expr.floorModOf, Expr.eval, List.getD, List.getElem?_cons_zero,
+      List.getElem?_cons_succ, Option.getD_some, ↓reduceIte]
+    split <;> (try split) <;> (try split) <;> rfl
+  · simp only [hb, ↓reduceIte, Polars.floorModT, Expr.floorModOf, Expr.eval, List.getD,
+      List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, Polars.apply_lt_int,
+      Polars.apply_add_int, Polars.apply_sub_int, Polars.apply_imod_ne hb, Polars.isTrue_bool,
+      decide_eq_true_eq]
+    by_cases c1 : a < 0 ∧ 0 < b
+    · have hn : (-1 - a).tmod b = -(a + 1).tmod b := by
+        rw [show -1 - a = -(a + 1) by omega, Int.neg_tmod]
+      simp only [c1.1, c1.2, ↓reduceIte, (Polars.fdiv_fmod_neg_pos c1.1 c1.2).2, hn,
+        Value.int.injEq]
+      omega
+    by_cases c2 : 0 < a ∧ b < 0
+    · simp only [show ¬a < 0 by omega, c2.1, c2.2, ↓reduceIte,
+        (Polars.fdiv_fmod_pos_neg c2.1 c2.2).2]
+    · rw [(Polars.fdiv_fmod_same c1 c2).2]
+      by_cases d1 : a < 0 <;> by_cases d2 : 0 < b <;> by_cases d3 : b < 0 <;>
+        by_cases d4 : 0 < a <;> simp only [d1, d2, d3, d4, ↓reduceIte] <;> omega
 
 /-- A floored quotient or remainder is the truncated one, or the call is in
 `division_type`'s scope (`floorDiffers`: the signs differ and the division is
 not exact). -/
-theorem Polars.floor_or_differs {a b : Int} (hb : b ≠ 0) (h : ¬floorDiffers [.int a, .int b]) :
+theorem Polars.floor_or_differs {a b : Int} (h : floorDiffers [.int a, .int b] = false) :
     a.fdiv b = a.tdiv b ∧ a.fmod b = a.tmod b := by
-  sorry
+  have hd : a * b < 0 → b ∣ a := fun hab => by
+    simp only [floorDiffers, hab, decide_true, Bool.true_and, bne_eq_false_iff_eq] at h
+    exact Int.dvd_of_tmod_eq_zero h
+  have hdv : b ∣ a → a.fdiv b = a.tdiv b ∧ a.fmod b = a.tmod b := fun hd => by
+    rw [Int.tdiv_eq_ediv_of_dvd hd, Int.fdiv_eq_ediv_of_dvd hd, Int.tmod_eq_zero_of_dvd hd,
+      Int.fmod_eq_zero_of_dvd hd]
+    exact ⟨rfl, rfl⟩
+  by_cases c1 : a < 0 ∧ 0 < b
+  · exact hdv (hd (Int.mul_neg_of_neg_of_pos c1.1 c1.2))
+  by_cases c2 : 0 < a ∧ b < 0
+  · exact hdv (hd (Int.mul_neg_of_pos_of_neg c2.1 c2.2))
+  · exact Polars.fdiv_fmod_same c1 c2
 
 /-- **`Profile.polars`'s binary functions are within Polars's table** (S1,
 ruling 235): the reference's, but the floored `//` and `%` of integers whose
@@ -219,7 +274,9 @@ theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polar
           by_cases hd : floorDiffers [.int a, .int b]
           · exact .inr (callExtra_of_at (o := "division_type")
               (extraAt_of_all Profile.polars_extras (by decide)) (by simp [optionScope, hd]))
-          · left; simp only [hb, ↓reduceIte, BinFn.apply, (Polars.floor_or_differs hb hd).1]
+          · left
+            rw [(Polars.floor_or_differs (by simpa using hd)).1, Polars.apply_idiv_ne hb]
+            simp [hb]
         all_goals
           rw [Polars.polars_idiv_notInt (.inr fun _ h => by cases h)] at h
           cases h; exact .inl (raiseIf_ok (Polars.ref_idiv_notInt (.inr fun _ h => by cases h))).symm
@@ -237,7 +294,9 @@ theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polar
           by_cases hd : floorDiffers [.int a, .int b]
           · exact .inr (callExtra_of_at (o := "division_type")
               (extraAt_of_all Profile.polars_extras (by decide)) (by simp [optionScope, hd]))
-          · left; simp only [hb, ↓reduceIte, BinFn.apply, (Polars.floor_or_differs hb hd).2]
+          · left
+            rw [(Polars.floor_or_differs (by simpa using hd)).2, Polars.apply_imod_ne hb]
+            simp [hb]
         all_goals
           rw [Polars.polars_imod_notInt (.inr fun _ h => by cases h)] at h
           exact .inl (raiseIf_ok h)

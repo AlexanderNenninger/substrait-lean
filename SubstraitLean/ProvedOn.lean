@@ -127,17 +127,18 @@ theorem check_guardFreeSide {input : Json} {R : Request} {rep : Report}
   R.guardFreeSide hD hT hsm (by rwa [(Request.check_ok (check_parse hR hc)).guardFree] at hg)
 
 /-- **A proved postcondition holds on Polars's model**: proved, closed and
-guard-free in the report. -/
+guard-free in the report, on the plan Polars's table lowers. -/
 theorem check_proved_on_polars {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data)
     {T : Plan} (hT : R.transform = some T) {k : Nat} {p : Post} (hp : R.posts[k]? = some p)
     (hproved : ∀ e ∈ rep.ensures.getD k [], e.2.1 = true) (hclosed : rep.closed = true)
-    (hsm : T.root.Small data) (hg : rep.guardFree = true) :
-    ∀ row ∈ postRows p.exprs p.mapping (T.root.eval data Engine.polars.impl),
+    (hsm : T.root.Small data) (hg : rep.guardFree = true) {r' : Rel}
+    (hr : Lowering.polars.lowerRel? T.root = .ok r') :
+    ∀ row ∈ postRows p.exprs p.mapping (r'.eval data Engine.polars.impl),
       ∀ v ∈ row, v = .bool true :=
-  check_proved_on Engine.polars_sound hR hc hD hT hp hproved hclosed rfl
-    (check_guardFreeSide hR hc hD hT hsm hg)
+  check_proved_on Engine.polars_sound hR hc hD hT hp hproved hclosed
+    (by simp [Engine.polars, hr, Except.toOption]) (check_guardFreeSide hR hc hD hT hsm hg)
 
 /-- **A proved postcondition holds on Spark's model**: proved, closed and
 guard-free in the report. -/
