@@ -472,6 +472,8 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
+          # ARM (Hetzner) runs restore only (setup-lean says why).
+          save-cache: ${{ runner.arch == 'X64' && 'auto' || 'false' }}
           cache-dependency-glob: python/uv.lock
           # The cache keeps the wheels uv built, and the rest come from PyPI:
           # 9-12 s for setup and sync against 19-26 s with every wheel cached.
@@ -678,6 +680,8 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
+          # ARM (Hetzner) runs restore only (setup-lean says why).
+          save-cache: ${{ runner.arch == 'X64' && 'auto' || 'false' }}
           cache-dependency-glob: python/pyproject.toml
           # The cache keeps the wheels uv built, and the rest come from PyPI:
           # 9-12 s for setup and sync against 19-26 s with every wheel cached.
@@ -892,6 +896,8 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
+          # ARM (Hetzner) runs restore only (setup-lean says why).
+          save-cache: ${{ runner.arch == 'X64' && 'auto' || 'false' }}
           cache-dependency-glob: python/uv.lock
           prune-cache: true
           cache-suffix: pruned
@@ -965,7 +971,14 @@ jobs:
         run: |
           f=python/tools/sverify_dev/ibis_replay.py
           echo "key=$(sed -n 's/^IBIS_TAG = "\(.*\)"$/\1/p' $f)-$(sed -n 's/^DATA_COMMIT = "\(.*\)"$/\1/p' $f)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # 233 MB: an ARM (Hetzner) run restores it only (setup-lean says why).
+      - if: runner.arch == 'X64'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/sverify/ibis-replay
+          key: ibis-replay-${{ steps.ibis.outputs.key }}-${{ runner.environment }}
+      - if: runner.arch != 'X64'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/sverify/ibis-replay
           key: ibis-replay-${{ steps.ibis.outputs.key }}-${{ runner.environment }}
@@ -1001,6 +1014,8 @@ jobs:
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
+          # ARM (Hetzner) runs restore only (setup-lean says why).
+          save-cache: ${{ runner.arch == 'X64' && 'auto' || 'false' }}
           cache-dependency-glob: dbt/uv.lock
           # The cache keeps the wheels uv built, and the rest come from PyPI:
           # 9-12 s for setup and sync against 19-26 s with every wheel cached.

@@ -15,11 +15,28 @@ outputs:
 runs:
   using: composite
   steps:
-    - id: cache
+    # A pull request's run on an ARM runner (the Hetzner hosts) only restores
+    # (see setup-lean); arm-cache.yml saves the ARM checker on main.
+    - id: key
+      shell: bash
+      env:
+        KEY: substrait-check-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', 'core/lakefile.toml', 'core/lake-manifest.json', 'analysis/lakefile.toml', 'analysis/lake-manifest.json', 'frontend/lakefile.toml', 'frontend/lake-manifest.json', 'engines/lakefile.toml', 'engines/lake-manifest.json', 'engines/polars/lakefile.toml', 'engines/polars/lake-manifest.json', 'engines/spark/lakefile.toml', 'engines/spark/lake-manifest.json', 'engines/duckdb/lakefile.lean', 'engines/duckdb/lake-manifest.json', 'engines/substrait/lakefile.toml', 'engines/substrait/lake-manifest.json', '**/*.lean') }}
+      run: echo "key=$KEY" >> "$GITHUB_OUTPUT"
+    - id: save
+      if: runner.arch == 'X64' || github.event_name != 'pull_request'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: checker-bin
-        key: substrait-check-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', 'core/lakefile.toml', 'core/lake-manifest.json', 'analysis/lakefile.toml', 'analysis/lake-manifest.json', 'frontend/lakefile.toml', 'frontend/lake-manifest.json', 'engines/lakefile.toml', 'engines/lake-manifest.json', 'engines/polars/lakefile.toml', 'engines/polars/lake-manifest.json', 'engines/spark/lakefile.toml', 'engines/spark/lake-manifest.json', 'engines/duckdb/lakefile.lean', 'engines/duckdb/lake-manifest.json', 'engines/substrait/lakefile.toml', 'engines/substrait/lake-manifest.json', '**/*.lean') }}
+        key: ${{ steps.key.outputs.key }}
+    - id: restore
+      if: runner.arch != 'X64' && github.event_name == 'pull_request'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: checker-bin
+        key: ${{ steps.key.outputs.key }}
+    - id: cache
+      shell: bash
+      run: echo "cache-hit=${{ steps.save.outputs.cache-hit || steps.restore.outputs.cache-hit }}" >> "$GITHUB_OUTPUT"
     - if: steps.cache.outputs.cache-hit != 'true'
       uses: ./.github/actions/setup-lean
       with:
