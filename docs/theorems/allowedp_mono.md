@@ -20,12 +20,12 @@ the plan on the engine.
 ## The statement, line by line
 
 ```lean
-theorem Rel.AllowedP_mono {cat : Catalog} {r : Rel} {out : Relation} :
-    r.AllowedP t cat out → r.AllowedP u cat out
+theorem Rel.AllowedP_mono {t u : ProfileTable} (h : t.Le u) {cat : Catalog} {r : Rel}
+    {out : Relation} : r.AllowedP t cat out → r.AllowedP u cat out
 ```
 
-- `t`, `u`: two profile tables, and `h` (a hypothesis of the section the
-  theorem sits in): at every option, each of `t`'s choices is among `u`'s.
+- `t`, `u`, `h`: two profile tables, and the assumption `ProfileTable.Le`
+  that at every option each of `t`'s choices is among `u`'s.
 - `cat`, `r`, `out`: the data, a plan, and a relation.
 - The premise: `out` is a result `t` allows for `r`.
 - The conclusion: `out` is a result `u` allows for `r`.

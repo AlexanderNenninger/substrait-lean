@@ -1,21 +1,22 @@
 # `Rel.refines_of_perm`
 
-A rewrite to a plan with no open choices, whose rows are the original's in some order, refines the original.
+A plan with no open choices refines any plan that has its rows in some order.
 
 Lean: `Substrait.Rel.refines_of_perm`, in
 [`analysis/Sverify/Analysis/AllowedAnalysis.lean`](../../analysis/Sverify/Analysis/AllowedAnalysis.lean).
-Layer: `RefinesBag`, every result the original allows is matched by the rewrite's, up to the order of rows. Axioms: `propext`, `Classical.choice`, `Quot.sound`
+Layer: `RefinesBag`, every result `q` allows is one `r` allows, up to the order of rows. Axioms: `propext`, `Classical.choice`, `Quot.sound`
 ([trusted-base.md](../trusted-base.md)).
 
 ## What it says
 
 Some plans leave a choice open: a `LIMIT 1` over tied rows takes any one of
-them, and a window over tied rows numbers them in any order. A rewrite, or an
-engine's own plan, may fix one of those choices. This theorem says when that
-is allowed: if the original plan has no open choice (its result is the same
-rows in every order the reference allows), then any plan that returns those
-rows in some order refines it. The optimizer's gate and a sink's
-`reproducible=` rest on it.
+them, and a window over tied rows numbers them in any order. A plan `q` with
+no open choice has one result, up to the order of its rows. If another plan
+`r` returns those rows in some order, then `q` refines `r`: the one result
+`q` gives is among those `r` allows. The optimizer's gate uses it with `q`
+the rewrite and `r` the original, which is how a rewrite that fixes a choice
+of the original, say the order of ties, is still a refinement
+([`Rel.optimize_refines`](optimize_refines.md)).
 
 ## The statement, line by line
 
@@ -37,23 +38,27 @@ theorem Rel.refines_of_perm {cat : Catalog} (hcat : cat.WF) {A : String → List
   the preconditions, and the assumption that every row satisfies them.
 - `K`, `hK`: the table conditions you stated, keys and non-overlapping
   ranges, and the assumption that the data meets them.
-- `q`, `hwf`: the original plan, and the assumption that it is well formed.
-- `r`: the rewrite.
-- `hd`: the checker's own computation (`Rel.detPlan`) that the original has
-  no open choice: its windows have keys that close their ties, and its
-  aggregates are order-free or sort.
-- `h`: the rewrite's rows are a permutation of the original's.
-- The conclusion: the rewrite refines the original as a bag
-  (`Rel.RefinesBag`): every result the original allows is one the rewrite
-  allows, up to the order of the rows.
+- `q`, `hwf`: the plan with no open choice, and the assumption that it is
+  well formed.
+- `r`: the other plan.
+- `hd`: the checker's own computation (`Rel.detPlan`) that `q` has no open
+  choice. A `FETCH` counts only over an `ORDER BY` whose columns hold a key
+  and none clustered; windows are closed by keys that break their ties;
+  `DISTINCT`, and windowed `MIN`, `MAX` and `QUANTILE_DISC`, count only
+  without doubles; and an aggregate counts when its measures are order-free
+  (`COUNT`, `SUM`, `AVG`, `MIN`, `MAX`) or when it sorts its rows so as to
+  fix its inputs.
+- `h`: the rows of `q` are a permutation of the rows of `r`.
+- The conclusion: `q` refines `r` as a bag (`Rel.RefinesBag`): every result
+  `q` allows is one `r` allows, up to the order of the rows.
 
 ## What it rules out
 
 - A rewrite that drops or repeats a row, for a plan Sverify proved
   determined: `h` fails.
-- Fixing a choice the original leaves open and calling it a refinement
-  without a key that closes it: `hd` fails, and the checker names the window
-  or `LIMIT` where ties stay open.
+- Calling a plan a refinement while it leaves a choice open, such as a
+  `LIMIT` over tied rows or a window without a key that closes its ties:
+  `hd` fails, and the checker names the place where ties stay open.
 
 ## What it does not cover
 

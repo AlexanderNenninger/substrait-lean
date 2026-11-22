@@ -4,7 +4,7 @@ The plan `optimize` gives refines the original, up to the order of rows, when it
 
 Lean: `Substrait.Rel.optimize_refines`, in
 [`analysis/Sverify/Analysis/Semantic.lean`](../../analysis/Sverify/Analysis/Semantic.lean).
-Layer: `RefinesBag`, every result the original allows is matched by the optimized plan's, up to the order of rows. Axioms: not yet listed;
+Layer: `RefinesBag`, every result the optimized plan allows is one the original allows, up to the order of rows. Axioms: not yet listed;
 `#print axioms Substrait.Rel.optimize_refines` is the check ([trusted-base.md](../trusted-base.md)).
 
 ## What it says
@@ -44,8 +44,9 @@ theorem Rel.optimize_refines {cat : Catalog} (hcat : cat.WF) {A : String → Lis
 - `use`: which rewrite rules are on.
 - `r`, `hwf`: the plan, and the assumption that it is well formed.
 - `hd`: the checker's own computation that the optimized plan has no open
-  choice.
-- The conclusion: the optimized plan refines `r` as a bag.
+  choice ([`Rel.refines_of_perm`](refines_of_perm.md) says what that means).
+- The conclusion: the optimized plan refines `r` as a bag: every result it
+  allows is one `r` allows, up to the order of rows.
 
 ## What it rules out
 
