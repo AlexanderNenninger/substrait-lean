@@ -285,6 +285,11 @@ class FlightLog(fl.FlightServerBase):
         try:
             req = json.loads(ticket.ticket)
             name, after, until = req["table"], req.get("after"), req.get("until")
+            if not isinstance(name, str) or not all(
+                v is None or (isinstance(v, int) and not isinstance(v, bool))
+                for v in (after, until)
+            ):
+                raise TypeError("table is a string, after and until integers or null")
         except (ValueError, KeyError, TypeError, AttributeError) as e:
             raise fl.FlightServerError(f'the ticket is {{"table": ..., "after": ...}}: {e}') from e
         with self._lock:
