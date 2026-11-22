@@ -470,7 +470,9 @@ theorem Refresh.lost_ack_reachable : ∃ s, Reachable s ∧ ∃ i, (s.ws i).pend
 /-- A writer that lost the race to the node's own commit rewrites the table
 on top of it (`NoConflictReplace`'s witness): two processes of one plan read
 the empty sink, one commits, the other conflicts, and after a source change
-it replaces the first one's state. -/
+it replaces the first one's state. The state is one step short of the TLA+
+model's: the replace is in flight with `land` enabled (the log has the length
+it read), and the log carries no mode, so this is the nearest statement. -/
 theorem Refresh.conflict_replace_reachable : ∃ s o, Reachable s ∧ (∃ i, (s.ws i).phase = .writing o) ∧
     o.mode = .replace ∧ s.log.length = o.head ∧
     ∃ r, record s.log = some r ∧ r.plan = o.key.plan := by
