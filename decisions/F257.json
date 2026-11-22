@@ -8,9 +8,6 @@
   "issues": [
     1071
   ],
-  "amended_by": [
-    "F265"
-  ],
   "source": "fable-ruling-257-1071-realization-in-checker.md",
   "note": "#1071 is NICE (ruling 243) and never runs ahead of 1.0 soundness work. B does not make ε proved: #1196 and #929 hold, and no tolerance that is not composed from proved bounds is reported proved. Conditions: Q1, a pin test on main first, covering `Route.cls`, `evidence`, `shims`, `reproducible` and the problem texts for every catalogue query and coverage case, with each change listed in the PR and sent to Fable. Q2, Lean sends codes and data and Python keeps only the text. Q3, no public surface. Q4, the trusted base's Python-glue row becomes a CLI-glue row naming `Realize.lean`, which claims nothing proved. Q5, `routes.verified` and #1088's compositions stay untouched. Q6, the PR measures the Python lines deleted, the Lean lines added and `Realize.lean`'s build time."
 }

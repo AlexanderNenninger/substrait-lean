@@ -8,9 +8,6 @@
   "issues": [
     1071
   ],
-  "amends": [
-    "F257"
-  ],
   "source": "fable-ruling-265-1071-pr-b-shape.md",
   "note": "Applies F257 and settles its open parse question: the tolerance's repr is the nearest short decimal, not the value, so proving against it could accept a bound above the double the run uses. Python's `observed` and the `floats_on` and `evidence_on` calls are deleted. Sending the observation set from Python, or one call per observation, is declined. If B passes about 1,500 changed lines without its pins, it may go as two sequential PRs into main, split only after B2. Until C, `_plan_bound` and `_resolve` stay in Python for the rerun check only. The core is untouched: `FloatObs.within` and `Obs.le` keep their form, since a core tolerance type would change the observation order and need a D-number. No pin is expected to change; one that does goes to Fable with the plan and both values. Conditions: K1, no public surface. K2, `#print axioms` of `Realize.lean`'s theorems stays as it was. K3, the Improvement lines count the Python deleted and the Lean added, and time one `--contract` call on a plan with doubles. K4, the trusted-base row moves to `Realize.lean` in B, and the rerun check's row follows in C."
 }
