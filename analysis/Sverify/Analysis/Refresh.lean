@@ -95,6 +95,9 @@ structure Writer where
   ver : Nat := 0
   written : Option Key := none
   pend : Option Key := none
+  /-- Ghost: the record the process's first refresh could resume from, until
+  its first `prepare` (`needless` in the TLA+ model, #889). -/
+  resumable : Option Key := none
   deriving DecidableEq, Repr
 
 /-- The source's latest version, the sink's log (newest first) and table,
@@ -161,16 +164,19 @@ def refresh (s : World) (i : Nat) : World :=
     | some r => if kept s.log && r.plan == w.plan && decide (r.ver ≤ s.src) then some r else none
     | none => none
   { s with ws := upd s.ws i { w with phase := .ready, first := false, ver := s.src,
-                                     written := if w.first then resumed else w.written } }
+                                     written := if w.first then resumed else w.written,
+                                     resumable := if w.first then resumed else none } }
 
 def prepare (s : World) (i : Nat) : World :=
   let w := s.ws i
   match next (record s.log) (kept s.log) w with
-  | .skip wr => { s with ws := upd s.ws i { w with phase := .idle, written := wr, pend := none } }
+  | .skip wr =>
+    { s with ws := upd s.ws i { w with phase := .idle, written := wr, pend := none,
+                                       resumable := none } }
   | .write m wr =>
     let o : Out := ⟨⟨w.plan, w.ver⟩, m, (wr.map Key.tbl).getD .none, s.log.length⟩
     { s with ws := upd s.ws i { w with phase := .writing o, written := wr,
-                                       pend := some ⟨w.plan, w.ver⟩ } }
+                                       pend := some ⟨w.plan, w.ver⟩, resumable := none } }
 
 def commit (s : World) (o : Out) : World :=
   { s with log := ⟨true, o.key⟩ :: s.log, tbl := newTbl o s.tbl }
@@ -449,6 +455,38 @@ theorem Refresh.zombie_reachable : ∃ s, Reachable s ∧ s.log.length = 1 ∧ s
   have r6 := r5.step (.zombieLands _ ⟨⟨0, 0⟩, .replace, .none, 0⟩ (by exact .head _) rfl)
   exact ⟨_, r6, rfl, rfl, rfl⟩
 
+/-- A writer's write landed and raised before it heard: its `pend` stays, and
+the next refresh starts from it (`Sink._pending`, `NoLostAckResumed`'s witness
+in the TLA+ model). -/
+theorem Refresh.lost_ack_reachable : ∃ s, Reachable s ∧ ∃ i, (s.ws i).pend.isSome ∧
+    (s.ws i).phase = .ready := by
+  have r1 : Reachable (({} : World).start 0) := .step .init (.start _ 0 rfl)
+  have r2 := r1.step (.refresh _ 0 rfl)
+  have r3 := r2.step (.prepare _ 0 rfl)
+  have r4 := r3.step (.landLostAck _ 0 ⟨⟨0, 0⟩, .replace, .none, 0⟩ rfl rfl)
+  have r5 := r4.step (.refresh _ 0 rfl)
+  exact ⟨_, r5, 0, rfl, rfl⟩
+
+/-- A writer that lost the race to the node's own commit rewrites the table
+on top of it (`NoConflictReplace`'s witness): two processes of one plan read
+the empty sink, one commits, the other conflicts, and after a source change
+it replaces the first one's state. -/
+theorem Refresh.conflict_replace_reachable : ∃ s o, Reachable s ∧ (∃ i, (s.ws i).phase = .writing o) ∧
+    o.mode = .replace ∧ s.log.length = o.head ∧
+    ∃ r, record s.log = some r ∧ r.plan = o.key.plan := by
+  have a1 : Reachable (({} : World).start 0) := .step .init (.start _ 0 rfl)
+  have a2 := a1.step (.start _ 1 rfl)
+  have a3 := a2.step (.refresh _ 0 rfl)
+  have a4 := a3.step (.refresh _ 1 rfl)
+  have a5 := a4.step (.prepare _ 0 rfl)
+  have a6 := a5.step (.prepare _ 1 rfl)
+  have a7 := a6.step (.land _ 0 ⟨⟨0, 0⟩, .replace, .none, 0⟩ rfl rfl)
+  have a8 := a7.step (.conflict _ 1 ⟨⟨0, 0⟩, .replace, .none, 0⟩ rfl (by decide))
+  have a9 := a8.step (.sourceChanges _)
+  have a10 := a9.step (.refresh _ 1 rfl)
+  have a11 := a10.step (.prepare _ 1 rfl)
+  exact ⟨_, ⟨⟨0, 1⟩, .replace, .none, 1⟩, a11, ⟨1, rfl⟩, rfl, rfl, ⟨0, 0⟩, rfl, rfl⟩
+
 /-! ## What a write reads, and the order of the commits
 
 `ReadIsHead` and `Monotone` of `models/refresh/Refresh.tla`, for every scope.
@@ -670,8 +708,96 @@ theorem Refresh.no_needless_rewrite (s : World) (i : Nat) (hf : (s.ws i).first =
   simp only [World.refresh, upd_same, hf, hr, hk, hp, hv, decide_true, Bool.and_self,
     ite_true, beq_self_eq_true]
   exact next_resumes
-    (w := { s.ws i with phase := .ready, first := false, ver := s.src, written := some r })
+    (w := { s.ws i with phase := .ready, first := false, ver := s.src, written := some r,
+                        resumable := some r })
     hp hv rfl wr
+
+/-! ### #889 at any later prepare
+
+`Refresh.no_needless_rewrite` says what a first refresh leads to. The TLA+
+property is stronger: whenever a process prepares, if the record is still the
+one its first refresh could resume from, it does not rewrite in full. Between
+its first refresh and its prepare only the process's own steps change its
+`written` and `ver`, and each leaves the phase `ready`. -/
+
+namespace Refresh
+
+/-- A process that is ready and could resume from `r` holds `r` as its own,
+under its plan, not ahead of its view. -/
+def ResOK (s : World) : Prop :=
+  ∀ i r, (s.ws i).phase = .ready → (s.ws i).resumable = some r →
+    (s.ws i).written = some r ∧ r.plan = (s.ws i).plan ∧ r.ver ≤ (s.ws i).ver
+
+theorem resok_step {s t : World} (hs : ResOK s) (h : Step s t) : ResOK t := by
+  -- A step that changes only other slots, or leaves slot `i` not ready.
+  have other : ∀ (i : Nat) (w : Writer), (∀ r, w.phase = .ready → w.resumable = some r →
+      w.written = some r ∧ r.plan = w.plan ∧ r.ver ≤ w.ver) →
+      ∀ ws : Nat → Writer, ws = upd s.ws i w → ∀ j r, (ws j).phase = .ready →
+        (ws j).resumable = some r →
+        (ws j).written = some r ∧ r.plan = (ws j).plan ∧ r.ver ≤ (ws j).ver := by
+    intro i w hw ws hws j r hph hr
+    subst hws
+    by_cases hji : j = i
+    · subst hji; rw [upd_same] at hph hr ⊢; exact hw r hph hr
+    · rw [upd_other _ _ hji] at hph hr ⊢; exact hs j r hph hr
+  cases h with
+  | start i _ => exact other i _ (fun r hp => by simp at hp) _ rfl
+  | stop i _ _ => exact other i _ (fun r hp => by simp at hp) _ rfl
+  | refresh i hi =>
+    refine other i _ ?_ _ rfl
+    intro r _ hr
+    simp only at hr ⊢
+    split at hr
+    · next hf =>
+      simp only [hf] at hr ⊢
+      cases hrec : record s.log with
+      | none => simp [hrec] at hr
+      | some r' =>
+        simp only [hrec] at hr ⊢
+        split at hr
+        · next hc =>
+          simp only [Option.some.injEq] at hr
+          subst hr
+          simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hc
+          simp_all
+        · simp at hr
+    · simp at hr
+  | prepare i _ =>
+    cases hnext : next (record s.log) (kept s.log) (s.ws i) with
+    | skip wr =>
+      simp only [World.prepare, hnext]
+      exact other i _ (fun r hp => by simp at hp) _ rfl
+    | write m wr =>
+      simp only [World.prepare, hnext]
+      exact other i _ (fun r hp => by simp at hp) _ rfl
+  | land i o _ _ => exact other i _ (fun r hp => by simp at hp) _ rfl
+  | landLostAck i o _ _ => exact other i _ (fun r hp => by simp at hp) _ rfl
+  | fail i o _ => exact other i _ (fun r hp => by simp at hp) _ rfl
+  | conflict i o _ _ => exact other i _ (fun r hp => by simp at hp) _ rfl
+  | crash i _ => exact other i {} (fun r hp => by simp at hp) _ rfl
+  | zombieLands o _ _ => exact hs
+  | sourceChanges => exact hs
+  | foreignWrite => exact hs
+  | deploy => exact hs
+
+theorem resok_reachable {s : World} (h : Reachable s) : ResOK s := by
+  induction h with
+  | init => intro i r hp; simp at hp
+  | step _ hst ih => exact resok_step ih hst
+
+end Refresh
+
+/-- Whenever a process prepares, if the record is still the one its first
+refresh could resume from and no other application wrote since, it does not
+write the whole table again (#889: `NoNeedlessRewrite`). -/
+theorem Refresh.no_needless_rewrite_reachable {s : World} (h : Reachable s) {i : Nat} {r : Key}
+    (hph : (s.ws i).phase = .ready) (hres : (s.ws i).resumable = some r)
+    (hrec : record s.log = some r) (hk : kept s.log = true) (wr : Option Key) :
+    next (record s.log) (kept s.log) (s.ws i) ≠ .write .replace wr := by
+  obtain ⟨hw, hp, hv⟩ := resok_reachable h i r hph hres
+  rw [hrec, hk]
+  exact next_resumes hp hv hw wr
+
 
 /-! ## Observably a failure-free run
 
