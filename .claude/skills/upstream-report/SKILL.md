@@ -65,6 +65,18 @@ What changes the draft itself, as of 2026-11-04:
 - **Pacing.** File one report at a time, spread over days: DataFusion labels accounts that file many reports quickly.
 - **Forms.** SQLGlot: state the read and write dialects and check main. DataFusion: the willingness answer is "I would like to contribute a fix for this bug, but request guidance from the DataFusion community"; spec-like requests use the feature form. Polars: the `POLARS_VERBOSE=1` log and `pl.show_versions()` output filled in (section 3), and keywords in the title set the area label. delta-rs: `deltalake.__version__` and `deltalake.rust_core_version()`.
 
+### Spec-gap proposals (#1093)
+
+A spec gap goes upstream as a proposal with the formal reading attached, so the discussion starts from a definition. The draft (`ST-<n>-substrait.md`) has five parts, in this order:
+
+1. **The gap**: the YAML or spec file and lines at the commit checked (re-check `main` and the latest release the day of drafting), and the question in one paragraph, with the calls and types (`subtract(inf::fp64, inf::fp64)`) or the plan (a `SortRel` field with `SORT_DIRECTION_UNSPECIFIED`) that exposes it.
+2. **What engines do**: a table from the entry's `facts` ids, DuckDB, Spark and Polars with their versions, plus engines another thread already cites. Leave out Snowflake. Leave out DataFusion, except as a recorded engine. Where an engine's docs are silent, say each cell comes from running the engine. A cell derived from a fact that did not run the exact case goes in the author's notes as such.
+3. **The readings**: the formalization's, in its words (the core's open option, and the reference's choice), with the alternatives. The draft names no D-number or Lean name; the author's notes give the D-number and the `docs/core-semantics.md` option for checking.
+4. **The proposed text as a diff**: reuse an existing option name and its values (`on_domain_error`, `overflow`, `rounding`) before inventing one, and say whether the change is breaking under Substrait's policy.
+5. **A conformance case** in Substrait's `.test` format (`func(args) [option:VALUE] = result`, as `tests/cases/arithmetic/multiply.test` writes options), or for a relation, the plan and its expected rows or rejection.
+
+Where an upstream thread already asks the question, the draft is a comment there, and adds what the thread lacks: an engine that disagrees, a case it misses. A section "For the author" ends every draft: what was not verified, the facts behind each cell, the formalization's D-number, and where the draft comes in #1093's order. When the draft is written, add a `checked` entry to `upstream/bugs/ST-<n>.json` with the commit checked, and update the row in the reports `README.md`.
+
 ## 6. Finish
 
 - Once the author has filed it, update `upstream/bugs/<ID>.json` in the repository: `status` `filed`, the link in `upstream` and `status_note`, and a new `checked` entry with the versions the report was checked on. `python -m sverify_dev.bugs` checks the document.
