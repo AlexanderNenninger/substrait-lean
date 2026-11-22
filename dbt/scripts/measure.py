@@ -19,7 +19,6 @@ import argparse
 import collections
 import json
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -194,6 +193,42 @@ def transpile(project: Path) -> tuple[set[str], set[str]]:
     return done, failed
 
 
+def apply_overlay(project: Path, overlay: Path) -> None:
+    """Add the tests of a dbt properties YAML to the project. Its `seeds` go
+    into a file of their own; its `models` are merged into the project's own
+    entry for the model (dbt refuses two entries for one model)."""
+    data = yaml.safe_load(overlay.read_text(encoding="utf-8"))
+    models = {m["name"]: m for m in data.pop("models", [])}
+    (project / "models" / "sverify_measure_overlay.yml").write_text(
+        yaml.safe_dump(data, sort_keys=False), encoding="utf-8"
+    )
+    for path in sorted(project.rglob("*.y*ml")):
+        if "dbt_packages" in path.parts or "target" in path.parts:
+            continue
+        try:
+            doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except yaml.YAMLError:
+            continue
+        if not isinstance(doc, dict) or not isinstance(doc.get("models"), list):
+            continue
+        changed = False
+        for model in doc["models"]:
+            extra = models.pop(model.get("name"), None)
+            if extra is None:
+                continue
+            changed = True
+            columns = {c["name"]: c for c in model.get("columns") or []}
+            for col in extra["columns"]:
+                have = columns.setdefault(col["name"], {"name": col["name"]})
+                key = "data_tests" if "data_tests" in have else "tests"
+                have[key] = [*have.get(key, []), *col["tests"]]
+            model["columns"] = list(columns.values())
+        if changed:
+            path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+    if models:
+        raise SystemExit(f"overlay models not in the project: {sorted(models)}")
+
+
 def apply_types(project: Path, types: Path, origins: set[str]) -> int:
     """Give the project's sources the column types in `types` (a sources YAML
     whose columns say where each type comes from: `catalog`, `declared` or
@@ -244,7 +279,7 @@ def measure(
         _dbt(project, "deps")
         typed = apply_types(project, types, set(origins)) if types else 0
         if overlay:
-            shutil.copy(overlay, project / "models" / "sverify_measure_overlay.yml")
+            apply_overlay(project, overlay)
         started = time.monotonic()
         left_out: list[str] = []
         if build_args is None:
@@ -359,7 +394,9 @@ def main(argv: list[str] | None = None) -> int:
         help="which origins of the types file to apply",
     )
     parser.add_argument(
-        "--overlay", type=Path, help="a dbt properties YAML of tests to add (copied into models/)"
+        "--overlay",
+        type=Path,
+        help="a dbt properties YAML of tests to add (seeds, and models merged into the project's own)",
     )
     parser.add_argument(
         "--transpile",
