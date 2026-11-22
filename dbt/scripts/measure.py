@@ -178,9 +178,13 @@ def transpile(project: Path) -> tuple[set[str], set[str]]:
     manifest = json.loads(path.read_text(encoding="utf-8"))
     done: set[str] = set()
     failed: set[str] = set()
+    uncompiled: set[str] = set()
     for uid, node in manifest["nodes"].items():
         sql = node.get("compiled_code")
-        if node.get("resource_type") != "model" or not sql:
+        if node.get("resource_type") != "model":
+            continue
+        if not sql:
+            uncompiled.add(uid)
             continue
         try:
             node["compiled_code"] = ";\n".join(
@@ -190,6 +194,11 @@ def transpile(project: Path) -> tuple[set[str], set[str]]:
         except sqlglot.errors.SqlglotError:
             failed.add(uid)
     path.write_text(json.dumps(manifest), encoding="utf-8")
+    print(
+        f"transpile: {len(done)} rewritten, {len(failed)} failed, "
+        f"{len(uncompiled)} with no compiled SQL: {sorted(uncompiled)}",
+        file=sys.stderr,
+    )
     return done, failed
 
 
@@ -396,7 +405,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--overlay",
         type=Path,
-        help="a dbt properties YAML of tests to add (seeds, and models merged into the project's own)",
+        help="a dbt properties YAML of tests to add (its models merge into the project's own)",
     )
     parser.add_argument(
         "--transpile",
