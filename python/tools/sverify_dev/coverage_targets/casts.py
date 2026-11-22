@@ -18,11 +18,20 @@ TARGETS = [
     ),
     target(
         AREA,
-        "CAST(DOUBLE AS INTEGER), which DuckDB rounds",
+        "CAST(DOUBLE AS BIGINT), which DuckDB rounds half to even",
         "in",
         "CAST(amount * 100 AS BIGINT) for cents; catalogue cast_numeric 8; replay 76",
-        False,
+        True,
         sql="SELECT CAST(amount AS BIGINT) FROM t",
+        issue=322,
+    ),
+    target(
+        AREA,
+        "CAST(DOUBLE AS INTEGER) and the other narrower integers",
+        "in",
+        "catalogue cast_numeric 8; wait for their probe (#322)",
+        False,
+        sql="SELECT CAST(amount AS INTEGER) FROM t",
         issue=322,
     ),
     target(

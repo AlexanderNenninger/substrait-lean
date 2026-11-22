@@ -94,7 +94,7 @@ def test_a_missing_schema_flag_or_file_is_a_usage_error(tmp_path, capsys) -> Non
 
 
 def test_an_outside_the_subset_construct_exits_3_by_name(tmp_path, capsys) -> None:
-    q, s = _files(tmp_path, "SELECT id, amount::DOUBLE::BIGINT AS a FROM orders")
+    q, s = _files(tmp_path, "SELECT id, TRY_CAST(amount AS BIGINT) AS a FROM orders")
     code, out = _run(capsys, "check", q, "--schema", s)
     assert code == 3 and "unsupported" in out
 

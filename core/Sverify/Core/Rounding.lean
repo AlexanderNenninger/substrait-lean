@@ -44,12 +44,12 @@ def round : Int → Int := onMag roundMag roundMag
 
 /-- `m / K` rounded to the nearest integer, halves to the even one: the integer
 part of a double's magnitude `m` as IEEE 754's roundToIntegralTiesToEven takes it
-(D55), and as DuckDB's cast takes it (R9). -/
+(D55). -/
 def evenQuot (m : Nat) : Nat :=
   if 2 * (m % K) < K then m / K
   else if K < 2 * (m % K) then m / K + 1
   else if m / K % 2 = 0 then m / K else m / K + 1
-/-- Halves round to the even integer, as `round_even` and `bround` do. -/
+/-- Halves round to the even integer. -/
 def evenMag (m : Nat) : Nat := evenQuot m * K
 def roundEven : Int → Int := onMag evenMag evenMag
 

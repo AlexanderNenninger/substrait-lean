@@ -223,13 +223,13 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
         return E(literal(v, t), t, v)
     if not a.constant and (rounded := _rounded_to_bigint(lf, node, a, t, sub)) is not None:
         return rounded
-    if not a.constant:
-        for src, to, sql in (
-            (dt.float64, dt.int64, "DOUBLE AS BIGINT"),
-            (dt.int64, dt.float64, "BIGINT AS DOUBLE"),
-        ):
-            if _same(a.type, src) and _same(t, to):
-                return _generated(lf, f"CAST({sql})", [a])
+    for src, to, sql in (
+        (dt.float64, dt.int64, "DOUBLE AS BIGINT"),
+        (dt.int64, dt.float64, "BIGINT AS DOUBLE"),
+    ):
+        # A constant double is cast as a column is (D55); the other constants are folded.
+        if (not a.constant or src is dt.float64) and _same(a.type, src) and _same(t, to):
+            return _generated(lf, f"CAST({sql})", [a])
     if t.is_integer() and a.type.is_decimal():
         # DuckDB rounds a decimal half away from zero, as the reference's rescale to
         # scale 0 does (`decimal_rescale`); the exact cast of that is the value (#322). One digit
