@@ -64,6 +64,8 @@ What changes the draft itself, as of 2026-11-04:
 - **Spec gaps** (`kind: spec-gap`, `ST-<n>`): an issue in `substrait-io/substrait` with the YAML file and line at a commit, concrete calls with their types, what each engine does (versions, facts), a proposal reusing existing option names, alternatives and whether it is breaking; then, once someone responds, a small `feat(extensions):` PR changing the YAML with `tests/cases/*.test` (the PR needs the CLA). Search for an existing issue first and comment there instead.
 - **Pacing.** File one report at a time, spread over days: DataFusion labels accounts that file many reports quickly.
 
+- **Forms.** SQLGlot: state the read and write dialects and check main. DataFusion: the willingness answer is "I would like to contribute a fix for this bug, but request guidance from the DataFusion community"; spec-like requests use the feature form. Polars: the `POLARS_VERBOSE=1` log and `pl.show_versions()` output filled in (section 3), and keywords in the title set the area label. delta-rs: `deltalake.__version__` and `deltalake.rust_core_version()`.
+
 ### Spec-gap proposals (#1093)
 
 A spec gap goes upstream as a proposal with the formal reading attached, so the discussion starts from a definition. The draft (`ST-<n>-substrait.md`) has five parts, in this order:
@@ -75,7 +77,6 @@ A spec gap goes upstream as a proposal with the formal reading attached, so the 
 5. **A conformance case** in Substrait's `.test` format (`func(args) [option:VALUE] = result`, as `tests/cases/arithmetic/multiply.test` writes options), or for a relation, the plan and its expected rows or rejection.
 
 Where an upstream thread already asks the question, the draft is a comment there, and adds what the thread lacks: an engine that disagrees, a case it misses. A section "For the author" ends every draft: what was not verified, the facts behind each cell, the formalization's D-number, and where the draft comes in #1093's order. When the draft is written, add a `checked` entry to `upstream/bugs/ST-<n>.json` with the commit checked, and update the row in the reports `README.md`.
-- **Forms.** SQLGlot: state the read and write dialects and check main. DataFusion: the willingness answer is "I would like to contribute a fix for this bug, but request guidance from the DataFusion community"; spec-like requests use the feature form. Polars: the `POLARS_VERBOSE=1` log and `pl.show_versions()` output filled in (section 3), and keywords in the title set the area label. delta-rs: `deltalake.__version__` and `deltalake.rust_core_version()`.
 
 ## 6. Finish
 
