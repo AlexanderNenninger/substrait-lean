@@ -81,6 +81,7 @@ contract's preconditions.
 | A plan lowered with a partial table (one without an entry for every function) computes the reference, or raises; a plan with a function the table lacks is refused, naming it | `eval` | `Lowering.lowerRel?_sound`, `Rel.evalI_mapExprs_on` | `Lowering.lean`, `Profile.lean` |
 | A lowered plan with the guards of issues it never meets dropped computes the reference, or raises | `eval` | `Lowering.lowerRelWith_sound`, `Lowering.lowerRelWith_mayIssues_sound` | `Lowering.lean` |
 | A lowered expression agrees with the reference or raises, for any table with every guard kept; where every entry it uses is exact (`UnEntry.exact`), it raises only where the reference does; an entry stated on doubles only (`UnEntry.onDbl`) needs a catalog of doubles and a plan whose constants are doubles (rulings 250, 252, 254) | `eval` | `Lowering.lower_agreeOrRaises`, `Lowering.lower_correct`, `Lowering.lowerRel_sound_dbl`, `Lowering.lowerRel?_sound_dbl`, `Rel.evalI_mapExprs_rows`, `Rel.exprRows_dbl` | `Lowering.lean`, `Profile.lean`, `EvalDbl.lean` |
+| The generated Spark lowering computes the reference, or raises, on a catalog of doubles for a plan whose constants are doubles; a plan with `power` or `atan2` of doubles is refused, naming them; IEEE division is the one entry that may raise where the reference has a value (Spark under ANSI at a zero divisor), and `floor` and `ceil` the only ones stated on doubles (rulings 248, 249, 254) | `eval` | `Rel.spark_lowered_sound`, `Lowering.spark_exact_except`, `Lowering.spark_onDbl_only` | `Spark/Lowering.lean`, `Spark/LoweringLemmas.lean` |
 | DuckDB's templates without their guards (`to_sql(guards=False)`), for a plan with only assumed issues, compute the reference, or raise | `eval` | `Rel.duckdb_guardFree_sound`, `Lowering.duckdb_guardsFor_none` | `DuckDB/Lowering.lean`, `DuckDB/LoweringOn/Guards.lean` |
 | Unless the shimmed plan raises, DuckDB returns a result the reference allows | `Allowed` | `Rel.duckdb_shim_allowed` | `DuckDB/Lowering.lean` |
 | Polars, after the shims, computes the reference | `eval` | [`Rel.polars_sound`](theorems/polars_sound.md) and one `Polars.<shim>` or shared `Shim.<name>` lemma per shim | `Polars/Shims.lean`, `Shims.lean` |
@@ -376,6 +377,10 @@ and CI runs that build as the guard. The modules below import it as
 | `Spark/Tables.lean` | Spark's choice table and observation rows, refining the core |
 | `Spark/Shims.lean` | The Spark shims, proved against a model of Spark under ANSI |
 | `Spark/Profile.lean` | `Profile.spark`, the semantics under `semantics="spark"` |
+| `Spark/LoweringLemmas.lean` | Hand-written templates and entries of Spark's lowering: `<<`, `>>` and `date_add` on every value, `floor` and `ceil` on doubles' codes (`Spark.ffloorEntry`), and IEEE division from `/` (`BinEntry.weaken`, not exact) |
+| `Spark/LoweringSchemas.lean` | Spark's hand-written template schemas, hand-built and derived entries, for the search |
+| `Spark/Lowering.lean` | The Spark lowering's table (partial: `power` and `atan2` of doubles refused), its flags (`Lowering.spark_exact_except`, `Lowering.spark_onDbl_only`), `Rel.spark_lowered_sound` and its export |
+| `Spark/LoweringOn/*.lean` | The Spark lowering's entries, one module per area (generated) |
 | `Spark/Engine.lean` | `Engine.spark`, its functions within Spark's table and faithful where they do not raise, and `Engine.spark_sound` |
 
 ### Substrait's profile: `engines/substrait/Sverify/Substrait/`
@@ -481,7 +486,7 @@ core trusts about doubles ([float-bounds.md](float-bounds.md)).
 | `CovTwoPass.lean` | Two-pass covariance, relative to the spread |
 | `CorrTwoPass.lean` | The corrected two-pass formula on shifted doubles (Snowflake's `VAR_*` on mean-shifted values), its sums in any order: within `(2n + 9) u W + 7 u K √(n W) + 128 n² u² W + 64 n² u · tiny` of `S` (`corrTwoPass_error`, #1810) |
 | `Welford.lean`, `WelfordRel.lean` | Welford's update and Chan's merge, absolute and relative |
-| `MergeRel.lean`, `CovRel.lean` | Chan's merge and the covariance, relative to the spread; what any merge must meet for the tree invariant (`MergeSpec`, `tInv_merge_of`), DuckDB's merge one instance |
+| `MergeRel.lean`, `CovRel.lean` | Chan's merge and the covariance, relative to the spread; what any merge must meet for the tree invariant (`MergeSpec`, `tInv_merge_of`) and for the covariance invariant (`CMergeSpec`, `cInv_merge_of`, over the constants `CConst`), DuckDB's merge one instance of each (`dMerge_spec`, `chan_spec`, at `CConst.chan`) |
 | `SchubertGertz.lean` | Polars's `VAR_*` and `STDDEV_*`: two-pass blocks in any summation order, Welford's update and Schubert and Gertz's merge in any tree meet the tree invariant (`sgMerge_spec`, `tInv_prun`); the variance within `varTol` (`core_var_polars`) and the reference's distance (`epsilon_var_polars`, `epsilon_stddev_polars`, #1808) |
 | `Chan.lean`, `ChanCorr.lean` | DuckDB's `VAR_*`, `STDDEV_*` and `CORR` meet `StatProps`; an engine's `VAR_*`, `STDDEV_*` and `COVAR_*` are within `statEps` of the reference's (`epsilon_var_cr`, `epsilon_stddev_cr`, `epsilon_cov_cr`) |
 | `CoreStats.lean`, `CoreKappa.lean` | The statistical properties of `StatProps.lean`, proved over the reals; trusted facts before D30 |
@@ -495,6 +500,7 @@ regenerate it. Don't edit them by hand.
 |---|---|---|
 | `DuckDB/LoweringOn/*.lean` | `poe regen-lowering` (from `python/`) | `Profile.duckdb`, the generator or the model's functions change |
 | `Polars/LoweringOn/*.lean` | `poe regen-lowering` (from `python/`) | `Profile.polars`, the generator or the model's functions change |
+| `Spark/LoweringOn/*.lean` | `poe regen-lowering` (from `python/`) | `Profile.spark`, the generator or the model's functions change |
 | `DuckDB/Lift/Duckdb/*.lean`, `DuckDB/Lift/Reference/*.lean` | `poe regen-lift` (from `python/`) | `DuckDB/SQL.lean`, the generator or the model's functions change |
 | `DuckDB/LoweringCache.lean` | `.lake/build/bin/substrait-check --lowering-cache > engines/duckdb/Sverify/DuckDB/LoweringCache.lean` | after a regenerated lowering, to keep the search quick |
 | `DuckDB/LiftCache.lean` | `.lake/build/bin/substrait-check --lift-cache > engines/duckdb/Sverify/DuckDB/LiftCache.lean` | after a regenerated lift |

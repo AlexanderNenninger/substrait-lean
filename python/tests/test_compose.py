@@ -6,7 +6,8 @@ from ibis import _
 
 import sverify as sv
 from _pipelines import bound_orders, spy_on
-from sverify.contracts import label, provenance
+from sverify.conditions import label
+from sverify.contracts import provenance
 from sverify.errors import CompositionError, PreconditionError
 from sverify_dev.examples import orders
 

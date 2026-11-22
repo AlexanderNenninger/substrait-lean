@@ -285,7 +285,7 @@ def test_no_message_makes_lean_its_subject() -> None:
     )
     for c in report.ensures:
         assert not c.why.startswith("Lean")
-    c = sv.contracts.Postcondition("(_.x > 1)", False, "TRUE or UNKNOWN")
+    c = sv.conditions.Postcondition("(_.x > 1)", False, "TRUE or UNKNOWN")
     assert c.why == "the checker only knows it is TRUE or UNKNOWN"
 
 

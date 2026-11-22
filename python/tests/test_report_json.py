@@ -17,7 +17,7 @@ from ibis import _
 
 import sverify as sv
 from sverify import report_json
-from sverify.contracts import Report
+from sverify.report import Report
 
 jsonschema = pytest.importorskip("jsonschema")
 
