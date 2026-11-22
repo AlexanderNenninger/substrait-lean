@@ -27,10 +27,13 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from sverify import _engines
+
 PINS = Path(__file__).resolve().parents[2] / "tests" / "route_pins.json"
 
-#: The engines whose routes are public. Snowflake's profile is out of tree.
-ENGINES = ("duckdb", "polars", "spark")
+#: The engines whose routes are public: every supported one but Snowflake, whose profile is out of
+#: tree.
+ENGINES: tuple[str, ...] = tuple(e for e in _engines.SUPPORTED if e != "snowflake")
 
 
 @functools.cache
@@ -109,8 +112,6 @@ def _routes(report: Any, engine: str) -> dict[str, Any]:
 def pins(engines: tuple[str, ...] = ENGINES) -> dict[str, dict[str, Any]]:
     """The record: id to `{"verify": message}` where verify refuses, else engine to its routes.
     An engine that is not installed is left out."""
-    from sverify import _engines
-
     available = [e for e in engines if e in _engines.SUPPORTED]
     out: dict[str, dict[str, Any]] = {}
     with warnings.catch_warnings():
