@@ -920,9 +920,10 @@ def _ibis_type(t: Any) -> Any:
 _NESTED = re.compile(r"(array|map|struct)\s*<(.*)>", re.IGNORECASE | re.DOTALL)
 
 
-@functools.cache
+@functools.lru_cache(maxsize=1024)
 def _parse_type(t: str) -> Any:
-    """`_ibis_type` of a string; the names a facet repeats are read once."""
+    """`_ibis_type` of a string; the names facets repeat are read once (a bounded
+    cache, for a reader of many foreign facets)."""
     import ibis.expr.datatypes as dt
 
     if m := _NESTED.fullmatch(t):
