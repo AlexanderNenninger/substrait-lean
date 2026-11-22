@@ -56,7 +56,7 @@ small native binary, so you need no Lean toolchain; they exist for Linux
 
 Correlated scalar subqueries are not in the model. An `ibis.param` is
 checked with its value bound (`sv.verify(expr, params={threshold: 50})`),
-and an unbound one is refused. [The Ibis coverage table](../README.md#ibis-coverage)
+and an unbound one is refused. [The Ibis coverage table](coverage.md)
 lists what gets through.
 
 ## 1. A contract, proved and run
