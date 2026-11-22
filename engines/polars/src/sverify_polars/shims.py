@@ -344,10 +344,9 @@ def avg_int_declared(values: pl.Expr) -> pl.Expr:
 
 
 def float_sum(values: pl.Expr) -> pl.Expr:
-    """`SUM` of doubles: Polars's own order (pairwise or Kahan,
-    polars-sum-float), within the plan's bound of the reference's correctly
-    rounded sum (D25); NULL for no values and one zero. Kahan is the
-    in-memory engine's, which #2411 drops from the profile."""
+    """`SUM` of doubles: Polars's own order (sequential per group, pairwise
+    per morsel, polars-sum-float-streaming), within the plan's bound of the
+    reference's correctly rounded sum (D25); NULL for no values and one zero."""
     return one_zero(sum_empty_null(values.sum(), values))
 
 

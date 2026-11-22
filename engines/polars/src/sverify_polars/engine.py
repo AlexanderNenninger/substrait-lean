@@ -36,8 +36,8 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   the integer `AVG`, one zero, each sort key's NULL placement and stable
   ties. `SUM` and `AVG` of a group run as Polars's own aggregations, with
   those shims; Polars adds doubles in its own order (`sum_order`:
-  `SEQUENTIAL`, `ANY` or `COMPENSATED`), within the plan's bound of the
-  reference's correctly rounded sum (D25).
+  `SEQUENTIAL` or `ANY`, polars-sum-float-streaming), within the plan's bound
+  of the reference's correctly rounded sum (D25).
 * Runtime errors are the `Issue`s of `analysis/Sverify/Analysis/Safety.lean`, which a
   checked plan is proved free of. Each expression carries a per-row flag for
   each issue, masked by `CASE` as `Expr.issues` masks it (both sides of

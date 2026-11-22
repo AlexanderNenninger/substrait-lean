@@ -42,11 +42,6 @@ PROBED = {
         "engines/duckdb/replay/probes.json",
         "sum-constant-run-nonfinite",
     ),
-    ("polars", "COMPENSATED"): (
-        "engines/polars/facts/polars-sum-float.json",
-        "engines/polars/probes/probes.json",
-        "float-sum-grouped-nonfinite",
-    ),
 }
 
 INF = math.inf
