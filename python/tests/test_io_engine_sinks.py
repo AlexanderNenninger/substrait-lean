@@ -265,6 +265,10 @@ def test_constraints_compare_numbers_by_value():
     assert _same_sql("x >= 0.0", "x >= 0")
     assert _same_sql("(x IS NULL) OR (x > 1.50)", "x IS NULL OR x > 1.5")
     assert not _same_sql("x >= 0.5", "x >= 0")
+    # On a NOT NULL column Delta drops the `IS NULL` disjunct (#2377).
+    assert _same_sql("(x IS NULL) OR (x >= 0)", "x >= 0", ["x"])
+    assert not _same_sql("(x IS NULL) OR (x >= 0)", "x >= 0")
+    assert not _same_sql("(y IS NULL) OR (x >= 0)", "x >= 0", ["x"])
     # Delta normalises BETWEEN and the side a comparison faces (#439, #487).
     assert _same_sql("x BETWEEN 0 AND 10", "x >= 0 AND x <= 10")
     assert _same_sql("hi >= lo", "lo <= hi")
