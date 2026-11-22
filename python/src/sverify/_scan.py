@@ -50,10 +50,14 @@ if TYPE_CHECKING:
 
 def local_path(uri: str) -> str | None:
     """The local path a table location or file URI names, or None for
-    object stores."""
+    object stores, and for a `file:` URI on another host outside Windows
+    (which reads that host as a UNC share)."""
     parsed = urlparse(uri)
     if parsed.scheme == "file":
-        return os.path.abspath(file_uri_path(uri))
+        path = file_uri_path(uri)
+        if path.startswith("//") and os.name != "nt":
+            return None
+        return os.path.abspath(path)
     if parsed.scheme == "" or (len(parsed.scheme) == 1 and os.name == "nt"):
         return os.path.abspath(uri)
     return None

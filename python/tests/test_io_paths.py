@@ -3,11 +3,12 @@ local path of a `file:` URI. The Windows trial found both (#2263)."""
 
 from __future__ import annotations
 
+import os
 from pathlib import PureWindowsPath
 
 import pytest
 
-from sverify._scan import file_uri_path
+from sverify._scan import file_uri_path, local_path
 from sverify.io.delta import _basename
 
 
@@ -47,3 +48,11 @@ def test_a_file_uri_keeps_its_drive_and_host(uri, path):
 def test_a_windows_file_uri_names_the_file_under_its_drive():
     path = PureWindowsPath(file_uri_path(r"file://C:\Users\me\db/orders/data/a.parquet"))
     assert path.parts == ("C:\\", "Users", "me", "db", "orders", "data", "a.parquet")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows reads another host as a UNC share")
+def test_a_file_uri_on_another_host_is_no_local_path():
+    """`file://otherhost/x` names a file on that host; `//otherhost/x` would
+    read as `/otherhost/x` here, so it is no local path (the review of #2280)."""
+    assert local_path("file://otherhost/share/x.parquet") is None
+    assert local_path("file://localhost/tmp/x.parquet") == "/tmp/x.parquet"
