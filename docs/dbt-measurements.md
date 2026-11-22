@@ -4,7 +4,7 @@ Sverify measured [sverify-dbt](../dbt/README.md) on two public dbt projects for 
 
 The projects are fetched at a pinned commit into a temporary directory and never vendored. [`dbt/scripts/measure.py`](../dbt/scripts/measure.py) does the work, on homelab (`homelab-run --detach`), because Cal-ITP's project is large:
 
-```bash
+```text
 cd dbt
 uv run python scripts/measure.py jaffle_shop
 uv run python scripts/measure.py calitp
