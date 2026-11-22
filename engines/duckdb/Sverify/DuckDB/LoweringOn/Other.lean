@@ -43,5 +43,7 @@ theorem Substrait.duckdbOn.froundEven_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.froundEven : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   Substrait.UnFn.froundEven :=
-  ⟨Substrait.Lowering.froundEvenTemplate, by exact Substrait.Lowering.froundEvenTemplate_must, Substrait.duckdbOn.froundEven_agree⟩
+  Substrait.UnEntry.ofAgree
+  (Substrait.Lowering.froundEvenTemplate)
+  (by exact Substrait.Lowering.froundEvenTemplate_must) Substrait.duckdbOn.froundEven_agree
 
