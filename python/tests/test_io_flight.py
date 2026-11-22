@@ -362,3 +362,34 @@ def test_a_table_and_a_source_without_an_id_are_not_the_same_source(tmp_path):
         paid(first()).write(DeltaSink(path)).refresh()
         with pytest.raises(ValueError, match="Two writers with one app_id"):
             paid(second()).write(DeltaSink(path)).refresh()
+
+
+def test_the_fingerprint_of_a_location_with_userinfo_holds_no_secret():
+    src = FlightSource("grpc://ada:s3cret@pi3:8815?token=t0k", "samples", schema=SAMPLES)
+    assert src._fingerprint() == "flight:grpc://pi3:8815/samples"
+
+
+def test_a_table_id_and_a_fingerprint_are_different_kinds_of_source():
+    from sverify.io._common import Contract, check_same_sources
+
+    def record(**kw):
+        return Contract(
+            node="n",
+            plan="p" * 64,
+            sources={"t": 1},
+            epoch=1,
+            not_null=[],
+            checks={},
+            unique=[],
+            **kw,
+        )
+
+    table = record(table_ids={"t": "abc"}, sverify="1")
+    flight = record(fingerprints={"t": "flight:grpc://x/t"}, sverify="1")
+    for a, b in [(table, flight), (flight, table)]:
+        with pytest.raises(ValueError, match="Two writers"):
+            check_same_sources("sink", a, b)
+    # A record from before `sverify` was recorded names neither: versions decide.
+    old = record()
+    check_same_sources("sink", old, table)
+    check_same_sources("sink", old, flight)
