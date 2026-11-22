@@ -1,0 +1,54 @@
+# The `sverify check` action (`actions/check/`), run on its own example pipelines with the
+# released sverify: it exits with the worst code of its targets, and writes one SARIF.
+name: action
+
+on:
+  pull_request:
+    paths: ["actions/**", ".github/workflows/action.yml"]
+  push:
+    branches: [main]
+    paths: ["actions/**", ".github/workflows/action.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: A proved pipeline exits 0
+        id: proved
+        uses: ./actions/check
+        with:
+          targets: actions/check/example/orders.py
+          upload: "false"
+          sarif-file: proved.sarif
+      - name: An unproved one exits 1, beside the proved one, in one SARIF
+        id: unproved
+        continue-on-error: true
+        uses: ./actions/check
+        with:
+          targets: |
+            actions/check/example/orders.py
+            actions/check/example/unproved.py
+          upload: "false"
+          sarif-file: both.sarif
+      - name: Read the results
+        env:
+          PROVED: ${{ steps.proved.outputs.exit-code }}
+          UNPROVED: ${{ steps.unproved.outputs.exit-code }}
+          OUTCOME: ${{ steps.unproved.outcome }}
+        run: |
+          test "$PROVED" = 0
+          test "$UNPROVED" = 1 && test "$OUTCOME" = failure
+          python - <<'PY'
+          import json
+          one = json.load(open("proved.sarif"))
+          both = json.load(open("both.sarif"))
+          assert one["version"] == both["version"] == "2.1.0"
+          assert len(both["runs"]) == 1 and not one["runs"][0]["results"]
+          ids = {r["ruleId"] for r in both["runs"][0]["results"]}
+          assert {"may_be_false", "needs"} <= ids, ids
+          assert {r["id"] for r in both["runs"][0]["tool"]["driver"]["rules"]} >= ids
+          PY
