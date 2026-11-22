@@ -29,8 +29,9 @@ from sverify_dbt.manifest import load
 from sverify_dbt.replay import Source, _dbt, _statuses, extract, normalize
 
 #: The projects: the repository, a pinned commit, the dbt project's directory
-#: in it (dbt-labs/jaffle-shop, its successor, needs dbt 2), and the `dbt build` arguments that load its data on DuckDB; None for
-#: a project with no data to load, which is compiled only.
+#: in it, and the `dbt build` arguments that load its data on DuckDB; None for
+#: a project with no data to load, which is compiled only. (jaffle_shop is
+#: the classic project: its successor, dbt-labs/jaffle-shop, needs dbt 2.)
 PROJECTS: dict[str, tuple[Source, list[str] | None]] = {
     "jaffle_shop": (
         Source(
