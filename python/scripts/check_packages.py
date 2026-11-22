@@ -188,7 +188,7 @@ def _odcs(tmp: str) -> None:
     from sverify import odcs
 
     path = f"{tmp}/c.odcs.yaml"
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write(
             "apiVersion: v3.2.0\nkind: DataContract\nid: c\nversion: '1'\nstatus: active\n"
             "schema:\n  - name: t\n    properties:\n      - name: a\n        required: true\n"
