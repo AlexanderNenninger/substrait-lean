@@ -491,12 +491,12 @@ def _pairs_of(
 ) -> Iterator[tuple[str, str, dict[str, Any]]]:
     path = root / file
     if schema is not None:
-        tables = ddl_schemas((root / schema).read_text())
-        lines = [x for x in path.read_text().splitlines() if x.strip()]
+        tables = ddl_schemas((root / schema).read_text(encoding="utf-8"))
+        lines = [x for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
         for a, b in zip(lines[::2], lines[1::2], strict=False):
             yield a, b, tables
         return
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         if line.strip():
             r = json.loads(line)
             yield r["pair"][0], r["pair"][1], json_schemas(r["schema"], r.get("constraint"))
