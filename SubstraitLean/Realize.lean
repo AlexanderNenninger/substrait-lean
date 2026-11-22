@@ -517,7 +517,7 @@ def realizeJson (E : EngineProfile) (ds : List Dep) (rows : List (Dep × ObsRow)
       if gives.floats != .exact && gives.floats != .plan then
         boundProved := boundProved ++ [!untested && allProved eps]
       let missed := rest.coarserThan stated.q
-      let at := where_ d ++ [("facts", toJson r.evidence.facts)]
+      let loc := where_ d ++ [("facts", toJson r.evidence.facts)]
       if !missed.isEmpty then
         match r.shim with
         | some s =>
@@ -525,11 +525,11 @@ def realizeJson (E : EngineProfile) (ds : List Dep) (rows : List (Dep × ObsRow)
           shims := shims ++ [Json.mkObj (where_ d ++ [("shim", toJson s)])]
         | none =>
           problems := problems ++ [Json.mkObj ([("code", toJson "observation_missed"),
-            ("components", toJson missed), ("observed", rest.sparseJson)] ++ at)]
+            ("components", toJson missed), ("observed", rest.sparseJson)] ++ loc)]
       for p in pb do
         if !told.contains p.1 then
           told := told ++ [p.1]
-          problems := problems ++ [(PProb.json p).mergeObj (Json.mkObj at)]
+          problems := problems ++ [(PProb.json p).mergeObj (Json.mkObj loc)]
   let gives : Option Seen :=
     if worst == .observed then seen.head?.map fun x => seen.tail.foldl
       (fun a b => { q := a.q.coarsest b.q, floats := a.floats.coarsest b.floats }) x
@@ -569,23 +569,24 @@ def Seen.ofJson? (j : Json) : Option Seen := do
   let floats ← match j.getObjVal? "floats" with
     | .ok (.str "exact") => some Fl.exact
     | .ok (.str "plan") => some Fl.plan
-    | .ok t@(.obj _) => some (Fl.within { abs := num "abs" t, rel := num "rel" t,
-        ulps := (t.getObjValAs? Nat "ulps").toOption })
+    | .ok t@(.obj _) => some (Fl.within { abs := (num "abs" t), rel := (num "rel" t),
+        ulps := ((t.getObjValAs? Nat "ulps").toOption) })
     | _ => none
-  return { q := { rows, elements, zeros, times, strings, errors, decimals }, floats }
+  return { q := { rows := rows, elements := elements, zeros := zeros, times := times,
+    strings := strings, errors := errors, decimals := decimals }, floats := floats }
 
 /-- The double columns a postcondition holds to the reference's exact value under the plan's
 bound (`observed`): those it reads, where it is proved, not `approx` and not robust, by the
-index of the first such condition. `meta` is each condition's `{"kind", "approx", "reads"}`
+index of the first such condition. `conds` is each condition's `{"kind", "approx", "reads"}`
 (`"reads"` null: every column), `proved` and `robust` those of the expression conditions in
 order, `keys` the proofs of the `unique` conditions. -/
-def heldCols (doubles : List Nat) (names : List String) (meta : List Json) (proved robust keys : List Bool) :
+def heldCols (doubles : List Nat) (names : List String) (conds : List Json) (proved robust keys : List Bool) :
     List (String × Nat) := Id.run do
   let mut held : List (String × Nat) := []
   let mut ei := 0
   let mut ki := 0
   let mut i := 0
-  for m in meta do
+  for m in conds do
     let kind := (m.getObjValAs? String "kind").toOption.getD "other"
     let approx := (m.getObjValAs? Bool "approx").toOption.getD false
     let (p, rb) := if kind == "expr" then (proved.getD ei false, robust.getD ei false)
@@ -624,12 +625,12 @@ def enginesJson (es : List EngineProfile) (input : Json) (rowsExact : Json)
   let stated? : Option Seen := obs.bind fun o => (o.getObjVal? "lenses").toOption.bind Seen.ofJson?
   let doubles : List Nat := (rep.outputKinds.zipIdx.filter fun (k, _) =>
     (k.getObjValAs? String "kind").toOption == some "float").map (·.2)
-  let meta : List Json := ((obs.bind (·.getObjValAs? (Array Json) "ensures_meta" |>.toOption)).getD #[]).toList
+  let conds : List Json := ((obs.bind (·.getObjValAs? (Array Json) "ensures_meta" |>.toOption)).getD #[]).toList
   let robustFlags : List Bool := (((robust.getArr?).toOption.getD #[]).toList.map fun r =>
     (r.getObjValAs? Bool "robust").toOption.getD false)
   let held : List (String × Nat) := match stated? with
     | some st => if st.floats == .plan then
-        heldCols doubles plan.names meta (rep.ensures.flatten.map (·.2.1)) robustFlags
+        heldCols doubles plan.names conds (rep.ensures.flatten.map (·.2.1)) robustFlags
           (rep.keys.map (·.2))
       else []
     | none => []
