@@ -94,6 +94,8 @@ def test_write_makes_a_dbt_project(suite: Path, tmp_path: Path) -> None:
         ),
         ({"models/s.yml": "models:\n- name: m\n  data_tests: [x]"}, {}, True),
         ({"tests/t.sql": "select 1 where false"}, {}, True),
+        ({"checks/t.sql": "select 1 where false"}, {"test-paths": ["checks"]}, True),
+        ({"tests/t.sql": "select 1 where false"}, {"test-paths": ["checks"]}, False),
         ({"models/m.sql": "select 1"}, {"data_tests": {"+severity": "warn"}}, True),
     ],
 )

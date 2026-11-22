@@ -59,8 +59,10 @@ class Case:
     def has_tests(self) -> bool:
         """Whether the project can hold a test: a file under `tests/`, or a
         YAML file or project config that says `tests`, `data_tests` or
-        `unit_tests`. A project without one has nothing to build and check."""
-        if any(rel.startswith("tests/") for rel in self.files):
+        `unit_tests`, or a file under a `test-paths` the config sets. A project
+        without one has nothing to build and check."""
+        paths = self.config.get("test-paths") or ["tests"]
+        if any(rel.startswith(f"{p.rstrip('/')}/") for rel in self.files for p in paths):
             return True
         texts = [t for rel, t in self.files.items() if rel.endswith((".yml", ".yaml"))]
         texts.append(json.dumps(self.config, default=str))
