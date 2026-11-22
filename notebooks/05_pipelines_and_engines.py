@@ -1640,8 +1640,8 @@ def _(ibis, sv):
         ensures=[_.total >= 0.0, sv.equivalent(floats=sv.within(rel=1e-6))],
     )
     assert sign_claim.verdict == sv.Verdict.PROVED and tolerant.verdict != sv.Verdict.PROVED
-    print(_routes.choose(sign_claim, "duckdb").reason)
-    print(_routes.choose(tolerant, "duckdb").reason)
+    print(_routes.choose(sign_claim, "duckdb").why)
+    print(_routes.choose(tolerant, "duckdb").why)
     return
 
 
