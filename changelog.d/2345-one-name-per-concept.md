@@ -6,7 +6,7 @@ Python names, old → new:
 
 - `sverify.types.Observation` → `sverify.types.Lenses`, as `Report.lenses` names it.
 - `sverify.types.CheckedCondition` (the items of `Report.ensures`) → `sverify.types.Postcondition`: "check" reads data (F219).
-- `sverify.errors.SqlError` → `SQLError`, cased as `SQLStep`.
+- `sverify.errors.SqlError` → `SQLError`, `sverify.odcs.OdcsContract` → `ODCSContract` and `sverify.profiles.SqlFrontEnd` → `SQLFrontEnd`: an acronym is capitals in a public name, as in `SQLStep`.
 - `Issue.hint_needs` → `Issue.suggested_requires`, as `Report.suggested_requires`.
 - `Route.kind` → `Route.taken`; `Route.reason` → `Route.why`; `Route.facts` → `Route.engine_facts`; `Route.proved_facts` → `Route.theorem_facts`; `Route.version` → `Route.probed_version`, beside `Route.unprobed_version`.
 - `sverify.io.Contract.profile` and `Stored.profile` → `semantics`, as `Report.semantics`.

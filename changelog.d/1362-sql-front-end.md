@@ -1,6 +1,6 @@
 ### `ProfilePlugin.sql`: a dialect's SQL front-end (#1362)
 
-A plugin can read a SQL dialect: `ProfilePlugin(sql=SqlFrontEnd(read, lift))`.
+A plugin can read a SQL dialect: `ProfilePlugin(sql=SQLFrontEnd(read, lift))`.
 `sverify.sql(dialect=)` looks the dialect up among the installed plugins (an
 unknown one names those installed), and DuckDB's own lift is registered the same way.
 The dialect's semantics is the engine's name, accepted only where the plugin brings

@@ -231,7 +231,7 @@ reference:
       - odcs.export
       - odcs.write
       - odcs.read
-      - odcs.OdcsContract
+      - odcs.ODCSContract
       - odcs.Unread
       - odcs.UnreadRuleWarning
 
