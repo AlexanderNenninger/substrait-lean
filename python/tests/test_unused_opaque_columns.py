@@ -9,8 +9,8 @@ from ibis import _
 
 import sverify as sv
 from _pipelines import rows
+from sverify._unsupported import Unsupported
 from sverify.io import DeltaSource, StaticSource
-from sverify.plan_json import Unsupported
 
 OPAQUE = {
     "map": pa.array([[("a", "b")], []], pa.map_(pa.string(), pa.string())),
@@ -69,6 +69,16 @@ def test_a_transform_with_requires_ignores_an_unused_opaque_column(make, kind, t
     assert rows(node) == [(1, 3), (2, 4)]
 
 
-def test_a_used_opaque_column_is_still_refused():
-    with pytest.raises(Unsupported, match="not supported"):
-        StaticSource(table("map"), name="t").pipe(lambda t: t.select("id", "extra")).refresh()
+@pytest.mark.parametrize("kind", ["map", "binary"])
+def test_a_carried_opaque_column_refreshes(kind):
+    """A map or binary column the view carries passes through unchanged (D67)."""
+    node = StaticSource(table(kind), name="t").pipe(lambda t: t.select("id", "extra"))
+    node.refresh()
+    assert [r[1] for r in rows(node)] == [
+        list(v.items()) if isinstance(v, dict) else v for v in table(kind)["extra"].to_pylist()
+    ]
+
+
+def test_a_read_opaque_column_is_still_refused():
+    with pytest.raises(Unsupported, match="ORDER BY it"):
+        StaticSource(table("map"), name="t").pipe(lambda t: t.order_by("extra")).refresh()
