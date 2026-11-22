@@ -388,11 +388,23 @@ def _is(lf: _Lift, node: sge.Is, sub: Sub, scope: list[Column]) -> E:
 def _between(lf: _Lift, node: sge.Between, sub: Sub, scope: list[Column]) -> E:
     if node.args.get("symmetric"):
         raise SqlUnsupported("BETWEEN SYMMETRIC is not supported", construct="BETWEEN SYMMETRIC")
-    es = [sub(node.this), sub(node.args["low"]), sub(node.args["high"])]
+    # The operand and the lower bound are evaluated on every row, so a nested
+    # expression in them may be bound below the SELECT list (`_Lift.share`); the
+    # upper bound is evaluated only where the lower bound's comparison does not
+    # decide, so nothing under it is bound.
+    es = [sub(node.this), sub(node.args["low"])]
+    saved, lf.shared = lf.shared, None
+    try:
+        es.append(sub(node.args["high"]))
+    finally:
+        lf.shared = saved
     if any(e.type.is_array() for e in es):
         _list_order(lf, node, [node.this, node.args["low"], node.args["high"]])
     x, lo, hi = _operands(lf, es, "BETWEEN")
-    return E(between(x, lo, hi, typed=True), dt.boolean)
+    # The operand is named by both bounds and every row evaluates it (the lower
+    # bound's comparison is the first of the `AND`): it is bound to a column
+    # once, so a `BETWEEN` of a `BETWEEN` stays linear in its depth (#2338).
+    return E(between(lf.share(x, calls=True), lo, hi, typed=True), dt.boolean)
 
 
 def _in(lf: _Lift, node: sge.In, sub: Sub, scope: list[Column]) -> E:

@@ -315,6 +315,13 @@ def _shareable(construct: str) -> frozenset[int]:
     return frozenset(i for i in always(template) if refs.count(i) > 1)
 
 
+def _is_call(j: Json) -> bool:
+    """Whether `j` is a function call, or casts one."""
+    while isinstance(j, dict) and "cast" in j:
+        j = j["cast"]["input"]
+    return isinstance(j, dict) and "scalarFunction" in j
+
+
 def _fields(j: Any) -> set[int]:
     """The input columns an expression reads."""
     if isinstance(j, list):
@@ -861,6 +868,9 @@ _STRICT = frozenset(
         sge.Column,
         sge.Literal,
         sge.Alias,
+        # The operand and the lower bound are evaluated on every row; `_between`
+        # keeps the upper bound out of what is bound.
+        sge.Between,
     }
 )
 
@@ -970,14 +980,17 @@ class _Lift:
         self.shared: list[Json] | None = None
         self.shared_base = 0
 
-    def share(self, j: Json) -> Json:
+    def share(self, j: Json, *, calls: bool = False) -> Json:
         """`j` as a column computed below the SELECT list being lifted, where
         every row evaluates it anyway, or `j` itself. A template that names an
         argument several times then copies a column, and a nested expression
         stays linear in its depth (#1952). A column stays itself, and so
         does a constant: it reads no column, and the parser reads some only
-        in place (a cast of a string literal)."""
-        if self.shared is None or column_of(j) is not None or not _fields(j):
+        in place (a cast of a string literal). With `calls`, a function call
+        of constants is bound too, where its value is not read in place (the
+        operand of a `BETWEEN`, #2338)."""
+        computed = calls and _is_call(j)
+        if self.shared is None or column_of(j) is not None or not (_fields(j) or computed):
             return j
         self.shared.append(j)
         return field_ref(self.shared_base + len(self.shared) - 1)

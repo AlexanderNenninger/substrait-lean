@@ -46,6 +46,10 @@ QUERIES = [
     " CASE qty WHEN 3 THEN 1.5 ELSE 2 END AS c, coalesce(qty, 0) AS z FROM orders",
     "SELECT id, cost * cost AS c2, cost + 1 AS c1, cost * 2 AS cd, cost > 3.5 AS big FROM orders",
     "SELECT 1 + 1 AS two, 7 // 2 AS q, 1 // 1 AS one",
+    # A BETWEEN of a BETWEEN: the operand is bound once (#2338).
+    "SELECT id, (((qty BETWEEN 1 AND 3)::INT BETWEEN 0 AND 1)::INT BETWEEN 0 AND 2) AS b,"
+    " ((price + 1 BETWEEN 0 AND 5)::INT + qty BETWEEN 2 AND 6) AS c FROM orders",
+    "SELECT (((1 BETWEEN 0 AND 2)::INT BETWEEN 0 AND 2)::INT BETWEEN 0 AND 2) AS nested",
     # IS [NOT] TRUE/FALSE, never NULL: COALESCE of the test (#177).
     "SELECT id, (qty > 2) IS TRUE AS t, (qty > 2) IS NOT TRUE AS nt,"
     " (price > 1.5) IS FALSE AS f, (price > 1.5) IS NOT FALSE AS nf FROM orders",
@@ -156,6 +160,38 @@ def test_nested_double_arithmetic_checks_quickly():
         "cols = {f'c{i}': 'float64' for i in range(10)}\n"
         "sv.verify('SELECT ' + ' / '.join(cols) + ' AS s FROM t',"
         " tables={'t': ibis.table(cols, name='t')}, semantics='duckdb', on_inferred='warn')\n"
+    )
+    subprocess.run([sys.executable, "-c", script], check=True, timeout=120)
+
+
+def _nested_between(depth: int) -> str:
+    q = "qty"
+    for _ in range(depth):
+        q = f"({q} BETWEEN 0 AND 2)::INT"
+    return f"SELECT {q} AS c FROM orders"
+
+
+def test_nested_between_lifts_to_a_linear_plan():
+    # A BETWEEN names its operand in both bounds; the lift binds it to a column
+    # once, so every further level adds the same size (#2338). Copied, the plan
+    # doubled per level, and 30 levels were about 2^24 times 6.
+    def size(n: int) -> int:
+        return len(json.dumps(lift(_nested_between(n), SCHEMAS).plan))
+
+    assert size(12) - size(11) <= 1.1 * (size(5) - size(4))
+    assert size(30) < 100_000
+
+
+def test_nested_between_checks_quickly():
+    # The check end to end, in a subprocess with a timeout: ten levels did not
+    # finish in 100 s before #2338.
+    script = (
+        "import ibis, sverify as sv\n"
+        "q = 'qty'\n"
+        "for _ in range(12):\n"
+        "    q = f'({q} BETWEEN 0 AND 2)::INT'\n"
+        "sv.verify(f'SELECT {q} AS c FROM t', tables={'t': ibis.table({'qty': 'int32'}, name='t')},"
+        " semantics='duckdb', on_inferred='warn')\n"
     )
     subprocess.run([sys.executable, "-c", script], check=True, timeout=120)
 
