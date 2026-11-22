@@ -347,6 +347,13 @@
    "duckdb": "runs",
    "polars": "refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/2",
    "snowflake": "refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issue"
+  },
+  "contract": {
+   "proved": true,
+   "guard_free": true
+  },
+  "verified_sql": {
+   "duckdb": "yes"
   }
  },
  "h2o-groupby-q7": {
