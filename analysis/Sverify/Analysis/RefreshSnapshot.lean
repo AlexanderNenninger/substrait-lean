@@ -13,9 +13,17 @@ every `Fix*` switch on, and proves its safety for every scope.
 The data is abstract as in `Refresh.lean`. The source is a counter of its
 contents `c`. The node's rows are `Tbl.rows plan c`; a commit's key is the
 plan, the process's version and the digest, which is the contents' counter, so
-the key names the table it wrote (`Key.tbl`). The view a process computes is
-left out: it is `rows plan c` on every reachable state (a resume that read
-back another table is the corruption `no_corruption` rules out).
+the key names the table it wrote (`Key.tbl`).
+
+The view a process computes is left out, and that is sound. In the TLA+ model a
+process's view is `rows plan c` of the contents `c` it read, except on its first
+refresh when it resumes: there the view is `rows plan c` only if the table it
+read back is the record's state, and `Corrupt` otherwise. The resume happens
+only under `same` (the record is the newest commit and of the process's plan),
+and then `record_describes_table` says the table is exactly the record's state,
+`rows r.plan r.dig`. So the `Corrupt` branch is never taken on a reachable
+state, and the view is always `rows plan c`; the model's `refresh` reads
+`s.tbl` as the written table under the same condition.
 -/
 
 namespace Substrait
