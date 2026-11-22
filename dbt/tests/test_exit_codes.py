@@ -7,19 +7,21 @@ from sverify.errors import UnsupportedError
 
 from sverify_dbt import cli
 from sverify_dbt.cli import main
-from sverify_dbt.result import CheckResult, ContractIssue, ModelResult, TestResult
+from sverify_dbt.result import CheckResult, ContractIssue, ModelResult, Status, TestResult
 
 
-def _t(label: str, status: str, kind: str = "test") -> TestResult:
-    return TestResult(None, None, label, kind, status)
+def _t(label: str, status: Status, kind: str = "test") -> TestResult:
+    return TestResult(test=None, name=None, label=label, kind=kind, status=status)
 
 
 def _project(**models: ModelResult) -> CheckResult:
-    return CheckResult("p", "/p", list(models.values()), {})
+    return CheckResult(project="p", root="/p", models=list(models.values()))
 
 
 def _model(name: str) -> ModelResult:
-    return ModelResult(name, f"model.p.{name}", f"models/{name}.sql", f"ref('{name}')")
+    return ModelResult(
+        name=name, unique_id=f"model.p.{name}", path=f"models/{name}.sql", ref=f"ref('{name}')"
+    )
 
 
 def _refused() -> ModelResult:
@@ -56,7 +58,7 @@ def test_refused_models_gate_only_where_asked(monkeypatch):
 
 def test_an_unproved_test_fails_unproved_with_1(monkeypatch):
     m = _model("bad")
-    m.tests = [_t("not_null(x)", "not proved")]
+    m.tests = [_t("not_null(x)", "not_proved")]
     result = _project(bad=m)
     assert _run(monkeypatch, result) == 0
     assert _run(monkeypatch, result, "--fail-on", "unproved") == cli.NOT_PROVED
@@ -70,10 +72,10 @@ def test_an_unproved_test_fails_unproved_with_1(monkeypatch):
 
 def test_a_contract_mismatch_and_an_unproved_constraint_fail_the_default_gate(monkeypatch):
     m = _model("c")
-    m.contract = [ContractIssue("z", "declared int, found text")]
+    m.contract = [ContractIssue(column="z", problem="declared int, found text")]
     assert _run(monkeypatch, _project(c=m)) == cli.NOT_PROVED
     k = _model("k")
-    k.constraints = [_t("not_null(x)", "not proved", "constraint")]
+    k.constraints = [_t("not_null(x)", "not_proved", "constraint")]
     assert _run(monkeypatch, _project(k=k)) == cli.NOT_PROVED
     assert _run(monkeypatch, _project(k=k), "--fail-on", "never") == 0
 
@@ -100,5 +102,5 @@ def test_a_constraint_sverify_did_not_check_on_a_read_model_still_fails_the_gate
     """Only a refused model's constraints are excused: one that sverify could not
     read the condition of, on a model that was checked, is not a pass."""
     m = _model("k")
-    m.constraints = [_t("check(x > 0)", "not checked", "constraint")]
+    m.constraints = [_t("check(x > 0)", "not_checked", "constraint")]
     assert _run(monkeypatch, _project(k=m)) == cli.NOT_PROVED
