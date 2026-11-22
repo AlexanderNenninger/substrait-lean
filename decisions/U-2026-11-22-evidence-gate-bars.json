@@ -1,0 +1,21 @@
+{
+  "id": "U-2026-11-22-evidence-gate-bars",
+  "date": "2026-11-22",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "#1487's evidence gate: sverify-dbt's read and proof rate is measured on jaffle_shop and GitLab's public dbt project, and the maintainer sets the bar from the measurement. A person new to sverify, found by the maintainer, gets from `pip install` to a first proved contract from the docs alone in 30 minutes or less. The `sverify_proved` savings are measured on the same two projects and stated in the docs, with no pass mark. Design partners are not a gate.",
+  "issues": [
+    1487,
+    1485,
+    755,
+    756,
+    866,
+    888
+  ],
+  "amends": [
+    "F261"
+  ],
+  "source": "https://github.com/AlexanderNenninger/substrait-lean/issues/1487#issuecomment-7078595109",
+  "note": "Settles the two items ruling 261 held for the maintainer: #1485 items 11 and 13, with item 6 as one of the measurements. A Snowflake project waits for #866 (After 1.0). Design partners: 1.0.0rc1 (#756) invites outside users, and the scoped statement says who maintains sverify and how."
+}
