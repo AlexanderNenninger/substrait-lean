@@ -24,7 +24,7 @@ from sverify.engine import connect, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import inline_tables, lean_rows, lean_values
 from sverify_polars import engine as polars_engine
-from sverify_polars import lowering, shims
+from sverify_polars import shims
 
 pytestmark = pytest.mark.backend("polars")
 
@@ -85,9 +85,9 @@ def test_polars_floors_and_the_lowering_truncates():
     a, b = pl.col("a"), pl.col("b")
     want = [_tdiv(a, b) for a, b in DIVISIONS]
     assert native(df, a // b, a % b) != want
-    div, mod = lowering.render("idiv", [a, b]), lowering.render("imod", [a, b])
+    div, mod = polars_engine.lowered("idiv", a, b), polars_engine.lowered("imod", a, b)
     assert native(df, div.cast(pl.Int64), mod.cast(pl.Int64)) == want
-    assert native(df, lowering.render("imod", [pl.lit(MIN), pl.lit(-1)])) == [(0,)]
+    assert native(df, polars_engine.lowered("imod", pl.lit(MIN), pl.lit(-1))) == [(0,)]
 
 
 def _tdiv(a: int, b: int) -> tuple[int, int]:

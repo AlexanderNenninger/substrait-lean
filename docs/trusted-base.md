@@ -206,8 +206,7 @@ Sverify's words claim no more than these theorems give
   `IS NOT NULL` included, and the Polars translator. The interpreters of the
   generated lowering tables are among them: `sverify/sql/lowering.py` writes a
   DuckDB template as SQL, and `sverify_polars/lowering.py` a Polars template
-  as a `pl.Expr`, which the Polars translator takes over from its hand-written
-  shims in #271's step 2. Golden, round-trip and
+  as a `pl.Expr` (#271). Golden, round-trip and
   differential tests cover them
   ([the translations](engine-profiles.md#the-translations-today)).
 - The CLI's glue, `Main.lean`, `SubstraitCheck.lean`, `ContractCheck.lean` and `ShardCheck.lean`:

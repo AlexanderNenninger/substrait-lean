@@ -23,6 +23,13 @@ pytestmark = pytest.mark.backend("polars")
 MIN, MAX = -(2**63), 2**63 - 1
 
 
+def lowered(fn: str, *xs: pl.Expr) -> pl.Expr:
+    """`fn` as the interpreter writes its template."""
+    e = lowering.render(fn, xs)
+    assert e is not None, fn
+    return e
+
+
 def run(exprs: dict[str, pl.Expr], cols: dict[str, pl.Series]) -> dict[str, list]:
     out = pl.LazyFrame(cols).select(**exprs).collect(engine="streaming")
     return {k: out[k].to_list() for k in exprs}
@@ -55,8 +62,8 @@ def test_division_truncates():
     a, b = pl.col("a"), pl.col("b")
     got = run(
         {
-            "div": lowering.render("idiv", [a, b]).cast(pl.Int64),
-            "mod": lowering.render("imod", [a, b]).cast(pl.Int64),
+            "div": lowered("idiv", a, b).cast(pl.Int64),
+            "mod": lowered("imod", a, b).cast(pl.Int64),
         },
         cols,
     )
@@ -82,8 +89,8 @@ def test_rounding_gives_the_reference_value():
     x = pl.col("x")
     got = run(
         {
-            "round": lowering.render("Substrait.UnFn.fround", [x]),
-            "ceil": lowering.render("Substrait.UnFn.fceil", [x]),
+            "round": lowered("Substrait.UnFn.fround", x),
+            "ceil": lowered("Substrait.UnFn.fceil", x),
         },
         {"x": pl.Series([*xs, None], dtype=pl.Float64)},
     )
