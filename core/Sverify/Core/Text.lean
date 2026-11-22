@@ -164,10 +164,9 @@ def trim (left right : Bool) (s set : String) : String :=
 /-! ## Repeating, reversing, replacing -/
 
 /-- The longest string `repeat` writes, in bytes; past it, `repeat` raises.
-It lies below every engine's own limit on a string: DuckDB raises past
-2³² − 1 bytes (`duckdb-exec-size-limits`), Polars panics past `u32::MAX`
-(`polars-exec-size-limits`), and Spark holds a string in one JVM byte array
-(`spark-exec-size-limits`). So every route raises at the writers' guard before
+It lies at or below every engine's own limit on a string's length
+(`duckdb-exec-size-limits`, `polars-exec-size-limits`,
+`spark-exec-size-limits`), so every route raises at the writers' guard before
 an engine fails on its own, and the bound also caps what the checker's
 evaluator writes (#1074; ruling 267). -/
 def repeatMax : Nat := 2 ^ 31 - 1
