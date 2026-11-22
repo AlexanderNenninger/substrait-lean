@@ -6,8 +6,7 @@
     "examples read": 42,
     "round trip no conditions": 8,
     "round trip not tried": 6,
-    "round trip refused": 4,
-    "round trip same": 94,
+    "round trip same": 98,
     "unread": 15
   },
   "results": {
@@ -96,10 +95,7 @@
             "Key(cols=('addressid',))"
           ],
           "unread": [],
-          "round_trip": {
-            "refused": "ConditionError: 1 condition(s) cannot be read: \"addressid\" IS NOT NULL: condition '\"addressid\" IS NOT NULL': column 'spatiallocation' of 't': sverify reads no binary values (#1918): encode them as text at the source (hex or base64), or leave the column out; only a column the query never reads is lef",
-            "issue": 1958
-          }
+          "round_trip": "same"
         },
         "addresstype": {
           "conditions": [
@@ -204,10 +200,7 @@
             "Key(cols=('documentnode',))"
           ],
           "unread": [],
-          "round_trip": {
-            "refused": "ConditionError: 1 condition(s) cannot be read: \"documentnode\" IS NOT NULL: condition '\"documentnode\" IS NOT NULL': column 'document' of 't': sverify reads no binary values (#1918): encode them as text at the source (hex or base64), or leave the column out; only a column the query never reads is left",
-            "issue": 1958
-          }
+          "round_trip": "same"
         },
         "illustration": {
           "conditions": [
@@ -298,10 +291,7 @@
             "Key(cols=('productphotoid',))"
           ],
           "unread": [],
-          "round_trip": {
-            "refused": "ConditionError: 1 condition(s) cannot be read: \"productphotoid\" IS NOT NULL: condition '\"productphotoid\" IS NOT NULL': column 'thumbnailphoto' of 't': sverify reads no binary values (#1918): encode them as text at the source (hex or base64), or leave the column out; only a column the query never rea",
-            "issue": 1958
-          }
+          "round_trip": "same"
         },
         "productproductphoto": {
           "conditions": [
@@ -843,10 +833,7 @@
             "NOT \"product_id\" IS NULL"
           ],
           "unread": [],
-          "round_trip": {
-            "refused": "ConditionError: 2 condition(s) cannot be read: \"product_id\" IS NOT NULL: condition '\"product_id\" IS NOT NULL': column 'user_preferences' of 't': type map<!string, string> is not supported; cast the column to a supported type in the source query; only a column the query never reads is left out",
-            "issue": 1958
-          }
+          "round_trip": "same"
         }
       }
     },
