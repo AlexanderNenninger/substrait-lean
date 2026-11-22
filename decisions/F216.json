@@ -1,0 +1,16 @@
+{
+  "id": "F216",
+  "date": "2026-11-20",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "D71 recorded as the maintainer approved it: `power` is strict in both arguments, its three folds go, and D71 recomputes sinks (P1-P7).",
+  "issues": [
+    2081
+  ],
+  "prs": [
+    2123
+  ],
+  "source": "fable-d71-power-strict.md",
+  "note": "D71's entry and section landed with #2123."
+}

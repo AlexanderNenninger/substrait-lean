@@ -4,14 +4,13 @@
   "decided_by": "fable",
   "scope": "api",
   "status": "in-force",
-  "summary": "\"reference\" reads as \"portable\" in reports below format 4 and manifests below format 3; the sink record never held it in a release, so its reader has no handling and CONTRACT_FORMAT stays 2 (F96); a dev fixture set at unreleased formats is replaced when those formats change.",
-  "issues": [
-    2081,
+  "summary": "#2089: the dev fixture set at unreleased formats is replaced (L10); the sink record gets no format bump and no name map, and a 0.8 record reads with no profile (L7).",
+  "prs": [
     2089
   ],
   "amends": [
     "F192"
   ],
   "source": "fable-ruling-214-2089-fixtures-and-sink-record.md",
-  "note": "Amends F192's L10 and replaces ruling 213's S1-S3 (no F213). No D-number."
+  "note": "Folds in ruling 213, which has no entry of its own: its conclusion (no bump) stands and its S1-S3 are replaced. No D-number."
 }

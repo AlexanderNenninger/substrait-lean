@@ -296,7 +296,7 @@
         "type": "object",
         "required": ["key", "construct", "sql", "where", "here", "dialect", "example", "spellings"],
         "properties": {
-          "key": {"enum": ["corr_degenerate", "list_contains_null_needle"]},
+          "key": {"enum": ["corr_degenerate", "list_contains_null_needle", "list_null_order"]},
           "construct": {"type": "string"},
           "sql": {"type": "string"},
           "where": {"type": "string"},

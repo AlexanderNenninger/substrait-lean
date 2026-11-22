@@ -85,7 +85,7 @@ import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
-from sverify import _decimals, _hooks, _pipe, _stages
+from sverify import _decimals, _engines, _hooks, _pipe, _stages
 from sverify import observation as _observation
 from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double  # noqa: F401
 from sverify._dialect import DialectDifference
@@ -143,7 +143,7 @@ from sverify.engine import (
     plan_and_differences,
     run_checker,
 )
-from sverify.observation import Observation, _deterministic_arg  # noqa: F401  (re-exported)
+from sverify.observation import Observation
 from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
     _DECIMAL_ARG,
     _EPOCH_DAY,
@@ -252,7 +252,7 @@ def _checked_semantics(semantics: str) -> Semantics:
 
         named = ", ".join(map(repr, semantics_names()))
         renamed = f" ({RENAMED})" if semantics == "reference" else ""
-        raise ValueError(
+        raise _engines.not_installed(semantics) or ValueError(
             f"semantics must be one of {named} (each installed engine profile, "
             f"sverify.profiles), not {semantics!r}{renamed}"
         )
@@ -548,7 +548,6 @@ def _text_condition(col: str, fact: TextFact) -> Inferred:
     (`Text.upperRaises`, `lowerRaises`, D51).
     Its SQL is the writers' guard in the default engine's dialect, the one the data is
     checked on; its Ibis form is one regular expression with the same characters."""
-    from sverify import _engines
     from sverify.sql.core import ascii_text, case_class
 
     dialect = _engines.sql_dialect()
@@ -745,7 +744,7 @@ def requires_by_input(
 
 def default_counterexamples() -> int:
     """How many inputs `verify`, a transform's call and
-    `ContractedTransform.check` try per unproved postcondition when not told:
+    `ContractedTransform.verify` try per unproved postcondition when not told:
     the `SVERIFY_COUNTEREXAMPLES` environment variable, else 200. An editor
     or a CI step that only needs the verdicts sets it to 0."""
     raw = os.environ.get("SVERIFY_COUNTEREXAMPLES", "").strip()
@@ -1074,17 +1073,6 @@ class UnprovedWarning(SverifyWarning):
         self.report = report
 
 
-def __getattr__(name: str) -> Any:
-    if name == "InferredPreconditionWarning":
-        warnings.warn(
-            "InferredPreconditionWarning is deprecated; catch sverify.errors.InferredWarning",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return InferredWarning
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 def _typed(dtypes: Mapping[str, Any], facts: Mapping[str, ColumnFacts]) -> dict[str, Any]:
     """The output's types, not nullable where `facts` proves a column never
     NULL: one value for both (ruling 184, F2)."""
@@ -1114,14 +1102,7 @@ def _checked_on_inferred(v: str) -> OnInferred:
 
 
 def _checked_on_unproved(v: str) -> OnUnproved:
-    """`on_unproved`, with the deprecated `"runtime"` read as `"check"`."""
-    if v == "runtime":
-        warnings.warn(
-            'on_unproved="runtime" is deprecated; write on_unproved="check"',
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        return "check"
+    """`on_unproved`, checked."""
     if v not in ("error", "check", "warn"):
         raise ValueError(f"on_unproved must be 'error', 'check' or 'warn', not {v!r}")
     return v  # type: ignore[return-value]
@@ -1190,7 +1171,9 @@ def _reads(cond: Condition, columns: Mapping[str, Any]) -> list[str] | None:
         return list(cond.cols)
     if isinstance(cond, NonOverlapping):
         return [cond.lo, cond.hi, *cond.by]
-    if isinstance(cond, References | ArrivesWithin):
+    if isinstance(cond, References):
+        return list(cond.cols)
+    if isinstance(cond, ArrivesWithin):
         return [cond.col]
     if isinstance(cond, MaxRows):
         return []
@@ -1669,6 +1652,8 @@ def _prove_once(
         for c in cs:
             if isinstance(c, NonOverlapping) and t in schemas:
                 c.check_types(t, schemas[t])
+            elif isinstance(c, References):
+                c.check_types(t, schemas)
 
     unreadable: dict[str, _Unsupported] = {}
 
@@ -1928,7 +1913,18 @@ def _prove_once(
             report._hints += division_hints(transform)
     report._hints += contradictions(requires, schemas)
     report.dialect_differences = tuple(differences)
+    if not isinstance(transform, str):
+        report._sql_front_ends = _sql_front_ends(transform)
     return report, out["inferred"], schemas
+
+
+def _sql_front_ends(transform: Any) -> tuple[str, ...]:
+    """The front-ends of the `sv.sql` steps of `transform` other than DuckDB's."""
+    from sverify.ibis_substrait.relations import SQLModel
+    from sverify.profiles import front_end_label
+
+    found = {op.dialect for op in transform.op().find(SQLModel)}
+    return tuple(front_end_label(d) for d in sorted(found - {None, "duckdb"}))
 
 
 def _finite_bounds(
@@ -2995,16 +2991,6 @@ class ContractedTransform:
         self._cache: dict[tuple, Report] = {}
         functools.update_wrapper(self, fn)
 
-    @property
-    def last_report(self) -> Report | None:
-        """Deprecated: `report`."""
-        warnings.warn(
-            "ContractedTransform.last_report is deprecated; read .report",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.report
-
     def to_substrait(
         self,
         format: Literal["json", "binary"] = "json",
@@ -3212,11 +3198,11 @@ class ContractedTransform:
             return _hooks.nodes().derive(self, args, kwargs)
         return self._build(args, kwargs, node=False)
 
-    def check(self, *args: Any, counterexamples: int | None = None, **kwargs: Any) -> Report:
+    def verify(self, *args: Any, counterexamples: int | None = None, **kwargs: Any) -> Report:
         """Prove the contract for the input schemas, and return the report
         without raising and without reading data.
 
-        `doubled.check(orders=schema)` is `doubled(orders)` on an unbound
+        `doubled.verify(orders=schema)` is `doubled(orders)` on an unbound
         table of that schema: the postconditions are proved, the needed
         preconditions inferred, and the report kept in `report`. An
         unproved contract does not raise `VerificationError`, a bound table
@@ -3248,7 +3234,7 @@ class ContractedTransform:
                 value = ibis.schema(value)
             if not isinstance(value, ibis.Schema):
                 raise TypeError(
-                    f"{self.name}.check: {name} must be an Ibis table or a schema, "
+                    f"{self.name}.verify: {name} must be an Ibis table or a schema, "
                     f"not {type(value).__name__}"
                 )
             bound.arguments[name] = ibis.table(value, name=name)
@@ -3405,7 +3391,7 @@ def transform(
     requires: Mapping[str, Sequence[Condition]] | Sequence[Condition] | None = None,
     ensures: Sequence[Condition] = (),
     *,
-    on_unproved: OnUnproved | Literal["runtime"] = "error",
+    on_unproved: OnUnproved = "error",
     check_requires: bool = True,
     check_engine: Engine | None = None,
     semantics: Semantics = "portable",
@@ -3447,8 +3433,7 @@ def transform(
             refresh) and a precondition on a bound input's data; `"warn"`
             emits a warning and returns the result, and a node's refreshes
             run it unverified, each with an `UnverifiedRunWarning`
-            (`refresh(unverified=True)`). `"runtime"` is a deprecated
-            spelling of `"check"`.
+            (`refresh(unverified=True)`).
         check_requires: Whether to check preconditions on the data of bound
             inputs at call time. Default True. False with an
             `on_violation` other than `"error"` raises `ValueError`: that
@@ -3486,8 +3471,7 @@ def transform(
             `ibis.Schema` or a mapping from column name to type
             (`{"orders": {"id": "int64", "total": "int64"}}`). They let
             `sverify check file.py` prove the contract of a transform the
-            file never applies, which is `fn.check(**schemas)`
-            (`ContractedTransform.check`). Calls ignore them. Default: none.
+            file never applies, which is `fn.verify(**schemas)`. Calls ignore them. Default: none.
 
     Returns:
         A decorator that turns the function into a `ContractedTransform`.

@@ -106,8 +106,8 @@ def drift(var: str, d: Drift) -> list[dict[str, Any]]:
     if d.plan_changed:
         old, new = d.profiles
         text = "the plan differs from the one the sink last committed"
-        if (old or "reference") != new:
-            text += f" (profile {old or 'reference'} then, {new} now)"
+        if (old or "portable") != new:
+            text += f" (profile {old or 'portable'} then, {new} now)"
         out.append(finding("plan_changed", text))
     return out
 

@@ -12,3 +12,7 @@ over (`eval`, `OrderAllowed`, `Allowed`, `AllowedP`, `Near`) and its axioms.
 | [`contract_sound_all`](contract_sound_all.md) | … in every row order the reference allows |
 | [`contract_sound_allowed`](contract_sound_allowed.md) | … on every result the reference allows, doubles summed in any order included |
 | [`contract_sound_allowed_closed`](contract_sound_allowed_closed.md) | … with the float-safety condition replaced by a check on the plan |
+| [`Rel.duckdb_sound`](duckdb_sound.md) | A proved plan returns the reference's rows on DuckDB as the printer writes it |
+| [`Rel.polars_sound`](polars_sound.md) | … on Polars, after the shims |
+| [`Rel.spark_sound`](spark_sound.md) | … on Spark under ANSI |
+| [`Rel.keys_sound`](keys_sound.md) | A derived key holds on the output: no two rows share its columns |

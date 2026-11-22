@@ -8,7 +8,7 @@ import json
 import math
 import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
@@ -99,7 +99,7 @@ between integer and double arithmetic by it, so this module tracks it too."""
 class Unsupported(_Unsupported):
     """The plan is outside the Lean model, or the dialect cannot express it.
 
-    Raised by `sverify.engines.to_sql`, and so by `sverify.engines.run` on
+    Raised by `sverify.engines.plan.to_sql`, and so by `sverify.engines.run` on
     DuckDB and Spark, and by `Node.to_sql` and `Report.to_sql`; the message says
     which construct, and for a dialect, why (e.g. Snowflake tables have no
     row order, so a `FETCH` cannot follow the model's). A subclass of
@@ -108,6 +108,8 @@ class Unsupported(_Unsupported):
     """
 
 
+#: What a refusal says where a constant is needed (#176).
+CONSTANT_FIX = "use a literal, or write each case as a CASE (ifelse in Ibis)"
 RANGE_HINT = "change the constant, or the cast's type, so the value fits"
 MALFORMED_PLAN = (
     "the plan is malformed or outside what this writer reads; build it with sverify, or fix it"
@@ -2197,7 +2199,12 @@ def _cast_const(ty: dict, c: Const) -> Const:
         case "str":
             if c.tag == "str":
                 return c
-            raise WriterUnsupported("casts to strings are not supported")
+            # `true`/`false` and `YYYY-MM-DD`, as Lean folds them (#346).
+            if c.tag == "bool":
+                return Const("str", "true" if c.value else "false")
+            if c.tag == "int" and c.kind == "date":
+                return Const("str", _date_text(c.value))
+            raise WriterUnsupported("casts of this value to strings are not supported")
         # An instant literal: the microseconds of a timestamp literal, read at UTC (D53).
         case "instant":
             if c.tag == "int":
@@ -2309,7 +2316,7 @@ def _const_literal(j: dict) -> Const:
         case "interval":
             months, micros = v
             if months != 0:
-                raise Unsupported(
+                raise WriterUnsupported(
                     "month and year intervals are only supported added to a date or timestamp"
                 )
             return Const("int", micros, kind="interval")
@@ -2590,7 +2597,7 @@ class _Parser:
         ):
             return _list_lit(lit)
         if lit is not None:
-            raise Unsupported(
+            raise WriterUnsupported(
                 "month and year intervals are only supported added to a date or timestamp"
             )
         key, v = _oneof(
@@ -2636,7 +2643,10 @@ class _Parser:
                             raise WriterUnsupported("regexp_match with flags is not supported")
                         pat = self.const(gargs[1])
                         if pat is None or pat.tag != "str":
-                            raise Unsupported("regular expressions must be constants")
+                            raise WriterUnsupported(
+                                "regular expressions must be constants",
+                                CONSTANT_FIX,
+                            )
                         return Un("regex_match", self.expr(gargs[0], cols), param=pat.value)
                 out_kind = _lean_type_kind(_field(v, "outputType"))
                 if (t := self.temporal_arith(name, arg_js, cols, out_kind)) is not None:
@@ -2664,16 +2674,22 @@ class _Parser:
                     iv = _interval_lit(arg_js[0])
                     origin = self.const(arg_js[2])
                     if iv is None or iv[0] != 0 or iv[1] <= 0:
-                        raise Unsupported("date_bin needs a constant interval of days or less")
+                        raise WriterUnsupported(
+                            "date_bin needs a constant interval of days or less",
+                            CONSTANT_FIX,
+                        )
                     if origin is None or origin.tag != "int":
-                        raise Unsupported("date_bin needs a constant origin")
+                        raise WriterUnsupported(
+                            "date_bin needs a constant origin",
+                            CONSTANT_FIX,
+                        )
                     if _arg_kind(cols.lean, arg_js[1], parsed[1]) != "time":
-                        raise Unsupported("date_bin is only supported on timestamps")
+                        raise WriterUnsupported("date_bin is only supported on timestamps")
                     return Un("bucket", parsed[1], digits=iv[1], origin=origin.value)
                 if name in ("strftime", "to_char", "date_format"):
                     first = parsed[0] if parsed else Lit(None, None)
                     if lean_expr_kind(first, cols.lean) != "time":
-                        raise Unsupported(f"{name} is only supported on timestamps")
+                        raise WriterUnsupported(f"{name} is only supported on timestamps")
                 if name in ("date_part", "datepart", "date_trunc", "datetrunc"):
                     second = parsed[1] if len(parsed) > 1 else Lit(None, None)
                     k = _arg_kind(cols.lean, arg_js[1], second) if len(arg_js) > 1 else "other"
@@ -2684,7 +2700,7 @@ class _Parser:
                             return call
                         if isinstance(call, Un) and call.op == "date_trunc" and call.param in clock:
                             return replace(call, op="time_trunc")
-                        raise Unsupported(
+                        raise WriterUnsupported(
                             f"{name} of a time of day is only supported for its clock"
                         )
                     if k == "date":
@@ -2700,7 +2716,7 @@ class _Parser:
                             return replace(call, op="day_trunc")
                         return call
                     if k != "time":
-                        raise Unsupported(f"{name} is only supported on timestamps and dates")
+                        raise WriterUnsupported(f"{name} is only supported on timestamps and dates")
 
                 def keep_int(k: int) -> bool:
                     # `ROUND(x, d)`: the digits stay an integer.
@@ -2711,7 +2727,7 @@ class _Parser:
                 overflow = _option(v, "overflow", "ERROR")
                 if any(isinstance(lean_expr_kind(e, cols.lean), Dec) for e in parsed):
                     if overflow in ("SILENT", "SATURATE"):
-                        raise Unsupported(
+                        raise WriterUnsupported(
                             f"{name}: overflow {overflow} is only modelled for integers"
                         )
                     if any(
@@ -2746,7 +2762,7 @@ class _Parser:
                         hint=MALFORMED_PLAN,
                     )
                 if name in (*BITWISE, "bitwise_not", "shift_left", "shift_right") and has_float:
-                    raise Unsupported(f"{name} is only supported on integers")
+                    raise WriterUnsupported(f"{name} is only supported on integers")
                 # An integer constant next to a double, or in a double
                 # function, stands for that double.
                 if has_float or float_call:
@@ -2761,7 +2777,9 @@ class _Parser:
                         out_e = If(Un("is_null", a), Lit(None, None), out_e)
                     return out_e
                 if float_call and overflow in ("SILENT", "SATURATE"):
-                    raise Unsupported(f"{name}: overflow {overflow} is only modelled for integers")
+                    raise WriterUnsupported(
+                        f"{name}: overflow {overflow} is only modelled for integers"
+                    )
                 if float_call:
                     # Integer arguments of a double function are converted.
                     parsed = [
@@ -2803,7 +2821,7 @@ class _Parser:
                         isinstance(out_e, Un) and out_e.op == "neg"
                     )
                     if not exact or lean_expr_kind(out_e, cols.lean) != "int":
-                        raise Unsupported(
+                        raise WriterUnsupported(
                             f"{name}: overflow {overflow} is only modelled for integers"
                         )
                     bits = _int_bits(out_ty) if isinstance(out_ty, dict) else 64
@@ -2931,8 +2949,9 @@ class _Parser:
             # Lean's `timeOfDay (a + c)`, `c` brought into one day.
             iv = _interval_lit(bj)
             if iv is None:
-                raise Unsupported(
-                    "a time of day plus an interval is only supported for constant intervals"
+                raise WriterUnsupported(
+                    "a time of day plus an interval is only supported for constant intervals",
+                    CONSTANT_FIX,
                 )
             if iv[0] != 0:
                 raise WriterUnsupported("a time of day plus months or years is not supported")
@@ -2969,14 +2988,15 @@ class _Parser:
                 if us % US_PER_DAY or us == 0:
                     raise WriterUnsupported("a date plus a part of a day is not supported")
                 if lean_expr_kind(n, cols.lean) != "int" and _reads_field(n):
-                    raise Unsupported(
+                    raise WriterUnsupported(
                         "a date plus an interval is only supported with an integer count of days"
                     )
                 n = replace(n, kind="int") if isinstance(n, Lit) else n
                 days = n if us == US_PER_DAY else Bin("mul", n, Lit(us // US_PER_DAY, "int"))
             case _:
-                raise Unsupported(
-                    "a date plus an interval is only supported for constants, or a count of days"
+                raise WriterUnsupported(
+                    "a date plus an interval is only supported for constants, or a count of days",
+                    CONSTANT_FIX,
                 )
         if sub:
             days = Lit(-days.value, "int") if isinstance(days, Lit) else Un("neg", days)
@@ -2993,7 +3013,7 @@ class _Parser:
     def column(self, j: Any, cols: _Cols, what: str) -> int:
         e = self.expr(j, cols)
         if not isinstance(e, Field):
-            raise Unsupported(f"window {what} must be columns")
+            raise WriterUnsupported(f"window {what} must be columns")
         return e.index
 
     def sort_key(self, s: dict, cols: _Cols) -> SortKey:
@@ -3033,13 +3053,15 @@ class _Parser:
                 return part, sort, WinFn("row_number")
             case "lag" | "lead":
                 if not args:
-                    raise Unsupported(f"{name} needs a column")
+                    raise WriterUnsupported(f"{name} needs a column")
                 c = self.column(args[0], cols, "function arguments")
                 offset = 1
                 if len(args) > 1:
                     k = self.const(args[1])
                     if k is None or k.tag != "int":
-                        raise Unsupported(f"{name} offsets must be integer constants")
+                        raise WriterUnsupported(
+                            f"{name} offsets must be integer constants", CONSTANT_FIX
+                        )
                     if k.value < 0:
                         raise WriterUnsupported(f"negative {name} offset")
                     offset = k.value
@@ -3047,7 +3069,7 @@ class _Parser:
                 if len(args) > 2:
                     d = self.const(args[2])
                     if d is None:
-                        raise Unsupported(f"{name} defaults must be constants")
+                        raise WriterUnsupported(f"{name} defaults must be constants", CONSTANT_FIX)
                     if d.tag == "int" and _get(cols.lean, c) == "float":
                         default = Lit(float(d.value), "float")
                     else:
@@ -3112,7 +3134,7 @@ class _Parser:
     def positive(self, args: list, i: int, name: str) -> int:
         k = self.const(args[i]) if i < len(args) else None
         if k is None or k.tag != "int" or k.value <= 0:
-            raise Unsupported(f"{name} needs a positive constant")
+            raise WriterUnsupported(f"{name} needs a positive constant", CONSTANT_FIX)
         return k.value
 
     def frame(self, w: dict, cols: _Cols, sort: tuple[SortKey, ...]) -> Frame:
@@ -3141,9 +3163,9 @@ class _Parser:
         lo, hi = bound(_field(w, "lowerBound")), bound(_field(w, "upperBound"))
         if rng and any(b[0] != "unbounded" and b[1] != 0 for b in (lo, hi)):
             if len(sort) != 1:
-                raise Unsupported("RANGE frames with offsets need exactly one sort key")
+                raise WriterUnsupported("RANGE frames with offsets need exactly one sort key")
             if _get(cols.lean, sort[0].col) not in ("int", "time", "instant", "date"):
-                raise Unsupported(
+                raise WriterUnsupported(
                     "RANGE frames with offsets need an integer, timestamp or date sort key"
                 )
         return Frame(rng, lo, hi)
@@ -3342,7 +3364,7 @@ class _Parser:
                     needle = self.expr(needles[0], cols)
                     hay = self.rel(_req(ip, "haystack"))
                     if len(lean_kinds(hay)) != 1:
-                        raise Unsupported("IN subquery must return one column")
+                        raise WriterUnsupported("IN subquery must return one column")
                     base = Semi(base, hay, False, Bin("eq", needle, Field(len(cols.lean))))
                 if not rest:
                     core = base
@@ -3486,7 +3508,7 @@ class _Parser:
             return Distinct(inp)
         if not measures:
             if not groups:
-                raise Unsupported("an aggregate without groupings needs measures")
+                raise WriterUnsupported("an aggregate without groupings needs measures")
             if all(isinstance(e, Field) for e in groups):
                 keys = tuple(e.index for e in groups if isinstance(e, Field))
                 if keys == tuple(range(len(cols.lean))):
@@ -3543,7 +3565,9 @@ class _Parser:
                 # sverify's own: a decimal by an integer at the declared scale,
                 # rounded half away from zero (a decimal AVG over a window).
                 if not isinstance(declared, Dec) or declared.s < s1:
-                    raise Unsupported("sverify_decimal_div needs a DECIMAL type of a larger scale")
+                    raise WriterUnsupported(
+                        "sverify_decimal_div needs a DECIMAL type of a larger scale"
+                    )
                 return DecOp("div", (a, b), declared.p, declared.s)
             case _, [a, b], _ if name in _COMPARISONS:
                 # SQL compares decimals of any scales, and with integers, exactly.
@@ -3591,14 +3615,17 @@ class _Parser:
             # A constant separator (`Parse.parseMeasure`, #55).
             arg, s = (self.expr(a, cols) for a in args)
             if not (isinstance(s, Lit) and isinstance(s.value, str)):
-                raise Unsupported("string_agg needs a constant separator")
+                raise WriterUnsupported(
+                    "string_agg needs a constant separator",
+                    CONSTANT_FIX,
+                )
             sep = s.value
         elif len(args) == 2 and name in ("quantile_cont", "quantile_disc", "arg_min", "arg_max"):
             arg = self.expr(args[0], cols)
         elif not args and name == "count":
             arg = Lit(1, "int")
         elif not args:
-            raise Unsupported(f"{name} needs an argument")
+            raise WriterUnsupported(f"{name} needs an argument")
         else:
             raise WriterUnsupported(
                 f"{name} takes one argument",
@@ -3616,9 +3643,9 @@ class _Parser:
             elif c is not None and c.tag == "int" and c.value in (0, 1):
                 q = (c.value, 0)
             else:
-                raise Unsupported(f"{name} needs a constant decimal fraction")
+                raise WriterUnsupported(f"{name} needs a constant decimal fraction", CONSTANT_FIX)
             if not 0 <= q[0] <= 10 ** q[1]:
-                raise Unsupported(f"{name} needs a fraction between 0 and 1")
+                raise WriterUnsupported(f"{name} needs a fraction between 0 and 1")
         # `arg_min(x, y)` is `first(x ORDER BY y)` over the rows where `y` is
         # not NULL (#53).
         if name in ("arg_min", "arg_max"):
@@ -3629,7 +3656,7 @@ class _Parser:
                 )
             by = self.expr(args[1], cols)
             if not isinstance(by, Field):
-                raise Unsupported(f"{name} orders by a column only")
+                raise WriterUnsupported(f"{name} orders by a column only")
             if inv == "AGGREGATION_INVOCATION_DISTINCT":
                 raise WriterUnsupported(f"{name}(DISTINCT …) is not supported")
             sort = (SortKey(by.index, name == "arg_max", False),)
@@ -3776,7 +3803,7 @@ class _Parser:
                 return c.value
             if c is not None and c.tag == "null":
                 return None
-            raise Unsupported(f"FetchRel.{key}Expr must be an integer constant")
+            raise WriterUnsupported(f"FetchRel.{key}Expr must be an integer constant", CONSTANT_FIX)
         v = _field(r, key)
         return None if v is None else _int(v)
 
@@ -4190,7 +4217,7 @@ def parse_plan(plan: dict, asof: Sequence[dict] = ()) -> Plan:
     rel = p.rel(top)
     names = _arr(root, "names")
     if not all(isinstance(n, str) for n in names):
-        raise Unsupported("root names must be strings")
+        raise WriterUnsupported("root names must be strings")
     return Plan(rel, names, p.native)
 
 
@@ -4506,11 +4533,10 @@ class _Writer:
         return f"SELECT {', '.join(items)} FROM {from_}" + (f" {rest}" if rest else "")
 
     @contextmanager
-    def slot(self, r: Rel, i: int) -> Iterator[None]:
-        """Write slot `i` of node `r` without its checks if it is unchecked:
-        its guards and its check against `±∞`, which never fire on data
-        that meets the preconditions (`Expr.issues_nil_of_safe`)."""
-        if i not in self.unchecked.get(id(r), ()) or not (self.d.guards or self.d.finite):
+    def without_checks(self, on: bool = True) -> Iterator[None]:
+        """Write without the run-time checks while `on`: the guards and the
+        check against `±∞`."""
+        if not on or not (self.d.guards or self.d.finite):
             yield
             return
         d = self.d
@@ -4519,6 +4545,12 @@ class _Writer:
             yield
         finally:
             self.d = d
+
+    def slot(self, r: Rel, i: int) -> AbstractContextManager[None]:
+        """Write slot `i` of node `r` without its checks if it is unchecked:
+        its guards and its check against `±∞`, which never fire on data
+        that meets the preconditions (`Expr.issues_nil_of_safe`)."""
+        return self.without_checks(i in self.unchecked.get(id(r), ()))
 
     def passthrough(
         self, alias: str, n: int, ordered: bool, keys: Sequence[Kind | None] | None = None
@@ -4583,7 +4615,7 @@ class _Writer:
         match r:
             case Read(name=name, columns=columns):
                 if len(columns) != n:
-                    raise Unsupported(
+                    raise WriterUnsupported(
                         f"table {'.'.join(name)} needs one name per column in its baseSchema"
                     )
                 items = [f"{d.quote(col)} AS {self.c(i)}" for i, col in enumerate(columns)]
@@ -4796,7 +4828,10 @@ class _Writer:
             case Distinct(input=i):
                 return self.distinct(i, ordered)
             case Aggregate(input=i, groups=gs, measures=ms):
-                return self.aggregate(i, gs, ms, ordered, 0 in self.unchecked.get(id(r), ()))
+                slots = self.unchecked.get(id(r), frozenset())
+                # Slot `k + 1`: measure `k` runs without its check against `±∞`.
+                marked = frozenset(k - 1 for k in slots if k > 0)
+                return self.aggregate(i, gs, ms, ordered, 0 in slots, marked)
         raise WriterUnsupported(
             f"unsupported relation {type(r).__name__}",
             hint=MALFORMED_PLAN,
@@ -4809,6 +4844,7 @@ class _Writer:
         measures: Sequence[Measure],
         ordered: bool,
         unchecked: bool = False,
+        marked: frozenset[int] = frozenset(),
     ) -> str:
         """`aggregateEval`. Three steps: the grouping expressions and each
         measure's argument (NULL on rows its filter drops) on every input row;
@@ -4816,7 +4852,9 @@ class _Writer:
         value in its group; then `GROUP BY` the groups, as `Value`s. Groups
         come in order of their first row. `unchecked`: write the grouping
         expressions and the measures' arguments and filters without checks
-        (the measures themselves keep theirs)."""
+        (the measures themselves keep theirs). `marked`: the measures written
+        without their own checks, a double `SUM` or `AVG` no summation order
+        overflows (`Rel.marks_measure_finite`, ruling 238)."""
         d = self.d
         ks = kinds(i)
         m = len(ks)
@@ -4845,13 +4883,20 @@ class _Writer:
         try:
             g_sql = [self.expr(g, ref, ks, k) for g, k in zip(groups, g_kinds, strict=True)]
             items = [f"{x} AS {c}" for x, c in zip(g_sql, g_cols, strict=True)]
+            # Measures of one argument (`SUM(x)` and `AVG(x)`) read one column:
+            # the engine then shares their aggregation.
+            column_of: dict[str, str] = {}
             for j, (ms, c) in enumerate(zip(measures, m_cols, strict=True)):
                 k = expr_kind(ms.arg, ks)
                 x = self.expr(ms.arg, ref, ks, k)
                 if ms.filter is not None:
                     keep = d.is_true(self.expr(ms.filter, ref, ks, "bool"))
                     x = d.case_when(keep, x, d.null(k))
-                items.append(f"{x} AS {c}")
+                if x in column_of:
+                    m_cols[j] = column_of[x]
+                else:
+                    column_of[x] = c
+                    items.append(f"{x} AS {c}")
                 if ms.fn in VAR_FNS and not ms.distinct:
                     shifted = d.stat_input(x, g_sql)
                     if shifted is not None:
@@ -4921,8 +4966,8 @@ class _Writer:
             level = self.select(items, d.subquery(level, b))
             b = self.alias()
             keys = [col(c) for c in g_cols]
-        if not needs and not firsts and self.two_stage(i, g_kinds, measures):
-            return self.two_stage_aggregate(level, g_cols, m_cols, t_cols, measures, ks)
+        if not needs and not firsts and self.two_stage(i, g_kinds, measures, marked):
+            return self.two_stage_aggregate(level, g_cols, m_cols, t_cols, measures, ks, marked)
         out = [
             f"{d.zero_rep(col(c), 'keys') if g_kinds[i] == 'float' else col(c)} AS {self.c(i)}"
             for i, c in enumerate(g_cols)
@@ -4947,7 +4992,8 @@ class _Writer:
                     sql = d.pick(ms.fn, v, order)
             else:
                 shifted = col(t_cols[k]) if k in t_cols else None
-                sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b), shifted)
+                with self.without_checks(k in marked):
+                    sql = self.measure(ms, v, expr_kind(ms.arg, ks), self.ordinal(b), shifted)
             out.append(f"{sql} AS {self.c(len(groups) + k)}")
         if ordered:
             out.append(f"COALESCE(MIN({self.ordinal(b)}), {d.int_lit(0)}) AS {d.quote(ORD)}")
@@ -4955,18 +5001,22 @@ class _Writer:
         return self.select(out, d.subquery(level, b), rest)
 
     def two_stage(
-        self, i: Rel, g_kinds: Sequence[Kind | None], measures: Sequence[Measure]
+        self,
+        i: Rel,
+        g_kinds: Sequence[Kind | None],
+        measures: Sequence[Measure],
+        marked: frozenset[int] = frozenset(),
     ) -> bool:
         """Whether `aggregate` writes its double `SUM`s and `AVG`s in two
         stages (ruling 212): the dialect asks for it (`two_stage_sums`), a
-        measure is one whose checks the one-stage form writes (C4), the keys
-        compare NULL-safely as the engine groups them (C3), and both reads
-        of the input give the same rows (C2)."""
+        measure is one whose checks the one-stage form writes (C4) and that
+        is not `marked`, the keys compare NULL-safely as the engine groups
+        them (C3), and both reads of the input give the same rows (C2)."""
         d = self.d
         return (
             d.two_stage_sums
             and bool(d.guards or d.finite)
-            and any(ms.fn in ("fsum", "avg") for ms in measures)
+            and any(ms.fn in ("fsum", "avg") and k not in marked for k, ms in enumerate(measures))
             # Measures `measure` writes alone: no pick, sort or DISTINCT.
             and not any(ms.distinct or ms.sort or ms.fn in _PICKS for ms in measures)
             and all(k in _TWO_STAGE_KEYS or isinstance(k, Dec) for k in g_kinds)
@@ -4981,6 +5031,7 @@ class _Writer:
         t_cols: dict[int, str],
         measures: Sequence[Measure],
         ks: list[Kind | None],
+        marked: frozenset[int] = frozenset(),
     ) -> str:
         """`aggregate`'s groups in two stages (ruling 212, #1608 item 7). The
         first computes every measure, a double `SUM` or `AVG` as its engine
@@ -4994,7 +5045,8 @@ class _Writer:
         d = self.d
         src, one, two = self.alias(), self.alias(), self.alias()
         a, b = self.alias(), self.alias()
-        sums = [k for k, ms in enumerate(measures) if ms.fn in ("fsum", "avg")]
+        # A `marked` sum needs no second stage: it is written as stage 1's sum.
+        sums = [k for k, ms in enumerate(measures) if ms.fn in ("fsum", "avg") and k not in marked]
 
         def nd(x: str, y: str) -> str:
             return d.not_distinct(x, y) or f"({x} IS NOT DISTINCT FROM {y})"
@@ -5012,7 +5064,8 @@ class _Writer:
                 items.append(f"COUNT({v}) AS {d.quote(f'n{k}')}")
             else:
                 shifted = at(a, t_cols[k]) if k in t_cols else None
-                sql = self.measure(ms, v, expr_kind(ms.arg, ks), "", shifted)
+                with self.without_checks(k in marked):
+                    sql = self.measure(ms, v, expr_kind(ms.arg, ks), "", shifted)
                 items.append(f"{sql} AS {d.quote(f'x{k}')}")
         keys = [at(a, c) for c in g_cols]
         stage1 = self.select(items, f"{src} AS {a}", f"GROUP BY {', '.join(keys)}" if keys else "")
@@ -5255,7 +5308,7 @@ class _Writer:
                 # Lean sorts with a stable merge sort: ties keep their input order.
                 return partition, peers, peers + [self.asc(self.ordinal(a))]
             if ordered and not peers and self.tie_free:
-                raise Unsupported(
+                raise WriterUnsupported(
                     "without ORDER BY a window keeps its input's order, which needs ordinals"
                 )
             return partition, peers, peers
@@ -5391,7 +5444,7 @@ class _Writer:
         order = peers if fr.range else keys
         if fr.range and any(b[0] != "unbounded" and b[1] != 0 for b in (fr.lo, fr.hi)):
             if self.tie_free is False and len(peers) != 1:
-                raise Unsupported("RANGE frames with offsets need one sort key")
+                raise WriterUnsupported("RANGE frames with offsets need one sort key")
             k = sort[0]
             if ks[k.col] == "time" and (us := d.range_time_key(col(k.col))) is not None:
                 order = [d.sort_key(us, k.desc, k.nulls_first, "int")]
@@ -5812,7 +5865,9 @@ class _Writer:
         """`e` as a value of kind `want` (an untyped NULL is one too)."""
         k = expr_kind(e, cols)
         if k != want and not (isinstance(e, Lit) and e.value is None):
-            raise Unsupported(f"{what} needs a {want} value, not {k or 'one of unknown type'}")
+            raise WriterUnsupported(
+                f"{what} needs a {want} value, not {k or 'one of unknown type'}"
+            )
         # The guards repeat it: it is computed once.
         return self.bind(self.expr(e, ref, cols, want))
 
@@ -5957,7 +6012,9 @@ class _Writer:
                 return self.d.int_lit(e.value)
             return self.d.interval_micros(self.expr(e, ref, cols, "interval"))
         if k not in ("int", None) or (k is None and not (isinstance(e, Lit) and e.value is None)):
-            raise Unsupported(f"{what} needs an integer, not {k or 'a value of unknown type'}")
+            raise WriterUnsupported(
+                f"{what} needs an integer, not {k or 'a value of unknown type'}"
+            )
         sql = self.expr(e, ref, cols, "int")
         # Columns may be narrower than 64 bits; widen them so overflow means 64 bits.
         return sql if isinstance(e, Lit) or _is_int_arith(e) else self.d.cast(sql, "int")
@@ -6120,7 +6177,7 @@ class _Writer:
         ka, kb = expr_kind(a, cols), expr_kind(b, cols)
         sym = {"add": "+", "sub": "-", "mul": "*"}[op]
         if "float" in (ka, kb):
-            raise Unsupported(
+            raise WriterUnsupported(
                 f"integer {sym} on a double (Lean reads it as a code): needs an fp64 outputType"
             )
         temporal = {ka, kb} & {"time", "date", "interval"}
@@ -6252,7 +6309,7 @@ def to_sql(
     The result has the plan's output names (`RelRoot.names`, else `c0`, …),
     and is ordered as Lean orders it when the plan has a FETCH or a window.
     Raises `Unsupported` for plans outside the Lean model. This is
-    `sverify.engines.to_sql`.
+    `sverify.engines.plan.to_sql`.
 
     `deterministic=True` promises that no two rows tie on any window's
     PARTITION BY and ORDER BY columns (what a contract report's
@@ -6283,7 +6340,7 @@ def to_sql(
     Args:
         plan: A Substrait JSON plan, as a string or parsed (`json.loads`),
             such as a node's `internal_plan` or
-            `sverify.engines.written_plan`'s output.
+            `sverify.engines.plan.written_plan`'s output.
         dialect: The engine to write SQL for, by name (`"duckdb"`,
             `"snowflake"`, `"spark"`), or its `Dialect`.
         deterministic: Promise that windows have no ties on their PARTITION
@@ -6318,7 +6375,7 @@ def to_sql(
 
         import pyarrow as pa
         import sverify as sv
-        from sverify.engines import to_sql
+        from sverify.engines.plan import to_sql
         from sverify.io import StaticSource
 
         orders = StaticSource(pa.table({"id": [1, 2], "amount": [30, 5]}), name="orders")

@@ -1,0 +1,16 @@
+{
+  "id": "F239",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "#322 implements D55 as written, `ftoi (froundEven x)` with no evaluator branch and the rounding stated once; ruling 237's note proposing a rounding option on the core's cast (D72) is withdrawn, and D72 stays free.",
+  "issues": [
+    322
+  ],
+  "amends": [
+    "F237"
+  ],
+  "source": "fable-rulings-night-1117.md, entry 239",
+  "note": "The correction is appended to fable-ruling-237-m4-triage.md. No D-number."
+}

@@ -355,7 +355,11 @@ after the nearest multiple of `2⁻¹⁰⁷⁴`, is a `StdModel` (`FloatBridge.m
 and that on multiples of `2⁻¹⁰⁷⁴`, the values the core adds, it is `ofExact`
 (`model_fl_grid`). So the theorems here about `StdModel.fl` hold of the
 core's codes with no trusted link; `NativeLink` remains the link for Lean's
-`Float`.
+`Float`. `float-bounds/FloatBridge/Sums.lean` carries it to the core's sums:
+a `FloatSums` sum (`ANY`, `PAIRWISE`, `SEQUENTIAL`) of finite doubles is a
+`TreeSum` of their values (`FloatSums.treeSum`), so it meets the core's
+`SumBound` (`FloatSums.sumBound`), which `Rel.AllowedP` otherwise takes as
+given.
 
 `exp` is the platform's `libm` on both sides, which IEEE 754 does not
 require to round correctly. `NativeLink.exp` trusts it to one ulp, as glibc's

@@ -39,6 +39,7 @@ from importlib import resources
 from typing import TYPE_CHECKING, Any, Literal
 
 from sverify import _meta
+from sverify._plan_read import function_names
 from sverify._unsupported import SverifyError
 
 if TYPE_CHECKING:
@@ -115,7 +116,8 @@ class ExportError(SverifyError, ValueError):
 
 @functools.cache
 def _extensions() -> dict[str, list[Json]]:
-    text = resources.files("sverify").joinpath("_substrait_extensions.json").read_text()
+    path = resources.files("sverify").joinpath("_substrait_extensions.json")
+    text = path.read_text(encoding="utf-8")
     return json.loads(text)["functions"]
 
 
@@ -626,11 +628,7 @@ class _Typer:
 
     def __init__(self, plan: Json):
         self.plan = plan
-        self.names = {
-            e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"]
-            for e in plan.get("extensions", [])
-            if "extensionFunction" in e
-        }
+        self.names = function_names(plan)
         self.anchors: dict[tuple[str, str], int] = {}
         self.calls: list[Call] = []
         self.canonical = False
@@ -715,6 +713,16 @@ class _Typer:
             return cols
         if kind == "set":
             outs = [self.rel(i) for i in b["inputs"]]
+            if any(o != outs[0] for o in outs[1:]):
+                # Substrait asks every input of a set relation for one schema (#1904).
+                # A cast of the narrower decimals would give it, but the checker
+                # reads an aggregate's decimal column untyped and refuses the
+                # cast on the import, so the export would not read back.
+                raise ExportError(
+                    "the inputs of a set relation differ in their column types (for example "
+                    "decimals of two precisions), which Substrait does not allow (#1904); "
+                    f"{_TO_SQL}"
+                )
             return outs[0]
         raise ExportError(
             f"the plan has a {kind} relation, which to_substrait does not write for "
@@ -1536,7 +1544,7 @@ def _table_condition(j: Mapping[str, Any]) -> Any:
     fields = dict(j.get("fields") or {})
     if cls == "ArrivesWithin":
         fields["lateness"] = timedelta(seconds=fields["lateness"])
-    for k in ("cols",):
+    for k in ("cols", "others"):
         if k in fields:
             fields[k] = tuple(fields[k])
     if "n" in fields:

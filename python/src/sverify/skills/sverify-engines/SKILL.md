@@ -67,7 +67,7 @@ for dialect in ("duckdb", "snowflake", "spark"):
 
 `sverify.engines.run(con, node.internal_plan, engine)` runs the plan over a
 connection's tables; `engine="spark"` or a Spark session configured with
-`SPARK_CONF` runs it on Spark. `sverify.engines.to_sql(plan, dialect)` writes
+`SPARK_CONF` runs it on Spark. `sverify.engines.plan.to_sql(plan, dialect)` writes
 any plan in sverify's internal form, and is outside the 1.x promise.
 
 ## Why a plan is refused

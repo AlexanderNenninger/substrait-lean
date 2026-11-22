@@ -35,6 +35,12 @@ QUERIES = [
     "SELECT id, CAST(cost AS BIGINT) AS i, CAST(cost AS INTEGER) AS n,"
     " CAST(cost AS DECIMAL(15, 1)) AS d, CAST(cost AS DECIMAL(5, 0)) AS w FROM orders",
     "SELECT CAST(2.5 AS BIGINT) AS a, CAST(-2.5 AS BIGINT) AS b, CAST(0.49 AS BIGINT) AS c",
+    # Booleans and dates to text (#346): DuckDB's own `true`/`false` and `YYYY-MM-DD`, NULLs kept.
+    "SELECT id, CAST(qty > 3 AS VARCHAR) AS b, CAST(NOT (qty > 3) AS VARCHAR) AS n,"
+    " CAST(day AS VARCHAR) AS d FROM orders",
+    "SELECT CAST(TRUE AS VARCHAR) AS t, CAST(FALSE AS VARCHAR) AS f,"
+    " CAST(DATE '0001-01-01' AS VARCHAR) AS lo, CAST(DATE '9999-12-31' AS VARCHAR) AS hi,"
+    " CAST(DATE '1970-01-01' AS VARCHAR) AS epoch",
 ]
 
 

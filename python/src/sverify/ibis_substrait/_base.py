@@ -46,6 +46,9 @@ from sverify.plan_json import decimal_dtype as _decimal
 #: translated: the input itself at 0, join tables at their join offsets.
 Offsets = Mapping[Any, int]
 
+#: What a refusal says where a constant is needed (#176).
+CONSTANT_FIX = "use a literal, or write each case with ifelse"
+
 
 class Exprs:
     """Translates value expressions over one input."""
@@ -315,7 +318,7 @@ def table_rules(
 def rel(op: Any) -> Json:
     rule = _RELS.get(type(op))
     if rule is None:
-        raise Unsupported(
+        raise ProducerUnsupported(
             f"{type(op).__name__} is not supported yet ({_ISSUE_60})",
             construct=op_construct(op),
         )

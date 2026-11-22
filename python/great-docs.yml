@@ -185,14 +185,15 @@ reference:
     desc: >
       The low-level layer: Substrait plans, Lean's written form of them, the
       SQL of a plan, and the update plans of incremental maintenance
-      (`sverify.engines`). They take sverify's internal plan, so they are
-      outside the 1.x promise and may change in a minor release; `Node.to_sql`,
-      `Report.to_sql` and `Report.to_substrait` are the stable way to a plan.
+      (`sverify.engines.plan`). They take sverify's internal plan, so the module
+      is outside the 1.x promise and may change in a minor release;
+      `Node.to_sql`, `Report.to_sql` and `Report.to_substrait` are the stable
+      way to a plan.
     contents:
-      - engines.to_sql
-      - engines.substrait_json
-      - engines.written_plan
-      - engines.delta_plans
+      - engines.plan.to_sql
+      - engines.plan.substrait_json
+      - engines.plan.written_plan
+      - engines.plan.delta_plans
 
   - title: Testing
     desc: >

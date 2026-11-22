@@ -1,0 +1,20 @@
+{
+  "id": "F248",
+  "date": "2026-11-21",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "#271: Spark floor and ceil are stated on double codes (`FloatFormat.Dbl`, defined once and decidable); a proved closure theorem shows the reference never leaves the doubles, and `Engine.Sound` gains the one hypothesis that every input float is a double.",
+  "issues": [
+    271,
+    899
+  ],
+  "amends": [
+    "D31"
+  ],
+  "amended_by": [
+    "F250"
+  ],
+  "source": "fable-ruling-248-271-spark-floor-dbl.md",
+  "note": "Amends D31 (G5): engine theorems hold on inputs of doubles. An arm producing a non-double is a reference defect, fixed by rounding (G2). G4's per-entry scoping is replaced by ruling 250. No D-number."
+}

@@ -1,0 +1,51 @@
+{
+  "id": "polars-cast-decimal-timestamp-text",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "Casts of a decimal and a datetime to a string",
+  "verdict": "the scale's digits with a leading zero; datetimes always print six fraction digits",
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "A Decimal(p, s) casts to its integer part (at least one digit), a `.` and s fraction digits, with `-` for a negative (`10.50`, `-0.05`, `0.00`, scale 0 `12`). When precision equals scale the integer part is `0` (`-0.500`), where DuckDB prints `-.500`.",
+    "A Datetime(us) casts to `YYYY-MM-DD HH:MM:SS.ffffff` with all six fraction digits, also when they are zero (`2024-01-05 09:30:00.000000`, `…00.250000`), where DuckDB and Spark trim trailing zeros."
+  ],
+  "reference": [
+    "Open (#346): a reference text for decimals and timestamps is not decided; this records what Polars gives."
+  ],
+  "provenance": [
+    {
+      "checked_at": "2026-11-21",
+      "method": "probe",
+      "checked_by": "session worker 5 (#346), polars 2.1.0 Python package",
+      "evidence": [
+        {
+          "sql": "pl.DataFrame({'d': [Decimal('10.50'), Decimal('-0.05'), Decimal('0.00')]}, schema={'d': pl.Decimal(10, 2)}).select(pl.col('d').cast(pl.String))",
+          "observed": "10.50, -0.05, 0.00"
+        },
+        {
+          "sql": "pl.Decimal(3, 3) of -0.5 and 0.5, pl.Decimal(4, 2) of 0.05, pl.Decimal(10, 0) of 12, cast to pl.String",
+          "observed": "-0.500, 0.500, 0.05, 12"
+        },
+        {
+          "sql": "pl.DataFrame({'t': [datetime(2024,1,5,9,30), datetime(2024,1,5,9,30,0,250000), datetime(2024,1,5,9,30,0,123456)]}).select(pl.col('t').cast(pl.String))",
+          "observed": "2024-01-05 09:30:00.000000, 2024-01-05 09:30:00.250000, 2024-01-05 09:30:00.123456"
+        }
+      ],
+      "notes": "Re-run under `collect(engine=\"streaming\")` on the decimals (`10.50`, `-0.05`, `0.00`, `-0.500`, `0.500`, `0.05`, `12`) and read by reviewer 2 on the datetimes: the same text."
+    }
+  ],
+  "issues": [
+    346
+  ],
+  "area": "casts",
+  "constructs": [
+    "CAST"
+  ],
+  "status": "open",
+  "evidence": "probe"
+}

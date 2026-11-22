@@ -53,16 +53,17 @@ contract's preconditions.
 | The relational facts derived through a plan hold of its rows | `eval`, `OrderAllowed` | `Rel.facts_sound`, `Rel.facts_sound_all` | `Contracts/Facts.lean` |
 | A plan's row bound holds | `eval`, `OrderAllowed` | `Rel.maxRows_sound`, `Rel.maxRows_sound_all` | `Contracts/Plan.lean` |
 | A foreign-key match the optimizer relies on holds: every row of the child has a parent row the join condition accepts (a rewrite's side condition; `references` as a precondition has no theorem of its own) | `eval` | `Rel.fkMatch_sound` | `Semantic.lean` |
-| A derived key holds on the output | `eval`, `OrderAllowed` | `Rel.keys_sound`, `Rel.keys_sound_all` | `Keys.lean` |
+| A derived key holds on the output | `eval`, `OrderAllowed` | [`Rel.keys_sound`](theorems/keys_sound.md), `Rel.keys_sound_all` | `Keys.lean` |
 | A derived functional dependency holds on the output, and a key it leads to is a key: a key a join or a `GROUP BY` loses survives as a dependency, so grouping by a key and its attributes keeps the key (#1993, rulings 194 and 196) | `eval`, `OrderAllowed` | `Rel.keysFds_sound_all`, `Rel.fds_sound`, `KeyOn.of_fd`, `closeKeys_sound` | `Keys.lean`, `FunctionalDeps.lean` |
 | A left join or inner join on non-overlapping ranges gives each left row at most one partner, so the left side's keys stay keys (`sv.non_overlapping`, #814) | `eval`, `OrderAllowed` | `Rel.ranges_sound_all`, `partners_le_one_range`, `Rel.keys_sound_all` | `Keys.lean` |
-| `sv.asof_join`'s promises, stated in `ensures`: the match at or before it and within the tolerance; one output row per left row is how the plan is built (a ranking per numbered left row), not a stated guarantee (#1517). The join is a range join and a ranking window, with no theorem of its own | `eval`, `OrderAllowed` | `contract_sound_all` | `Contracts/Sound.lean` |
+| `sv.asof_join`'s promises, stated in `ensures`: the match at or before it and within the tolerance; at most one output row per left row, so a key of the left table is a key of the output (`copiedFds_sound` carries the left key's dependency onto the row number through the ranking's projection, #1992); that `how="left"` keeps every left row is how the plan is built, not a stated guarantee. The join is a range join and a ranking window, with no theorem of its own | `eval`, `OrderAllowed` | `contract_sound_all` | `Contracts/Sound.lean` |
 | A window's result does not depend on how its ties are broken | `eval`, `OrderAllowed` | `Rel.window_deterministic`, `Rel.keyedWindows_soundAll` | `Keys.lean` |
 | A plan with no reported issue raises no runtime error | `eval` | `Rel.mayIssues_sound` | `Safety.lean` |
 | … on every order of the ties the reference allows: an engine that breaks a window's ties another way meets no unreported issue either (#1484) | `OrderAllowed` | `Rel.mayIssues_sound_all` | `Safety.lean` |
 | A raise of the reference is an issue, so a plan with no reported issue meets DuckDB's side condition (`Engine.NoRaiseSide`), for a plan whose loose rows include its rows (`Rel.looseSub`). Where `Rel.looseSub` fails (an `UNNEST`, or a left join whose right side has a filter, an inner join or a `DISTINCT`), the step from a report without issues to "the reference does not raise" is not proved yet | `eval` | `Rel.hasIssue_of_raises`, `Engine.duckdb_noRaise_of_mayIssues` | `Obligations.lean`, `Engine.lean` |
 | Row caps rule out `SUM` overflow | `eval` | `Rel.issuesCapped_sound`, `Rel.capJoins_eval` | `Rows.lean` |
 | A well-formed plan on a well-formed catalog gives rows of its declared arity | `eval` | `Rel.eval_arity` | `Rel.lean` |
+| On a catalog of doubles, every double a plan computes is a double's code, not merely an integer magnitude below the largest (ruling 248) | `eval` | `Rel.eval_dbl`, `Expr.eval_dbl`, `AggFn.apply_dbl` | `EvalDbl.lean`, `FloatDbl.lean` |
 | The checker decides well-formedness | the plan | `Rel.checkWF_iff` | `Check.lean` |
 | A well-kinded plan evaluates to its kinds | `eval` | `Rel.kinds_sound`, `Expr.kindT_sound` | `Kinds.lean` |
 | A well-kinded plan's values have the kinds it states, so a double never passes for an integer and a `SUM` of decimals of one scale has that scale; a `SUM` gives one value in any order of its rows, and partial sums of decimals of a scale are decimals of that scale (the case of a `SUM` over mixed kinds is unreachable for a well-kinded plan) | `eval` | `Rel.kinds_sound`, `Expr.kindT_sound`, `sumOf_perm`, `sum_partials` | `Kinds.lean`, `Aggregate.lean`, `Decomposable.lean` |
@@ -70,7 +71,7 @@ contract's preconditions.
 | `Rel.eval` gives a result the reference allows | `eval`, `Allowed` | `Rel.eval_allowed` | `Allowed.lean` |
 | Every row order the reference allows is one `Rel.Allowed` allows | `OrderAllowed`, `Allowed` | `Rel.orderAllowed_allowed` | `Ties.lean` |
 | An operator that factors through the multiset has one meaning over every order; a plan without choices one multiset, an unordered `FETCH` several | `OrderAllowed`, `Bags` | `Sem.eq_iff_of_permInv`, `Measure.orderAllowed_eq`, `Rel.bags_iff_perm_eval`, `Rel.bags_fetch_two` | `Seam.lean` |
-| DuckDB, under its default settings, computes the reference | `eval` | `Rel.duckdb_sound` | `DuckDB/Profile.lean` |
+| DuckDB, under its default settings, computes the reference | `eval` | [`Rel.duckdb_sound`](theorems/duckdb_sound.md) | `DuckDB/Profile.lean` |
 | The generated DuckDB lowering computes the reference | `eval`, `AllowedP` | `Lowering.lowerRel_sound`, `Rel.duckdb_refines` | `Lowering.lean`, `Obligations.lean` |
 | A DuckDB SQL function the lift reads means what DuckDB computes: the template it lifts to agrees with `DuckDB/SQL.lean`'s meaning under each semantics, the proof in each generated `LiftEntry`'s `agree` field (checked when `check_generated` is on) | `eval` | `LiftEntry.of₁`, `LiftEntry.of₂` | `DuckDB/LiftSearch.lean`, `DuckDB/Lift/Duckdb/*.lean`, `DuckDB/Lift/Reference/*.lean` |
 | DuckDB's native `avg` of integers gives one of the doubles `duckdb-avg-int` states, a set the lifted plan's value is in; an integer mean of small integers is exact, and every member is within one unit in the last place of the plan's value, or `16 · 2⁻⁵³` of it past `2⁵³` | `eval` | `DuckAgg.eval_allowed`, `DuckAgg.avgBigint_exact`, `DuckAgg.avgBigint_near`, `AggEntry.allowed_near`, `DuckAgg.avgBigint_nearRel` and the lifted entry's mark (D52, `Lift.duckdb_marked`) | `DuckDB/AvgSet.lean`, `DuckDB/Lift.lean` |
@@ -78,8 +79,8 @@ contract's preconditions.
 | A lowered plan with the guards of issues it never meets dropped computes the reference, or raises | `eval` | `Lowering.lowerRelWith_sound`, `Lowering.lowerRelWith_mayIssues_sound` | `Lowering.lean` |
 | DuckDB's templates without their guards (`to_sql(guards=False)`), for a plan with only assumed issues, compute the reference, or raise | `eval` | `Rel.duckdb_guardFree_sound`, `Lowering.duckdb_guardsFor_none` | `DuckDB/Lowering.lean`, `DuckDB/LoweringOn/Guards.lean` |
 | Unless the shimmed plan raises, DuckDB returns a result the reference allows | `Allowed` | `Rel.duckdb_shim_allowed` | `DuckDB/Lowering.lean` |
-| Polars, after the shims, computes the reference | `eval` | `Rel.polars_sound` and one `Polars.<shim>` or shared `Shim.<name>` lemma per shim | `Polars/Shims.lean`, `Shims.lean` |
-| Spark under ANSI, after the shims, computes the reference | `eval` | `Rel.spark_sound` and one `Spark.<shim>` or shared `Shim.<name>` lemma per shim | `Spark/Engine.lean`, `Spark/Shims.lean`, `Shims.lean` |
+| Polars, after the shims, computes the reference | `eval` | [`Rel.polars_sound`](theorems/polars_sound.md) and one `Polars.<shim>` or shared `Shim.<name>` lemma per shim | `Polars/Shims.lean`, `Shims.lean` |
+| Spark under ANSI, after the shims, computes the reference | `eval` | [`Rel.spark_sound`](theorems/spark_sound.md) and one `Spark.<shim>` or shared `Shim.<name>` lemma per shim | `Spark/Engine.lean`, `Spark/Shims.lean`, `Shims.lean` |
 | Dropping the SQL's guards changes no result: a plan whose only possible issues are integer `SUM`s runs correctly without per-row checks | `eval` | `Rel.guardFree_sound`, `Rel.evalI_eq` | `Guards.lean` |
 | A marked expression meets no issue on the rows its marks were decided on, so its checks, the one against `±∞` included, never fire there; DuckDB runs the marked expressions without them (ruling 223), and runs the root the checker writes, with nested calls' arguments bound, with that root's marks unchecked: the size hypothesis is stated on the written root (ruling 228) | `eval` | `Expr.issues_nil_of_safe`, `Expr.issues_nil_of_safe_cond`, `Rel.duckdb_marks`, `Rel.duckdb_marks_written`, `Rel.evalG_marks`, `Rel.eval_bindArgs` | `Guards.lean`, `DuckDB/Profile.lean`, `Bind.lean` |
 | Binding arguments to columns before writing keeps the rows and the errors | `eval` | `Rel.evalI_bindArgs`, `Rel.eval_bindArgs`, `Rel.raises_bindArgs` | `Bind.lean` |
@@ -92,17 +93,18 @@ contract's preconditions.
 | A refinement of a subplan refines the plan around it: up to the order of rows through `FILTER`, `PROJECT` and `EMIT`, exactly above every other operator but `FETCH`, which needs an exact one below | `RefinesUpTo` | `Rel.RefinesBag.filter`, `Rel.RefinesBag.orderBy`, `Rel.RefinesBag.aggregate`, `Rel.RefinesBag.join`, `Rel.Refines.fetch` and the other operators' lemmas | `Refines.lean` |
 | An engine's run of a rewrite that refines the plan is a result the reference allows for the plan as written; a contract verified on the plan as written holds on it, with every bound and check computed from that plan; the plan to run falls back to the one as written where the engine does not translate the rewrite or its side condition's check fails | `Allowed` | `Engine.Sound.of_refines`, `Engine.Sound.of_refinesBag`, `Engine.contract_sound_rewrite`, `Engine.contract_sound_runs_rewrite`, `Engine.Sound.runPlan`, `Engine.Sound.runPlanBag` | `Rewrite.lean` |
 | A narrowed postcondition proved on every order holds on every allowed result of a plan whose open measures nothing reads to choose rows (`Rel.FloatOpenSafe`): a closed plan (`Rel.closedB`, decidable: no `QUANTILE_CONT`; a double `SUM` or `AVG` is closed since D25, and `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` since D30) | `Allowed` | `contract_sound_allowed`, `contract_sound_allowed_closed`, `Rel.floatOpenSafe_of_closed` | `AllowedNear.lean`, `AllowedAnalysis.lean` |
-| A postcondition that depends on nothing the observation ignores, or a comparison narrowed by the tolerance, holds on every result equal up to the observation | `Equiv` | `Expr.robust_of_depends`, `Expr.robust_of_depends_canon`, `Expr.robust_of_robustB`, `Expr.narrow_sound` | `Robust.lean` |
+| A postcondition that depends on nothing the observation ignores, or a comparison narrowed by the tolerance, holds on every result equal up to the observation | `Equiv` | `Expr.robust_of_depends`, `Expr.robust_of_depends_canon`, `Expr.robust_of_depends_flat`, `Expr.robust_of_kinds` (ContractCheck: the order of elements spared where no column read may hold a list, #2005), `Expr.robust_of_robustB`, `Expr.narrow_sound` | `Robust.lean` |
 | Sources within a tolerance give a result within the plan's fold of it (`Rel.tol`), node after node in a pipeline; tolerances add along a chain in one cell (`M∞`) and summed over the rows (`M₁`) | `Near` | `Rel.plan_near`, `Rel.pipeline_near`, `Relation.NearT.add`, `Relation.NearL1.add` | `Lipschitz.lean` |
 | Sources within an `M₁` budget give a result within the plan's `M₁` fold (`Rel.tol1`): a union adds budgets, a cross counts each side's once per row of the other, and a `SUM` or `AVG` grouped by exact keys takes its column's budget once plus a cost per input row (the groups' budgets sum within the input's) | `Near` | `Rel.plan_nearL1`, `PairsWithin.cross`, `PairsWithin.groups`, `aggregateEval_nearL1`, `Measure.l1_cell` | `LipschitzL1.lean` |
 | A `SUM` or `AVG` of a tolerated column is within the fold's bound, from the column's range and the input's rows in the sources' knowledge, and a `MIN` or `MAX` within its argument's, on canonical codes | `Near` | `Measure.tolOut_cell`, `Measure.minMaxOut_cell`, `aggregateEval_near`, `Rel.rowsK_sound` | `Lipschitz/Measures.lean`, `Lipschitz/Arith.lean` |
 | `x ± y`, `x · y`, `x / c`, and `x / y` with `y`'s range clear of zero, of tolerated doubles (D31) are within the fold's bounds, from the operands' ranges in the sources' knowledge | `Near` | `Expr.arithTol_sound`, `Expr.tolA_sound`, `fadd_near`, `fmul_near`, `fdiv_lit_near`, `fdiv_near`, `round_pair₂` | `Lipschitz/Arith.lean` |
 | A correctly rounded `SUM` or `AVG` of values paired within `e` codes is within `g·(e + 1)` (`SUM`) or `e + 1` (`AVG`) codes plus the rounding of both sides; of values whose distances sum to `D`, within `D + g` or `D + 1` (`M₁`). Both from one bound on the exact sums | `Near` | `floatSumCR_of_exact`, `floatAvgCR_of_exact`, `floatSumCR_near`, `floatAvgCR_near`, `floatSumCR_nearL1`, `floatAvgCR_nearL1`, `Measure.fsum_near`, `Measure.avg_near` | `FloatNear.lean`, `Lipschitz/Basic.lean`, `LipschitzL1.lean` |
-| Each route and class of `report.routes`: `native` (verified under the engine's own profile) is `Engine.contract_sound` at that profile; `translated` is `Lowering.lowerRel_sound` (DuckDB), `Rel.polars_sound` (Polars) or `Rel.spark_sound` (Spark) from the reference; `transfer` is `Rel.AllowedP_transfer`, which the checker decides option by option (`Rel.transfer_of_transferB`); class `exact` is one of these without an observation, `observed` adds `contract_sound_near`, `shim` the shim's lemma. The table that says how each engine realises each option is consistent with the reference's choices and backed by recorded evidence | `Allowed`, `AllowedP` | `Engine.contract_sound`, `Lowering.lowerRel_sound`, `Rel.polars_sound`, `Rel.spark_sound`, `Rel.AllowedP_transfer`, `Rel.transfer_of_transferB`, `contract_sound_near`, `obligations_consistent`, `obligations_evidenced` | `Sound.lean`, `Lowering.lean`, `Polars/Shims.lean`, `Spark/Engine.lean`, `Transfer.lean`, `Obligations.lean` |
+| Each route and class of `report.routes`: `native` (verified under the engine's own profile) is `Engine.contract_sound` at that profile; `translated` is `Lowering.lowerRel_sound` (DuckDB), [`Rel.polars_sound`](theorems/polars_sound.md) (Polars) or [`Rel.spark_sound`](theorems/spark_sound.md) (Spark) from the reference; `transfer` is `Rel.AllowedP_transfer`, which the checker decides option by option (`Rel.transfer_of_transferB`); class `exact` is one of these without an observation, `observed` adds `contract_sound_near`, `shim` the shim's lemma. The table that says how each engine realises each option is consistent with the reference's choices and backed by recorded evidence | `Allowed`, `AllowedP` | `Engine.contract_sound`, `Lowering.lowerRel_sound`, `Rel.polars_sound`, `Rel.spark_sound`, `Rel.AllowedP_transfer`, `Rel.transfer_of_transferB`, `contract_sound_near`, `obligations_consistent`, `obligations_evidenced` | `Sound.lean`, `Lowering.lean`, `Polars/Shims.lean`, `Spark/Engine.lean`, `Transfer.lean`, `Obligations.lean` |
 | A result one profile allows, another allows too, option by option | `AllowedP` | `Rel.AllowedP_mono`, `Rel.AllowedP_transfer` | `AllowedP.lean`, `Transfer.lean` |
 | A result a profile allows for a plan without doubles, the reference allows, where the profile's table with the reference's choices at the options only doubles read transfers; such a plan without open measures is `Rel.FloatOpenSafeP` | `AllowedP` | `Rel.transfer_of_noDouble`, `Rel.floatOpenSafeP_of_noDouble` | `NoDouble.lean` |
 | An engine's double `SUM` under a non-`EXACT` order (D35) is finite and in a range computed from its inputs' range and row bound | `AllowedP` | `SumOrder.bound` | `SumBound.lean` |
 | An engine's double `AVG` under every `sum_order` (D35) is finite and in a range computed from its inputs' range and row bound; each sum and mean `AllowedP` allows is within `2(n + 1) · Σ(\|xᵢ\| + 2⁻¹⁰²²) · 2⁻⁵³` of the exact sum (times `n` for a mean, plus one more rounding) | `AllowedP` | `AvgOrder.bound`, `SumOrder.near`, `AvgOrder.near` | `MarginSound.lean` |
+| A double `SUM` or `AVG` that `Measure.finiteAnyOrder` accepts (a finite interval, a row cap `n ≤ 2³²` and `SumOrder.near`'s margin) has a finite canonical code under every `sum_order`, `-0.0` among its values included (D35's canonical clause, ruling 242); a measure `Rel.marks` marks (slot `i + 1`) is one, so the writer drops its check against `±∞` (#1787 item 4) | `AllowedP` | `SumOrder.canon_fin_of_bound`, `AvgOrder.canon_fin_of_bound`, `Measure.finiteAnyOrder_sound`, `Rel.marks_measure_finite` | `MarginSound.lean` |
 | An engine's double `SUM` of integers with `Σ \|xᵢ\| ≤ 2⁵³` is the exact sum under every `sum_order`, and its `AVG` the reference's (D35, amended 2026-11-19), so a measure of converted integers with `N · max M 1 ≤ 2⁵²` has no tolerance | `AllowedP` | `SumOrder.int_exact`, `AvgOrder.int_exact`, `FloatSums.int_exact`, `floatSum_int` | `MarginSound.lean` |
 | The margin check of a threshold filter on a double `SUM` or `AVG` (#929), in the core's doubles: a group's row `marginCount` does not flag passes the check, and a group passing it on one sum or mean `AllowedP` allows has every allowed sum or mean, and the reference's, strictly on one side of `t` | `AllowedP` | `margin_row`, `check_sum`, `check_avg`, `margin_sum`, `margin_avg` | `MarginSound.lean` |
 | A delta plan computes the change of the view | `zeval` | `Rel.delta_correct`, `Rel.incremental_sound` | `Incremental.lean` |
@@ -168,6 +170,8 @@ declares no instance. An engine's theorems name the instance: DuckDB's is
 | `ExactBound.lean` | Exact arithmetic for the reported bounds (#660): square roots rounded outward, an upper bound on `exp`, and a bound written as JSON rounded up |
 | `FloatExact.lean` | `SUM` and `AVG` of doubles as the exact sum rounded once (D25), with their bounds |
 | `FloatArith.lean` | `+ − × ÷` of doubles as the exact result rounded once (D31), IEEE 754's signed zeros and NaN, and their bounds (`add_scaled` …) |
+| `FloatDbl.lean` | Every double operation gives a double's code (`FloatFormat.Dbl`): rounding to 53 bits, the arithmetic of D31, native results, `floor`, `ceil`, `fmod` |
+| `EvalDbl.lean` | `Value.dbl` through every function, aggregate, window and plan (`Rel.eval_dbl`) |
 | `BlackBox.lean` | The black-box mechanism: a row's types, NULL handling, raising and laws, the black-box catalogue `Boxes` with its well-formedness, and `Boxes.Ambient`, the catalogue in scope; no rows |
 | `Digest.lean` | MD5 and SHA-256, the evaluators of two black boxes |
 | `Regex.lean` | The regular-expression evaluator behind the regex black boxes |
@@ -225,6 +229,7 @@ as the guard. Engines-common and the modules below import it as
 | `WSet.lean` | Relations with weights in any `K`, `Rel.evalK`, delta rules and delta plans over `K` |
 | `Incremental.lean` | Z-sets: `Rel.zeval` as `Rel.evalK` over `Int`, `Rel.zdelta` as the delta plan's output; evaluation sees only weights (`Rel.zeval_weight_congr`); the columns a plan reads (`Rel.colsOf`) and the store pruned to them (`Rel.zeval_prune`) |
 | `Weighted.lean` | Z-set plans as bag plans with a weight column |
+| `Zone.lean` | Zones, difference-bound matrices (#959): closing keeps the valuations (`Zone.close_sat`), `Zone.add` adds one constraint (`Zone.add_sat`), and an empty zone admits none (`Zone.empty?_sound`) |
 | `Contracts.lean` | The abstract interpreter behind contracts; re-exports its parts below |
 | `Contracts/Lattice.lean` | Integer intervals (`Bound`), abstract values (`AVal`), `AVal.Mem` and `AVal.join` |
 | `Contracts/Transfer.lean` | Abstract expression evaluation: `UnFn.abs`, `BinFn.abs`, `Expr.abs` |
@@ -269,6 +274,7 @@ that build as the guard. Engine packages may import it, as
 | Module | Job |
 |---|---|
 | `Guard.lean` | D50: `AND`/`OR` over a raising operand as a nested `CASE` chain (`Expr.andLift`, `Expr.orLift`), with the proofs that the guard protects and an error still surfaces |
+| `GuardedColumns.lean` | D50-d: a filter's and a projection's chains bound as guarded columns below it, one level per operand that may raise (`Rel.guardedFilter`, `Rel.guardedProject`), with the proofs that they keep the lift's rows (`Rel.guardedFilter_eval`, `Rel.guardedProject_eval`) and raise where the lift raises (`Rel.guardedFilter_raises`, `Rel.guardedProject_raises`) |
 | `Parse.lean` | Substrait protobuf-JSON to `Rel` (trusted) |
 | `SubstraitJson.lean` | Builders of Substrait's JSON: references, types, casts, literals, calls and measures by anchor, the functions templates call, and the options the parser accepts |
 | `Write.lean` | `Rel` back to Substrait JSON, delta plans for engines (trusted) |
@@ -287,9 +293,10 @@ the guard. The modules below it import it as
 |---|---|
 | `Engine.lean` | The Engine object (#900): an engine's profile, table, observation rows, translation and functions, with the proof that the table allows them; `Profile.okImpl`, `AllowedE`, `Engine.reference`, the per-plan `Refines` certificate |
 | `Entry.lean` | The checker's registry entry for an engine (#1443): the `Engine`, its side condition and its `Engine.Sound` proof as a term, written by `engine_entry%` with the names of the theorem and of the side condition, and the tables derived from it |
-| `Lowering.lean` | Lowerings: tables of proved templates per engine profile |
+| `Lowering.lean` | Lowerings: tables of proved templates per engine profile; `round` and `ceil` without IEEE's `-0.0` (`Lowering.zeroTemplate_float`), for any profile |
 | `LoweringHint.lean` | The hints that tell the lowering search which template to try first |
 | `LoweringSearch.lean` | `generate_lowering`, the lowering search |
+| `LoweringExport.lean` | A generated lowering's table as JSON (`substrait-check --lowering-table`), for every engine's table interpreter |
 | `LoweringGuards.lean` | The template guards no engine owns (NaN of IEEE operations, a zero divisor, an elementary function's domain), for every engine's hand-written schemas (#271) |
 | `Generated.lean` | The `check_generated` switch for the generated modules |
 | `Shims.lean` | The shims more than one engine writes the same way (`one_zero`, `null_order`, `sum_empty_null`, `avg_trunc`, `makes_infinite`), proved once |
@@ -312,7 +319,7 @@ build as the guard. The modules below import it as `Sverify.DuckDB.*`.
 |---|---|
 | `DuckDB/Functions.lean` | `Profile.duckdb` under DuckDB's settings and `Profile.duckdbWritten`, as the SQL printer writes it, on the core alone |
 | `DuckDB/Tables.lean` | DuckDB's choice table and observation rows, refining the core for every setting |
-| `DuckDB/Profile.lean` | DuckDB as the SQL printer writes it is faithful where the reference does not raise, `Rel.duckdb_sound`, `Rel.duckdb_marks` and `Rel.duckdb_marks_written` |
+| `DuckDB/Profile.lean` | DuckDB as the SQL printer writes it is faithful where the reference does not raise, [`Rel.duckdb_sound`](theorems/duckdb_sound.md), `Rel.duckdb_marks` and `Rel.duckdb_marks_written` |
 | `DuckDB/Boxes.lean` | DuckDB's black-box catalogue `Boxes.duckdb`: its rows, Lean's evaluators, the opaque functions, `Boxes.duckdb_wf`, and the scoped instance `Substrait.DuckDB.boxes` |
 | `DuckDB/VarcharCasts.lean` | Lean's evaluators of the casts from VARCHAR (black boxes, #806): DuckDB's value on a subset, the strings it rejects for sure, a panic elsewhere |
 | `DuckDB/SQL.lean` | What each DuckDB SQL function means under each semantics |
@@ -342,7 +349,11 @@ and CI runs that build as the guard. The modules below import it as
 |---|---|
 | `Polars/Tables.lean` | Polars's choice table and observation rows, refining the core |
 | `Polars/Shims.lean` | The Polars shims, proved against a model of Polars's functions |
-| `Polars/Profile.lean` | `Profile.polars`, the semantics `semantics="polars"` will check under (pending, #271) |
+| `Polars/Profile.lean` | `Profile.polars`, the semantics `semantics="polars"` will check under (pending, #271): its floored `//` and `%`, and `round` and `ceil` with IEEE's `-0.0` |
+| `Polars/LoweringLemmas.lean` | The truncating `//` and `%` from Polars's floored ones, on every value (`Polars.idiv_agree`, `Polars.imod_agree`) |
+| `Polars/LoweringSchemas.lean` | Polars's hand-written template schemas, for the search |
+| `Polars/Lowering.lean` | The Polars lowering's table (partial: `%` of doubles refused), `Lowering.polars_exact`, `Rel.polars_lowered_sound` and its export |
+| `Polars/LoweringOn/*.lean` | The Polars lowering's entries, one module per area (generated) |
 | `Polars/Engine.lean` | `Engine.polars`, its functions within Polars's table, and `Engine.polars_sound` |
 | `Polars/OpenSums.lean` | A double `SUM` on Polars (#1484): `Engine.polars_sum_example`, `Engine.contract_sound_runs_near` under Polars's table with only `Engine.Runs` open, and `Engine.polars_sum_openSafe_tol` under the checker's own tolerance |
 
@@ -457,6 +468,7 @@ core trusts about doubles ([float-bounds.md](float-bounds.md)).
 | `Moments.lean` | Exact moments and the scale of the variance bounds |
 | `Variance.lean` | Variance, covariance and correlation bounds for any algorithm |
 | `FloatBridge/Codes.lean` | The bridge to the core (#1196): the core's rounding (`FloatCode.ofExact` after the nearest multiple of `2⁻¹⁰⁷⁴`) is a `StdModel` (`FloatBridge.model`), and on multiples of `2⁻¹⁰⁷⁴` it is `ofExact` (`model_fl_grid`) |
+| `FloatBridge/Sums.lean` | The core's summation orders over the bridge (#1196): a `FloatSums` sum of finite doubles is finite and a `StdModel.TreeSum` of their values (`FloatSums.treeSum`), so it meets the core's `SumBound` (`FloatSums.sumBound`) |
 | `Textbook.lean` | The textbook one-pass algorithm |
 | `TwoPass.lean`, `TwoPassRel.lean` | Lean's two-pass algorithm, absolute and relative to the variance |
 | `CovTwoPass.lean` | Two-pass covariance, relative to the spread |
@@ -475,6 +487,7 @@ regenerate it. Don't edit them by hand.
 | Modules | Regenerate with | When |
 |---|---|---|
 | `DuckDB/LoweringOn/*.lean` | `poe regen-lowering` (from `python/`) | `Profile.duckdb`, the generator or the model's functions change |
+| `Polars/LoweringOn/*.lean` | `poe regen-lowering` (from `python/`) | `Profile.polars`, the generator or the model's functions change |
 | `DuckDB/Lift/Duckdb/*.lean`, `DuckDB/Lift/Reference/*.lean` | `poe regen-lift` (from `python/`) | `DuckDB/SQL.lean`, the generator or the model's functions change |
 | `DuckDB/LoweringCache.lean` | `.lake/build/bin/substrait-check --lowering-cache > engines/duckdb/Sverify/DuckDB/LoweringCache.lean` | after a regenerated lowering, to keep the search quick |
 | `DuckDB/LiftCache.lean` | `.lake/build/bin/substrait-check --lift-cache > engines/duckdb/Sverify/DuckDB/LiftCache.lean` | after a regenerated lift |

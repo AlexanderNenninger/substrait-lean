@@ -17,7 +17,7 @@ how to pick one, and how to install what you need.
   `sv.connect(engine=...)` pick the engine that runs a plan, and a route
   says how the proof reaches it ([Verifying: the two paths](verifying.md)).
 - `node.to_sql(dialect)`, `report.to_sql(dialect)` and
-  `sverify.engines.to_sql(plan, dialect)` write the checked plan as SQL in
+  `sverify.engines.plan.to_sql(plan, dialect)` write the checked plan as SQL in
   the dialect named, among the installed engines'. What a dialect cannot
   write is refused (`UnsupportedError`).
 - `semantics=` on `verify` picks the profile the proof is under: the
@@ -32,8 +32,8 @@ written SQL; the `all` extra installs every engine in it
 
 ```bash
 # skip: installs software on the reader's machine
+pip install 'sverify[duckdb]'          # DuckDB: runs plans, holds tables, incremental maintenance
 pip install sverify                    # verify, contracts, DuckDB and Snowflake SQL (no engine runs plans)
-pip install 'sverify[duckdb]'          # and DuckDB: runs plans, holds tables, incremental maintenance
 pip install 'sverify[polars]'          # and Polars
 pip install 'sverify[spark]'           # and Spark (needs Java 17 or 21)
 pip install 'sverify[all]'             # every engine in the promise, Delta, Iceberg and the rest
@@ -70,3 +70,6 @@ render them, searchable by id, function and option, and the
 [realizability table](realizability.md) gives each engine's class on every
 option. [engine-profiles.md](engine-profiles.md) describes each engine's
 translation and shims.
+
+Spark's parser refuses a statement nested about 80 levels deep (a nest of bound guards in a contract); sverify then raises `Unsupported` naming the fact
+([`spark-exec-parser-depth`](../engines/spark/facts/spark-exec-parser-depth.json)).

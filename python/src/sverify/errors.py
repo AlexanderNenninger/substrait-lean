@@ -2,10 +2,16 @@
 
 Every exception below derives from `SverifyError`, so
 `except sverify.errors.SverifyError` catches whatever sverify raises on
-purpose; each also keeps its built-in base (`ValueError`, `RuntimeError`).
-Each has a `code`, a snake_case string that names what failed and stays the
-same across 1.x. Every warning derives from `SverifyWarning`. The same
-classes are importable where they are defined (`sverify.routes.RouteError`,
+purpose. Most also keep a built-in base (`ValueError`, `RuntimeError`);
+six derive from `SverifyError` alone, since none is a bad argument:
+`AuditError`, `NotIncrementalError`, `SchemaError`, `PostconditionError`,
+`PreconditionError` and `VerificationError`. `UnverifiedRunError` is also a
+`RouteError`, and so a `ValueError`. The bases are fixed for 1.x. Each
+exception has a `code`, a snake_case string that names what failed and stays
+the same across 1.x. Every warning derives from `SverifyWarning`, also the
+two that live beside what gives them, `sverify.odcs.UnreadRuleWarning` and
+`sverify.openlineage.LineageWarning`. The same classes are importable where
+they are defined (`sverify.routes.RouteError`,
 `sverify.engines.UnsupportedError`); import them from here.
 
 The proof:
@@ -85,13 +91,7 @@ Warnings:
   reference's.
 * `ProfilePluginWarning`: an entry point of `sverify.profiles` did not load
   a `ProfilePlugin`, and is skipped.
-
-`Unsupported` and `NotIncremental` are deprecated names of
-`UnsupportedError` and `NotIncrementalError`.
 """
-
-import warnings
-from typing import Any
 
 from sverify._unsupported import (
     ConditionError,
@@ -124,28 +124,6 @@ from sverify.routes import (
     UnverifiedRunWarning,
 )
 from sverify.substrait_export import ExportError
-
-_DEPRECATED = {"Unsupported": UnsupportedError, "NotIncremental": NotIncrementalError}
-
-
-def deprecated_name(module: str, name: str) -> Any:
-    """`module.name` where `name` is a deprecated name of an exception
-    (`_DEPRECATED`), with a `DeprecationWarning`; an `AttributeError`
-    otherwise."""
-    if name in _DEPRECATED:
-        new = _DEPRECATED[name].__name__
-        warnings.warn(
-            f"{module}.{name} is deprecated; write {module}.{new}",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        return _DEPRECATED[name]
-    raise AttributeError(f"module {module!r} has no attribute {name!r}")
-
-
-def __getattr__(name: str) -> Any:
-    return deprecated_name(__name__, name)
-
 
 __all__ = [
     "AuditError",

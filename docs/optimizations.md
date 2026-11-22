@@ -5,7 +5,7 @@ surveys optimizations the checker could justify with a proof, and ranks them
 by what engines cannot already do. Two of them are implemented and public:
 
 * guard elimination: `analysis/Sverify/Analysis/Guards.lean`, `Report._guard_free`,
-  and `guards=False` in `sverify.engines.to_sql` (and in
+  and `guards=False` in `sverify.engines.plan.to_sql` (and in
   `sverify_polars.engine.run` and `duckdb_engine.run`);
 * sharded evaluation: `analysis/Sverify/Analysis/Partition.lean`,
   `substrait-check --shard` and `sverify.engines.run_sharded`
@@ -100,7 +100,7 @@ stated against `HasIssue`, so it does not cover them. Strengthening
 Wiring. `Report._guard_free`. `to_sql(plan, dialect, guards=False)` drops
 the division-by-zero `CASE`s, the `date_trunc` range check, Snowflake's
 row-level `IFF` range checks and its `CAST(double AS BIGINT)` check. It keeps
-`MIN % -1 = 0`, which is semantics rather than a check, and every `SUM` check.
+`MIN % -1 = 0`, which belongs to the semantics, and every `SUM` check.
 `sverify_polars.engine.run(…, guards=False)` skips the per-operator `guard`. Only pass
 `guards=False` for a `guard_free` plan, on data that meets its preconditions.
 `to_sql(written_plan(report.internal_plan), dialect, unchecked=report._unchecked)`
@@ -140,6 +140,91 @@ It now multiplies the corners of two finite intervals (`Bound.mem_corners`),
 so such products go guard-free; a half-open range still gives ⊤. The
 elimination was also all or nothing per plan; `Rel.evalG_marks` now decides
 per expression.
+
+### A double `SUM` no summation order overflows
+
+DuckDB writes a double `SUM` or `AVG` in two stages (ruling 212): the engine
+sum per group, then the reference's checks against `±∞` for the groups whose
+sum is not finite. Where no summation order can overflow, the second stage
+never runs, and a checked run writes the plain sum (#1787 item 4, rulings 238
+and 242). `Rel.marks` marks measure `i` of an aggregate (slot `i + 1`) where
+`Measure.finiteAnyOrder` holds:
+
+* the argument's values are doubles in a finite interval `[lo, hi]`;
+* the aggregate's input has at most `n ≤ 2³²` rows, from a `max_rows`
+  precondition (`Rel.capReads`) or the plan's shape (`Rel.maxRows`);
+* `2 · (n · M + n · 2⁻¹⁰²²)` stays within the largest double, `M` the larger
+  of `|lo|` and `|hi|`, and `4` in place of `2` for a mean.
+
+Then every sum and mean any `sum_order` behaviour allows, DuckDB's `ANY` and
+`SCALED_CONSTANT` among them, has a finite canonical code
+(`Rel.marks_measure_finite`, from `SumOrder.near` and `AvgOrder.near`). The
+reference's own bound (`crBound`, which `Measure.mayInf` reads) has no margin
+for an order that rounds at every step, so the mark reads this one. A `-0.0`
+among the values is covered by D35's canonical clause. The marked measure is
+written as stage 1 writes it, `SUM(x)`, or `SUM(x)` over `COUNT(x)` for a mean,
+`NULL` for an empty group.
+
+`python/tests/test_finite_any_order.py` checks that a capped, bounded `SUM`
+and `AVG` lose both stages and give the rows of the checked run, groups of
+`-0.0` included, and that a contract whose reference bound passes but whose
+margin does not keeps both stages.
+
+`python/scripts/bench_finite_sum.py` times a grouped `SUM` and `AVG` of a
+bounded double over 10⁷ rows and 10⁵ groups on DuckDB 2.0.1 with 4 threads
+(homelab, median of 5, seconds; the SQL's length in characters):
+
+| input | two stages | as a checked run writes it | speed-up |
+|---|---|---|---|
+| table | 0.099 (3115) | 0.082 (456) | 1.21× |
+| join | 0.178 (3407) | 0.181 (3407) | 0.98× |
+
+A `SUM(x)` and an `AVG(x)` of the same argument read one projected column of
+the aggregate's input; read twice, DuckDB aggregates the column twice and the
+table's speed-up drops to 1.14×. The join is not marked: `Rel.maxRows` bounds
+a join by the product of its inputs' caps, past `2³²`. A bound that reads a
+unique key would mark it.
+
+### The row ordinal
+
+To give the rows in Lean's order (`to_sql`'s `rows="sequence"`), DuckDB's
+and Polars's runners number them. DuckDB reads `rowid` for it and first copies
+each input into a temporary table, Parquet scans included. Where the checker
+proved that the observation can't see the order the numbering keeps
+(`Report._ordinal_free`), a checked run leaves it out (#1787 item 2,
+ruling 223 O1–O4):
+
+* Under a multiset lens, the report is exact: every result the reference
+  allows is one up to row order (`check_deterministic_sound`). DuckDB's
+  windows then drop their tiebreak too (`to_sql`'s `deterministic`).
+* Under `rows="sequence"`, the report is sequence-determined: the plan's last
+  sort orders the result on a key, so every result the reference allows is
+  the same row by row (`check_sequence_determined_sound`).
+
+Both rest on the preconditions, declared keys included, so `Report.run` takes
+them only where it checked the preconditions on its tables, on the translated
+route under the reference (O2). `Report.to_sql` and `Node.to_sql` already
+wrote a multiset lens's SQL this way. That rests on the lens alone and needs
+no data (`Report._rows`). `python/tests/test_ordinal_free.py` compares each
+run with the run that keeps the ordinal, as the lens compares, on DuckDB and
+Polars (O4).
+
+Benchmark (`python/scripts/bench_ordinal.py`, homelab, DuckDB 2.0.1, 10⁷
+rows in a shuffled key order, 4 threads, the median of 5, seconds):
+
+| Plan | Engine, input | With the ordinal | Without | |
+|---|---|---|---|---|
+| top-N by the key | DuckDB, Arrow | 0.039 | 0.008 | 4.7× |
+| top-N by the key | DuckDB, Parquet | 0.083 | 0.045 | 1.8× |
+| top-N by the key | Polars, Arrow | 0.016 | 0.017 | 0.9× |
+| window ordered by the key | DuckDB, Arrow | 1.574 | 0.596 | 2.6× |
+| window ordered by the key | DuckDB, Parquet | 1.663 | 0.648 | 2.6× |
+| window ordered by the key | Polars, Arrow | 0.351 | 0.337 | 1.0× |
+| grouped sum | DuckDB, Arrow | 0.028 | 0.024 | 1.2× |
+| grouped sum | DuckDB, Parquet | 0.035 | 0.034 | 1.0× |
+| grouped sum | Polars, Arrow | 0.031 | 0.025 | 1.2× |
+
+Polars numbers rows cheaply, so it gains little.
 
 ## 2. Sharded evaluation
 
@@ -194,7 +279,7 @@ Proved (`analysis/Sverify/Analysis/Partition.lean`, all without `sorry`):
   and empty-group cases come out right because both phases skip NULLs. A
   shard without the group, or with only NULL values in it, contributes a
   NULL partial (`SUM`, `MIN`, `MAX`) or `0` (`COUNT`), and both are neutral.
-  A global aggregate over zero shards would give NULL instead of `COUNT = 0`,
+  A global aggregate over zero shards would give NULL where `COUNT = 0` is due,
   so at least one shard is required.
 * `Rel.eval_algebraic`. An algebraic aggregate is a final expression
   over a tuple of distributive partials: each shard computes the partials,
@@ -313,18 +398,18 @@ hold:
 Wiring. `Rel.optimize` (`analysis/Sverify/Analysis/Semantic.lean`) applies the
 rewrites bottom-up, deciding each from the analyses of the already rewritten
 inputs. `Rel.optimize_sound`: on data meeting the preconditions, the result
-is well-formed, has the same arity and gives the same list of rows (not just
-the same bag). `substrait-check --contract` reports the rewritten plan as
+is well-formed, has the same arity and gives the same list of rows (the same bag,
+in the same order). `substrait-check --contract` reports the rewritten plan as
 `optimized`, in Lean's written form, with the names of the rewrites applied
 (`rewrites`); the report keeps them as `_optimized` and `_rewrites`.
-Run `optimized` instead of the transformation (`to_sql`, `duckdb_engine.run`,
+Run `optimized` in place of the transformation (`to_sql`, `duckdb_engine.run`,
 `sverify_polars.engine.run`) only on data that meets the preconditions, as with
 `guards=False`.
 * Outer-to-inner join conversion. A filter above a left
   join that is never TRUE on a padded row (`Expr.absD` with the right
   columns NULL) turns it into an inner join; engines do this case too. With a
   foreign key and NOT NULL, every left row matches, so the conversion holds
-  without a filter. `sv.references(col, table, other)` declares the foreign
+  without a filter. `sv.references(col, to=...)` declares the foreign
   key (`ForeignKeys.Hold`), checked on the data like `unique`. `Rel.origin`
   follows the join column back to a table column and `Rel.cover` checks that
   the right side keeps every value of the referenced one. The inner join is

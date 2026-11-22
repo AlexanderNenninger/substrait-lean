@@ -54,7 +54,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
@@ -67,6 +66,7 @@ import sqlglot as sg
 from sverify import _exact_sum, _linear, _quarantine, _retention, _semi, _touched, profiles
 from sverify._engines import LOCAL
 from sverify._pipe import Pipeable
+from sverify._plan_read import function_names
 from sverify._quarantine import Held, Policy, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify._run_schema import table_problems
@@ -583,8 +583,8 @@ def plan_digest(
 ) -> str:
     """The sha256 of a plan's canonical form and of the changes of meaning
     (`MEANING_CHANGES`, or `changes`): its JSON with sorted keys, no
-    `extensions` (the list of every function the writer knows, which grows with
-    each release), each `functionReference` replaced by the function's name.
+    `extensions` (which once listed every function the writer knows, and grew
+    with each release), each `functionReference` replaced by the function's name.
     The profile the plan was verified under is a component of its own, left out
     for `"portable"` (`verify(semantics=...)`): the same plan under two profiles
     has two digests. With no changes recorded the digest is that of the plan alone. It is the
@@ -595,11 +595,7 @@ def plan_digest(
     digest)."""
     changes = MEANING_CHANGES if changes is None else changes
     p = json.loads(plan)
-    names = {
-        f["functionAnchor"]: f["name"]
-        for e in p.get("extensions", [])
-        if isinstance(f := e.get("extensionFunction"), dict)
-    }
+    names = function_names(p)
 
     def canon(node: Any) -> Any:
         if isinstance(node, dict):
@@ -695,10 +691,8 @@ class StaticSource(Pipeable):
     Args:
         table: The table's contents.
         name: The table's name in the plans that read it. Required: two
-            sources of one name in a pipeline would collide. (Before 1.0 it
-            defaulted to `"table"`, which warns for one release.)
-        version: The version of these contents, by keyword (positional
-            warns for one release). Default: 0.
+            sources of one name in a pipeline would collide.
+        version: The version of these contents. Default: 0.
         on_violation: What a refresh does with a batch that breaks a
             precondition on this source, for transforms that set no
             `on_violation` of their own: `"error"`, `"quarantine"` or
@@ -718,27 +712,11 @@ class StaticSource(Pipeable):
     def __init__(
         self,
         table: pa.Table,
-        *args: int,
-        name: str | None = None,
+        *,
+        name: str,
         version: int = 0,
         on_violation: Policy | None = None,
     ) -> None:
-        if args:
-            warnings.warn(
-                "StaticSource(table, version) is deprecated; write "
-                "StaticSource(table, name=..., version=...)",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            (version,) = args
-        if name is None:
-            warnings.warn(
-                'StaticSource without name= is deprecated (it defaulted to "table"); '
-                "name the table as the plans read it",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            name = "table"
         self.name = name
         self.on_violation = _quarantine.check_policy(on_violation)
         self._log: ChangeLog[pa.Table] = ChangeLog()

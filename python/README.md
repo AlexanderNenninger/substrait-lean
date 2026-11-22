@@ -96,8 +96,8 @@ except VerificationError as e:
 
 ```bash
 # skip: installs software on the reader's machine
-pip install sverify                # or: uv add sverify; verifies, runs nothing
-pip install 'sverify[duckdb]'      # and runs plans on DuckDB, the default engine
+pip install 'sverify[duckdb]'      # or: uv add 'sverify[duckdb]'; verifies and runs plans on DuckDB, the default engine
+pip install sverify                # verifies only, runs nothing
 pip install 'sverify[all]'         # with every engine in the 1.x promise and both table formats
 ```
 

@@ -324,7 +324,7 @@ def _(ENSURES, MODEL_SQL, REQUIRES, history_t, orders_t, sv):
     def daily_city_revenue_sql(orders, history):
         return sv.sql(MODEL_SQL, orders=orders, history=history)
 
-    sql_transform = daily_city_revenue_sql.check(orders=orders_t, history=history_t)
+    sql_transform = daily_city_revenue_sql.verify(orders=orders_t, history=history_t)
     assert sql_transform.verdict == sv.Verdict.PROVED_WITH_CHECKS
     print(sql_transform)
     return

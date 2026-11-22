@@ -14,7 +14,7 @@ counts NULLs as one key. A proof of `sv.unique(c)` implies dbt's test, so in
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -140,6 +140,7 @@ def test_conditions(
     side: str,
     table_of: Callable[[str], str | None],
     not_null: set[str] = frozenset(),  # type: ignore[assignment]
+    siblings: Sequence[Test] = (),
 ) -> Mapped:
     """The conditions a test states about the relation it is on.
 
@@ -150,6 +151,8 @@ def test_conditions(
         table_of: The input table name of a relation, by unique id, or None
             when the model does not read it (for `relationships`).
         not_null: The columns known not NULL, for `unique` in `requires`.
+        siblings: The other tests that hold on the relation, for
+            `mutually_exclusive_ranges` in `requires`.
     """
     k, kw, col = test.kind, test.kwargs, test.column
     if k is None:
@@ -195,6 +198,8 @@ def test_conditions(
         cond = f"coalesce(({expr}), TRUE)"
     elif base == "relationships" and col:
         return _references(test, col, side, table_of)
+    elif base == "mutually_exclusive_ranges" and ns == "dbt_utils":
+        return _ranges(test, side, siblings)
     elif base in TABLE_LEVEL:
         return table_level(test, base, side, row_filter)
     elif (made := _row_test(base, col, kw)) is not None:
@@ -321,6 +326,105 @@ def _references(test: Test, col: str, side: str, table_of: Callable[[str], str |
     if target is None or not field:
         return Mapped([], "the model does not read the referenced relation", (col,))
     return Mapped([sv.references(col, to=(target, field))], columns=(col,))
+
+
+def _ranges(test: Test, side: str, siblings: Sequence[Test]) -> Mapped:
+    """`dbt_utils.mutually_exclusive_ranges` as `sv.non_overlapping`, read from
+    dbt-utils 1.4.1's macro (`macros/generic_tests/mutually_exclusive_ranges.sql`).
+
+    Per `partition_by`, ordered by the lower then the upper bound, the macro
+    fails a row whose bounds are not `lower < upper` (`<=` with
+    `zero_length_range_allowed`), a NULL bound included, and a row other than
+    the last whose upper bound is not `<=` (`=`, `<` by `gaps`) the next lower
+    bound. Every variant implies `non_overlapping(lower, upper, by=...)`.
+
+    An open end written `coalesce(hi, L)` implies it only with `lo < L` on
+    every row from another test: then the open row is the last of its
+    partition. In `ensures` the test is stronger than the condition, so it maps
+    plain columns with `gaps: allowed` only, adding what the macro demands of
+    each row."""
+    kw = test.kwargs
+    if test.where:
+        return Mapped([], "mutually_exclusive_ranges with a where filter has no sverify condition")
+    lo, by = _column(kw.get("lower_bound_column")), _columns(kw.get("partition_by"))
+    if lo is None or by is None:
+        return Mapped([], "its bounds and partition_by are not plain columns; dbt still runs it")
+    upper = _parse(kw.get("upper_bound_column"))
+    hi, end = _column(upper), None
+    if hi is None and isinstance(upper, sg.exp.Coalesce) and len(upper.expressions) == 1:
+        hi, end = _column(upper.this), upper.expressions[0]
+    if hi is None:
+        return Mapped(
+            [], "its upper bound is neither a column nor coalesce(column, value); dbt still runs it"
+        )
+    cond = sv.non_overlapping(lo, hi, by=by)
+    cols = (*by, lo, hi)
+    if side == "ensures":
+        if end is not None or kw.get("gaps", "allowed") != "allowed":
+            return Mapped([], "sverify proves it only on plain columns with gaps: allowed", cols)
+        op = "<=" if kw.get("zero_length_range_allowed") else "<"
+        return Mapped(
+            [cond, f"{ident(hi)} IS NOT NULL", f"{ident(lo)} {op} {ident(hi)}"], columns=cols
+        )
+    if end is not None:
+        below = sg.exp.LT(this=sg.exp.column(lo), expression=end.copy()).sql("duckdb")
+        if not any(below in _row_conditions(t, lo) for t in siblings):
+            return Mapped(
+                [],
+                f"an open end written coalesce({hi}, {end.sql('duckdb')}) is assumed only with "
+                f"a test that {below} on every row",
+                cols,
+            )
+    return Mapped([cond], columns=cols)
+
+
+def _parse(sql: Any) -> sg.exp.Expr | None:
+    if not isinstance(sql, str):
+        return None
+    try:
+        tree = sg.parse_one(sql, read="duckdb")
+    except sg.errors.ParseError:
+        return None
+    return tree.unnest() if isinstance(tree, sg.exp.Paren) else tree
+
+
+def _column(sql: Any) -> str | None:
+    """The column `sql` names, when it is a plain column."""
+    tree = sql if isinstance(sql, sg.exp.Expr) else _parse(sql)
+    if isinstance(tree, sg.exp.Column) and not tree.table:
+        return tree.name
+    return None
+
+
+def _columns(sql: Any) -> tuple[str, ...] | None:
+    """The columns of a `partition_by` written as `a, b`, or None."""
+    if sql is None:
+        return ()
+    names = [_column(part) for part in str(sql).split(",")] if isinstance(sql, str) else [None]
+    return None if None in names else tuple(n for n in names if n)
+
+
+def _row_conditions(test: Test, col: str) -> set[str]:
+    """The row conditions `test` states, as DuckDB SQL, without the NULL
+    passes dbt adds: `coalesce(…, TRUE)`, and `col IS NULL OR …` for the one
+    column `col`, which the caller knows is never NULL. A NULL pass on another
+    column stays: it lets rows through the rest."""
+    null_pass = sg.exp.Is(this=sg.exp.column(col), expression=sg.exp.null())
+    out = set()
+    for c in test_conditions(test, side="requires", table_of=lambda _: None).conditions:
+        tree = _parse(c)
+        while tree is not None:
+            if isinstance(tree, sg.exp.Coalesce) and tree.expressions == [sg.exp.true()]:
+                tree = tree.this
+            elif isinstance(tree, sg.exp.Or) and tree.this == null_pass:
+                tree = tree.expression
+            elif isinstance(tree, sg.exp.Paren):
+                tree = tree.unnest()
+            else:
+                break
+        if tree is not None:
+            out.add(tree.sql("duckdb"))
+    return out
 
 
 def constraint_conditions(constraint: dict[str, Any], column: str | None) -> Mapped:

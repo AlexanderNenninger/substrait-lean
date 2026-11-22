@@ -439,13 +439,13 @@
     },
     "test_substring[duckdb-expr_slice_begin_end]": {
       "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: substring lengths must be constants. Lean's model does not cover it yet: rewrite the step, or fin",
-      "issue": 1923
+      "construct": "Unsupported: substring with a length that comes from a column is not supported: use a constant length, or write the cases you need with ifelse",
+      "design": "the length of a substring is a constant: a length read from a column is not modelled; use a constant length or ifelse over the cases"
     },
     "test_substring[duckdb-expr_slice_end]": {
       "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: substring lengths must be constants. Lean's model does not cover it yet: rewrite the step, or fin",
-      "issue": 1923
+      "construct": "Unsupported: substring with a length that comes from a column is not supported: use a constant length, or write the cases you need with ifelse",
+      "design": "the length of a substring is a constant: a length read from a column is not modelled; use a constant length or ifelse over the cases"
     },
     "test_substring[duckdb-left]": {
       "outcome": "agree"

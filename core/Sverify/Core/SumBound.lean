@@ -88,7 +88,7 @@ theorem SumOrder.bound {b : Behaviour} {cs : List Int} {c : Int} {N : Nat} {lo h
     have : cs.length * rangeMag lo hi ≤ N * rangeMag lo hi := Nat.mul_le_mul_right _ hN
     have : cs.length * 2 ^ 52 ≤ N * 2 ^ 52 := Nat.mul_le_mul_right _ hN
     rw [Nat.mul_add]; omega
-  obtain ⟨hfin, hineq⟩ := h.1
+  obtain ⟨hfin, hineq⟩ := h.1.1
     (fun x hx => by
       obtain ⟨y, hy, e⟩ := List.mem_map.1 hx
       injection e with e; subst e; exact (hr _ hy).1)
@@ -113,5 +113,52 @@ theorem SumOrder.bound {b : Behaviour} {cs : List Int} {c : Int} {N : Nat} {lo h
   unfold sumLo sumHi
   have : (d : Int) ≤ (N * (rangeMag lo hi + 2 ^ 52) : Nat) := by omega
   constructor <;> omega
+
+/-! ## The canonical clause of `SumBound` for the shaped orders (ruling 242) -/
+
+/-- A sequential sum from an accumulator equal up to `canon`, over the
+canonical values, is the same sum up to `canon`. -/
+theorem foldl_fadd_canonV (ws : List Value) {a a' : Int} (e : canon a' = canon a) :
+    canon ((ws.map Value.canonV).foldl (fun acc v => match v with
+      | .float c => fadd acc c | _ => acc) a') =
+    canon (ws.foldl (fun acc v => match v with | .float c => fadd acc c | _ => acc) a) := by
+  induction ws generalizing a a' with
+  | nil => exact e
+  | cons w ws ih =>
+    apply ih
+    cases w <;> simp only [Value.canonV]
+    case float c => rw [← fadd_canon, canon_idem, e, fadd_canon]
+    all_goals exact e
+
+/-- **A sum `FloatSums` allows is, up to `canon`, one it allows of the
+canonical values** (ruling 242): IEEE addition reads `-0.0` as `+0.0` but for
+the sign of a zero result (`fadd_canon`), so the same order over the canonical
+values gives the same sum up to `canon`. -/
+theorem FloatSums.canonV {vs : List Value} {c : Int} (h : FloatSums vs c) :
+    ∃ c', FloatSums (vs.map Value.canonV) c' ∧ canon c' = canon c := by
+  induction h with
+  | @seq vs ws hp =>
+    exact ⟨floatSum (ws.map Value.canonV), .seq (hp.map _), foldl_fadd_canonV ws rfl⟩
+  | @split vs xs ys a b hp _ _ iha ihb =>
+    obtain ⟨a', ha, ea⟩ := iha
+    obtain ⟨b', hb, eb⟩ := ihb
+    refine ⟨fadd a' b', .split (by rw [← List.map_append]; exact hp.map _) ha hb, ?_⟩
+    rw [← fadd_canon, ea, eb, fadd_canon]
+
+/-- `SumBoundRaw` of a sum `c'` bounds every `c` equal to it up to `canon`, as
+its canonical code: a finite `c'` is canonical. -/
+theorem SumBoundRaw.canon_of {vs : List Value} {c c' : Int} (h : SumBoundRaw vs c')
+    (e : canon c' = canon c) : SumBoundRaw vs (canon c) := by
+  intro hf hl ho
+  obtain ⟨hfin, hb⟩ := h hf hl ho
+  have hc : canon c' = c' := fp64.canon_eq_self ⟨hfin.ne.2.2.2.2, hfin.ne.2.1⟩
+  rw [← e, hc]; exact ⟨hfin, hb⟩
+
+/-- `SumBound` of every sum `FloatSums` allows, from `SumBoundRaw` of them:
+the canonical clause follows from `FloatSums.canonV`. -/
+theorem FloatSums.sumBound_of_raw (hraw : ∀ {vs : List Value} {c : Int}, FloatSums vs c → SumBoundRaw vs c)
+    {vs : List Value} {c : Int} (h : FloatSums vs c) : SumBound vs c := by
+  obtain ⟨c', h', e⟩ := h.canonV
+  exact ⟨hraw h, (hraw h').canon_of e⟩
 
 end Substrait
