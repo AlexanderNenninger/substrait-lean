@@ -302,7 +302,9 @@ theorem roundMag_form (m : Nat) : ∃ j, j ≤ m / K + 1 ∧ roundMag m = j * K 
 theorem evenMag_fix {m : Nat} (h : K ∣ m) : evenMag m = m := by
   have hK := K_pos
   unfold evenMag evenQuot
-  rw [Nat.mod_eq_zero_of_dvd h, if_pos (by omega)]
+  have h0 : 2 * 0 < K := by omega
+  rw [Nat.mod_eq_zero_of_dvd h]
+  simp only [h0, ↓reduceIte]
   exact Nat.div_mul_cancel h
 
 theorem evenMag_form (m : Nat) : ∃ j, j ≤ m / K + 1 ∧ evenMag m = j * K := by
