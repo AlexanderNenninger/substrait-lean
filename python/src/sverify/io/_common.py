@@ -756,21 +756,39 @@ def other_tables(committed: Contract, contract: Contract) -> list[str]:
 
 
 def check_same_sources(uri: str, committed: Contract, contract: Contract) -> None:
-    """Refuse a commit over a state computed from another source: where both
-    records fingerprint a source and the fingerprints differ, the two writers
-    read different sources under one name, and versions say nothing about
-    which is ahead. A source without a fingerprint on either side is not
-    compared."""
-    for t in sorted(contract.fingerprints):
-        was, now = committed.fingerprints.get(t), contract.fingerprints[t]
-        if was is not None and was != now:
+    """Refuse a commit over a state computed from another source. Under one
+    source name, the two records read different sources where
+
+    * both fingerprint it and the fingerprints differ, or
+    * one records a table id and the other none: a table is not a source
+      that has no id, and versions say nothing about which is ahead.
+
+    A record written before `sverify` was recorded may predate table ids, so
+    its missing id does not tell; the versions decide there, as `other_tables`
+    has them. Where neither side has an id or a fingerprint, they decide too.
+    """
+
+    def named(c: Contract, t: str) -> str | None:
+        if (table_id := c.table_ids.get(t)) is not None:
+            return f"the table with id {table_id}"
+        return c.fingerprints.get(t)
+
+    for t in sorted(contract.sources.keys() & committed.sources.keys()):
+        was, now = named(committed, t), named(contract, t)
+        was_id, now_id = committed.table_ids.get(t), contract.table_ids.get(t)
+        fingerprints = committed.fingerprints.get(t), contract.fingerprints.get(t)
+        by_fingerprint = None not in fingerprints and fingerprints[0] != fingerprints[1]
+        by_id = (was_id is None) != (now_id is None) and (
+            was_id is not None or committed.sverify is not None
+        )
+        if by_fingerprint or by_id:
             raise ValueError(
-                f"{uri} holds a state of `{contract.node}` computed from the source "
-                f"`{t}` at {was!r} (as `{committed.node}`, plan {committed.plan[:8]}), and this "
-                f"node reads `{t}` at {now!r}. Two writers with one app_id read different "
-                "sources under one name; versions cannot tell which is ahead, so nothing is "
-                "written. Write to a sink of its own, or give the writers different "
-                "app_ids and names."
+                f"{uri} holds a state of `{committed.node}` computed from the source "
+                f"`{t}` as {was or 'a source with no table id'} (plan {committed.plan[:8]}), "
+                f"and this node reads `{t}` as {now or 'a source with no table id'}. "
+                "Two writers with one app_id read different sources under one name; "
+                "versions cannot tell which is ahead, so nothing is written. Write to a "
+                "sink of its own, or give the writers different app_ids and names."
             )
 
 

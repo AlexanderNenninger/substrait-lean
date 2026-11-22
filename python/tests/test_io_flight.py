@@ -339,3 +339,26 @@ def test_a_record_without_fingerprints_is_not_compared():
             record(fingerprints={"t": "flight:x/t"}),
             record(fingerprints={"t": "flight:y/t"}),
         )
+
+
+def test_a_table_and_a_source_without_an_id_are_not_the_same_source(tmp_path):
+    """Under one source name, a Delta table has an id and a static table has
+    none, so the writers read different sources, in either order."""
+    from _pipelines import make_orders, orders_table, paid
+    from sverify.io import StaticSource
+
+    rows = [(1, "ada", 5), (2, "ada", 5), (3, "bob", 1)]
+
+    def static():
+        return StaticSource(orders_table(rows), name="orders")
+
+    for n, (first, second) in enumerate(
+        [
+            (lambda: make_orders(tmp_path / "x" / "orders", rows), static),
+            (static, lambda: make_orders(tmp_path / "y" / "orders", rows)),
+        ]
+    ):
+        path = str(tmp_path / f"sink{n}")
+        paid(first()).write(DeltaSink(path)).refresh()
+        with pytest.raises(ValueError, match="Two writers with one app_id"):
+            paid(second()).write(DeltaSink(path)).refresh()
