@@ -743,7 +743,9 @@ def other_tables(committed: Contract, contract: Contract) -> list[str]:
     Then the sink's rows are not a state of these inputs, whatever the
     epochs say. With the same id on both sides, a lower version is
     the same table: this refresh is behind the record, and the sink holds a
-    later state, which is not written over."""
+    later state, which is not written over. A source that cannot restore
+    numbers its reads per process, so a lower version says nothing there: the
+    digest of the contents does, and the same digest is the same rows."""
     out = []
     for t, n in contract.sources.items():
         was, now = committed.table_ids.get(t), contract.table_ids.get(t)
@@ -751,7 +753,9 @@ def other_tables(committed: Contract, contract: Contract) -> list[str]:
             if was != now:
                 out.append(t)
         elif n < committed.sources.get(t, n):
-            out.append(t)
+            digest = contract.digests.get(t)
+            if digest is None or digest != committed.digests.get(t):
+                out.append(t)
     return sorted(out)
 
 
