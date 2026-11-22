@@ -99,10 +99,12 @@ def _stub_column_values(project: Path) -> None:
 def _compile(project: Path, limit: int = 150) -> list[str]:
     """`dbt compile`, leaving out each model whose compilation asks the
     warehouse for data it does not have here (`dbt_utils.get_column_values`
-    on a table nothing built), until the rest compile. The models left out."""
+    on a table nothing built), until the rest compile. The models left out,
+    each with its descendants: an ephemeral model compiles inside the models
+    that read it."""
     left_out: list[str] = []
     for _ in range(limit):
-        args = ["compile", "--exclude", *left_out] if left_out else ["compile"]
+        args = ["compile", "--exclude", *(f"{n}+" for n in left_out)] if left_out else ["compile"]
         done = subprocess.run(
             [str(Path(sys.executable).with_name("dbt")), *args, "--profiles-dir", str(project)],
             cwd=project,
