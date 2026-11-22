@@ -586,7 +586,9 @@ def test_github_annotations(tmp_path, capsys):
     [line] = out.splitlines()
     line_no = HEAD.count("\n") + 2  # the decorator, after the blank line
     assert line.startswith(
-        f"::error file={path},line={line_no},title=sverify may_be_false%3A paid::"
+        # A property value escapes `:` and `,` (GitHub's workflow commands): `C%3A\` on Windows.
+        f"::error file={str(path).replace(':', '%3A')},line={line_no},"
+        "title=sverify may_be_false%3A paid::"
     )
     assert "::amount > 20: it may be FALSE" in line and "%0Acounterexample: " in line
 
@@ -626,7 +628,8 @@ def test_fix_keeps_a_files_crlf_line_endings(tmp_path, capsys):
     """A file with Windows line endings is fixed with them: no line gains a
     second `\r`, and the diff removes only the decorators it rewrites (#183)."""
     path = write(tmp_path, NEEDS + NOT_PROVED.replace("paid", "late").replace("p =", "q ="))
-    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    # Windows' text-mode write has `\r\n` already: normalise, then convert.
+    path.write_bytes(path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
     code, out = run(capsys, "check", str(path), "--diff")
     lines = out.splitlines()
     removed = [line for line in lines if line.startswith("-") and not line.startswith("---")]

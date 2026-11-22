@@ -120,7 +120,8 @@ def run_blocks(path: Path, text: str) -> None:
         printed = io.StringIO()
         with contextlib.redirect_stdout(printed):
             exec(compile(block, f"{path.name} block {k + 1}", "exec"), namespace)
-        lines = [line.rstrip() for line in printed.getvalue().splitlines()]
+        # A path prints with Windows' separators there; the comments write `/`.
+        lines = [line.rstrip().replace("\\", "/") for line in printed.getvalue().splitlines()]
         for expected in shown_output(block):
             expected = expected.removesuffix("...").rstrip()  # "..." elides the rest
             if not expected:

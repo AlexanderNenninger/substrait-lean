@@ -178,7 +178,9 @@ def _iceberg_tables(root: Path) -> dict[str, Any]:
     from sverify.io import IcebergSink, IcebergSource
 
     warnings.filterwarnings("ignore", module="pyiceberg")
-    cat = SqlCatalog("t", uri=f"sqlite:///{root}/catalog.db", warehouse=f"file://{root}")
+    # `as_uri`: DuckDB's `iceberg_scan` reads the metadata location as a URI,
+    # and an f-string of a Windows path is none (`file://C:\\...`).
+    cat = SqlCatalog("t", uri=f"sqlite:///{root}/catalog.db", warehouse=Path(root).as_uri())
     cat.create_namespace("db")
     cat.create_table("db.orders", schema=SCHEMA).append(_batch(FIRST))
     src = IcebergSource(cat, "db.orders")

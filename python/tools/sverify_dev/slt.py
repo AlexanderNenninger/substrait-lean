@@ -1407,7 +1407,7 @@ def write_summary(out: Path = REPLAY_DIR, readme: Path | None = None) -> Path:
         top = ", ".join(f"{k} {n}" for k, n in reasons.most_common(2))
         d = led.get("disagree_sides", {})
         sides = ", ".join(f"{k} {n}" for k, n in sorted(d.items()))
-        link = os.path.relpath(p, readme.parent)
+        link = Path(os.path.relpath(p, readme.parent)).as_posix()
         rows.append(
             f"| [{led['area']}]({link}) | {s['agree']} | {_oracle_a_only(led['results'])} "
             f"| {s['disagree']} | {sides} "
