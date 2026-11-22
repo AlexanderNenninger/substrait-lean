@@ -319,6 +319,10 @@ inductive BinFn where
   /-- `a / b` of decimals, rounded half away from zero (`roundDivInt?`), and
   `NULL` for `b = 0`: a decimal `AVG`'s sum by its count (#27). -/
   | ddiv
+  /-- `a % b` of decimals at one scale (D62, #1941): the truncated remainder of
+  the unscaled integers, so it takes the dividend's sign. `NULL` for `b = 0`,
+  where the parser's division-by-zero check raises, as for `imod`. -/
+  | dmod
   /-- The two values as a list, `NULL` if either is: the argument of a
   two-argument aggregate (`COVAR_SAMP(x, y)`, #54), whose rows with a NULL
   are skipped. -/
@@ -858,6 +862,9 @@ def BinFn.apply : BinFn → Value → Value → Value
     | _, _ => .null
   | .dmul, a, b => match a.unscaled?, b.unscaled? with
     | some x, some y => .int (x * y)
+    | _, _ => .null
+  | .dmod, a, b => match a.unscaled?, b.unscaled? with
+    | some x, some y => if y = 0 then .null else .int (x.tmod y)
     | _, _ => .null
   | .ddiv, a, b => match a.unscaled?, b.unscaled? with
     | some x, some y => match roundDivInt? x y with
