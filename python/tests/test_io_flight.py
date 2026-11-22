@@ -371,3 +371,131 @@ def test_the_audit_refuses_a_restarted_log(server, tmp_path):
             node.refresh(audit=True)
     finally:
         new.shutdown()
+
+
+# -- two writers of one sink that read different servers (#2441) --------------------
+
+
+def test_a_second_writer_reading_another_server_is_refused(server, tmp_path):
+    """Two nodes share a sink and its app id, and read different servers
+    under one source name. A Flight source has no table id, so versions were
+    all that told them apart; the contract names the source now."""
+    path = str(tmp_path / "busy")
+    other = FlightLog()
+    # Servers that name no log (a log that does names itself: the cursor of
+    # the first server is refused by the second, `test_a_restarted_log_...`).
+    server.id = other.id = None
+    try:
+        put(server, "samples", [sample("a", 1, 0.5)], [sample("a", 2, 0.6)], [sample("a", 3, 0.7)])
+        put(other, "samples", [sample("b", 1, 0.5)])
+        first = busy(FlightSource(location(server), "samples", schema=SAMPLES)).write(
+            DeltaSink(path)
+        )
+        first.refresh()
+        recorded = DeltaSource(path).contract()
+        assert recorded is not None
+        assert recorded.fingerprints == {"samples": f"flight:{location(server)}/samples"}
+        # The second writer is at a lower version (1 against 3), and refused.
+        second = busy(FlightSource(location(other), "samples", schema=SAMPLES)).write(
+            DeltaSink(path)
+        )
+        with pytest.raises(ValueError, match="Two writers with one app_id") as e:
+            second.refresh()
+        assert location(server) in str(e.value) and location(other) in str(e.value)
+        # And one at a higher version (5 against 3).
+        put(other, "samples", *[[sample("b", i, 0.5)] for i in range(2, 6)])
+        third = busy(FlightSource(location(other), "samples", schema=SAMPLES)).write(
+            DeltaSink(path)
+        )
+        with pytest.raises(ValueError, match="Two writers with one app_id"):
+            third.refresh()
+        assert stored_ts(path) == [1, 2, 3]  # nothing of the other server was written
+        # The first writer goes on.
+        put(server, "samples", [sample("a", 4, 0.8)])
+        first.refresh()
+        assert stored_ts(path) == [1, 2, 3, 4]
+    finally:
+        other.shutdown()
+
+
+def test_a_record_without_fingerprints_is_not_compared():
+    from sverify.io._common import Contract, check_same_sources
+
+    def record(**kw):
+        return Contract(
+            node="n",
+            plan="p" * 64,
+            sources={"t": 1},
+            epoch=1,
+            not_null=[],
+            checks={},
+            unique=[],
+            **kw,
+        )
+
+    old = record()  # written before fingerprints
+    check_same_sources("sink", old, record(fingerprints={"t": "flight:x/t"}))
+    check_same_sources("sink", record(fingerprints={"t": "flight:x/t"}), old)
+    check_same_sources(
+        "sink", record(fingerprints={"t": "flight:x/t"}), record(fingerprints={"t": "flight:x/t"})
+    )
+    with pytest.raises(ValueError, match="Two writers"):
+        check_same_sources(
+            "sink",
+            record(fingerprints={"t": "flight:x/t"}),
+            record(fingerprints={"t": "flight:y/t"}),
+        )
+
+
+def test_a_table_and_a_source_without_an_id_are_not_the_same_source(tmp_path):
+    """Under one source name, a Delta table has an id and a static table has
+    none, so the writers read different sources, in either order."""
+    from _pipelines import make_orders, orders_table, paid
+    from sverify.io import StaticSource
+
+    rows = [(1, "ada", 5), (2, "ada", 5), (3, "bob", 1)]
+
+    def static():
+        return StaticSource(orders_table(rows), name="orders")
+
+    for n, (first, second) in enumerate(
+        [
+            (lambda: make_orders(tmp_path / "x" / "orders", rows), static),
+            (static, lambda: make_orders(tmp_path / "y" / "orders", rows)),
+        ]
+    ):
+        path = str(tmp_path / f"sink{n}")
+        paid(first()).write(DeltaSink(path)).refresh()
+        with pytest.raises(ValueError, match="Two writers with one app_id"):
+            paid(second()).write(DeltaSink(path)).refresh()
+
+
+def test_the_fingerprint_of_a_location_with_userinfo_holds_no_secret():
+    src = FlightSource("grpc://ada:s3cret@pi3:8815?token=t0k", "samples", schema=SAMPLES)
+    assert src._fingerprint() == "flight:grpc://pi3:8815/samples"
+
+
+def test_a_table_id_and_a_fingerprint_are_different_kinds_of_source():
+    from sverify.io._common import Contract, check_same_sources
+
+    def record(**kw):
+        return Contract(
+            node="n",
+            plan="p" * 64,
+            sources={"t": 1},
+            epoch=1,
+            not_null=[],
+            checks={},
+            unique=[],
+            **kw,
+        )
+
+    table = record(table_ids={"t": "abc"}, sverify="1")
+    flight = record(fingerprints={"t": "flight:grpc://x/t"}, sverify="1")
+    for a, b in [(table, flight), (flight, table)]:
+        with pytest.raises(ValueError, match="Two writers"):
+            check_same_sources("sink", a, b)
+    # A record from before `sverify` was recorded names neither: versions decide.
+    old = record()
+    check_same_sources("sink", old, table)
+    check_same_sources("sink", old, flight)

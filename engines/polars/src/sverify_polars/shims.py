@@ -65,7 +65,7 @@ SHIMS: tuple[Shim, ...] = (
     Shim("null_order", "null_order", "as the key states; NULLS_LAST for UNSPECIFIED",
          "NULLS_FIRST in both directions", "polars-null-order", "argument"),
     Shim("tie_order", "tie_order", "ANY; Rel.eval keeps input order",
-         "undocumented without maintain_order", "polars-sort-stability", "argument"),
+         "undocumented without maintain_order", "polars-sort-stability-streaming", "argument"),
     Shim("round_half_away", "rounding", "TIE_AWAY_FROM_ZERO (fp.round)",
          "TIE_TO_EVEN", "polars-round", "argument"),
     Shim("int_div_trunc", "division_type", "TRUNCATE", "FLOOR",
@@ -78,7 +78,7 @@ SHIMS: tuple[Shim, ...] = (
          "Float64 mean", "polars-avg-int", "expression"),
     Shim("one_zero", "zero_sign", "ONE_ZERO, also as a group key: on read and after each "
          "operation that can give -0.0", "IEEE: -0.0 kept; a group's key is its first zero",
-         "polars-zero-sign", "expression"),
+         "polars-zero-sign-streaming", "expression"),
     Shim("strpos_chars", "negative_start", "1-based characters, 0 when absent",
          "str.find: 0-based bytes, NULL when absent", "polars-strpos", "expression"),
     Shim("substring_wrap", "negative_start", "WRAP_FROM_END",
@@ -161,7 +161,7 @@ def ieee_zero_sum(r: pl.Expr, x: pl.Expr, y: pl.Expr, subtract: bool) -> pl.Expr
     `-0.0` only for `-0.0 + -0.0` and `-0.0 - 0.0`, else `0.0`. Polars's literal
     kernels return `-0.0 + 0.0` as `-0.0` and `0.0 - 0.0` as `-0.0`, and a
     one-row morsel of the streaming engine gives `0.0` for two columns
-    (polars-zero-sign, polars-zero-sign-streaming)."""
+    (polars-zero-sign-streaming)."""
     neg = is_negative_zero(x) & (
         (y == 0.0) & ~is_negative_zero(y) if subtract else is_negative_zero(y)
     )
@@ -315,7 +315,7 @@ def substring_wrap(start: pl.Expr, s: pl.Expr) -> pl.Expr:
 
 def sum_empty_null(total: pl.Expr, values: pl.Expr) -> pl.Expr:
     """`SUM` of no values is NULL; Polars's `sum` is 0 (polars-sum-int,
-    polars-sum-float). `values` is the aggregated column, NULLs not counted."""
+    polars-sum-float-streaming). `values` is the aggregated column, NULLs not counted."""
     return pl.when(values.count() == 0).then(None).otherwise(total)
 
 
@@ -346,12 +346,13 @@ def avg_int_declared(values: pl.Expr) -> pl.Expr:
 def float_sum(values: pl.Expr) -> pl.Expr:
     """`SUM` of doubles: Polars's own order (pairwise or Kahan,
     polars-sum-float), within the plan's bound of the reference's correctly
-    rounded sum (D25); NULL for no values and one zero."""
+    rounded sum (D25); NULL for no values and one zero. Kahan is the
+    in-memory engine's, which #2411 drops from the profile."""
     return one_zero(sum_empty_null(values.sum(), values))
 
 
 def float_avg(values: pl.Expr) -> pl.Expr:
-    """`AVG` of doubles: Polars's `mean` (polars-mean-float), NULL for no
+    """`AVG` of doubles: Polars's `mean` (polars-mean-float-streaming), NULL for no
     values natively; one zero."""
     return one_zero(values.mean())
 

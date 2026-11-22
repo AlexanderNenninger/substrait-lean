@@ -459,6 +459,13 @@ class Source(Pipeable, ABC):
         change = pa.concat_tables([weighted(inserts, 1), weighted(deletes, -1)])
         return _apply_change(table, change, self.name)
 
+    def _fingerprint(self) -> str | None:
+        """What identifies the source where it has no table id, for a sink
+        to record (`Contract.fingerprints`): such as a server's location and
+        a table's name on it. None (the default) where the source names no
+        place, and a sink cannot tell it from another."""
+        return None
+
     def _durable(self) -> bool:
         """Whether the source's cursors last across processes (`restore`)."""
         return type(self).restore is not Source.restore
