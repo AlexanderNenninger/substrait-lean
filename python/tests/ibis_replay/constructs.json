@@ -106,10 +106,6 @@
       "issue": 2156
     },
     {
-      "match": "comparison of float with int",
-      "issue": 2158
-    },
-    {
       "match": "casts of structs are not supported",
       "design": "sverify cannot build a struct value yet; cast its fields"
     },
