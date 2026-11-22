@@ -9,9 +9,8 @@ the plan (#271, step 2), the translation still writes these functions by hand
 through Polars beside the hook it will replace, on the edge cases of each
 function's facts, so the proved table and the running code cannot drift apart.
 
-The evaluator here is the test's, not the engine's: it writes each function a
-template calls as the translation writes it (`//` and `%` floor, `round`
-rounds halves away from zero), which is what `Profile.polars` states.
+The templates are written by the translation's own interpreter
+(`sverify_polars.lowering`), the one that replaces the hooks.
 """
 
 import math
@@ -20,51 +19,12 @@ from typing import Any
 import polars as pl
 import pytest
 
-from sverify._checker import decode_double
-from sverify.sql import lowering
-from sverify_polars import shims
+from sverify.sql import lowering as table_export
+from sverify_polars import lowering, shims
 
 pytestmark = pytest.mark.backend("polars")
 
 MIN, MAX = -(2**63), 2**63 - 1
-
-_BINARY = {
-    "lt": lambda a, b: a < b,
-    "eq": lambda a, b: a == b,
-    "and": lambda a, b: a & b,
-    "or": lambda a, b: a | b,
-    "idiv": lambda a, b: a // b,
-    "imod": lambda a, b: a % b,
-    # Decimals' 128-bit integers: exact on 64-bit operands.
-    "dadd": lambda a, b: a.cast(pl.Int128) + b.cast(pl.Int128),
-    "dsub": lambda a, b: a.cast(pl.Int128) - b.cast(pl.Int128),
-}
-_UNARY = {
-    "Substrait.UnFn.fround": lambda e: e.round(0, mode="half_away_from_zero"),
-    "Substrait.UnFn.fceil": lambda e: e.ceil(),
-}
-
-
-def to_polars(t: Any, args: list[pl.Expr]) -> pl.Expr:
-    """A template of `--lowering-table` as a Polars expression over `args`."""
-    if "field" in t:
-        return args[t["field"]]
-    if "int" in t:
-        return pl.lit(int(t["int"]), pl.Int64)
-    if "code" in t:
-        return pl.lit(decode_double(int(t["code"])), pl.Float64)
-    if "if" in t:
-        return (
-            pl.when(to_polars(t["if"], args))
-            .then(to_polars(t["then"], args))
-            .otherwise(to_polars(t["else"], args))
-        )
-    xs = [to_polars(a, args) for a in t["args"]]
-    return _UNARY[t["fn"]](*xs) if len(xs) == 1 else _BINARY[t["fn"]](*xs)
-
-
-def table() -> dict[str, Any]:
-    return {e["fn"]: e["template"] for e in lowering._export()["polars"]}
 
 
 def run(exprs: dict[str, pl.Expr], cols: dict[str, Any]) -> dict[str, list]:
@@ -74,8 +34,10 @@ def run(exprs: dict[str, pl.Expr], cols: dict[str, Any]) -> dict[str, list]:
 
 def test_the_table_covers_what_polars_computes_its_own_way():
     """`round`, `ceil`, integer `//` and `%` have templates; `%` of doubles has
-    no entry (refused); everything else is native."""
-    assert set(table()) == {"Substrait.UnFn.fround", "Substrait.UnFn.fceil", "idiv", "imod"}
+    no entry (refused); everything else is native, and `render` gives None."""
+    assert set(table_export.table("polars")) == {
+        "Substrait.UnFn.fround", "Substrait.UnFn.fceil", "idiv", "imod"}  # fmt: skip
+    assert lowering.render("fadd", [pl.col("a"), pl.col("b")]) is None
 
 
 def test_division_agrees_with_the_shims():
@@ -90,11 +52,10 @@ def test_division_agrees_with_the_shims():
         "b": pl.Series([b for _, b in pairs], dtype=pl.Int64),
     }
     a, b = pl.col("a"), pl.col("b")
-    t = table()
     got = run(
         {
-            "div": to_polars(t["idiv"], [a, b]).cast(pl.Int64),
-            "mod": to_polars(t["imod"], [a, b]).cast(pl.Int64),
+            "div": lowering.render("idiv", [a, b]).cast(pl.Int64),
+            "mod": lowering.render("imod", [a, b]).cast(pl.Int64),
             "div_hook": shims.int_div_trunc(a, b),
             "mod_hook": shims.int_mod_trunc(a, b),
         },
@@ -119,11 +80,10 @@ def test_rounding_agrees_with_the_hooks():
     xs = [-2.5, -1.5, -0.5, -0.4, -0.0, 0.0, 0.4, 0.5, 1.5, 2.5, 1e300, -1e-300]
     xs += [math.nan, math.inf, -math.inf, None]
     x = pl.col("x")
-    t = table()
     got = run(
         {
-            "round": to_polars(t["Substrait.UnFn.fround"], [x]),
-            "ceil": to_polars(t["Substrait.UnFn.fceil"], [x]),
+            "round": lowering.render("Substrait.UnFn.fround", [x]),
+            "ceil": lowering.render("Substrait.UnFn.fceil", [x]),
             "round_hook": shims.round_half_away(x),
             "ceil_hook": x.ceil(),
         },
