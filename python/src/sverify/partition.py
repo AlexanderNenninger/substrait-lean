@@ -62,7 +62,7 @@ from sverify._keys import canonical_key
 from sverify._run_schema import table_problems
 from sverify._weighted import _call, _indices, _is_in
 from sverify.engine import checker_failed, run_checker
-from sverify.observation import Observation, Within
+from sverify.observation import Lenses, Within
 
 #: The table the combining plan reads the shards' results from.
 PARTIALS = "__partials"
@@ -510,7 +510,7 @@ def run_sharded(
     broadcast: Mapping[str, pa.Table] | None = None,
     keys: Mapping[str, Sequence[str]] | None = None,
     unique: Mapping[str, Sequence[Sequence[str]]] | None = None,
-    reproducible: Observation | None = None,
+    reproducible: Lenses | None = None,
     max_workers: int | None = None,
     tolerance: Literal[False] = False,
 ) -> pa.Table: ...
@@ -525,7 +525,7 @@ def run_sharded(
     broadcast: Mapping[str, pa.Table] | None = None,
     keys: Mapping[str, Sequence[str]] | None = None,
     unique: Mapping[str, Sequence[Sequence[str]]] | None = None,
-    reproducible: Observation | None = None,
+    reproducible: Lenses | None = None,
     max_workers: int | None = None,
     tolerance: Literal[True],
 ) -> Sharded: ...
@@ -539,7 +539,7 @@ def run_sharded(
     broadcast: Mapping[str, pa.Table] | None = None,
     keys: Mapping[str, Sequence[str]] | None = None,
     unique: Mapping[str, Sequence[Sequence[str]]] | None = None,
-    reproducible: Observation | None = None,
+    reproducible: Lenses | None = None,
     max_workers: int | None = None,
     tolerance: bool = False,
 ) -> pa.Table | Sharded:

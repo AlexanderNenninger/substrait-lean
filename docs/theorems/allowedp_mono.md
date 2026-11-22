@@ -65,7 +65,7 @@ orders = ibis.table({"id": "int64", "amount": "float64"}, name="orders")
 report = sv.verify(orders.select("id", "amount"), semantics="duckdb")
 for engine in ("polars", "spark"):
     route = routes.choose(report, engine)
-    print(engine, route.kind, route.cls)
+    print(engine, route.taken, route.cls)
 # polars transfer exact
 # spark transfer exact
 ```

@@ -469,7 +469,7 @@ def test_sink_writes_contract_and_changes(tmp_path):
     before = DeltaTable(uri).version()
     second = stored.refresh().writes[0]
     assert second.mode == "merge" and second.version == before + 1
-    assert (second.inserted, second.deleted) == (2, 1)
+    assert (second.inserts, second.deletes) == (2, 1)
     assert delta_rows(uri) == rows(stored) == [(1, "ada", 12), (2, "bob", 14), (3, "cy", 0)]
     later = DeltaSource(uri).contract()
     assert later is not None and later.sources == {"orders": 3}
@@ -605,7 +605,7 @@ def test_a_node_planned_again_overwrites_its_sink(tmp_path):
     write_deltalake(src.uri, only_id, mode="overwrite", schema_mode="overwrite")
     # The plan reads another schema: its state replaces the old plan's.
     [w] = node.refresh().writes
-    assert (w.mode, w.inserted) == ("overwrite", 2)
+    assert (w.mode, w.inserts) == ("overwrite", 2)
     assert delta_rows(str(tmp_path / "ids")) == [(1,), (2,)]
 
 
@@ -738,10 +738,10 @@ def test_restarted_job_resumes_from_its_sink(tmp_path, monkeypatch):
     # The view is not computed: its first run is on empty inputs, for its schema.
     assert seen[0] == 0
     entry = report["big"]
-    assert entry.started == f"resumed from {state.where}"
+    assert entry.started == f"resumed from {state.location}"
     assert entry.report is not None and entry.report.sources[0].mode == "change_feed"
     assert entry.write is not None
-    assert (entry.write.mode, entry.write.inserted, entry.write.deleted) == ("merge", 1, 0)
+    assert (entry.write.mode, entry.write.inserts, entry.write.deletes) == ("merge", 1, 0)
     assert delta_rows(uri) == sorted(rows(again), key=repr)
     assert rows(again) == recomputed(doubled(paid(src)), src)
 
@@ -781,7 +781,7 @@ def test_another_plan_with_other_columns_replaces_the_table(tmp_path):
     # Another plan at the same source versions: other columns, no constraint.
     other = src.pipe(as_text).write(DeltaSink(uri))
     w = other.refresh().writes[0]
-    assert (w.mode, w.inserted, w.constraints) == ("overwrite", 2, {})
+    assert (w.mode, w.inserts, w.constraints) == ("overwrite", 2, {})
     assert DeltaTable(uri).schema().to_arrow().names == ["customer", "doubled"]
     assert constraints(uri) == {}
     assert delta_rows(uri) == sorted(rows(other), key=repr) == [("ada", "5"), ("bob", "7")]

@@ -99,7 +99,7 @@ def test_semantics_spark_reaches_spark_as_the_reference_does(report: sv.Report) 
     # The reference's report reaches Spark through its translation and shims
     # (`Engine.spark_sound`) until a report under Spark's profile (#1288).
     route = routes.choose(report, "spark")
-    assert (route.kind, route.cls) == ("translated", "shim"), route
+    assert (route.taken, route.cls) == ("translated", "shim"), route
 
 
 def test_the_reference_reaches_spark_with_its_shims() -> None:
@@ -111,7 +111,7 @@ def test_the_reference_reaches_spark_with_its_shims() -> None:
         requires={"t": [_.i.between(-100, 100)]},
     )
     route = routes.choose(r, "spark")
-    assert (route.kind, route.cls) == ("translated", "shim"), route
+    assert (route.taken, route.cls) == ("translated", "shim"), route
     assert any("int_sum_decimal" in s for s in route.shims)
 
 
@@ -165,7 +165,7 @@ def test_native_run(spark, report: sv.Report) -> None:
         "t", SCHEMA, [("a", 1, 1.5), ("a", 4, -0.0), ("b", -7, None), ("b", 3, float("nan"))]
     )
     out = report.run(con, "spark")
-    assert report.routes["spark"].kind == "translated"
+    assert report.routes["spark"].taken == "translated"
     got = {r["k"]: (r["s"], r["m"], r["n"]) for r in out.to_pylist()}
     # NaN is the greatest double (spark-nan-order).
     assert got.pop("b")[::2] == (-4, 2) and got == {"a": (5, 1.5, 2)}
@@ -206,7 +206,7 @@ def test_refresh_on_spark(spark, tmp_path) -> None:
     node = totals(paid(orders)).write(sv.io.DeltaSink(str(tmp_path / "totals")))
     out = node.refresh(engine="spark")
     route = out["totals"].route
-    assert route is not None and (route.kind, route.engine) == ("translated", "spark")
+    assert route is not None and (route.taken, route.engine) == ("translated", "spark")
     rows = DeltaTable(str(tmp_path / "totals")).to_pyarrow_table().to_pylist()
     assert sorted((r["customer"], r["total"]) for r in rows) == [("ada", 12), ("bob", 2)]
 

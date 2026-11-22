@@ -99,7 +99,7 @@ and the route names the theorem and the shim's lemma:
 
 ```python
 route = routes.choose(report, "polars")
-print(route.kind, route.cls)
+print(route.taken, route.cls)
 # translated shim
 print(route.theorems)
 # ('Rel.polars_sound', 'Polars.int_div_trunc')

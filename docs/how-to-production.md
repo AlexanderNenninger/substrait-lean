@@ -53,7 +53,7 @@ def sample_sums(samples):
 sums = samples.pipe(sample_sums).write(
     DeltaSink("sample_sums", reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))
 )
-print(sums.refresh(engine="polars", route="auto").nodes[0].route.kind)
+print(sums.refresh(engine="polars", route="auto").nodes[0].route.taken)
 # translated
 ```
 

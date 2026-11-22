@@ -203,7 +203,7 @@ errors show names only. Never write a secret's value into a pipeline.
   `Storage` holding a function that returns fresh options. `writes=` and
   `reads=` declare the prefixes the credential may touch; `sverify check`
   warns about a sink outside them.
-* **Flight**: `FlightSource(..., secret="flight-token")`.
+* **Flight**: `FlightSource(..., credentials="flight-token")`.
 * **Iceberg** (REST, Glue, ...): the pyiceberg catalog holds them:
   `load_catalog("lake", **Storage({"token": Secret("bao:kv/rest#token")}).options())`,
   `~/.pyiceberg.yaml` or `PYICEBERG_*` variables.

@@ -110,7 +110,7 @@ from sverify.io._common import (
     q,
 )
 from sverify.io._sink import _UNREAD, SinkChange, _TableSink
-from sverify.observation import Observation
+from sverify.observation import Lenses
 
 CONTRACT = "Iceberg contract"
 KEY = "sverify.contract"
@@ -594,7 +594,7 @@ class IcebergSource(_TableSource):
             c.engine,
             c.engine_version,
             c.sverify,
-            c.profile,
+            c.semantics,
             c.package,
         )
 
@@ -681,9 +681,9 @@ class IcebergSource(_TableSource):
                 deletes=deletes,
                 facts=self._facts(t, changed, f"file stats @v{end} (changed files)"),
                 snapshot_facts=snapshot_facts,
-                kind="snapshot_diff",
+                mode="snapshot_diff",
                 schema=schema,
-                trusted=(
+                assumes=(
                     f"Δ = snapshot v{end} − snapshot v{since} on the {len(gone)} + "
                     f"{len(came)} data file(s) that changed (not append-only: "
                     f"{', '.join(ops)}); only the snapshots are trusted"
@@ -707,7 +707,7 @@ class IcebergSource(_TableSource):
             inserts=self._filter(inserted.cast(schema)),
             facts=self._facts(t, added, f"file stats @v{end} (new files)"),
             snapshot_facts=snapshot_facts,
-            trusted=f"Δ trusted as the files Iceberg appends v{since}→v{end} added",
+            assumes=f"Δ trusted as the files Iceberg appends v{since}→v{end} added",
             schema=schema,
         )
 
@@ -1307,7 +1307,7 @@ class IcebergSink(_TableSink[Table]):
         compact_every: int | None = None,
         snapshot_retention: Duration | None = None,
         min_snapshots: int = 1,
-        reproducible: Observation | None = None,
+        reproducible: Lenses | None = None,
     ):
         self.catalog, self.identifier = catalog, identifier
         name = name or identifier.rsplit(".", 1)[-1]
@@ -1592,8 +1592,8 @@ class IcebergSink(_TableSink[Table]):
                 mode="created",
                 version=None,
                 contract=contract,
-                inserted=_engine.rows_count(rows),
-                deleted=0,
+                inserts=_engine.rows_count(rows),
+                deletes=0,
             )
         inserted, deleted = _engine.counts(delta)
         deletes: list[DataFile] = []
@@ -1615,8 +1615,8 @@ class IcebergSink(_TableSink[Table]):
             mode="row_level" if deleted else "append",
             version=None,
             contract=contract,
-            inserted=inserted,
-            deleted=deleted,
+            inserts=inserted,
+            deletes=deleted,
         )
 
     def _write_arrow(self, table: Table, created: bool, change: SinkChange) -> SinkWrite:
@@ -1658,5 +1658,5 @@ class IcebergSink(_TableSink[Table]):
             else:
                 _commit_rows(tx, t, rows, deletes, props)
         return SinkWrite(
-            mode=mode, version=None, contract=contract, inserted=rows.num_rows, deleted=deleted
+            mode=mode, version=None, contract=contract, inserts=rows.num_rows, deletes=deleted
         )
