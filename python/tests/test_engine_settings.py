@@ -224,3 +224,26 @@ def test_values_are_compared_normalised() -> None:
         )
         == []
     )
+
+
+def test_a_run_records_the_settings_it_read(con, duckdb_global) -> None:
+    """#1130: the route records every setting the profile assumes, as read
+    from the session the run uses, and the report JSON carries them."""
+    from sverify import report_json
+
+    t = con.table("t")
+    report = sv.verify(
+        t.order_by(t.i).select("k", j=t.i + 1), requires={"t": [_.i.between(-100, 100)]}
+    )
+    report.run(con, "duckdb")
+    read = dict(report.routes["duckdb"].settings)
+    assert set(read) == {s.name for s in _engine_settings.settings_of("duckdb")}
+    assert read["integer_division"] is False
+    duckdb_global("default_order", "'desc'")
+    with pytest.warns(EngineSettingsWarning):
+        report.run(con, "duckdb")
+    route = report.routes["duckdb"]
+    assert dict(route.settings)["default_order"] == "DESC"
+    d = report_json.route_json(route)
+    assert d["settings"]["default_order"] == "DESC"
+    assert report_json.route(d) == route
