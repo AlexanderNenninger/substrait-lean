@@ -1244,8 +1244,8 @@ class Field:
 
 # The operations of `Un` and `Bin`, by area: a new one goes into its area's.
 CoreUnOp = Literal[
-    "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundEven", "froundTo", "ftoi",
-    "narrow", "itos", "dtext", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
+    "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundEven", "froundTo",
+    "ftoi", "narrow", "itos", "dtext", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
     "black_box", "raise",
 ]  # fmt: skip
 CoreBinOp = Literal[
@@ -1747,8 +1747,8 @@ def _lean_lit_kind(v: Any) -> LeanKind:
 #: it (`register`).
 UN_KINDS: dict[str, FixedKind] = {
     "itof": "float", "fneg": "float", "ffloor": "float", "fceil": "float", "fround": "float",
-    "froundEven": "float", "froundTo": "float", "ftoi": "int", "ftoi_or_null": "int", "narrow_or_null": "int",
-    "narrow": "int", "fit": "int", "itos": "str", "dtext": "str",
+    "froundEven": "float", "froundTo": "float", "ftoi": "int", "ftoi_or_null": "int",
+    "narrow_or_null": "int", "narrow": "int", "fit": "int", "itos": "str", "dtext": "str",
     **_functions.kinds("core", un=True),
 }  # fmt: skip
 BIN_KINDS: dict[str, FixedKind] = {
@@ -2857,7 +2857,8 @@ class _Parser:
                             case [a] | [a, Lit(value=0, kind="int")]:
                                 return Un("froundEven", a)
                         raise Unsupported(
-                            "round: rounding TIE_TO_EVEN is only modelled at zero digits"
+                            "round: rounding TIE_TO_EVEN is only modelled at zero digits; "
+                            "round to 0 digits and scale, or use TIE_AWAY_FROM_ZERO"
                         )
                     return _float_call(name, parsed)
                 mode = _div_by_zero_mode(v)
