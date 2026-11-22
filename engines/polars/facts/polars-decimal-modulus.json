@@ -108,6 +108,19 @@
           "observed": "Decimal(38, 3): 2.923"
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-22",
+      "method": "probe",
+      "checked_by": "session types-casts (#1941, ruling 188 X5), engines/polars/probes/decimal_modulus_streaming.py",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/decimal_modulus_streaming.py",
+          "sql": "pl.LazyFrame(a, b).select(a % b).collect(engine='streaming') over 13 pairs of decimal types: signs, mixed scales, 38-digit operands, the 38/39-digit common type, NULLs, and a zero divisor",
+          "observed": "the same as in memory: floored (-7.50 % 2.0 is 0.50, 7.50 % -2.0 is -0.50, -1 (38,9) % 0.3 (10,10) is 0.2000000000), Decimal(38, max(s1, s2)), exact past 38 digits at the common scale (99999999999999999999999999999999999999 % 7.0000000001 is 1.6880508122), NULL for a NULL operand, ComputeError for a zero divisor"
+        }
+      ],
+      "notes": "Polars 2.1.0 Python wheel, macOS arm64, Python 3.12, streaming engine."
     }
   ]
 }
