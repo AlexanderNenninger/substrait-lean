@@ -573,8 +573,8 @@ def Seen.ofJson? (j : Json) : Option Seen := do
       let tol : Tol := { abs := num "abs" t, rel := num "rel" t, ulps := (t.getObjValAs? Nat "ulps").toOption }
       some (Fl.within tol)
     | _ => none
-  return { q := { rows := rows, elements := elements, zeros := zeros, times := times,
-    strings := strings, errors := errors, decimals := decimals }, floats := floats }
+  let q : Obs := { rows := rows, elements := elements, zeros := zeros, times := times, strings := strings, errors := errors, decimals := decimals }
+  return { q := q, floats := floats }
 
 /-- The double columns a postcondition holds to the reference's exact value under the plan's
 bound (`observed`): those it reads, where it is proved, not `approx` and not robust, by the
