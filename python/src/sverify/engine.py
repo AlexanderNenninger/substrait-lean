@@ -602,6 +602,7 @@ def run_plan(
     finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
+    credentials: Mapping[str, Any] | None = None,
 ) -> pa.Table: ...
 
 
@@ -615,6 +616,7 @@ def run_plan(
     finite: Finite = True,
     tie_free: bool = False,
     asof: Sequence[dict] = (),
+    credentials: Mapping[str, Any] | None = None,
 ) -> pa.Table | Resident: ...
 
 
@@ -671,7 +673,8 @@ def run_plan(
             (`ProfilePlugin.credentials`): a secret's name or reference
             (`sverify.io.Secret`) by keyword, in place of the plugin's
             default name. The runner gets each as a `Secret`, never a
-            value. Default: the plugin's names.
+            value. Default: the plugin's names, which `Report.run` and a
+            refresh always use.
 
     Returns:
         The result as an Arrow table, with the plan's output names; with
@@ -712,9 +715,15 @@ def run_plan(
         ```
     """
     return _run_plan(
-        con, plan_json, engine, keep=keep, finite=finite, tie_free=tie_free, asof=asof,
+        con,
+        plan_json,
+        engine,
+        keep=keep,
+        finite=finite,
+        tie_free=tie_free,
+        asof=asof,
         credentials=credentials,
-    )  # fmt: skip
+    )
 
 
 def _run_plan(
@@ -763,8 +772,9 @@ def _run_plan(
 def _credentials(plugin: Any, given: Mapping[str, Any]) -> dict[str, Any]:
     """The secrets `plugin`'s runner takes, as `Secret` references: the
     caller's where given, else the plugin's default names."""
-    from sverify.io._secrets import as_secret
+    from sverify import _hooks
 
+    as_secret = _hooks.secrets().as_secret
     unknown = sorted(set(given) - set(plugin.credentials))
     if unknown:
         takes = ", ".join(repr(k) for k in sorted(plugin.credentials)) or "none"
