@@ -7,7 +7,7 @@ counterparts. Versions are snapshot sequence numbers; a run of appends is
 read from the files those snapshots added, and anything else (row-level
 deletes, overwrites) is a diff of the data files that changed. Iceberg has no
 CHECK constraints, so the sink keeps the contract in the table properties and
-snapshot summaries. Tables with equality deletes can't be read.
+snapshot summaries. Tables with equality deletes are read on DuckDB from local Parquet files without partition fields, and otherwise can't be read.
 
 ```python
 import datetime as dt
