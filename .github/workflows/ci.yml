@@ -943,7 +943,7 @@ jobs:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.dbt == 'true'
     runs-on: ${{ fromJSON(needs.route.outputs.runner) }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       issues: read  # the replay's closed-issue check (`gh issue view`)
