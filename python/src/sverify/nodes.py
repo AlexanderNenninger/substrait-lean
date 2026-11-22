@@ -51,10 +51,10 @@ from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
 from sverify.engine import ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
-from sverify.incremental import BatchRefresh, IncrementalView, Pipeline, Source, Stored
+from sverify.incremental import BatchRefresh, IncrementalView, Pipeline, Stored, VersionedSource
 from sverify.io._credentials import CredentialUse
 from sverify.io._credentials import uses as credential_uses
-from sverify.observation import PLAN_BOUND, Observation
+from sverify.observation import PLAN_BOUND, Lenses
 from sverify.steps import Step, as_transform
 
 if TYPE_CHECKING:
@@ -377,7 +377,7 @@ class Node:
         audit: bool = False,
         route: RouteKind | Literal["auto"] = "auto",
         unverified: bool = False,
-        reproducible: Observation | None = None,
+        reproducible: Lenses | None = None,
         lineage: Any = None,
     ) -> Refresh:
         """Bring this node and every node it reads up to date, and write the
@@ -726,7 +726,7 @@ class Node:
 class _Source(Node):
     """A source as a node: the leaf of a stage."""
 
-    def __init__(self, source: Source):
+    def __init__(self, source: VersionedSource):
         schema = ibis.Schema.from_pyarrow(plain_schema(source.schema()))
         super().__init__(source.name, ibis.table(schema, name=source.name), [])
         self.source = source
@@ -757,7 +757,7 @@ class _Stored(Node):
         super().__init__(sink.name, expr, [upstream])
         sink._node = self  # type: ignore[attr-defined]
         self.upstream, self.sink = upstream, sink
-        self._reader: Source = sink._source()
+        self._reader: VersionedSource = sink._source()
         if quarantine is True:
             raise TypeError(
                 "quarantine= takes a sink, None (a table next to the sink's) or False "
@@ -1119,8 +1119,8 @@ class StageRefresh:
             else {
                 "mode": self.write.mode,
                 "version": self.write.version,
-                "inserted": self.write.inserted,
-                "deleted": self.write.deleted,
+                "inserts": self.write.inserts,
+                "deletes": self.write.deletes,
             },
             "credentials": [c.to_dict() for c in self.credentials],
         }
@@ -1272,9 +1272,10 @@ class Refresh:
         return "\n".join(str(s) for s in self.nodes)
 
 
-REFRESH_FORMAT = 1
-"""The version of `Refresh.to_json`'s format."""
-REFRESH_SCHEMA = "https://alexandernenninger.github.io/substrait-lean/schemas/refresh/1.json"
+REFRESH_FORMAT = 2
+"""The version of `Refresh.to_json`'s format. Format 1, before 1.0, named a
+write's `inserts` and `deletes` `inserted` and `deleted` (#2345)."""
+REFRESH_SCHEMA = "https://alexandernenninger.github.io/substrait-lean/schemas/refresh/2.json"
 """The `$schema` of `Refresh.to_json`'s documents: its schema's `$id`."""
 
 
@@ -1386,7 +1387,7 @@ class Group:
         audit: bool = False,
         route: RouteKind | Literal["auto"] = "auto",
         unverified: bool = False,
-        reproducible: Observation | None = None,
+        reproducible: Lenses | None = None,
         lineage: Any = None,
     ) -> Refresh:
         """Refresh every node against the same source versions (each
@@ -1517,7 +1518,7 @@ def _write_text(w: SinkWrite) -> str:
     if w.mode == "skipped":
         return "already committed"
     at = "" if w.version is None else f" v{w.version}"
-    return f"{w.mode.replace('_', ' ')}{at}: +{w.inserted} −{w.deleted}"
+    return f"{w.mode.replace('_', ' ')}{at}: +{w.inserts} −{w.deletes}"
 
 
 def _held_text(h: Held, stage: _Stage | None) -> str:
@@ -1627,7 +1628,7 @@ def _routes(
     order: Sequence[Node],
     engine: Any,
     route: RouteKind | Literal["auto"],
-    reproducible: Observation | None = None,
+    reproducible: Lenses | None = None,
     unverified: bool = False,
 ) -> dict[int, Route]:
     """Each node's route to `engine` (by `id`), checked before anything runs.
@@ -1675,7 +1676,7 @@ def _routes(
             chosen = routes.unverified(report, engine)
             why = " (on_unproved='warn')" if warns else ""
             warnings.warn(
-                f"refreshing {name} on {e} unverified{why}: {chosen.reason}",
+                f"refreshing {name} on {e} unverified{why}: {chosen.why}",
                 routes.UnverifiedRunWarning,
                 stacklevel=4,
             )
@@ -1689,21 +1690,21 @@ def _routes(
             # A proved plan on a version outside the range (D70), as `Report.run`.
             chosen = routes.unverified(report, engine, str(err))
             warnings.warn(
-                f"refreshing {name} on {e} unverified: {chosen.reason}",
+                f"refreshing {name} on {e} unverified: {chosen.why}",
                 routes.UnverifiedRunWarning,
                 stacklevel=4,
             )
             out[id(n)] = chosen
             continue
         if chosen.refused:
-            refused = replace(chosen, reason=f"{name}: {chosen.reason}")
+            refused = replace(chosen, why=f"{name}: {chosen.why}")
             if not routes.verified(report):
-                reason = refused.reason.replace(
+                reason = refused.why.replace(
                     "run(..., unverified=True) runs it anyway",
                     "refresh(unverified=True), or on_unproved='warn' on the transform, "
                     "runs it anyway",
                 )
-                raise UnverifiedRunError(report, replace(refused, reason=reason))
+                raise UnverifiedRunError(report, replace(refused, why=reason))
             raise routes.RouteError(refused)
         out[id(n)] = chosen
     return out
@@ -1779,7 +1780,7 @@ def wants_node(args: Sequence[Any], kwargs: dict[str, Any]) -> bool:
     return any(isinstance(v, Node) or is_source(v) for v in [*args, *kwargs.values()])
 
 
-def _source_node(source: Source) -> _Source:
+def _source_node(source: VersionedSource) -> _Source:
     """The node of a source: one per source, so that every transform reading
     it reads the same table."""
     node = getattr(source, "_sverify_node", None)

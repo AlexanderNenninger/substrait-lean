@@ -441,7 +441,7 @@ def test_a_pipeline_reports_retention_without_nodes():
     src.apply(Changes(inserts=samples([("a", 300, 1)])))
     report = pipe.refresh()
     (r,) = report.retention
-    assert (r.view, r.column, r.open, r.retired) == ("hourly", "bucket", 3, 3)
+    assert (r.node, r.column, r.open, r.retired) == ("hourly", "bucket", 3, 3)
     assert "retention hourly.bucket" in str(report)
 
 

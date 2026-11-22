@@ -93,15 +93,15 @@ def test_refresh_then_catalog(env, tmp_path):
     assert done.returncode == 0, done.stdout + done.stderr
     doc = json.loads((tmp_path / "refresh.json").read_text())
     writes = writes_of(doc)
-    assert writes["gdp"]["inserted"] == 1100
-    assert writes["trade_openness"]["inserted"] == 110
+    assert writes["gdp"]["inserts"] == 1100
+    assert writes["trade_openness"]["inserts"] == 110
 
     # A second refresh of the same data changes no row downstream.
     again = lake("refresh", "--out", str(tmp_path / "again.json"), env=env)
     assert again.returncode == 0, again.stdout + again.stderr
     doc = json.loads((tmp_path / "again.json").read_text())
     writes = writes_of(doc)
-    assert (writes["trade_openness"]["inserted"], writes["trade_openness"]["deleted"]) == (0, 0)
+    assert (writes["trade_openness"]["inserts"], writes["trade_openness"]["deletes"]) == (0, 0)
 
     assert json.loads((tmp_path / "check.json").read_text())["exit"] == 0
     site = tmp_path / "site"

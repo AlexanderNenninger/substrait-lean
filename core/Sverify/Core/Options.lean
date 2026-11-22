@@ -13,8 +13,8 @@ group its options; a `ProfileTable` gives, per option or per group and option,
 the behaviours a profile allows.
 
 `Profile.reference.table` is the reference's table. The parser reads the
-options a plan sets from it (`Parse.optionAccepts`). Step 1c reads it in
-`Rel.AllowedP`; until then it describes what `Rel.Allowed` does. -/
+options a plan sets from it (`Parse.optionAccepts`), and `Rel.AllowedP`
+reads it (step 1c). -/
 
 namespace Substrait
 

@@ -165,6 +165,12 @@ class Dialect:
     writer prints the class's canonical value: `"extreme"` (`MIN`, `MAX`) and
     `"keys"` (group keys and `DISTINCT` rows)."""
 
+    nan_orders: ClassVar[bool] = False
+    """The engine compares and sorts doubles as `Value.le` does: NaN equal to
+    NaN and above `+∞` (an engine fact, e.g. `duckdb-nan-order`). Then `=`,
+    `<` and sort keys are the engine's own; else NaN is ranked apart
+    (`float_rank`)."""
+
     name: str
     guards: bool = True
     """Write the run-time checks of `analysis/Sverify/Analysis/Safety.lean`'s issues:
@@ -551,11 +557,15 @@ class Dialect:
 
     def float_eq(self, a: str, b: str) -> str:
         """Equality of doubles: NaN = NaN (IEEE has NaN <> NaN)."""
+        if self.nan_orders:
+            return f"({a} = {b})"
         ra, rb = self.float_rank(a), self.float_rank(b)
         return f"({ra} = {rb} AND ({ra} = 1 OR {a} = {b}))"
 
     def float_lt(self, a: str, b: str) -> str:
         """`<` of doubles: NaN is above everything else."""
+        if self.nan_orders:
+            return f"({a} < {b})"
         ra, rb = self.float_rank(a), self.float_rank(b)
         return f"({ra} < {rb} OR ({ra} = 0 AND {rb} = 0 AND {a} < {b}))"
 
@@ -4072,10 +4082,6 @@ def _coalesce(a: Expr, rest: list[Expr]) -> Expr:
     return If(Un("not", Un("is_null", a)), a, _coalesce(rest[0], rest[1:]))
 
 
-def _pick(better: Callable[[Expr, Expr], Expr], a: Expr, b: Expr) -> Expr:
-    return If(Un("is_null", a), b, If(Un("is_null", b), a, If(better(a, b), b, a)))
-
-
 def _option(f: dict, name: str, default: str) -> str:
     """`Parse.optionPref`: the first preference of option `name`, or `default`
     when the plan omits it."""
@@ -5627,7 +5633,7 @@ class _Writer:
     def sort_exprs(self, x: str, kind: Kind | None) -> list[tuple[str, Kind | None]]:
         """Expressions (and their kinds) that sort like `Value.le` on a column,
         NULL exactly when the value is NULL."""
-        if kind != "float":
+        if kind != "float" or self.d.nan_orders:
             return [(x, kind)]
         return [(self.d.float_rank(x), "int"), (x, "float")]
 
@@ -5821,8 +5827,12 @@ class _Writer:
                 consts = [_float_lit(a), _float_lit(b)]
                 # A finite number divided by a constant of at least 1 in size, or
                 # multiplied by one of at most 1, has no larger magnitude: no overflow.
-                shrinks = (op in ("fdiv", "fdivIeee") and abs(consts[1] or 0.0) >= 1.0) or (
-                    op == "fmul" and any(c is not None and abs(c) <= 1.0 for c in consts)
+                # Nor divided by an integer as a double: zero raises first, and
+                # any other is at least 1 in size (`Expr.mayInfBin_sound`, #1787).
+                shrinks = (
+                    (op in ("fdiv", "fdivIeee") and abs(consts[1] or 0.0) >= 1.0)
+                    or (op == "fmul" and any(c is not None and abs(c) <= 1.0 for c in consts))
+                    or (op == "fdiv" and isinstance(b, Un) and b.op == "itof")
                 )
                 if not plain and (low := d.lowered(op, [sa, sb], "float", consts)) is not None:
                     if op == "fmod" or shrinks:

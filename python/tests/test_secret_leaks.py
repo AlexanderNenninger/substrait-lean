@@ -98,7 +98,7 @@ catalog = SqlCatalog(
 )
 ice = IcebergSource(catalog, "db.events")
 samples = FlightSource(
-    os.environ["SVLEAK_FLIGHT_AT"], "samples", secret="flight-token",
+    os.environ["SVLEAK_FLIGHT_AT"], "samples", credentials="flight-token",
     schema=pa.schema([("id", pa.int64()), ("amount", pa.int64())]),
 )
 

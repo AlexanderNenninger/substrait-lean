@@ -158,7 +158,7 @@ def test_reports_say_what_was_set_aside():
     assert alert is not None and "(_.amount >= 0)" in alert and "| id |" not in alert
     assert "| id | amount |" in (r.alert(rows=True) or "")
     doc = json.loads(r.to_json())
-    assert doc["format"] == 1 and doc["outcome"] == "quarantined"
+    assert doc["format"] == 2 and doc["outcome"] == "quarantined"
     assert doc["nodes"][0]["quarantined"] == 3
     # Rows of the data leave the process only when asked (#887).
     assert doc["nodes"][0]["quarantine"][0]["examples"] == []

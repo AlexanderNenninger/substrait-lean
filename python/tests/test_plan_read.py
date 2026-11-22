@@ -1,9 +1,11 @@
 """The shared decoder of Lean's written plans (`sverify._plan_read`)."""
 
 import math
+import re
 
 import pytest
 
+from _repo import ROOT, needs_repo
 from sverify import _plan_read as pr
 from sverify.sql import Unsupported
 
@@ -117,3 +119,15 @@ def test_interval_micros() -> None:
         86_402_003_000
     )
     assert pr.interval_micros({"subseconds": -1, "precision": 9}) == -1
+
+
+@needs_repo
+@pytest.mark.parametrize(
+    ("lean", "python"), [("repeatMax", "REPEAT_MAX"), ("substrMax", "SUBSTR_MAX")]
+)
+def test_bounds_are_leans(lean: str, python: str) -> None:
+    """`_plan_read`'s copies of `Text`'s bounds are Lean's values (ruling 267)."""
+    text = (ROOT / "core" / "Sverify" / "Core" / "Text.lean").read_text()
+    m = re.search(rf"^def {lean} : (?:Nat|Int) := 2 \^ (\d+)( - 1)?$", text, re.M)
+    assert m, f"Text.{lean} is not 2 ^ k or 2 ^ k - 1"
+    assert getattr(pr, python) == 2 ** int(m[1]) - (1 if m[2] else 0)

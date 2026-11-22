@@ -1639,15 +1639,9 @@ def _refuse_unverified(report: Report) -> None:
             hint="export a report that sv.verify returned",
         )
     if not report._proved:
-        reasons = [f"not proved: {c.label}" for c in report.ensures if not c.portable]
-        reasons += [f"may fail: {i}" for i in report.errors]
-        if report._transfer:
-            reasons.append("the proof does not carry over to Substrait (see report.details())")
-        reasons += [f"needs {n}" for n in report._needs_lines()]
-        if report.floats_unmet:
-            reasons.append(f"no engine meets the lenses' doubles: {report.floats_unmet}")
         raise ExportError(
-            "not verified: " + "; ".join(reasons), hint="fix what it names and verify again"
+            "not verified: " + "; ".join(report._unproved_reasons()),
+            hint="fix what it names and verify again",
         )
 
 
@@ -1897,9 +1891,9 @@ def _floats_component(components: Mapping[str, Any]) -> Any:
 def _recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     """Prove a stored plan's contract again: `Report.from_substrait`."""
     from sverify._verdict import split_assumed, verdict
-    from sverify.conditions import CheckedCondition, PlannedCondition
+    from sverify.conditions import PlannedCondition, Postcondition
     from sverify.engine import run_checker
-    from sverify.observation import Observation
+    from sverify.observation import Lenses
     from sverify.report import Issue, column_facts
 
     imp = read(data)
@@ -1941,7 +1935,7 @@ def _recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     for e in imp.ensures:
         if e.get("kind") == "row":
             r = next(rows)
-            checked.append(CheckedCondition(e["text"], r["proved"], r["value"]))
+            checked.append(Postcondition(e["text"], r["proved"], r["value"]))
         else:
             checked.append(_table_condition(e["entry"]).ensured(out, next_key))
     requires: dict[str, list[str]] = {}
@@ -1962,7 +1956,7 @@ def _recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         k: v for k, v in (m.get("lenses_components") or {}).items() if k not in ("floats", "bound")
     }
     observation = dataclasses.replace(
-        Observation(floats=_floats_component(m.get("lenses_components") or {})), **components
+        Lenses(floats=_floats_component(m.get("lenses_components") or {})), **components
     )
     report = verdict(
         out,
