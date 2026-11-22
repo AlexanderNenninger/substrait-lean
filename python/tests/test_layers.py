@@ -62,7 +62,7 @@ LAYERS: list[tuple[str, list[str]]] = [
         "report",
         ["routes", "report", "_verdict", "report_json", "substrait_export", "_substrait_shims"],
     ),
-    ("transform", ["contracts"]),
+    ("transform", ["proposers", "contracts"]),
     (
         "incremental",
         ["_state", "_retention", "_exact_sum", "_linear", "_semi", "_touched", "incremental"],
