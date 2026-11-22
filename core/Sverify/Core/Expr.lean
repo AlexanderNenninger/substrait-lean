@@ -124,6 +124,16 @@ inductive UnFn where
   | wrap (bits : Nat)
   /-- `CAST(x AS VARCHAR)` of an integer. -/
   | itos
+  /-- `CAST(x AS VARCHAR)` of a `DECIMAL(p, s)` with `s < p` (D72, #346): `decText` of its
+  unscaled integer at its scale, exact and total. -/
+  | dtext
+  /-- `CAST(x AS VARCHAR)` of a `DECIMAL(p, p)`: `dtext`'s text (`0.500`, `UnFn.apply_dtextFull`).
+  An engine that prints a `DECIMAL(p, p)` without its integer part widens it first
+  (`dwiden`, D72). -/
+  | dtextFull
+  /-- A decimal of precision `p`, written at precision `p + 1`: the same value, as `widen` is for
+  a `FLOAT`. It marks where a written plan widens (D72). -/
+  | dwiden
   /-- `CAST(x AS DOUBLE)` of a `FLOAT` (fp32): the same value, which a double
   holds exactly; it marks where a 32-bit double becomes a 64-bit one (#208). -/
   | widen
@@ -410,6 +420,18 @@ unscaled value (`Parse.decimalCall` brings both to one scale first). -/
   | .int i | .dec _ i => some i
   | _ => none
 
+/-- The text of the decimal `i / 10 ^ s` (D72): `-` for a negative value, the integer part with
+at least one digit, then `.` and exactly `s` digits (none for `s = 0`). -/
+def decText (s : Nat) (i : Int) : String :=
+  let sign := if i < 0 then "-" else ""
+  let a := i.natAbs
+  if s = 0 then sign ++ toString a
+  else
+    let whole := a / 10 ^ s
+    let frac := toString (a % 10 ^ s)
+    sign ++ toString whole ++ "." ++
+      "".pushn '0' (s - frac.length) ++ frac
+
 def UnFn.apply : UnFn → Value → Value
   | .not, .bool b => .bool (!b)
   | .isNull, .null => .bool true
@@ -435,6 +457,8 @@ def UnFn.apply : UnFn → Value → Value
   | .narrowOrNull n, .int i => if fitsBits n i then .int i else .null
   | .wrap _, v => v
   | .itos, .int i => .str (toString i)
+  | .dtext, .dec s i | .dtextFull, .dec s i => .str (decText s i)
+  | .dwiden, v => v
   | .widen, v => v
   | .atUtc _, v => v
   | .upper, .str s => .str (Text.upper s)
@@ -500,6 +524,10 @@ def UnFn.apply : UnFn → Value → Value
   | .fit _ _, v => v
   | .bbox n, v => BlackBox.callScalar Boxes.Ambient.boxes n [v]
   | _, _ => .null
+
+/-- One definition of a decimal's text (ruling 245, E1): the text of a `DECIMAL(p, p)` is `dtext`'s. -/
+theorem UnFn.apply_dtextFull (v : Value) : UnFn.apply .dtextFull v = UnFn.apply .dtext v := by
+  cases v <;> rfl
 
 /-- D52: the mark changes no value. -/
 @[simp] theorem UnFn.apply_approx (k : Nat) (v : Value) : UnFn.apply (.approx k) v = v := rfl

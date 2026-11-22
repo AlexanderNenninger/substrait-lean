@@ -233,6 +233,8 @@ def test_the_route_table_decides_which_plan_runs(rules, kind):
     taken = report._plan_to_run(kind, checked=True, engine=kind) == rewrite
     assert taken == routes.runs_rewrite(kind)
     assert report._run_gates.get(kind) == (None if taken else "route")
+    # A native route runs the plan as written: "No, we want to reproduce the
+    # user-written SQL closely" (maintainer, 2026-11-20, ruling 217 S5).
     assert routes.runs_rewrite(kind) == (kind in ("translated", "transfer"))
 
 

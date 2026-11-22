@@ -9,7 +9,7 @@ import math
 import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 from sverify import _case_tables, _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
 from sverify._support import DUCKDB_ONLY, ISSUE_271
-from sverify._unsupported import ISSUE_1725
+from sverify._unsupported import DECIMAL_38_38, ISSUE_1725
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify.black_box import BlackBox
 
@@ -44,7 +44,9 @@ class Lst:
 
 
 Kind = (
-    Literal["int", "float", "time", "instant", "date", "interval", "str", "bool", "tod"] | Dec | Lst
+    Literal["int", "float", "time", "timeNs", "instant", "date", "interval", "str", "bool", "tod"]
+    | Dec
+    | Lst
 )
 
 #: The constructors of `Substrait.Issue` (`core/Sverify/Core/Issue.lean`), which a
@@ -85,12 +87,14 @@ def raised_issue(message: str) -> GuardIssue:
 
 
 """What a value is in SQL. `time` is a microsecond TIMESTAMP without time
-zone, `tod` a microsecond TIME of day, `interval` a day/second interval of
-microseconds. `None` (unknown) is
-used for columns whose Substrait type the model does not know."""
+zone, `timeNs` a nanosecond one (D61), `tod` a microsecond TIME of day,
+`interval` a day/second interval of microseconds. `None` (unknown) is used for
+columns whose Substrait type the model does not know."""
 
 LeanKind = (
-    Literal["int", "float", "time", "instant", "date", "str", "bool", "tod", "other"] | Dec | Lst
+    Literal["int", "float", "time", "timeNs", "instant", "date", "str", "bool", "tod", "other"]
+    | Dec
+    | Lst
 )
 """`Parse.Kind`: what Lean's parser knows about a value. The parser decides
 between integer and double arithmetic by it, so this module tracks it too."""
@@ -240,6 +244,7 @@ class Dialect:
             "int": "BIGINT",
             "float": "DOUBLE PRECISION",
             "time": "TIMESTAMP",
+            "timeNs": "TIMESTAMP_NS",
             "instant": "TIMESTAMP WITH TIME ZONE",
             "date": "DATE",
             "tod": "TIME",
@@ -454,6 +459,11 @@ class Dialect:
 
     def int_to_str(self, a: str) -> str:
         """Decimal digits with a leading `-` for negatives (Lean's `toString`)."""
+        return self.cast(a, "str")
+
+    def decimal_to_str(self, a: str, p: int, s: int) -> str:
+        """A `DECIMAL(p, s)`'s text (D72): `-` for a negative value, the integer part with at
+        least one digit, then `.` and exactly `s` digits (none for `s = 0`)."""
         return self.cast(a, "str")
 
     def float_floor(self, x: str) -> str:
@@ -1185,6 +1195,23 @@ def _timestamp_text(micros: int) -> str:
     return f"{ts.year:04d}-" + ts.strftime("%m-%d %H:%M:%S.%f")
 
 
+def _decimal_text(unscaled: int, scale: int) -> str:
+    """`decText` (D72): the digits of `unscaled / 10 ** scale`, `scale` of them after the
+    point, with a `-` for a negative value."""
+    sign = "-" if unscaled < 0 else ""
+    digits = str(abs(unscaled))
+    if scale == 0:
+        return sign + digits
+    digits = digits.rjust(scale + 1, "0")
+    return f"{sign}{digits[:-scale]}.{digits[-scale:]}"
+
+
+def _keeps_decimal_text(ty: dict, c: Const) -> bool:
+    """`Parse.keepsDecimalText`: a `DECIMAL(p, p)` cast to a string stays a call (its text
+    depends on the engine, D72), so a constant does not fold it."""
+    return "string" in ty and c.tag == "dec" and c.precision == c.scale
+
+
 def _date_text(days: int) -> str:
     try:
         return (date(1970, 1, 1) + timedelta(days=days)).isoformat()
@@ -1213,7 +1240,7 @@ class Field:
 # The operations of `Un` and `Bin`, by area: a new one goes into its area's.
 CoreUnOp = Literal[
     "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo", "ftoi",
-    "narrow", "itos", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
+    "narrow", "itos", "dtext", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
     "black_box", "raise",
 ]  # fmt: skip
 CoreBinOp = Literal[
@@ -1716,7 +1743,8 @@ def _lean_lit_kind(v: Any) -> LeanKind:
 UN_KINDS: dict[str, FixedKind] = {
     "itof": "float", "fneg": "float", "ffloor": "float", "fceil": "float", "fround": "float",
     "froundTo": "float", "ftoi": "int", "ftoi_or_null": "int", "narrow_or_null": "int",
-    "narrow": "int", "fit": "int", "itos": "str", **_functions.kinds("core", un=True),
+    "narrow": "int", "fit": "int", "itos": "str", "dtext": "str",
+    **_functions.kinds("core", un=True),
 }  # fmt: skip
 BIN_KINDS: dict[str, FixedKind] = {
     "fadd": "float", "fsub": "float", "fmul": "float", "fdiv": "float", "fdivIeee": "float",
@@ -2044,8 +2072,13 @@ def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
         case ("int" | "float" | "date" | "str" | "bool") as k, _:
             return k, k
         # Times are microseconds; a coarser precision is not modelled.
-        case ("time" | "instant" | "tod") as k, int() as p if p >= 6:
+        case ("time" | "instant" | "tod") as k, 6:
             return k, k
+        # Nanosecond timestamps (D61): a kind of their own, which the plan
+        # carries, compares, orders and takes the MIN and MAX of, and never
+        # mixes with microseconds.
+        case "time", 9:
+            return "timeNs", "timeNs"
         case "decimal", (p, sc):
             d = Dec(p, sc)
             return d, d
@@ -2204,6 +2237,8 @@ def _cast_const(ty: dict, c: Const) -> Const:
                 return Const("str", "true" if c.value else "false")
             if c.tag == "int" and c.kind == "date":
                 return Const("str", _date_text(c.value))
+            if c.tag == "dec":
+                return Const("str", _decimal_text(c.value, c.scale))
             raise WriterUnsupported("casts of this value to strings are not supported")
         # An instant literal: the microseconds of a timestamp literal, read at UTC (D53).
         case "instant":
@@ -2342,6 +2377,8 @@ def _arrow_cast(c: Const, ty: str) -> Const | None:
     elif ty == "Utf8":
         target = "string"
     else:
+        return None
+    if _keeps_decimal_text({target: {}}, c):
         return None
     try:
         return _cast_const({target: {}}, c)
@@ -2574,7 +2611,9 @@ class _Parser:
             return _const_literal(lit)
         if (c := _field(j, "cast")) is not None:
             x = self.const(_req(c, "input"))
-            return None if x is None else _cast_const(_req(c, "type"), x)
+            if x is None or _keeps_decimal_text(_req(c, "type"), x):
+                return None
+            return _cast_const(_req(c, "type"), x)
         if (f := _field(j, "scalarFunction")) is not None:
             name = self.fns.get(_nat_d(f, "functionReference"))
             if name is None:
@@ -2882,6 +2921,8 @@ class _Parser:
                         return Un("narrow", t, digits=bits)
                     if target == "float":
                         return Un("dtof", e)
+                    if target == "str":
+                        return Un("dtext", e, digits=k.p, param=str(k.s))
                     raise WriterUnsupported(f"unsupported cast from DECIMAL to {target}")
                 if k == "time" and _interval_type(_req(v, "type")):
                     return e
@@ -3770,7 +3811,7 @@ class _Parser:
                     arg = Un("itof", arg)
             case (
                 ("min" | "max"),
-                ("int" | "float" | "str" | "bool" | "time" | "instant" | "date"),
+                ("int" | "float" | "str" | "bool" | "time" | "timeNs" | "instant" | "date"),
             ):
                 fn = name
             case (("min" | "max" | "sum" | "avg"), _):
@@ -5234,6 +5275,44 @@ class _Writer:
         )
         return self.select(items, d.subquery(top, b))
 
+    def sorted_root(self, root: Rel, names: Sequence[str]) -> str | None:
+        """Under a multiset observation, a root that is a sort, or a top-N, under
+        column selections: the result sorted by the sort's own keys, where it
+        would otherwise number the rows and sort them by the number (#2186).
+        Ties are open (`rows="multiset"`), so the keys alone give an order
+        `Rel.Allowed` allows. `None` for any other root."""
+        cols = list(range(len(names)))
+        r = root
+        while isinstance(r, Emit) and id(r) not in self.native:
+            cols = [r.mapping[j] for j in cols]
+            r = r.input
+        if id(r) in self.native:
+            return None
+        d = self.d
+        match r:
+            case OrderBy(input=src, keys=sort) if sort:
+                a = self.alias()
+                n = arity(src)
+                if any(k.col >= n for k in sort):
+                    return None
+                inner = self.rel(src, False)
+            case Fetch(input=OrderBy(input=src, keys=sort) as o, offset=off, count=cnt) if (
+                sort and id(o) not in self.native
+            ):
+                n = arity(src)
+                if any(k.col >= n for k in sort):
+                    return None
+                inner = self.top_n(src, sort, off, cnt, n, False)
+                a = self.alias()
+            case _:
+                return None
+        items = [
+            f"{self.ref(a, self.c(j))} AS {d.quote(name)}"
+            for j, name in zip(cols, names, strict=True)
+        ]
+        keys = self.sort_keys(a, sort, kinds(src))
+        return self.select(items, d.subquery(inner, a), "ORDER BY " + ", ".join(keys))
+
     def sort_keys(self, a: str, sort: Sequence[SortKey], ks: list[Kind | None]) -> list[str]:
         """ORDER BY keys for `sortLe sort` over subquery `a`, ties broken by its
         ordinal (Lean's merge sort is stable) unless the caller promised none."""
@@ -5627,6 +5706,8 @@ class _Writer:
                 return d.decimal_to_int(go(a, kind(a)))
             case Un(op="dtof", arg=a):
                 return d.decimal_to_float(go(a, kind(a)))
+            case Un(op="dtext", arg=a, digits=p, param=s):
+                return d.decimal_to_str(go(a, kind(a)), p, int(s))
             case Un(op="not", arg=a):
                 return d.not3(go(a, "bool"))
             case Un(op="raise", arg=a, param=msg):
@@ -6423,8 +6504,35 @@ def to_sql(
     w.native = p.native
     if unchecked is not None:
         w.unchecked = unchecked_slots(p.root, unchecked)
+    if not w.seq and (sorted_root := w.sorted_root(p.root, names)) is not None:
+        return sorted_root
     ordered = order_matters(p.root) if w.seq else chain_orders(p.root)
     a = w.alias()
     items = [f"{w.ref(a, w.c(i))} AS {dialect.quote(name)}" for i, name in enumerate(names)]
     rest = f"ORDER BY {w.asc(w.ordinal(a))}" if ordered else ""
     return w.select(items, dialect.subquery(w.rel(p.root, ordered), a), rest)
+
+
+def _decimal_text_38(node: Any) -> bool:
+    """Does the core term `node` cast a `DECIMAL(38, 38)` to a string?"""
+    if isinstance(node, Un) and node.op == "dtext" and node.digits == 38 and node.param == "38":
+        return True
+    if is_dataclass(node) and not isinstance(node, type):
+        return any(_decimal_text_38(getattr(node, f.name)) for f in fields(node))
+    if isinstance(node, (list, tuple)):
+        return any(_decimal_text_38(x) for x in node)
+    return False
+
+
+def check_decimal_text(plan: Any, engine: str, err: type[Exception] = ValueError) -> None:
+    """Raise `err` for a plan that casts a `DECIMAL(38, 38)` to a string on DuckDB: its writer
+    has no wider decimal to print it from (D72, ruling 245, E6). The route check calls this, so
+    `verify` reports it before anything runs. A plan the writer cannot read is not refused here."""
+    if engine.lower() != "duckdb" or not isinstance(plan, dict):
+        return
+    try:
+        root = parse_plan(plan).root
+    except Unsupported:
+        return
+    if _decimal_text_38(root):
+        raise err(DECIMAL_38_38)

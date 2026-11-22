@@ -4,6 +4,10 @@ description: >-
   on a miss, uploaded as the run's `substrait-check` artifact that
   `./.github/actions/checker` downloads. The lake build skips the generated
   proofs (`lean` checks them), so it restores the lake cache without saving it.
+inputs:
+  upload:
+    description: Upload the checker as the run's artifact (false on an ARM runner, which builds its own; see ./.github/actions/checker)
+    default: "true"
 outputs:
   cache-hit:
     description: Whether the checker came from the cache (no lake build ran)
@@ -11,11 +15,28 @@ outputs:
 runs:
   using: composite
   steps:
-    - id: cache
+    # A pull request's run on an ARM runner (the Hetzner hosts) only restores
+    # (see setup-lean).
+    - id: key
+      shell: bash
+      env:
+        KEY: substrait-check-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', 'core/lakefile.toml', 'core/lake-manifest.json', 'analysis/lakefile.toml', 'analysis/lake-manifest.json', 'frontend/lakefile.toml', 'frontend/lake-manifest.json', 'engines/lakefile.toml', 'engines/lake-manifest.json', 'engines/polars/lakefile.toml', 'engines/polars/lake-manifest.json', 'engines/spark/lakefile.toml', 'engines/spark/lake-manifest.json', 'engines/duckdb/lakefile.lean', 'engines/duckdb/lake-manifest.json', 'engines/substrait/lakefile.toml', 'engines/substrait/lake-manifest.json', '**/*.lean') }}
+      run: echo "key=$KEY" >> "$GITHUB_OUTPUT"
+    - id: save
+      if: runner.arch == 'X64' || github.event_name != 'pull_request'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: checker-bin
-        key: substrait-check-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('lean-toolchain', 'lake-manifest.json', 'lakefile.lean', 'core/lakefile.toml', 'core/lake-manifest.json', 'analysis/lakefile.toml', 'analysis/lake-manifest.json', 'frontend/lakefile.toml', 'frontend/lake-manifest.json', 'engines/lakefile.toml', 'engines/lake-manifest.json', 'engines/polars/lakefile.toml', 'engines/polars/lake-manifest.json', 'engines/spark/lakefile.toml', 'engines/spark/lake-manifest.json', 'engines/duckdb/lakefile.lean', 'engines/duckdb/lake-manifest.json', 'engines/substrait/lakefile.toml', 'engines/substrait/lake-manifest.json', '**/*.lean') }}
+        key: ${{ steps.key.outputs.key }}
+    - id: restore
+      if: runner.arch != 'X64' && github.event_name == 'pull_request'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: checker-bin
+        key: ${{ steps.key.outputs.key }}
+    - id: cache
+      shell: bash
+      run: echo "cache-hit=${{ steps.save.outputs.cache-hit || steps.restore.outputs.cache-hit }}" >> "$GITHUB_OUTPUT"
     - if: steps.cache.outputs.cache-hit != 'true'
       uses: ./.github/actions/setup-lean
       with:
@@ -26,7 +47,8 @@ runs:
         lake build substrait-check
         mkdir -p checker-bin
         cp .lake/build/bin/substrait-check checker-bin/
-    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+    - if: inputs.upload == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: substrait-check
         path: checker-bin/substrait-check
