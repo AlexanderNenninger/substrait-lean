@@ -471,3 +471,5 @@ end Substrait.Examples
 #print axioms Substrait.Zone.add_sat
 #print axioms Substrait.Zone.empty?_sound
 #print axioms Substrait.Rel.marks_measure_finite
+#print axioms Substrait.Expr.mayInfBin_sound
+#print axioms Substrait.FloatCode.fdiv_ofInt_fin

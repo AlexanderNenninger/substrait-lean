@@ -61,6 +61,7 @@ contract's preconditions.
 | A window's result does not depend on how its ties are broken | `eval`, `OrderAllowed` | `Rel.window_deterministic`, `Rel.keyedWindows_soundAll` | `Keys.lean` |
 | A plan with no reported issue raises no runtime error | `eval` | `Rel.mayIssues_sound` | `Safety.lean` |
 | … on every order of the ties the reference allows: an engine that breaks a window's ties another way meets no unreported issue either (#1484) | `OrderAllowed` | `Rel.mayIssues_sound_all` | `Safety.lean` |
+| A double divided by an integer cast to a double (`x / DOUBLE(n)`) does not overflow to `±∞`: a zero `n` raises first, and `\|n\| ≥ 1` keeps the quotient at most `x` (#1787) | `eval` | `fdiv_ofInt_fin`, `Expr.mayInfBin_sound` | `FloatArith.lean`, `Safety.lean` |
 | A raise of the reference is an issue, so a plan with no reported issue meets DuckDB's side condition (`Engine.NoRaiseSide`), for a plan whose loose rows include its rows (`Rel.looseSub`). Where `Rel.looseSub` fails (an `UNNEST`, or a left join whose right side has a filter, an inner join or a `DISTINCT`), the step from a report without issues to "the reference does not raise" is not proved yet | `eval` | `Rel.hasIssue_of_raises`, `Engine.duckdb_noRaise_of_mayIssues` | `Obligations.lean`, `Engine.lean` |
 | Row caps rule out `SUM` overflow | `eval` | `Rel.issuesCapped_sound`, `Rel.capJoins_eval` | `Rows.lean` |
 | A well-formed plan on a well-formed catalog gives rows of its declared arity | `eval` | `Rel.eval_arity` | `Rel.lean` |
