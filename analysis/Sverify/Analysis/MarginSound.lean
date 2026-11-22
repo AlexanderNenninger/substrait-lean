@@ -1074,9 +1074,6 @@ on `±∞` and NaN, never on a zero's sign, so the canonical code is what it
 reads. A `-0.0` among the values meets D35's canonical clause (`SumBound`). -/
 
 omit [Boxes.Ambient] in
-theorem maxMag_le_2098 : maxMag ≤ 2 ^ 2098 := by rw [maxMag_def]; omega
-
-omit [Boxes.Ambient] in
 theorem scaledAbsSum_le_mul {cs : List Int} {M : Nat} (hM : ∀ c ∈ cs, (scaled c).natAbs ≤ M) :
     scaledAbsSum (cs.map .float) ≤ cs.length * M := by
   induction cs with

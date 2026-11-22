@@ -5821,8 +5821,12 @@ class _Writer:
                 consts = [_float_lit(a), _float_lit(b)]
                 # A finite number divided by a constant of at least 1 in size, or
                 # multiplied by one of at most 1, has no larger magnitude: no overflow.
-                shrinks = (op in ("fdiv", "fdivIeee") and abs(consts[1] or 0.0) >= 1.0) or (
-                    op == "fmul" and any(c is not None and abs(c) <= 1.0 for c in consts)
+                # Nor divided by an integer as a double: zero raises first, and
+                # any other is at least 1 in size (`Expr.mayInfBin_sound`, #1787).
+                shrinks = (
+                    (op in ("fdiv", "fdivIeee") and abs(consts[1] or 0.0) >= 1.0)
+                    or (op == "fmul" and any(c is not None and abs(c) <= 1.0 for c in consts))
+                    or (op == "fdiv" and isinstance(b, Un) and b.op == "itof")
                 )
                 if not plain and (low := d.lowered(op, [sa, sb], "float", consts)) is not None:
                     if op == "fmod" or shrinks:
