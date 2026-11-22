@@ -25,11 +25,11 @@ def test_refresh_reports_the_route(tmp_path) -> None:
     for engine in ("duckdb", "polars"):
         out = node.refresh(engine=engine, route="auto")
         r = out["doubled"].route
-        assert r is not None and r.kind == "translated" and r.engine == engine
+        assert r is not None and r.taken == "translated" and r.engine == engine
         assert f"route on {engine}: {r.cls}" in str(out)
     # "auto" is the default.
     plain = doubled(paid(orders)).refresh(engine="polars")
-    assert plain["doubled"].route is not None and plain["doubled"].route.kind == "translated"
+    assert plain["doubled"].route is not None and plain["doubled"].route.taken == "translated"
 
 
 def test_a_refused_route_refreshes_nothing(tmp_path) -> None:
@@ -77,4 +77,4 @@ def test_a_refused_version_refreshes_with_unverified(tmp_path, monkeypatch) -> N
     with pytest.warns(routes.UnverifiedRunWarning, match="polars 2.2.0 is outside the range"):
         out = node.refresh(engine="polars", unverified=True)
     r = out["doubled"].route
-    assert r is not None and r.kind == "unverified"
+    assert r is not None and r.taken == "unverified"

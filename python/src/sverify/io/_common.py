@@ -26,9 +26,11 @@ from sverify import profiles
 from sverify._cursor import _TAG, UNRECORDED, cursor_json, cursor_value  # noqa: F401  (re-exported)
 from sverify._pipe import Pipeable
 from sverify._unsupported import MemoryLimitError, SverifyError
-from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
+from sverify.conditions import TableCondition, Unique, resolve
+from sverify.contracts import Fact, _prove_from
 from sverify.incremental import IncrementalView, Snapshot, SourceBatch, plan_digest
 from sverify.plan_json import is_utc
+from sverify.report import Condition
 
 if TYPE_CHECKING:
     import duckdb
@@ -351,8 +353,9 @@ def not_null_column(sql: str) -> str | None:
 
 
 #: The version of the sink's contract record's format (`Contract.format`).
-#: Format 2 (1.0) names the node `node`; format 1 called it `view`.
-CONTRACT_FORMAT = 2
+#: Format 3 (1.0) names the semantics `semantics`, which format 2 called
+#: `profile`; format 2 named the node `node`, which format 1 called `view`.
+CONTRACT_FORMAT = 3
 
 
 @dataclass(kw_only=True)
@@ -412,9 +415,9 @@ class Contract:
     sverify: str | None = None
     """The version of sverify that wrote the record. Its facts and checker are
     those of the release."""
-    profile: str | None = None
-    """The profile the plan was verified under (`verify(semantics=...)`); the
-    plan's digest includes it unless it is `"portable"`."""
+    semantics: str | None = None
+    """The semantics the plan was verified under (`verify(semantics=...)`);
+    the plan's digest includes it unless it is `"portable"`."""
     package: str | None = None
     """For an engine that comes from another package than sverify, that package
     as `name==version`: its facts ship with it."""
@@ -423,7 +426,8 @@ class Contract:
     `sverify/schemas/sink-contract.schema.json`). It changes only with a
     record a reader of the previous format cannot read, which 1.x never
     writes (`docs/stability.md`). A record without it was written before
-    0.5 and reads as format 1; format 1 named the node `view`."""
+    0.5 and reads as format 1; format 1 named the node `view`, and formats
+    1 and 2 named the semantics `profile`."""
 
     def to_json(self) -> str:
         """The contract as JSON, as sinks store it.
@@ -459,6 +463,8 @@ class Contract:
             )
         if fmt < 2 and "view" in data:
             data = {**data, "node": data["view"]}
+        if fmt < 3 and "profile" in data:
+            data = {**data, "semantics": data["profile"]}
         known = Contract.__dataclass_fields__
         return Contract(**{k: v for k, v in data.items() if k in known and k != "format"})
 
@@ -499,8 +505,8 @@ class SinkWrite:
         version: The table's version afterwards (Delta), its snapshot
             sequence number (Iceberg), or None if the sink has no versions.
         contract: What the commit recorded.
-        inserted: Rows written.
-        deleted: Rows deleted.
+        inserts: Rows written.
+        deletes: Rows deleted.
         constraints: The table's CHECK constraints from the node's
             guarantees, by name (Delta; empty for Iceberg).
     """
@@ -508,8 +514,8 @@ class SinkWrite:
     mode: Literal["created", "overwrite", "merge", "append", "row_level", "update", "skipped"]
     version: int | None
     contract: Contract
-    inserted: int = 0
-    deleted: int = 0
+    inserts: int = 0
+    deletes: int = 0
     constraints: dict[str, str] = field(default_factory=dict)
 
     def __str__(self) -> str:
@@ -520,7 +526,7 @@ class SinkWrite:
         at = "" if self.version is None else f" v{self.version}"
         return (
             f"{self.contract.node} from {src}: {self.mode.replace('_', ' ')}{at}, "
-            f"{self.inserted} row(s) written, {self.deleted} deleted"
+            f"{self.inserts} row(s) written, {self.deletes} deleted"
         )
 
 
@@ -608,7 +614,7 @@ def drift(committed: Contract, node: Any) -> Drift:
         "unique": [u for u in unique if u not in committed.unique],
     }
     plan = plan_digest(node.internal_plan, profile=vc.profile)
-    return Drift(weakened, added, plan != committed.plan, (committed.profile, vc.profile), why)
+    return Drift(weakened, added, plan != committed.plan, (committed.semantics, vc.profile), why)
 
 
 def view_contract_record(view: IncrementalView) -> Contract:
@@ -635,7 +641,7 @@ def view_contract_record(view: IncrementalView) -> Contract:
         digests=view.pipeline.digests(view.name),
         cursors=_cursors(view, versions),
         table_ids=_table_ids(view, versions),
-        profile=view.profile,
+        semantics=view.profile,
         engine=(rt := profiles.runtime(view.engine))["engine"],
         engine_version=rt["engine_version"],
         sverify=rt["sverify"],
@@ -921,5 +927,5 @@ class _TableSource(Pipeable, ABC):
         """The snapshot `rows` at `end`, where no change from `since` is
         available (`reason`)."""
         return SourceBatch.from_snapshot(
-            since, end, rows, reason=reason, snapshot_facts=facts, schema=schema
+            since, end, rows, why=reason, snapshot_facts=facts, schema=schema
         )

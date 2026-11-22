@@ -47,7 +47,7 @@ def test_ties_suggest_the_unique_that_determines_the_result() -> None:
     assert report.ties == {"t": ["unique(k, x)"]}
     r = routes.choose(report, "duckdb", reproducible=sv.equivalent())
     assert r.refused and r.suggested == {"t": ["unique(k, x)"]}
-    assert "declare sv.unique('k', 'x') on t in requires" in r.reason
+    assert "declare sv.unique('k', 'x') on t in requires" in r.why
 
 
 def _mean(ensures):
@@ -83,7 +83,7 @@ def test_a_tolerance_suggests_the_row_cap_that_meets_it(mean_report, plan_report
     )
     r = routes.choose(mean_report, "polars")
     assert r.refused and r.suggested == {"t": [f"max_rows({want})"]}
-    assert f"or declare sv.max_rows({want:_}) on t, under which the bound meets it" in r.reason
+    assert f"or declare sv.max_rows({want:_}) on t, under which the bound meets it" in r.why
     rerun = routes.choose(
         plan_report, "polars", reproducible=sv.equivalent(floats=sv.within(rel=1e-15))
     )
@@ -95,4 +95,4 @@ def test_no_row_cap_meets_a_tolerance_below_one_row(plan_report) -> None:
         plan_report, "polars", reproducible=sv.equivalent(floats=sv.within(rel=1e-20))
     )
     assert r.suggested == {"t": ["max_rows(0)"]}
-    assert "no row cap on t makes the plan's bound meet the tolerance" in r.reason
+    assert "no row cap on t makes the plan's bound meet the tolerance" in r.why

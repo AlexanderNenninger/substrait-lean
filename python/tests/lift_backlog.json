@@ -3,35 +3,35 @@
   "tests": [
     {
       "test": "tests/test_backend_semantics.py::test_translators_agree[SELECT s, s LIKE 'a\\\\b', s LIKE 'a\\\\\\\\b' FROM ss]",
-      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+      "reason": "The lift: whether it reads a construct (set operations, coercions, units it refuses)."
     },
     {
       "test": "tests/test_backend_semantics.py::test_translators_agree_or_refuse_on_opaque_functions[SELECT array_length(regexp_match(s, '\\\\d')) FROM u-u-rows2]",
-      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+      "reason": "The lift: whether it reads a construct (set operations, coercions, units it refuses)."
     },
     {
       "test": "tests/test_backend_semantics.py::test_translators_agree_or_refuse_on_opaque_functions[SELECT array_length(regexp_match(s, '\\\\s')) FROM u-u-rows3]",
-      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+      "reason": "The lift: whether it reads a construct (set operations, coercions, units it refuses)."
     },
     {
       "test": "tests/test_relations.py::test_bags_match_duckdb[SELECT * FROM t FULL OUTER JOIN u ON t.a = u.a AND t.b > 0]",
-      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+      "reason": "The lift: whether it reads a construct (set operations, coercions, units it refuses)."
     },
     {
       "test": "tests/test_relations.py::test_bags_match_duckdb[SELECT * FROM t FULL OUTER JOIN u ON t.a = u.a]",
-      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+      "reason": "The lift: whether it reads a construct (set operations, coercions, units it refuses)."
     },
     {
       "test": "../engines/spark/tests/test_sql_spark.py::test_date_trunc_matches_lean",
-      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+      "reason": "The lift: whether it reads a construct (set operations, coercions, units it refuses)."
     },
     {
       "test": "tests/test_time.py::test_date_trunc_matches_duckdb_where_no_issue[microsecond]",
-      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+      "reason": "The lift: whether it reads a construct (set operations, coercions, units it refuses)."
     },
     {
       "test": "tests/test_time.py::test_date_trunc_matches_duckdb_where_no_issue[millisecond]",
-      "reason": "The lift: whether it reads a construct (set operations, DataFusion-only syntax and coercions, units it refuses)."
+      "reason": "The lift: whether it reads a construct (set operations, coercions, units it refuses)."
     },
     {
       "test": "tests/test_reference.py::test_float_arithmetic_is_refused[SELECT sqrt(x) AS r FROM s-sqrt of FLOAT]",

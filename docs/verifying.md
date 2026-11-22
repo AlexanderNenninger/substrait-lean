@@ -86,7 +86,7 @@ and says why it fails.
   `refused`.
 - `route.evidence` says whether each step rests on a Lean proof (`proved`)
   or on tests and probes (`tested`); `route.theorems` names the proofs and
-  `route.facts` the engine facts behind them.
+  `route.engine_facts` the engine facts behind them.
 - A refusal raises `sverify.errors.RouteError` and names its reason: the
   options where the engine's choices differ, with the facts that record
   them. A plan verified under one engine and run on another says which

@@ -1062,8 +1062,8 @@ each level coarsens the one before (`StringObs`, `ObsCtx.WF.str_mono`):
 |---|---|---|
 | `exact` | the strings | nothing |
 | `nfc` | `NFC(s)` | canonically equivalent spellings (`é` as one code point or two) |
-| `casefold` | `NFD(casefold(NFD(s)))`, Unicode's canonical caseless match (D145) | case, including `ß` and `SS` |
-| `ascii` | the code points below U+0080 of `NFKD(casefold(NFKD(casefold(NFD(s)))))`, the compatibility caseless match (D146) | case, width and ligature variants, and every code point without an ASCII decomposition |
+| `casefold` | `NFD(casefold(NFD(s)))`, Unicode's canonical caseless match (Unicode D145) | case, including `ß` and `SS` |
+| `ascii` | the code points below U+0080 of `NFKD(casefold(NFKD(casefold(NFD(s)))))`, the compatibility caseless match (Unicode D146) | case, width and ligature variants, and every code point without an ASCII decomposition |
 
 The last level drops what it cannot decompose: `søren` equals `sren`, and two strings in a
 non-Latin script equal each other. A contract names it for what it is, an opt-in lens for plans whose

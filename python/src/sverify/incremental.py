@@ -41,7 +41,7 @@ snapshot and records its version, and a refresh applies the format's change
 feed from the recorded version to the latest, advancing the version in the
 same commit. The feed is trusted to turn the old snapshot into the new one
 (`ChangeFeed`, `Rel.cdf_sound` in `analysis/Sverify/Analysis/TableFormat.lean`), and
-every `RefreshReport` says so; where the feed is unavailable, the new
+every `BatchRefresh` says so; where the feed is unavailable, the new
 snapshot is diffed against the view's state instead and the views reading it
 are recomputed (`ChangeFeed.of_diff`). A source whose schema changed is read
 in the schema the views were checked against where its data still fits
@@ -95,28 +95,26 @@ from sverify._weighted import (
     split_matching,
     weighted,
 )
-from sverify.contracts import (
+from sverify.conditions import (
     ON_DATA,
     ROWS_SHOWN,
     ArrivesWithin,
-    Condition,
     Discharged,
-    Fact,
-    PostconditionError,
     PreconditionError,
     References,
     TableCondition,
     Unique,
+    label,
+    show_duration,
+)
+from sverify.contracts import (
+    Fact,
     _mentioned_names,
     discharge,
-    label,
     register_facts,
     register_view,
-    show_duration,
     table_facts,
     view_contract,
-    violating_rows,
-    violations,
 )
 from sverify.engine import (  # noqa: F401  (NotIncrementalError, delta_plans: re-exported)
     Connection,
@@ -134,7 +132,7 @@ from sverify.engine import (  # noqa: F401  (NotIncrementalError, delta_plans: r
     written_plan,
 )
 from sverify.ibis_substrait.prune import mentioning
-from sverify.report import refuse_schema
+from sverify.report import Condition, PostconditionError, refuse_schema, violating_rows, violations
 
 Row = tuple
 
@@ -237,8 +235,8 @@ class SourceBatch:
     Built by keyword: a versioned source of your own returns one.
 
     Either `changes` from the format's change feed (the net change, with
-    `facts` about the inserted rows and the `trusted` assumption it rests
-    on), or the new `snapshot` alone with the reason the feed is unavailable
+    `facts` about the inserted rows and the assumption it rests
+    on, `assumes`), or the new `snapshot` alone with the reason the feed is unavailable
     (`fallback`). Build one with `unchanged`, `from_changes` or
     `from_snapshot`.
 
@@ -248,8 +246,8 @@ class SourceBatch:
         snapshot_facts: What the metadata says about every row at `end`.
         changes: The change, or None with `snapshot`.
         facts: What the metadata says about the inserted rows.
-        trusted: What the change rests on, for the refresh report.
-        kind: `"change_feed"` (trusted) or `"snapshot_diff"` (exact).
+        assumes: What the change rests on, for the refresh report.
+        mode: `"change_feed"` (trusted) or `"snapshot_diff"` (exact), as `SourceRefresh.mode`.
         snapshot: The table at `end`, when there is no change.
         fallback: Why there is no change, with `snapshot`.
         schema: The table's schema at `end`; None: the one recorded.
@@ -262,9 +260,9 @@ class SourceBatch:
     changes: Changes | None = None
     """Its rows as given: Arrow tables or tuples."""
     facts: list[Fact] = field(default_factory=list)
-    trusted: str = ""
+    assumes: str = ""
     """E.g. "Δ trusted as coming from Delta CDF v3→v5"."""
-    kind: Literal["change_feed", "snapshot_diff"] = "change_feed"
+    mode: Literal["change_feed", "snapshot_diff"] = "change_feed"
     """A snapshot diff is exact (`ChangeFeed.of_diff`): only the snapshots
     are trusted."""
     snapshot: pa.Table | None = None
@@ -297,10 +295,10 @@ class SourceBatch:
         *,
         inserts: pa.Table | Sequence[Row] = (),
         deletes: pa.Table | Sequence[Row] = (),
-        trusted: str,
+        assumes: str,
         facts: Sequence[Fact] = (),
         snapshot_facts: Sequence[Fact] = (),
-        kind: Literal["change_feed", "snapshot_diff"] = "change_feed",
+        mode: Literal["change_feed", "snapshot_diff"] = "change_feed",
         schema: pa.Schema | None = None,
     ) -> SourceBatch:
         """The change from `since` to `until`, as rows inserted and deleted.
@@ -310,13 +308,13 @@ class SourceBatch:
             until: The version it reaches.
             inserts: Rows added: an Arrow table, or tuples in column order.
             deletes: Rows removed, one copy each, in the same forms.
-            trusted: What the change rests on, shown in the refresh report,
+            assumes: What the change rests on, shown in the refresh report,
                 such as `"Δ trusted as coming from Delta CDF v3→v5"`.
             facts: What the metadata says about the inserted rows.
                 Default: none (preconditions are checked on the rows).
             snapshot_facts: What the metadata says about every row at
                 `until`. Default: none.
-            kind: `"change_feed"` (the change is trusted) or `"snapshot_diff"`
+            mode: `"change_feed"` (the change is trusted) or `"snapshot_diff"`
                 (it was computed from two snapshots, so it is exact).
             schema: The table's schema at `until`, which the rows have.
                 Default: the one recorded.
@@ -330,8 +328,8 @@ class SourceBatch:
             snapshot_facts=list(snapshot_facts),
             changes=Changes(inserts=inserts, deletes=deletes),
             facts=list(facts),
-            trusted=trusted,
-            kind=kind,
+            assumes=assumes,
+            mode=mode,
             schema=schema,
         )
 
@@ -342,7 +340,7 @@ class SourceBatch:
         until: int,
         table: pa.Table,
         *,
-        reason: str,
+        why: str,
         snapshot_facts: Sequence[Fact] = (),
         schema: pa.Schema | None = None,
     ) -> SourceBatch:
@@ -354,7 +352,7 @@ class SourceBatch:
             since: The version the change would start from.
             until: The version of `table`.
             table: The table at `until`.
-            reason: Why there is no change, shown in the refresh report.
+            why: Why there is no change, shown in the refresh report.
             snapshot_facts: What the metadata says about every row of
                 `table`. Default: none.
             schema: The table's schema at `until`. Default: `table`'s.
@@ -367,7 +365,7 @@ class SourceBatch:
             end=until,
             snapshot_facts=list(snapshot_facts),
             snapshot=table,
-            fallback=reason,
+            fallback=why,
             schema=table.schema if schema is None else schema,
         )
 
@@ -405,10 +403,6 @@ class VersionedSource(Protocol):
     def changes(self, since: int, until: int | None = None) -> SourceBatch:
         """The change from version `since` to `until` (default: the latest)."""
         ...
-
-
-Source = VersionedSource
-"""The name the pipeline's internals use for `VersionedSource`."""
 
 
 class SchemaError(SverifyError):
@@ -649,9 +643,9 @@ class Stored:
     does while the sink is the only writer, and the sources check that the
     last commit is the sink's."""
 
-    where: str
+    location: str
     """E.g. "data/big@v7"."""
-    where_key: str
+    location_key: str
     """The table the sink writes (its uri or identifier)."""
     plan: str
     """`plan_digest` of the view's plan."""
@@ -671,8 +665,8 @@ class Stored:
     """The version of the engine's library (`Contract.engine_version`)."""
     sverify: str | None = None
     """The version of sverify that wrote the record (`Contract.sverify`)."""
-    profile: str | None = None
-    """The profile the plan was verified under (`Contract.profile`)."""
+    semantics: str | None = None
+    """The semantics the plan was verified under (`Contract.semantics`)."""
     package: str | None = None
     """The engine's package as `name==version`, for an engine from another
     package than sverify (`Contract.package`)."""
@@ -844,11 +838,11 @@ class StaticSource(Pipeable):
                 self.version,
                 inserts=inserts,
                 deletes=deletes,
-                trusted=f"Δ as applied to {self.name} v{since}→v{self.version}",
+                assumes=f"Δ as applied to {self.name} v{since}→v{self.version}",
                 schema=self.table.schema,
             )
         return SourceBatch.from_snapshot(
-            since, self.version, self.table, reason="static table replaced"
+            since, self.version, self.table, why="static table replaced"
         )
 
 
@@ -893,7 +887,7 @@ class SourceRefresh:
 
 
 @dataclass
-class RefreshReport:
+class BatchRefresh:
     """What one refresh did to a node's state: what it read from each
     source, how the preconditions on the batch were established, and how
     each view was brought up to date. `str()` gives one line per fact;
@@ -1070,13 +1064,13 @@ class IncrementalView:
             empty = {t: con.schema(t).empty_table() for t in self.tables}
             schema = self._result_on(empty).schema
             result = resume.table.select(schema.names).cast(schema)
-            self.resumed = f"resumed from {resume.where}" + (f" ({note})" if note else "")
+            self.resumed = f"resumed from {resume.location}" + (f" ({note})" if note else "")
         else:
             result = run_plan(
                 con, self.plan, self.engine, keep=self.store.keep, tie_free=self.tie_free
             )
             if resume is not None:
-                self.resumed = f"computed: {reason} (stored at {resume.where})"
+                self.resumed = f"computed: {reason} (stored at {resume.location})"
         self._set_schema(result.schema)
         self.state: State = self._merge(self.store.weighted(result), keep=self.store.keep)
         self.groups: pa.Table | None = self._groups_on({})
@@ -1085,7 +1079,7 @@ class IncrementalView:
         """The view's rows, each once with its number of copies (a weighted
         table, `sverify._weighted`): an Arrow table, or one DuckDB holds."""
         if resume is not None and reason is None:
-            self.stored = (resume.where_key, self.state)
+            self.stored = (resume.location_key, self.state)
         self._publish()
         self.table: ir.Table = con.table(name)
         """The view as a table for other queries; contracted transformations
@@ -1184,10 +1178,10 @@ class IncrementalView:
         """Why `stored` is not this view's state at the versions the pipeline
         holds its inputs at, or None if it is."""
         if stored.plan != plan_digest(self.plan, profile=self.profile):
-            if stored.profile is not None and stored.profile != self.profile:
+            if stored.semantics is not None and stored.semantics != self.profile:
                 return (
-                    f"the plan was verified under the {stored.profile} profile, "
-                    f"and is now under the {self.profile} profile"
+                    f"the plan was verified under semantics={stored.semantics!r}, "
+                    f"and is now under semantics={self.profile!r}"
                 )
             for k in range(len(MEANING_CHANGES) - 1, -1, -1):
                 if stored.plan == plan_digest(self.plan, MEANING_CHANGES[:k], self.profile):
@@ -2162,7 +2156,7 @@ class Pipeline:
         audit: bool = False,
         until: Mapping[str, int] | None = None,
         retire: bool = True,
-    ) -> RefreshReport:
+    ) -> BatchRefresh:
         """Bring every source table to its latest version (or the version
         `until` names for it), and the views with it.
 
@@ -2268,7 +2262,7 @@ class Pipeline:
             else:
                 ch = consolidated(change_table(batch.changes, schema))
                 facts[t] = batch.facts
-                mode, detail = batch.kind, batch.trusted
+                mode, detail = batch.mode, batch.assumes
                 if native is not None and not audit:
                     if (lost := missing(current, ch)).num_rows:
                         (row,) = arrow_rows(rows_of(lost.slice(0, 1)))
@@ -2365,7 +2359,7 @@ class Pipeline:
                 self.versions[t] = versions[t]
         for t, fs in snapshot_facts.items():
             register_facts(self.con, t, fs)
-        return RefreshReport(
+        return BatchRefresh(
             report,
             pending.found,
             {v.name: v.versions for v in self._views},

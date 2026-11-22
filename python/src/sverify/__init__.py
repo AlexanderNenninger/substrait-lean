@@ -51,23 +51,21 @@ from sverify import _meta
 
 if _TYPE_CHECKING:
     from sverify.asof import asof_join
-    from sverify.conditions import key, non_overlapping
-    from sverify.contracts import (
-        ContractedTransform,
-        Report,
+    from sverify.conditions import (
         approx,
         arrives_within,
+        key,
         max_rows,
+        non_overlapping,
         references,
         rows_per,
-        transform,
         unique,
-        verify,
     )
+    from sverify.contracts import ContractedTransform, transform, verify
     from sverify.engine import connect
     from sverify.nodes import Node, group
     from sverify.observation import equivalent, within
-    from sverify.report import Verdict
+    from sverify.report import Report, Verdict
     from sverify.sql_model import sql
 
 # The public names, imported on first use (PEP 562): `import sverify` stays
@@ -76,17 +74,17 @@ if _TYPE_CHECKING:
 _LAZY = {
     "asof_join": "sverify.asof",
     "ContractedTransform": "sverify.contracts",
-    "Report": "sverify.contracts",
+    "Report": "sverify.report",
     "Verdict": "sverify.report",
-    "approx": "sverify.contracts",
-    "arrives_within": "sverify.contracts",
+    "approx": "sverify.conditions",
+    "arrives_within": "sverify.conditions",
     "key": "sverify.conditions",
-    "max_rows": "sverify.contracts",
+    "max_rows": "sverify.conditions",
     "non_overlapping": "sverify.conditions",
-    "references": "sverify.contracts",
-    "rows_per": "sverify.contracts",
+    "references": "sverify.conditions",
+    "rows_per": "sverify.conditions",
     "transform": "sverify.contracts",
-    "unique": "sverify.contracts",
+    "unique": "sverify.conditions",
     "verify": "sverify.contracts",
     "connect": "sverify.engine",
     "Node": "sverify.nodes",

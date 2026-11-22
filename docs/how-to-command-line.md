@@ -41,7 +41,7 @@ The report's parts come as data and as the lines `str(report)` prints:
 
 - `Report.inputs` and `Report.output` give the schemas of the input tables
   and of the result, the columns `requires` and `ensures` may name.
-- `CheckedCondition.message`, `Issue.message`, `Issue.assumption` and
+- `Postcondition.message`, `Issue.message`, `Issue.assumption` and
   `Report.notes` are the report's lines for each postcondition, possible
   runtime error, assumption and note.
 - `Report.needs` gives the preconditions the proof needs, one `Needed` each:
@@ -73,7 +73,7 @@ that only needs the verdicts
 ([test_check_api.py](../python/tests/test_check_api.py)). It skips a
 postcondition that only the order of ties leaves open: the checker proves
 it where every window orders its rows totally, so its reason is `"ties"`
-(`CheckedCondition.ties`), and a key that breaks the ties proves it
+(`Postcondition.ties`), and a key that breaks the ties proves it
 ([test_checker_speed.py](../python/tests/test_checker_speed.py)).
 
 Sverify keeps the checker's answers on disk, so the next `verify`, `check`
@@ -169,7 +169,7 @@ contract added are not compared: the sink's record does not store them.
 `--format` chooses the output:
 
 - `text`, the default, as above;
-- `json` (`--json` for short), one document for tools in the format of
+- `json`, one document for tools in the format of
   [`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json): the
   exit code and its `status`, for each node its `status`, the plain words
   (`summary`) and its report as `Report.to_json()` writes it, and the
@@ -193,9 +193,9 @@ issue `kind` write them; `explain` reads kebab case too. The exit codes are:
 | 3 | unsupported: a construct outside sverify's model (`sverify.errors.UnsupportedError`) |
 | 4 | time or memory budget exceeded |
 | 5 | a refresh committed with rows quarantined |
-| 6 | error: the file raised, I/O, a crash |
+| 6 | error: the file raised outside a run-time check, I/O, a crash |
 | 7 | refused: no route takes a proved node to the engine |
-| 8 | a refresh held a node |
+| 8 | a refresh held a node: a condition failed on the batch, or a run-time check fired, and the node committed nothing |
 
 With 5 or 8, `refresh` prints `Refresh.alert()` after the summary, and its
 JSON has `"outcome"` and `"alert"` ([bad rows](how-to-quarantine.md#bad-rows-quarantine-and-hold)).

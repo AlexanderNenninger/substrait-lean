@@ -304,6 +304,11 @@ def intOrDec : NumKind → Bool
   | .int | .dec _ => true
   | _ => false
 
+/-- The kind the decimal text reads: a decimal. -/
+def isDec : NumKind → Bool
+  | .dec _ => true
+  | _ => false
+
 /-- Two integers, to an integer. -/
 def intsOnly : NumKind → NumKind → Option NumKind
   | .int, .int => some .int

@@ -253,9 +253,9 @@ class Versioned:
         if end == since:
             return SourceBatch.unchanged(since)
         if since == 0:
-            return SourceBatch.from_snapshot(since, end, self.versions[end], reason="no log")
+            return SourceBatch.from_snapshot(since, end, self.versions[end], why="no log")
         new = self.versions[end].slice(self.versions[since].num_rows)
-        return SourceBatch.from_changes(since, end, inserts=new, trusted="Δ from the log")
+        return SourceBatch.from_changes(since, end, inserts=new, assumes="Δ from the log")
 
 
 def test_a_versioned_source_built_with_the_batch_helpers():
@@ -307,7 +307,7 @@ def test_sink_from_writes_each_state_once():
     src = payments_source()
     node = big(src).write(sink_from(written.append, name="big"))
     first = node.refresh().writes[0]
-    assert (first.mode, first.version, first.inserted) == ("overwrite", None, 1)
+    assert (first.mode, first.version, first.inserts) == ("overwrite", None, 1)
     assert node.refresh().writes[0].mode == "skipped"
     src.apply(Changes(inserts=[(3, 3, 50)]))
     node.refresh()
@@ -323,7 +323,7 @@ def test_a_sink_of_its_own_gets_the_change(tmp_path):
     node.refresh()
     src.apply(Changes(inserts=[(3, 3, 50)], deletes=[(1, 1, 30)]))
     w = node.refresh().writes[0]
-    assert (w.mode, w.inserted, w.deleted) == ("update", 1, 1)
+    assert (w.mode, w.inserts, w.deletes) == ("update", 1, 1)
     assert sink.changes == [(True, 1, 0), (False, 1, 1)]
     assert pq.read_table(sink.path).to_pylist() == [{"id": 3, "ts": 3, "amount": 50}]
     assert str(w) == "big from payments@v1: update, 1 row(s) written, 1 deleted"
@@ -345,7 +345,7 @@ def test_a_restarted_job_with_another_plan_overwrites_its_sink(tmp_path):
     again = ParquetSink(tmp_path / "big.parquet")
     node = ids(payments_source()).write(again)
     w = node.refresh().writes[0]
-    assert (w.mode, w.inserted) == ("overwrite", 2)
+    assert (w.mode, w.inserts) == ("overwrite", 2)
     assert again.changes == [(True, 2, 0)]
     # A view's rows come in no particular order.
     assert sorted(r["id"] for r in pq.read_table(again.path).to_pylist()) == [1, 2]
@@ -411,7 +411,7 @@ def test_a_restarted_job_resumes_from_the_cursor_its_sink_recorded(tmp_path):
     assert src.reads[-2:] == [("restore", 3), 3]
     assert out.started is not None and out.started.startswith("resumed from")
     w = out.write
-    assert w is not None and (w.mode, w.inserted, w.deleted) == ("merge", 1, 0)
+    assert w is not None and (w.mode, w.inserts, w.deletes) == ("merge", 1, 0)
     assert w.contract.sources == {"payments": 3} and w.contract.cursors == {"payments": 4}
     assert sorted(
         r["id"] for r in DeltaTable(str(tmp_path / "big")).to_pyarrow_table().to_pylist()
@@ -477,7 +477,7 @@ def test_from_query_resumes_from_a_timestamp_cursor(tmp_path):
     assert recorded.cursors == {"payments": {"$cursor": "datetime", "value": t0.isoformat()}}
     f.add({"id": 2, "ts": datetime(2026, 11, 3, 12, 1), "amount": 40})
     w = job().refresh().writes[0]
-    assert (w.mode, w.inserted, w.contract.sources) == ("merge", 1, {"payments": 2})
+    assert (w.mode, w.inserts, w.contract.sources) == ("merge", 1, {"payments": 2})
 
 
 def test_from_files_resumes_unless_a_file_it_read_is_gone(tmp_path):
@@ -492,10 +492,10 @@ def test_from_files_resumes_unless_a_file_it_read_is_gone(tmp_path):
     job().refresh()
     pq.write_table(pa.table({"id": [2], "ts": [2], "amount": [40]}), drop / "b.parquet")
     w = job().refresh().writes[0]
-    assert (w.mode, w.inserted, w.contract.sources) == ("merge", 1, {"payments": 2})
+    assert (w.mode, w.inserts, w.contract.sources) == ("merge", 1, {"payments": 2})
     (drop / "a.parquet").unlink()
     w = job().refresh().writes[0]
-    assert (w.mode, w.inserted, w.contract.sources) == ("overwrite", 1, {"payments": 3})
+    assert (w.mode, w.inserts, w.contract.sources) == ("overwrite", 1, {"payments": 3})
 
 
 @pytest.mark.parametrize(

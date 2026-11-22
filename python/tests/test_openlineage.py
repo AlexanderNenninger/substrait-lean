@@ -23,7 +23,7 @@ import sverify as sv
 from _repo import ROOT, needs_repo
 from sverify import openlineage as ol
 from sverify.cli import main
-from sverify.contracts import MaxRows, Unique
+from sverify.conditions import MaxRows, Unique
 from sverify.errors import PreconditionError
 from sverify.io import Changes, DeltaSink, StaticSource
 
@@ -146,7 +146,7 @@ def test_refresh_emits_start_and_complete(tmp_path):
     assert facets["version"]["datasetVersion"] == str(write.version)
     assert out["outputFacets"]["outputStatistics"]["rowCount"] == 2
     c = facets["sverify_contract"]
-    assert c["format"] == 2 and c["node"] == "paid" and c["proved"] is True
+    assert c["format"] == 3 and c["node"] == "paid" and c["proved"] is True
     assert c["_schemaURL"] == ol.FACET_SCHEMA_URL
     assert {e["label"]: e["status"] for e in c["ensures"]} == {
         "(_.amount > 10)": "proved",
@@ -323,7 +323,7 @@ def test_a_verified_facet_becomes_requires(tmp_path):
     assert up.producer["job"] == "upstream/paid"
     assert [f["name"] for f in up.fields] == ["id", "cust", "amount"]
     assert str(up.schema["amount"]) == "int64" and up.version == _written(log)
-    assert up.verified and up.why_unverified is None
+    assert up.verified and up.why is None
     reqs = up.requires
     assert "amount > 10" in reqs
     assert any(isinstance(c, Unique) and c.cols == ("id",) for c in reqs)
@@ -345,15 +345,15 @@ def test_an_unverifiable_facet_is_evidence(tmp_path):
     del facet["substrait"]
     up = ol.read(lines).dataset(sink)
     assert not up.verified and up.requires == []
-    assert "no plan" in (up.why_unverified or "")
-    assert any("(_.amount > 10)" in a.assertion for a in up.evidence)
+    assert "no plan" in (up.why or "")
+    assert any("(_.amount > 10)" in a.assertion for a in up.assertions)
     # A claim the plan does not prove stays evidence too.
     lines = events(log)
     facet = lines[-1]["outputs"][0]["facets"]["sverify_contract"]
     facet["ensures"].append({"label": "amount > 500", "status": "proved", "sql": "amount > 500"})
     up = ol.read(lines).dataset(sink)
     assert up.verified and "amount > 500" not in up.requires
-    assert any("amount > 500" in a.assertion for a in up.evidence)
+    assert any("amount > 500" in a.assertion for a in up.assertions)
 
 
 def test_read_other_tools_events():
@@ -366,7 +366,7 @@ def test_read_other_tools_events():
     assert up.producer["job"] == "dbt-prod/analytics.orders"
     assert str(up.schema["order_id"]) == "int32" and str(up.schema["status"]) == "string"
     assert up.contract is None and up.requires == [] and not up.verified
-    assert {(a.assertion, a.column, a.success) for a in up.evidence} == {
+    assert {(a.assertion, a.column, a.success) for a in up.assertions} == {
         ("not_null", "order_id", True),
         ("unique", "order_id", True),
         ("accepted_values", "status", False),

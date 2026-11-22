@@ -1,0 +1,3 @@
+### `RefreshReport` is `BatchRefresh`, and `SinkChange` takes keywords (breaking)
+
+`sverify.types.RefreshReport`, what one batch did to a node's state (`StageRefresh.report`), is renamed `BatchRefresh`, beside `Refresh`, `StageRefresh` and `SourceRefresh`, with no alias: `Report` names a verification only. `SinkChange` takes its arguments by keyword, like the other result types; a custom sink reads one and never builds it, so only a test that builds one changes (`SinkChange(view=..., contract=..., schema=..., change=...)`). `docs/stability.md` says that `sv.connect()` returns a `sverify.engines.Connection`, and the engines guide pairs `semantics=` with `engine=` ([#2343](https://github.com/AlexanderNenninger/substrait-lean/issues/2343)).

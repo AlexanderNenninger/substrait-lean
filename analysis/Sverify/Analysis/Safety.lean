@@ -606,6 +606,63 @@ theorem BinFn.mayInf_sound (f : BinFn) {aa ab : AVal} {v w : Value} {k : Issue} 
     · simp at hk
   · simp at hk
 
+/-- `BinFn.mayInf` of a call `f a b`, read with its divisor's shape: a double
+divided by an integer cast to a double (`x / DOUBLE(n)`) does not overflow.
+Its divisor is zero, which raises first (`BinFn.issue`), or at least `1` in
+magnitude, so the quotient is at most `x` (`FloatCode.fdiv_ofInt_fin`, #1787). -/
+def Expr.mayInfBin (f : BinFn) (b : Expr) (aa ab : AVal) : List Issue :=
+  match f, b with
+  | .fdiv, .un .itof _ => []
+  | _, _ => f.mayInf aa ab
+
+theorem UnFn.itof_float {x : Value} {c : Int} (h : UnFn.itof.apply x = .float c) :
+    ∃ i, c = FloatCode.ofInt i := by
+  cases x <;> simp [UnFn.apply] at h
+  exact ⟨_, h.symm⟩
+
+/-- A double divided by a nonzero integer, as a double, does not overflow:
+where `BinFn.issue` gives nothing, the divisor is not zero. -/
+theorem BinFn.fdiv_ofInt_infIssue {v : Value} {i : Int}
+    (hj : BinFn.fdiv.issue v (.float (FloatCode.ofInt i)) = none) :
+    BinFn.fdiv.infIssue v (.float (FloatCode.ofInt i)) = none := by
+  cases v
+  case float a =>
+    have hi0 : i ≠ 0 := by
+      rintro rfl
+      have h0 : FloatCode.ofInt 0 = 0 := by rw [FloatCode.ofInt_exact (by decide)]; rfl
+      simp [BinFn.issue, h0, FloatCode.canon_zero] at hj
+    unfold BinFn.infIssue
+    simp only [BinFn.apply, FloatCode.canon_ofInt]
+    split
+    · rename_i hc
+      simp only [Bool.and_eq_true, decide_eq_true_eq, isFiniteCode] at hc
+      have hf := FloatCode.fdiv_ofInt_fin (a := FloatCode.canon a) ⟨hc.1.1.1.2.1, hc.1.1.1.2.2⟩ hi0
+      rw [FloatCode.fdiv_canon_left] at hf
+      have hr := hc.1.2
+      simp only [isInfCode, Bool.or_eq_true, beq_iff_eq] at hr
+      rcases hr with e | e <;> rw [e] at hf
+      · rw [FloatCode.canon_posInf] at hf; exact absurd hf.2 (Int.lt_irrefl _)
+      · rw [FloatCode.canon_negInf] at hf; exact absurd hf.1 (Int.lt_irrefl _)
+    · rfl
+  all_goals simp [BinFn.infIssue]
+
+theorem Expr.mayInfBin_sound {row : Row} (f : BinFn) (a b : Expr) {aa ab : AVal} {k : Issue}
+    (ha : aa.Mem (a.eval row)) (hb : ab.Mem (b.eval row))
+    (hj : f.issue (a.eval row) (b.eval row) = none)
+    (hi : f.infIssue (a.eval row) (b.eval row) = some k) : k ∈ Expr.mayInfBin f b aa ab := by
+  unfold Expr.mayInfBin
+  split
+  · rename_i e
+    exfalso
+    cases hw : (Expr.un .itof e).eval row with
+    | float c =>
+      obtain ⟨i, rfl⟩ := UnFn.itof_float hw
+      rw [hw] at hj hi
+      rw [BinFn.fdiv_ofInt_infIssue hj] at hi
+      cases hi
+    | _ => rw [hw] at hi; simp [BinFn.infIssue] at hi
+  · exact BinFn.mayInf_sound f ha hb hi
+
 /-! ## Guards on the NaN of a double operation (#702)
 
 A `CASE` that guards `a * b` with `(a = ∞ OR a = -∞) AND b = 0` leaves its
@@ -768,7 +825,7 @@ def Expr.mayIssues (env : List AVal) (fs : List Fact) (ks : Assumptions := []) (
     a.mayIssues env fs ks ors ++ b.mayIssues env fs ks ors ++
       (f.mayIssueX (a.absD env fs ks) (b.absD env fs ks) ((Expr.bin f a b).absD env fs ks)
         (b.nonZero env fs ks f.divKind) a.strBytes? (Expr.nanExcluded env fs ks ors f a b) ++
-        f.mayInf (a.absD env fs ks) (b.absD env fs ks)).map (·, .bin f a b)
+        Expr.mayInfBin f b (a.absD env fs ks) (b.absD env fs ks)).map (·, .bin f a b)
   | .ifThen c t e =>
     let ac := c.absD env fs ks
     let tk := withAlts (c.cstrAlts true) ks ors
@@ -825,7 +882,7 @@ def Expr.mayIssuesA (env : List AVal) (fs : List Fact) (ks : Assumptions) (ors :
     let ar := Expr.absBin env fs ks f a b ra.2 (fun _ => rb.2) (fun env' ks' => b.absD env' fs ks')
     (ra.1 ++ rb.1 ++
       (f.mayIssueX ra.2 rb.2 ar (b.nonZeroA env fs ks f.divKind rb.2) a.strBytes?
-        (Expr.nanExcluded env fs ks ors f a b) ++ f.mayInf ra.2 rb.2).map (·, .bin f a b), ar)
+        (Expr.nanExcluded env fs ks ors f a b) ++ Expr.mayInfBin f b ra.2 rb.2).map (·, .bin f a b), ar)
   | .ifThen c t e =>
     let rc := c.mayIssuesA env fs ks ors
     let tk := withAlts (c.cstrAlts true) ks ors
@@ -1511,8 +1568,8 @@ theorem Expr.mayIssuesC_sound {env : List AVal} {fs : List Fact} {ks : Assumptio
             (fun hx => Expr.nanExcluded_sound h hfs hks hors hx) hj)
         | none =>
           rw [hj, Option.none_or] at hi
-          exact .inr (BinFn.mayInf_sound f (Expr.absD_sound h hfs hks a)
-            (Expr.absD_sound h hfs hks b) hi)
+          exact .inr (Expr.mayInfBin_sound f a b (Expr.absD_sound h hfs hks a)
+            (Expr.absD_sound h hfs hks b) hj hi)
   | .ifThen c t e, p, hp => by
     simp only [Expr.issues, List.mem_append] at hp
     simp only [Expr.mayIssues, List.mem_append]

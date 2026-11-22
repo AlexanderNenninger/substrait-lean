@@ -447,6 +447,11 @@ def test_remainder_by_minus_one_is_zero(width):
         ("main.lower(s)", "lower(s)"),
         ("main.len(s)", "length(s)"),
         ("system.main.length(s)", "length(s)"),
+        ("if(length(s) > 2, s, 'short')", "CASE WHEN length(s) > 2 THEN s ELSE 'short' END"),
+        (
+            "main.if(s IS NULL, 'none', upper(s))",
+            "CASE WHEN s IS NULL THEN 'none' ELSE upper(s) END",
+        ),
     ],
 )
 def test_an_alias_is_the_function_it_names(alias, name):
@@ -458,6 +463,13 @@ def test_an_alias_is_the_function_it_names(alias, name):
     native = duckdb.connect()
     native.register("r", r)
     assert check_three_ways(sql, tables) == native.execute(sql).fetchall()
+
+
+def test_arbitrary_is_the_value_of_a_group():
+    """#328: `arbitrary(x)` lifts as `first(x)`; a group with one value is exact."""
+    r = pa.table({"k": pa.array([1, 1, 2], pa.int64()), "v": pa.array([7, 7, 9], pa.int64())})
+    sql = "SELECT k, arbitrary(v) AS a FROM r GROUP BY k ORDER BY k"
+    assert check_three_ways(sql, {"r": r}) == [(1, 7), (2, 9)]
 
 
 def test_a_lens_power_with_a_zero_exponent_is_strict():
@@ -743,25 +755,33 @@ def test_contract_checks_on_duckdb():
 # --------------------------------------------------------------------------
 # Snapshots of the generated SQL
 
-SNAPSHOT_FIXTURES = [
-    "filter_project",
-    "virtual_left_join",
-    "union_fetch",
-    "df_window",
-    "df_float_timestamp",
-]
+#: Three plans and every fixture the checker accepts (`[exit 0]`).
+SNAPSHOT_FIXTURES = sorted(
+    {"filter_project", "virtual_left_join", "union_fetch"}
+    | {
+        p.stem
+        for p in (FIXTURES.glob("*.json") if FIXTURES.is_dir() else [])
+        if p.with_suffix(".expected").read_text().rstrip().endswith("[exit 0]")
+    }
+)
 
 
 @needs_fixtures
 @pytest.mark.parametrize("name", SNAPSHOT_FIXTURES)
 def test_sql_snapshot(name):
-    """Set SVERIFY_UPDATE_SNAPSHOTS=1 to re-record."""
-    sql = to_sql(fixture(name), DUCKDB) + "\n"
+    """DuckDB's SQL, in Lean's row order (`rows="sequence"`, its default): the
+    multiset writer's shortcuts leave it as it was (#2186, ruling 217 S2). Set
+    SVERIFY_UPDATE_SNAPSHOTS=1 to re-record."""
+    try:
+        sql = to_sql(fixture(name), DUCKDB) + "\n"
+    except Unsupported as e:
+        sql = f"-- Unsupported: {e}\n"
     path = SNAPSHOTS / f"{name}.duckdb.sql"
+    # As bytes: a `\r` in a string literal stays one (`read_text` reads it as `\n`).
     if os.environ.get("SVERIFY_UPDATE_SNAPSHOTS"):
         SNAPSHOTS.mkdir(exist_ok=True)
-        path.write_text(sql)
-    assert path.read_text() == sql
+        path.write_bytes(sql.encode())
+    assert path.read_bytes().decode() == sql
 
 
 EVENTS = pa.table(

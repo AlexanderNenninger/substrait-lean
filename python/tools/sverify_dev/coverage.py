@@ -19,7 +19,7 @@ lists the cases an engine refuses, and why; `tests/test_backends.py` runs the
 rest on random tables and compares the engines.
 
 The cases live in `sverify_dev.coverage_cases`, one module per area (the rows of
-the README table), each with that area's entries of these tables, keyed by
+the table of `docs/coverage.md`), each with that area's entries of these tables, keyed by
 case label:
 
 * `REFUSED`: verified cases an engine refuses (`UnsupportedError`), with a pattern
@@ -37,10 +37,10 @@ case label:
   the oracle instead.
 
 `tests/test_coverage.py` pins every case to its `expected` status and its
-refusals, so a change in coverage is a deliberate edit there. The README
-tables are regenerated with
+refusals, so a change in coverage is a deliberate edit there. The tables of
+`docs/coverage.md` are regenerated with
 
-    uv run python -m sverify_dev.coverage --write-readme
+    uv run python -m sverify_dev.coverage --write
 
 by the `Generated files` workflow on `main` after every merge; feature branches
 leave them alone.
@@ -199,13 +199,16 @@ def table(rs: list[Result]) -> str:
     return "\n".join(lines)
 
 
-def write_readme(rs: list[Result]) -> None:
-    readme = Path(__file__).resolve().parents[3] / "README.md"
-    text = readme.read_text()
+#: The page whose `START` … `END` block holds the tables.
+PAGE = Path(__file__).resolve().parents[3] / "docs" / "coverage.md"
+
+
+def write(rs: list[Result]) -> None:
+    text = PAGE.read_text(encoding="utf-8")
     pattern = re.compile(re.escape(START) + ".*?" + re.escape(END), re.S)
     if not pattern.search(text):
-        raise ValueError(f"{readme} has no {START} … {END} block")
-    readme.write_text(pattern.sub(lambda _: f"{START}\n{table(rs)}\n{END}", text))
+        raise ValueError(f"{PAGE} has no {START} … {END} block")
+    PAGE.write_text(pattern.sub(lambda _: f"{START}\n{table(rs)}\n{END}", text), encoding="utf-8")
 
 
 def main() -> None:
@@ -215,8 +218,8 @@ def main() -> None:
         print(report())
         return
     rs = results()
-    if "--write-readme" in sys.argv:
-        write_readme(rs)
+    if "--write" in sys.argv:
+        write(rs)
     else:
         print(table(rs))
     for r in rs:

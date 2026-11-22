@@ -29,14 +29,14 @@ if sverify.__version__ != __version__:
 
 from sverify_dbt.check import check  # noqa: E402
 from sverify_dbt.manifest import Project, ProjectError, load
-from sverify_dbt.result import CheckResult, ContractIssue, ModelResult, Needed, TestResult
+from sverify_dbt.result import CheckResult, ContractIssue, ModelResult, NeededTest, TestResult
 
 __all__ = [
     "__version__",
     "CheckResult",
     "ContractIssue",
     "ModelResult",
-    "Needed",
+    "NeededTest",
     "Project",
     "ProjectError",
     "TestResult",

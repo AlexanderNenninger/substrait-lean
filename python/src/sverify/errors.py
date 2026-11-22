@@ -53,7 +53,7 @@ Running:
   `ensures` cannot be read (an unknown column, SQL the lift does not read, a
   type error); `.condition` names it and `.reason` says why. An
   `UnsupportedError`.
-* `SqlError` (`sql_refused`): a SQL producer refused a query.
+* `SQLError` (`sql_refused`): a SQL producer refused a query.
 * `ExportError` (`export_refused`): a plan has no conforming Substrait form
   that keeps its proof (`Report.to_substrait`); the message names the
   reason and the spec gap.
@@ -100,21 +100,19 @@ from sverify._unsupported import (
     SverifyWarning,
     UnsupportedError,
 )
-from sverify.contracts import (
-    CompositionError,
-    InferredWarning,
-    PostconditionError,
-    PreconditionError,
-    ProfilePendingWarning,
-    UnprovedWarning,
-    UnverifiedRunError,
-    VerificationError,
-)
-from sverify.engine import CheckerVersionError, SqlError
+from sverify.conditions import PreconditionError
+from sverify.contracts import CompositionError, ProfilePendingWarning, UnprovedWarning
+from sverify.engine import CheckerVersionError, SQLError
 from sverify.incremental import AuditError, NotIncrementalError, SchemaError
 from sverify.io._common import ConcurrentWriteError
 from sverify.io._secrets import SecretError
 from sverify.profiles import ProfilePluginWarning
+from sverify.report import (
+    InferredWarning,
+    PostconditionError,
+    UnverifiedRunError,
+    VerificationError,
+)
 from sverify.routes import (
     EngineSettingsError,
     EngineSettingsWarning,
@@ -144,7 +142,7 @@ __all__ = [
     "RouteError",
     "SchemaError",
     "SecretError",
-    "SqlError",
+    "SQLError",
     "SverifyError",
     "ProfilePendingWarning",
     "ProfilePluginWarning",

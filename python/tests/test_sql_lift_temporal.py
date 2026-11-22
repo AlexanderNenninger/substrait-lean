@@ -31,6 +31,16 @@ QUERIES = [
     " AS d, time_bucket(INTERVAL 1 WEEK, placed) AS w FROM orders",
     "SELECT time_bucket(INTERVAL 2 DAYS, placed, INTERVAL 1 HOUR) AS a,"
     " time_bucket(INTERVAL 1 HOUR, placed, TIMESTAMP '1990-05-06 00:20:00') AS b FROM orders",
+    # Months, and a DATE: from 2000-01 by default or the origin's month; a DATE stays a DATE
+    # unless the origin is a timestamp.
+    "SELECT time_bucket(INTERVAL 1 MONTH, placed) AS a,"
+    " time_bucket(INTERVAL 5 MONTHS, placed) AS b,"
+    " time_bucket(INTERVAL 3 MONTHS, placed, TIMESTAMP '2000-02-15 10:00:00') AS c,"
+    " time_bucket(INTERVAL 1 YEAR, placed, DATE '1999-07-01') AS d FROM orders",
+    "SELECT time_bucket(INTERVAL 2 MONTHS, day) AS a, time_bucket(INTERVAL 7 DAYS, day) AS b,"
+    " time_bucket(INTERVAL 1 MONTH, day, TIMESTAMP '2000-01-02 12:00:00') AS c,"
+    " time_bucket(INTERVAL 7 DAYS, day, DATE '2000-01-02') AS d,"
+    " time_bucket(INTERVAL 7 DAYS, day, INTERVAL 1 DAY) AS e FROM orders",
     "SELECT id FROM orders WHERE day >= DATE '2024-01-01' AND day < '2024-02-01'",
     "SELECT id, date_trunc('day', placed) AS d, date_trunc('week', placed) AS w,"
     " date_trunc('quarter', placed) AS q, date_trunc('hour', placed) AS h FROM orders",
@@ -113,8 +123,12 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT strftime(placed, '%F') FROM orders", "%F is not supported"),
         ("SELECT strftime(placed, '%A') FROM orders", "%A is not supported"),
         ("SELECT strftime(placed, customer) FROM orders", "constant format"),
-        ("SELECT time_bucket(INTERVAL 1 MONTH, placed) FROM orders", "constant width of days"),
-        ("SELECT time_bucket(INTERVAL 1 DAY, day) FROM orders", "time_bucket of a DATE"),
+        ("SELECT time_bucket(INTERVAL '1 month 1 day', placed) FROM orders", "constant width"),
+        (
+            "SELECT time_bucket(INTERVAL 1 MONTH, placed, INTERVAL 1 DAY) FROM orders",
+            "constant origin",
+        ),
+        ("SELECT time_bucket(INTERVAL 12 HOURS, day) FROM orders", "whole days or months"),
         ("SELECT time_bucket(INTERVAL 1 DAY, placed, placed) FROM orders", "not supported yet"),
         # DuckDB 2.0.0 has no date_bin; SQLGlot reads it as time_bucket's node.
         ("SELECT date_bin(INTERVAL 1 DAY, placed, placed) FROM orders", "no function date_bin"),

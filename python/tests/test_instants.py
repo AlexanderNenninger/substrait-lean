@@ -192,10 +192,6 @@ def test_a_delta_table_of_instants_and_naive_timestamps_round_trips_through_a_si
         assert schema.field("ts").type == UTC and schema.field("naive").type == NTZ, engine
 
 
-def _naive_other(t):
-    return ibis.table({"id": "int64", "naive": "timestamp"}, name="o")
-
-
 REFUSED = {
     "a naive column compared with an instant": lambda t: t.filter(t.ts <= t.naive),
     "a naive literal compared with an instant": lambda t: t.filter(
@@ -414,7 +410,7 @@ def test_an_incremental_cursor_on_an_instant_column(tmp_path):
     assert recorded is not None and "payments" in recorded.cursors
     rows.append({"id": 2, "ts": U(2026, 11, 3, 12, 1), "amount": 40})
     w = job().refresh().writes[0]
-    assert (w.mode, w.inserted) == ("merge", 1)
+    assert (w.mode, w.inserts) == ("merge", 1)
 
 
 @pytest.mark.parametrize(

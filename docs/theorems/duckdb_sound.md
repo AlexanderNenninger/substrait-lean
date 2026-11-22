@@ -105,7 +105,7 @@ duck = sv.verify(
     semantics="duckdb",
 )
 route = routes.choose(duck, "duckdb")
-print(route.kind, route.cls)
+print(route.taken, route.cls)
 # native exact
 con = sv.connect()
 con.put("lines", pa.table({"id": [1, 2], "n": [4, -4], "total": [100, 250]}))

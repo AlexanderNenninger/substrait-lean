@@ -55,13 +55,6 @@ def duckElementary (f : FMath) (x : Int) : Int :=
 `ieee_floating_point_ops` (probed on DuckDB 2.0.0, fact duckdb-R15-power-neginf). -/
 def duckNegInfPow (y : Int) : Int := if 0 < y then FloatCode.posInf else 0
 
-/-- DuckDB's `power` of doubles: NaN where IEEE 754 gives it (a negative
-finite base to a finite power that is not an integer, `nanCase`), else the
-native power (`0 ^ -1` is `∞`). -/
-def duckPower (x y : Int) : Int :=
-  if negInfPow x y then duckNegInfPow y
-  else if nanCase .fpow x y then FloatCode.nan else FloatCode.lift₂ Float.pow x y
-
 /-- A zero divisor under `error_on_division_by_zero` (integers) or with
 `ieeeOps` off (doubles): an error, or NULL. -/
 def duckZero (s : DuckDBSettings) : Outcome :=

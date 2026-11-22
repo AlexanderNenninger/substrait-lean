@@ -13,12 +13,13 @@ Jobs and tools read these formats that sverify writes:
 
 | Format | Where it lives | Version | Schema |
 |---|---|---|---|
-| The sink's contract record | the key `sverify.contract` in a Delta commit's `commitInfo` and in an Iceberg table's properties, and the snapshot summary keys `sverify.plan`, `sverify.epoch` and `sverify.app`; wherever a `Sink` of your own stores `Contract.to_json()` | `format` 2 in the record | [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json) |
+| The sink's contract record | the key `sverify.contract` in a Delta commit's `commitInfo` and in an Iceberg table's properties, and the snapshot summary keys `sverify.plan`, `sverify.epoch` and `sverify.app`; wherever a `Sink` of your own stores `Contract.to_json()` | `format` 3 in the record | [`sink-contract.schema.json`](../python/src/sverify/schemas/sink-contract.schema.json) |
 | The Substrait contract metadata | the message `io.sverify.substrait.v1.Contract` in an exported plan's `advanced_extensions`, from `Report.to_substrait`, and `Report.substrait_contract()` | `format` 3 in the manifest | [`substrait_contract.proto`](../python/src/sverify/substrait_contract.proto) and [`substrait-manifest.schema.json`](../python/src/sverify/schemas/substrait-manifest.schema.json) |
-| The report's JSON | `Report.to_json()`, read back by `Report.from_json()` | `format` 4 in the document | [`report.schema.json`](../python/src/sverify/schemas/report.schema.json) |
-| The command line's JSON | what `sverify check`, `refresh` and `explain` print with `--format json`, with each node's report as `Report.to_json()` writes it; the exit codes are part of it | `format` 1 in the document | [`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json) |
+| The report's JSON | `Report.to_json()`, read back by `Report.from_json()` | `format` 5 in the document | [`report.schema.json`](../python/src/sverify/schemas/report.schema.json) |
+| The command line's JSON | what `sverify check`, `refresh` and `explain` print with `--format json`, with each node's report as `Report.to_json()` writes it; the exit codes are part of it | `format` 2 in the document | [`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json) |
 | The quarantine table | a Delta or Iceberg table next to a node's sink; each write's record in a Delta commit's `commitInfo`, or an Iceberg snapshot's summary, under the key `sverify.quarantine` | `format` 1 in the record | [`quarantine.schema.json`](../python/src/sverify/schemas/quarantine.schema.json) |
-| The refresh report's JSON | `Refresh.to_json()` | `format` 1 in the document | [`refresh.schema.json`](../python/src/sverify/schemas/refresh.schema.json) |
+| The refresh report's JSON | `Refresh.to_json()` | `format` 2 in the document | [`refresh.schema.json`](../python/src/sverify/schemas/refresh.schema.json) |
+| The OpenLineage facet | the dataset facet `sverify_contract` of each refreshed node's OpenLineage events (`sverify.openlineage`) | `format` 3 in the facet | [`openlineage-contract-facet.schema.json`](../python/src/sverify/schemas/openlineage-contract-facet.schema.json) |
 
 Within 1.x each format follows these rules:
 
@@ -28,12 +29,14 @@ Within 1.x each format follows these rules:
   reads what a newer one wrote, and sees what it knows of it.
 - Every 1.x release reads what every earlier 1.x release wrote, and the
   records of the releases before 1.0 that the fixtures hold, from 0.4.0 on.
-- Each format keeps the version the table gives throughout 1.x: 2 for
-  the sink's contract record, which 1.0 renamed; 3 for the Substrait
-  metadata, which 1.0 renamed twice; 4 for the report's JSON, which 1.0
-  renamed, gave a verdict, and then gave its lenses and facts their 1.0
-  shape; and 1 for the command line's JSON, the quarantine record and the refresh
-  report, which have had one shape since they were added. A reader refuses a
+- Each format keeps the version the table gives throughout 1.x: 3 for
+  the sink's contract record, which 1.0 renamed twice; 3 for the Substrait
+  metadata, which 1.0 renamed twice; 5 for the report's JSON, which 1.0
+  renamed, gave a verdict, gave its lenses and facts their 1.0 shape, and
+  then renamed a route's keys; 2 for the command line's JSON and the refresh
+  report, which 1.0 renamed a write's counts in; 3 for the OpenLineage
+  facet, which 1.0 renamed twice; and 1 for the quarantine record, which has
+  had one shape since it was added. A reader refuses a
   format newer than it knows, with an error that says to upgrade sverify.
 - A value from a fixed set, such as the manifest's `class` or a condition's
   `kind`, may gain new values. A reader that meets one it does not know
@@ -45,6 +48,7 @@ earlier formats:
 
 - the sink's record of format 1 names the node `view`, and Delta keeps it
   under the key `sverify`; a record written before 0.5 has no `format`;
+  records of formats 1 and 2 say `profile` for `semantics`;
 - the manifest of format 1 says `profile`, `observation` and
   `observation_components`, and of format 2 `equivalence` and
   `equivalence_components` (in an `up_to` entry too), for `semantics`,
@@ -53,13 +57,19 @@ earlier formats:
   for `lenses`, writes each column's `facts` as its text alone, with
   `not_null` listing the columns proved never NULL, and a postcondition's
   `needs` as their tables and labels; format 4 writes `facts` as objects
-  (text, nullability, bounds) and `needs` as whole `needed` objects.
+  (text, nullability, bounds) and `needs` as whole `needed` objects. A
+  route of formats 2 to 4 says `kind`, `reason`, `facts`, `version` and
+  `proved_facts` for `taken`, `why`, `engine_facts`, `probed_version` and
+  `theorem_facts`.
+- the command line's JSON and the refresh report of format 1 say a write's
+  `inserted` and `deleted` for `inserts` and `deletes`.
 - a report of format 2 or 3 and a manifest of format 1 or 2 say
   `"reference"` for the semantics 1.0 calls `"portable"` (`semantics`, and
   a route's `semantics`), and a reader maps it.
 
-The OpenLineage facet `sverify_contract` follows the same name: its format
-2 says `lenses` where format 1 said `equivalence`.
+The OpenLineage facet `sverify_contract` follows the same names: its format
+2 says `lenses` where format 1 said `equivalence`, and its format 3 says a
+route's `taken` where format 2 said `kind`.
 
 The report's JSON of format 1 was in no release, and `Report.from_json`
 refuses it. Format 3 replaced `Report.proved` with `Report.verdict`: `verdict`
@@ -150,11 +160,19 @@ Every type a public name returns, holds or takes is public too, so
 `sverify.types` names the types a report and a refresh hold. The
 [API reference](https://alexandernenninger.github.io/substrait-lean/)
 documents each public name, and `tests/test_public_api.py` holds the
-reference, the `__all__`s and that closure equal. In the Python API "verify" proves
+reference, the `__all__`s and that closure equal. `sv.connect()` returns a
+`sverify.engines.Connection`, public there. In the Python API "verify" proves
 (`sv.verify`, `ContractedTransform.verify`) and "check" reads data
 (`check_requires`, `Report.check_inputs`, `proved_with_checks`); the
 commands named `check` (`sverify check`, `sverify-dbt check`) verify a
-project. Every other module is
+project. A `reason` is a code and `why` is words, in the Python API and the JSON
+sverify writes per run (`Postcondition.reason` and `Postcondition.why`,
+`Route.why`); a stored table's columns and record keys keep their names (the
+quarantine table's `_reason`).
+project. A check on data of a table of `sv.connect()` runs the plan the checker
+wrote for the condition. A check through Ibis, on a table of the caller's own
+Ibis backend, reads the condition as that backend does, and which rows it
+flags where backends differ is outside the 1.x promise (F219). Every other module is
 internal, whether or not its name starts with an underscore, and so are
 the maintainer tooling `sverify_dev` and the printed text of a report
 (`str(report)`); tools read the report through its attributes or its JSON.
@@ -169,7 +187,7 @@ while the native scans move into the engine packages. `run` and
 to a plan's SQL and Substrait.
 
 The engine extension point is documented and outside the promise as well:
-the entry-point group `sverify.profiles`, `ProfilePlugin`, `SqlFrontEnd` (the SQL a plugin
+the entry-point group `sverify.profiles`, `ProfilePlugin`, `SQLFrontEnd` (the SQL a plugin
 reads, which `sverify-snowflake` builds on out of tree) and the checker's
 engine list (`EngineEntry`, `builtinEntries`,
 [engine profiles from outside](engine-profiles.md#engine-profiles-from-outside))

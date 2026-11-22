@@ -996,6 +996,120 @@ theorem FloatSums.int_exact {vs : List Value} {c : Int} (h : FloatSums vs c)
     rw [← fadd_canon, ha, hb', fadd_fin hfa hfb, hsa, hsb, exactSum_perm hp, exactSum_append]
 
 omit [Boxes.Ambient] in
+/-- Kahan's steps over integers, from a running sum `A` and no compensation,
+stay exact: the sum adds each value, the compensation stays `0`. -/
+theorem foldl_kahanStep_int {ws : List Value} (hw : ∀ v ∈ ws, IntVal v) {p : Int × Int} {A : Int}
+    (hs : canon p.1 = ofExact A) (hc : canon p.2 = ofExact 0) (hA : ∃ k : Int, A = k * unitK)
+    (hb : A.natAbs + scaledAbsSum ws ≤ 2 ^ 53 * unitK) :
+    canon (ws.foldl kahanStep p).1 = ofExact (A + exactSum ws) ∧
+      canon (ws.foldl kahanStep p).2 = ofExact 0 := by
+  induction ws generalizing p A with
+  | nil => simpa [exactSum] using ⟨hs, hc⟩
+  | cons v ws ih =>
+    obtain ⟨x, rfl, hx, j, hj⟩ := hw v List.mem_cons_self
+    simp only [List.foldl_cons, scaledAbsSum] at hb ⊢
+    have hjb : (scaled x).natAbs ≤ 2 ^ 53 * unitK := by omega
+    obtain ⟨hfA, hsA⟩ := ofExact_int_val hA (by omega)
+    obtain ⟨hfX, hsX⟩ := ofExact_int_val ⟨j, hj⟩ hjb
+    obtain ⟨hf0, hs0⟩ := ofExact_int_val (A := 0) ⟨0, by simp⟩ (by simp)
+    obtain ⟨k, hk⟩ := hA
+    have hAx : ∃ k : Int, A + scaled x = k * unitK := ⟨k + j, by rw [hk, hj, Int.add_mul]⟩
+    obtain ⟨hfT, hsT⟩ := ofExact_int_val hAx (by have := Int.natAbs_add_le A (scaled x); omega)
+    -- `y = x − c`, `t = s + y`, `d = t − s` and `c' = d − y`, each exact.
+    have hy : canon (fsub x p.2) = ofExact (scaled x) := by
+      rw [← fsub_canon, fin_canon hx, hc, fsub_fin hx hf0, hs0, Int.sub_zero]
+    have ht : canon (fadd p.1 (fsub x p.2)) = ofExact (A + scaled x) := by
+      rw [← fadd_canon, hs, hy, fadd_fin hfA hfX, hsA, hsX]
+    have hd : canon (fsub (fadd p.1 (fsub x p.2)) p.1) = ofExact (scaled x) := by
+      rw [← fsub_canon, ht, hs, fsub_fin hfT hfA, hsT, hsA, show A + scaled x - A = scaled x by omega]
+    have hc' : canon (fsub (fsub (fadd p.1 (fsub x p.2)) p.1) (fsub x p.2)) = ofExact 0 := by
+      rw [← fsub_canon, hd, hy, fsub_fin hfX hfX, hsX, Int.sub_self]
+    obtain ⟨r1, r2⟩ := ih (fun w hw' => hw w (List.mem_cons_of_mem _ hw'))
+      (p := (fadd p.1 (fsub x p.2), fsub (fsub (fadd p.1 (fsub x p.2)) p.1) (fsub x p.2))) ht hc' hAx
+      (by have := Int.natAbs_add_le A (scaled x); omega)
+    have hstep : kahanStep p (.float x) = (fadd p.1 (fsub x p.2),
+        fsub (fsub (fadd p.1 (fsub x p.2)) p.1) (fsub x p.2)) := rfl
+    rw [hstep]
+    refine ⟨?_, r2⟩
+    rw [r1]; simp only [exactSum, exact, fin_canon hx, Int.add_assoc]
+
+omit [Boxes.Ambient] in
+/-- **Kahan's sum of integers is exact** (`COMPENSATED`): the compensation
+stays `0` and each running sum is exact. -/
+theorem KahanSums.int_exact {vs : List Value} {c : Int} (h : KahanSums vs c)
+    (hw : ∀ v ∈ vs, IntVal v) (hb : scaledAbsSum vs ≤ 2 ^ 53 * unitK) :
+    canon c = ofExact (exactSum vs) := by
+  obtain ⟨-, ws, hp, rfl⟩ := h
+  have h0 : canon 0 = ofExact 0 := by rw [show ofExact 0 = 0 from ofExactDiv_zero 1]; rfl
+  have := (foldl_kahanStep_int (ws := ws) (p := (0, 0)) (fun v hv => hw v (hp.mem_iff.mp hv)) h0 h0
+    ⟨0, by simp⟩ (by rw [scaledAbsSum_perm hp]; simpa using hb)).1
+  rw [Int.zero_add, exactSum_perm hp] at this
+  exact this
+
+omit [Boxes.Ambient] in
+/-- `k` copies of a double add up to `k` times it. -/
+theorem exactSum_replicate (k : Nat) (x : Int) :
+    exactSum (List.replicate k (.float x)) = k * exact (canon x) := by
+  induction k with
+  | zero => simp [exactSum]
+  | succ k ih => rw [List.replicate_succ, exactSum, ih]; push_cast; rw [Int.add_mul, Int.one_mul, Int.add_comm]
+
+omit [Boxes.Ambient] in
+theorem scaledAbsSum_replicate (k : Nat) (x : Int) :
+    scaledAbsSum (List.replicate k (.float x)) = k * (scaled x).natAbs := by
+  induction k with
+  | zero => simp [scaledAbsSum]
+  | succ k ih => rw [List.replicate_succ, scaledAbsSum, ih, Nat.succ_mul, Nat.add_comm]
+
+omit [Boxes.Ambient] in
+/-- **Every tree of additions and constant runs of integers is exact**
+(`SCALED_CONSTANT`): a run's product `k · x` is an integer within the bound. -/
+theorem FloatSumsK.int_exact {vs : List Value} {c : Int} (h : FloatSumsK vs c)
+    (hw : ∀ v ∈ vs, IntVal v) (hb : scaledAbsSum vs ≤ 2 ^ 53 * unitK) :
+    canon c = ofExact (exactSum vs) := by
+  induction h with
+  | seq hp =>
+    rw [floatSum_int (fun v hv => hw v (hp.mem_iff.mp hv)) (by rw [scaledAbsSum_perm hp]; exact hb),
+      exactSum_perm hp]
+  | @split vs xs ys a b hp _ _ iha ihb =>
+    have hmem := fun v (hv : v ∈ xs ++ ys) => hw v (hp.mem_iff.mpr hv)
+    have hbs := scaledAbsSum_perm hp
+    rw [scaledAbsSum_append] at hbs
+    have hx : ∀ v ∈ xs, IntVal v := fun v hv => hmem v (List.mem_append_left _ hv)
+    have hy : ∀ v ∈ ys, IntVal v := fun v hv => hmem v (List.mem_append_right _ hv)
+    have ha := iha hx (by omega)
+    have hb' := ihb hy (by omega)
+    obtain ⟨hkx, hex⟩ := exactSum_int hx
+    obtain ⟨hky, hey⟩ := exactSum_int hy
+    obtain ⟨hfa, hsa⟩ := ofExact_int_val hkx (by omega)
+    obtain ⟨hfb, hsb⟩ := ofExact_int_val hky (by omega)
+    rw [← fadd_canon, ha, hb', fadd_fin hfa hfb, hsa, hsb, exactSum_perm hp, exactSum_append]
+  | const k x hk _ =>
+    obtain ⟨x', he, hx, j, hj⟩ := hw (.float x) (List.mem_replicate.mpr ⟨by omega, rfl⟩)
+    cases he
+    rw [exactSum_replicate, fin_canon hx]
+    have hfk : IsFin (ofInt k) := ofInt_bounds _
+    rw [fmul_fin hfk hx]
+    simp only [exact]
+    by_cases hj0 : j = 0
+    · subst hj0
+      rw [hj, Int.zero_mul, Int.mul_zero, Int.mul_zero]
+      exact ofExactDiv_zero _
+    · have hU := unitK_pos
+      have hbk := scaledAbsSum_replicate k x
+      have hj1 : unitK ≤ (scaled x).natAbs := by
+        rw [hj, Int.natAbs_mul, Int.natAbs_natCast]
+        exact Nat.le_mul_of_pos_left _ (by omega)
+      have hk53 : k ≤ 2 ^ 53 := by
+        rw [hbk] at hb
+        have := Nat.mul_le_mul_left k hj1
+        exact Nat.le_of_mul_le_mul_right (Nat.le_trans this hb) hU
+      rw [ofInt_exact (by simpa using hk53), FloatCode.scaled_exactCode,
+        show (k : Int) * unitK * scaled x = unitK * (k * scaled x) by
+          rw [Int.mul_comm (k : Int) unitK, Int.mul_assoc]]
+      exact ofExactDiv_mul _ hU
+
+omit [Boxes.Ambient] in
 /-- **Every engine's `SUM` of small integers is exact**: whatever the
 `sum_order` behaviour, a sum `SumOrder` allows is the exact sum, as the
 reference's is. The shapes prove it; the shapeless behaviours state it
@@ -1072,9 +1186,6 @@ code is finite. With `4` in place of `2`, no mean overflows. This is L1 of
 ruling 238 in ruling 242's form (K3′): the writer's check against `±∞` fires
 on `±∞` and NaN, never on a zero's sign, so the canonical code is what it
 reads. A `-0.0` among the values meets D35's canonical clause (`SumBound`). -/
-
-omit [Boxes.Ambient] in
-theorem maxMag_le_2098 : maxMag ≤ 2 ^ 2098 := by rw [maxMag_def]; omega
 
 omit [Boxes.Ambient] in
 theorem scaledAbsSum_le_mul {cs : List Int} {M : Nat} (hM : ∀ c ∈ cs, (scaled c).natAbs ≤ M) :

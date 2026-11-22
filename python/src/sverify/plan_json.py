@@ -150,15 +150,23 @@ def _type_json(dtype: Any) -> Json:
                 f"{INSTANT_NOTE}; only UTC is read, as an instant"
             )
         # Seconds and milliseconds are encodings of the source: the read widens
-        # them to microseconds, exactly (D61).
-        if dtype.scale not in (None, 0, 3, 6):
+        # them to microseconds, exactly. Nanoseconds are a kind of their own,
+        # 1677-09-21 to 2262-04-11 (D61).
+        if dtype.scale not in (None, 0, 3, 6, 9):
             raise Unsupported(
-                "only second, millisecond and microsecond timestamps are supported (#323); "
-                "cast the column to microseconds before sverify reads the table"
+                "only second, millisecond, microsecond and nanosecond timestamps are "
+                "supported (#323); cast the column to microseconds before sverify reads it"
+            )
+        precision = 9 if dtype.scale == 9 else 6
+        if precision == 9 and dtype.timezone is not None:
+            # DuckDB's TIMESTAMPTZ holds microseconds only.
+            raise Unsupported(
+                "timestamps with a time zone in nanoseconds are not supported; cast the column "
+                "to microseconds, or drop its zone, before sverify reads it (#323)"
             )
         if dtype.timezone is not None:
-            return {"precisionTimestampTz": {"precision": 6, **NULLABLE}}
-        return {"precisionTimestamp": {"precision": 6, **NULLABLE}}
+            return {"precisionTimestampTz": {"precision": precision, **NULLABLE}}
+        return {"precisionTimestamp": {"precision": precision, **NULLABLE}}
     if dtype.is_time():
         return {"precisionTime": {"precision": 6, **NULLABLE}}
     if dtype.is_null():
@@ -241,6 +249,12 @@ def literal(value: Any, dtype: Any) -> Json:
         return {"literal": {"string": str(value)}}
     if dtype.is_timestamp():
         type_json(dtype)
+        if dtype.scale == 9:
+            # A literal is microseconds (`datetime`); nanoseconds are read from a column (D61).
+            raise ProducerUnsupported(
+                "a literal timestamp in nanoseconds is not supported (#2318); nanoseconds "
+                "(1677-09-21 to 2262-04-11) are read from a column"
+            )
         if value.tzinfo is not None or dtype.timezone is not None:
             return {"literal": {"precisionTimestampTz": {"precision": 6, "value": _instant(value)}}}
         micros = (value - EPOCH) // dt_.timedelta(microseconds=1)

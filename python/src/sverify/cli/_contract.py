@@ -1,13 +1,11 @@
-"""`sverify contract export <file>:<node> --format odcs` (#791): a node's
-contract in a standard format, on standard output or in a file."""
+"""`sverify contract export <file>:<node>` (#791): a node's contract as ODCS,
+on standard output or in a file."""
 
 from __future__ import annotations
 
 import argparse
 import sys
 from pathlib import Path
-
-FORMATS = ("odcs",)
 
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
@@ -23,7 +21,6 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
         "checked on the data, or declared.",
     )
     e.add_argument("target", help="file.py:<node>")
-    e.add_argument("--format", dest="contract_format", choices=FORMATS, default="odcs")
     e.add_argument("--output", "-o", default=None, help="the file to write (default: stdout)")
     e.add_argument("--id", default=None, help="the contract's id (default: from the node's name)")
     e.add_argument("--version", dest="contract_version", default="1.0.0")

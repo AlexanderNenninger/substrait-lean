@@ -53,7 +53,7 @@ def sample_sums(samples):
 sums = samples.pipe(sample_sums).write(
     DeltaSink("sample_sums", reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))
 )
-print(sums.refresh(engine="polars", route="auto").nodes[0].route.kind)
+print(sums.refresh(engine="polars", route="auto").nodes[0].route.taken)
 # translated
 ```
 
@@ -78,6 +78,13 @@ reads the settings the plan will run under and compares them:
 - Polars: an engine affinity that forces another engine than streaming
   (`pl.Config.set_engine_affinity("in-memory")`) refuses the run, since
   sverify runs Polars's streaming engine.
+- Spark: a session of yours whose settings differ from
+  `sverify_spark.dialect.SPARK_CONF` (ANSI mode, `TIMESTAMP_NTZ`, the UTC
+  session time zone, …) refuses the run where the plan relies on them. The
+  session sverify starts sets `SPARK_CONF` and reads it back before it runs
+  anything.
+- The settings read are recorded on the route (`Route.settings`, the
+  report JSON's `settings`), so a run's record says what it ran under.
 - An unprobed patch of the probed minor warns (`EngineVersionWarning`) and
   is recorded on the route (`Route.unprobed_version`); another minor or
   major is refused (`EngineVersionError`) until the probes are re-run, and

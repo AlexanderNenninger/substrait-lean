@@ -27,7 +27,7 @@ import os
 import re
 import time
 import uuid
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import PurePosixPath, PureWindowsPath
@@ -73,7 +73,7 @@ from sverify.io._common import (
 )
 from sverify.io._sink import SinkChange, _TableSink
 from sverify.io._storage import Options, Storage, resolve
-from sverify.observation import Observation
+from sverify.observation import Lenses
 
 CONSTRAINT = "Delta constraint"
 INSERT = ("insert", "update_postimage")
@@ -639,7 +639,7 @@ class DeltaSource(_TableSource):
             c.engine,
             c.engine_version,
             c.sverify,
-            c.profile,
+            c.semantics,
             c.package,
         )
 
@@ -725,7 +725,7 @@ class DeltaSource(_TableSource):
             end,
             inserts=rows.filter(_is_in(kind, INSERT)),
             deletes=rows.filter(_is_in(kind, DELETE)),
-            trusted=f"Δ trusted as coming from Delta CDF v{since}→v{end}",
+            assumes=f"Δ trusted as coming from Delta CDF v{since}→v{end}",
             facts=facts,
             snapshot_facts=snapshot_facts,
             schema=schema,
@@ -749,11 +749,12 @@ def _is_in(column: pa.ChunkedArray, values: tuple[str, ...]) -> pa.ChunkedArray:
     return pc.call_function("is_in", [column], pc.SetLookupOptions(pa.array(values)))
 
 
-def _same_sql(a: str | None, b: str) -> bool:
+def _same_sql(a: str | None, b: str, not_null: Sequence[str] = ()) -> bool:
     """The same condition, up to parentheses and the spelling of numbers:
     Delta stores a constraint as it reads it (`(x IS NULL) OR (x > 0)` as
     `x IS NULL OR x > 0`, `x >= 0.0` as `x >= 0`, `x BETWEEN 0 AND 10` as
-    `x >= 0 AND x <= 10`, `hi >= lo` as `lo <= hi`)."""
+    `x >= 0 AND x <= 10`, `hi >= lo` as `lo <= hi`, and on a NOT NULL column
+    `x IS NULL OR x > 0` as `x > 0`)."""
     if a is None:
         return False
 
@@ -783,8 +784,21 @@ def _same_sql(a: str | None, b: str) -> bool:
             return type(n)(this=n.expression, expression=n.this)
         return n
 
+    def never_null(n: sg.exp.Expression) -> sg.exp.Expression:
+        if isinstance(n, sg.exp.Or):
+            for side, other in ((n.this, n.expression), (n.expression, n.this)):
+                if (
+                    isinstance(side, sg.exp.Is)
+                    and isinstance(side.expression, sg.exp.Null)
+                    and isinstance(side.this, sg.exp.Column)
+                    and side.this.name in not_null
+                ):
+                    return other
+        return n
+
     def tree(sql: str) -> sg.exp.Expression:
         n = sg.parse_one(sql, read="postgres").transform(unwrap).transform(between)
+        n = n.transform(never_null).transform(unwrap)
         return n.transform(number).transform(orient)
 
     return a == b or tree(a) == tree(b)
@@ -922,7 +936,7 @@ class DeltaSink(_TableSink[DeltaTable]):
         log_retention: Duration | None = None,
         compact_every: int | None = None,
         vacuum_retention: Duration | None = None,
-        reproducible: Observation | None = None,
+        reproducible: Lenses | None = None,
     ):
         self.uri, self.storage_options = str(uri), storage_options
         if checkpoint_interval is not None and checkpoint_interval < 1:
@@ -1139,8 +1153,8 @@ class DeltaSink(_TableSink[DeltaTable]):
             mode=mode,
             version=None,
             contract=contract,
-            inserted=inserted,
-            deleted=deleted,
+            inserts=inserted,
+            deletes=deleted,
             constraints=contract.checks,
         )
 
@@ -1189,8 +1203,8 @@ class DeltaSink(_TableSink[DeltaTable]):
             mode=mode,
             version=None,
             contract=contract,
-            inserted=inserted,
-            deleted=deleted,
+            inserts=inserted,
+            deletes=deleted,
             constraints=contract.checks,
         )
 
@@ -1303,7 +1317,11 @@ class DeltaSink(_TableSink[DeltaTable]):
             for k, v in dt.metadata().configuration.items()
             if k.startswith("delta.constraints.")
         }
-        stale = {k: v for k, v in have.items() if not _same_sql(contract.checks.get(k), v)}
+        stale = {
+            k: v
+            for k, v in have.items()
+            if not _same_sql(contract.checks.get(k), v, contract.not_null)
+        }
         foreign = {k: v for k, v in stale.items() if not (replace and k.startswith("sverify_"))}
         if foreign:
             raise ValueError(

@@ -2,13 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/AlexanderNenninger/substrait-lean/python/src/sverify/schemas/sink-contract.schema.json",
   "title": "sverify sink contract record",
-  "description": "What a sverify sink records with each commit (sverify.io.Contract.to_json): in a Delta commit's commitInfo and an Iceberg table's properties, under the key `sverify.contract`, or wherever a sink of your own stores it. Format 2. Within 1.x the format only gains optional keys, and readers ignore keys they do not know (docs/stability.md). Records written before 1.0 are format 1: they name the node `view`, Delta keeps them under the key `sverify`, and a record without `format` was written before 0.5. Readers map them.",
+  "description": "What a sverify sink records with each commit (sverify.io.Contract.to_json): in a Delta commit's commitInfo and an Iceberg table's properties, under the key `sverify.contract`, or wherever a sink of your own stores it. Format 3. Within 1.x the format only gains optional keys, and readers ignore keys they do not know (docs/stability.md). Records written before 1.0 are format 1 or 2: format 1 names the node `view`, Delta keeps it under the key `sverify`, and a record without `format` was written before 0.5; formats 1 and 2 name the semantics `profile`. Readers map them.",
   "type": "object",
   "required": ["node", "plan", "sources", "epoch", "not_null", "checks", "unique"],
   "properties": {
     "format": {
       "description": "The version of this format.",
-      "const": 2
+      "const": 3
     },
     "node": {
       "description": "The stored node's name.",
@@ -69,8 +69,8 @@
       "description": "The version of sverify that wrote the record: its facts and checker are those of the release.",
       "type": "string"
     },
-    "profile": {
-      "description": "The profile the plan was verified under (verify(semantics=...)). The plan's digest includes it unless it is \"portable\".",
+    "semantics": {
+      "description": "The semantics the plan was verified under (verify(semantics=...)). The plan's digest includes it unless it is \"portable\".",
       "type": "string"
     },
     "package": {

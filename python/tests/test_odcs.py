@@ -19,7 +19,7 @@ import sverify as sv
 from _repo import needs_repo
 from sverify import odcs
 from sverify.cli import main
-from sverify.contracts import Key, MaxRows, References, RowsPer, Unique, label
+from sverify.conditions import Key, MaxRows, References, RowsPer, Unique, label
 from sverify.io import StaticSource
 
 # The wheel's tests install only what the Wheels workflow lists.
@@ -294,7 +294,7 @@ def test_read_maps_rules_to_conditions():
     assert any(isinstance(x, MaxRows) and x.n == 5_000_000 for x in conds)
     assert any(isinstance(x, RowsPer) and x.cols == ("customer_id",) and x.n == 50 for x in conds)
     assert "NOT COALESCE((amount > 500 AND currency = 'USD'), FALSE)" in labels
-    reasons = sorted(u.reason.split(":")[0] for u in c.unread)
+    reasons = sorted(u.why.split(":")[0] for u in c.unread)
     assert reasons == [
         "a lower bound on the row count",
         "a pattern",
@@ -412,7 +412,7 @@ def test_cli_contract_export(tmp_path, capsys):
             """
         )
     )
-    assert main(["contract", "export", f"{path}:p", "--format", "odcs"]) == 0
+    assert main(["contract", "export", f"{path}:p"]) == 0
     doc = valid(yaml.safe_load(capsys.readouterr().out))
     assert prop(doc, "id")["primaryKey"]
     out = tmp_path / "paid.json"
@@ -520,7 +520,7 @@ def test_a_timestamp_bound_is_a_literal_of_the_columns_type() -> None:
         '("b" >= CAST(\'2020-01-01\' AS DATE)) OR "b" IS NULL',
         '("d" >= CAST(\'2020-01-01\' AS TIMESTAMP)) OR "d" IS NULL',
     ]
-    assert [u.reason for u in contract.unread] == [
+    assert [u.why for u in contract.unread] == [
         "a maximum with a time zone on a timestamp without one",
         "a minimum without a time zone on a timestamp with one",
     ]
@@ -662,7 +662,7 @@ def test_read_lists_what_it_cannot_read_with_reasons():
     assert "REGEXP_MATCHES(\"code\", '^[a-z]+$')" in " ".join(labels)  # logicalTypeOptions.pattern
     assert 'NOT "n" IS NULL' in labels  # missingValues: [null]
     assert "NOT COALESCE((n > 5), FALSE)" in labels
-    reasons = [u.reason for u in c.unread]
+    reasons = [u.why for u in c.unread]
     expect = [
         "logicalTypeOptions.multipleOf",
         "a share of rows",
@@ -829,8 +829,8 @@ def test_read_foreign_keys_on_the_object_and_by_id():
         (("cust2",), "customers", ("id",)),
         (("cust", "cust3"), "customers", ("id", "region")),
     ]
-    assert any(u.reason.startswith("references() repeats the column") for u in c.unread)
-    assert any(u.reason == "a foreign key to the columns of several tables" for u in c.unread)
+    assert any(u.why.startswith("references() repeats the column") for u in c.unread)
+    assert any(u.why == "a foreign key to the columns of several tables" for u in c.unread)
 
 
 def test_an_id_path_names_a_property_without_an_id_by_its_name():
@@ -864,7 +864,7 @@ def test_an_id_path_names_a_property_without_an_id_by_its_name():
         (r.cols[0], r.table, r.others[0]) for r in c.tables["orders"] if isinstance(r, References)
     ]
     assert refs == [("product_id", "products", "id"), ("kept", "orders", "kept")]
-    assert [(u.column, u.reason) for u in c.unread] == [
+    assert [(u.column, u.why) for u in c.unread] == [
         ("other", "a reference to no single column the contract defines")
     ]
 
@@ -907,7 +907,7 @@ def test_read_pattern_is_a_search_condition_inside_the_regex_subset():
     with pytest.warns(odcs.UnreadRuleWarning):
         c = odcs.read(_fk_doc())
     assert any("ACC[0-9]{8}" in str(x) for x in c.tables["orders"])
-    assert any(u.reason.startswith("a pattern outside") for u in c.unread)
+    assert any(u.why.startswith("a pattern outside") for u in c.unread)
 
 
 def test_a_pattern_condition_with_braces_is_a_requirement():

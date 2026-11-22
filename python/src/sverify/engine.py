@@ -435,7 +435,7 @@ def quote(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-class SqlError(SverifyError, ValueError):
+class SQLError(SverifyError, ValueError):
     """A SQL producer refused a query."""
 
     code = "sql_refused"
@@ -593,7 +593,7 @@ def written_plan(plan_json: str) -> str:
 @overload
 def run_plan(
     con: Connection,
-    plan_json: str,
+    plan: str,
     engine: Engine | Any = None,
     *,
     keep: Literal[False] = False,
@@ -607,7 +607,7 @@ def run_plan(
 @overload
 def run_plan(
     con: Connection,
-    plan_json: str,
+    plan: str,
     engine: Engine | Any = None,
     *,
     keep: bool,
@@ -620,7 +620,7 @@ def run_plan(
 
 def run_plan(
     con: Connection,
-    plan_json: str,
+    plan: str,
     engine: Engine | Any = None,
     *,
     keep: bool = False,
@@ -645,7 +645,7 @@ def run_plan(
 
     Args:
         con: The connection whose tables the plan reads.
-        plan_json: A plan in Lean's written form (a node's `plan`, or
+        plan: A plan in Lean's written form (a node's `plan`, or
             `sverify.engines.plan.written_plan`'s output).
         engine: `"duckdb"`, `"polars"`, `"spark"`, a Spark session, or
             the name or a session of an engine a plugin package registers.
@@ -714,7 +714,7 @@ def run_plan(
     """
     return _run_plan(
         con,
-        plan_json,
+        plan,
         engine,
         keep=keep,
         finite=finite,

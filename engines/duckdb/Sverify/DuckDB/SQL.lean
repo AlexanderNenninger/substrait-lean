@@ -5,7 +5,7 @@ import Sverify.DuckDB.Functions
 
 The SQL lift (`sverify.sql_lift`) reads DuckDB SQL into a Substrait plan, with
 DuckDB's own semantics (`semantics="duckdb"`) or the reference's
-(`semantics="portable"`). This file states, for each DuckDB function at one
+(`semantics="reference"`). This file states, for each DuckDB function at one
 signature (`DuckFn`), what it means under each: the **target** the lift's
 generator (`engines/duckdb/Sverify/DuckDB/LiftSearch.lean`) searches towards. For each, it
 finds a Substrait expression that the parser (`Parse.parseExpr`) reads as the
@@ -18,7 +18,7 @@ as doubles, `log` is base 10.
 Trusted, as a profile is: that this is what DuckDB computes. It follows
 `engines/duckdb/facts/` and the choices of `sql_lift`'s
 hand-written `DUCKDB` profile it replaces; oracle A (#242) tests it against
-the engine. With `semantics="portable"` a function means the reference's
+the engine. With `semantics="reference"` a function means the reference's
 function at the same types (an error where DuckDB would give `±∞` or NaN).
 
 Covered so far: `+`, `-`, `*`, `/`, `%` of doubles, the elementary functions (`sqrt`, `exp`,
@@ -150,8 +150,12 @@ def DuckFn.result : DuckFn → DuckType
 /-- Functions the model cannot state under the semantics, and why: the lift
 refuses them (`sverify.sql_lift` raises `Unsupported`). -/
 def DuckFn.refused : Semantics → DuckFn → Option String
-  | .duckdb, .castDoubleBigint => some "DuckDB rounds half to even, which the model's casts \
-      (they truncate) cannot state; use semantics='portable', or cast round(x), floor(x) or ceil(x), which lift"
+  -- D55: a SQL cast of a double to an integer rounds half to even, under both
+  -- semantics; the core has no such rounding until #322 (#2008).
+  | _, .castDoubleBigint => some "a SQL cast of a double rounds half to even (D55), \
+      which the model's casts (they truncate) cannot state until #322; write \
+      CAST(round(x) AS BIGINT), CAST(floor(x) AS BIGINT) or CAST(ceil(x) AS BIGINT), \
+      which mean the same on both"
   | _, _ => none
 
 theorem FloatCode.ofInt_ne_posInf (i : Int) : FloatCode.ofInt i ≠ FloatCode.posInf := by
