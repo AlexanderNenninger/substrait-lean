@@ -150,7 +150,8 @@ Every type a public name returns, holds or takes is public too, so
 `sverify.types` names the types a report and a refresh hold. The
 [API reference](https://alexandernenninger.github.io/substrait-lean/)
 documents each public name, and `tests/test_public_api.py` holds the
-reference, the `__all__`s and that closure equal. In the Python API "verify" proves
+reference, the `__all__`s and that closure equal. `sv.connect()` returns a
+`sverify.engines.Connection`, public there. In the Python API "verify" proves
 (`sv.verify`, `ContractedTransform.verify`) and "check" reads data
 (`check_requires`, `Report.check_inputs`, `proved_with_checks`); the
 commands named `check` (`sverify check`, `sverify-dbt check`) verify a

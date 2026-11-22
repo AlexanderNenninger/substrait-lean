@@ -50,7 +50,7 @@ from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
 from sverify.engine import ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
-from sverify.incremental import IncrementalView, Pipeline, RefreshReport, Source, Stored
+from sverify.incremental import BatchRefresh, IncrementalView, Pipeline, Source, Stored
 from sverify.io._credentials import CredentialUse
 from sverify.io._credentials import uses as credential_uses
 from sverify.observation import PLAN_BOUND, Observation
@@ -888,7 +888,7 @@ class _Stage:
             self.pipe.con.engine = engine
         self.view.engine = engine
 
-    def refresh(self, versions: dict[str, int], audit: bool) -> RefreshReport:
+    def refresh(self, versions: dict[str, int], audit: bool) -> BatchRefresh:
         return self.pipe.refresh(until=versions, audit=audit, retire=False)
 
 
@@ -930,7 +930,7 @@ class StageRefresh:
 
     node: str
     """The node's name."""
-    report: RefreshReport | None
+    report: BatchRefresh | None
     """The batch: the source versions it went from and to, the changes,
     how they were applied and the preconditions checked on them. None on a
     first refresh that computed or resumed the state at the latest
