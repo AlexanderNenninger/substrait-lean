@@ -594,6 +594,56 @@ def _strftime(lf: _Lift, node: sge.TimeToStr, sub: Sub, scope: list[Column]) -> 
     return E(_fn("strftime", [a.json, literal(fmt.this, dt.string)], dt.string), dt.string)
 
 
+#: DuckDB's default origin of `time_bucket` (Monday 2000-01-03) in microseconds.
+_BUCKET_ORIGIN = 946_857_600_000_000
+
+
+def _time_bucket(lf: _Lift, node: sge.DateBin, sub: Sub, scope: list[Column]) -> E:
+    """`time_bucket(width, ts[, origin])` for a constant width of days or less: `date_bin` from
+    DuckDB's default origin (2000-01-03), a constant timestamp origin, or the default plus a
+    constant interval (#347). Months, dates and a computed origin are refused."""
+    width = sub(node.this)
+    if (
+        not (width.constant and isinstance(width.value, tuple))
+        or width.value[0]
+        or width.value[1] <= 0
+    ):
+        raise SqlUnsupported(
+            f"{_shown(node)}: time_bucket needs a constant width of days or less "
+            "(months are not supported yet)",
+            hint="use a width in days or less, such as INTERVAL 7 DAY, or write the step in Ibis",
+            construct="function time_bucket",
+        )
+    ts = _when(sub(node.expression))
+    if ts.type.is_date():
+        raise SqlUnsupported(
+            f"{_shown(node)}: time_bucket of a DATE is not supported yet; cast it to TIMESTAMP",
+            construct="function time_bucket",
+        )
+    origin = _BUCKET_ORIGIN
+    if (o := node.args.get("unit")) is not None:
+        o = sub(o)
+        if o.type.is_interval() and o.constant and not o.value[0]:
+            origin += o.value[1]
+        elif o.type.is_timestamp() and o.constant and (m := _timestamp_micros(o)) is not None:
+            origin = m
+        else:
+            raise SqlUnsupported(
+                f"{_shown(node)}: time_bucket needs a constant origin",
+                hint="give a constant timestamp or interval as the origin, or leave it out",
+                construct="function time_bucket",
+            )
+    origin_json = {"literal": {"precisionTimestamp": {"precision": 6, "value": str(origin)}}}
+    a = lf.to(ts, _TS)
+    return E(_fn("date_bin", [interval_json(0, width.value[1]), a.json, origin_json], _TS), _TS)
+
+
+def _timestamp_micros(e: E) -> int | None:
+    """The microseconds of a constant timestamp, read from its literal."""
+    v = e.json.get("literal", {}).get("precisionTimestamp", {}).get("value")
+    return int(v) if v is not None else None
+
+
 def _to_unix(lf: _Lift, node: sge.TimeToUnix, sub: Sub, scope: list[Column]) -> E:
     return _epoch(lf, sub(node.this))
 
@@ -612,6 +662,7 @@ register(
         sge.DateDiff: _date_diff,
         sge.TimeToUnix: _to_unix,
         sge.TimeToStr: _strftime,
+        sge.DateBin: _time_bucket,
         sge.DayOfWeekIso: _isodow_rule,
         sge.Dayname: _named("dow", _DAY_NAMES, 0),
         sge.Monthname: _named("month", _MONTH_NAMES, 1),
