@@ -35,12 +35,14 @@ def test_one_ledger_per_source(ledgers) -> None:
 
 
 def test_no_proved_test_fails_in_dbt(ledgers) -> None:
-    """A test sverify-dbt proves passes in dbt's own run of the project."""
+    """A test sverify-dbt proves passes in dbt's own run of the project, or
+    dbt could not run it (`error`: a macro the suite's project does not
+    install); it never fails or warns there, which would make it `unsound`."""
     for name, led in ledgers.items():
         assert led["unsound"] == 0, name
         for key, r in led["results"].items():
-            if r["outcome"] == "proved":
-                assert r["dbt"] == "pass", f"{name}: {key}"
+            if r["outcome"] == "proved" and r.get("kind") != "constraint":
+                assert r["dbt"] in ("pass", "error"), f"{name}: {key}"
 
 
 def test_summaries_count_the_results(ledgers) -> None:

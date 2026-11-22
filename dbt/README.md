@@ -209,16 +209,20 @@ the test to add under `needs`, as YAML for the input's column (sverify's
 ## Evidence
 
 `python -m sverify_dbt.replay` builds the integration projects of
-dbt-utils 1.4.1 and dbt-expectations 0.10.10, and the 175 distinct projects
-of the pytest classes in dbt-tests-adapter 1.20.0, with dbt on DuckDB, checks
-them with sverify-dbt and records every test beside dbt's own result, in
+dbt-utils 1.4.1 and dbt-expectations 0.10.10, the projects of the pytest
+classes in dbt-tests-adapter 1.20.0, and those of dbt-core v1.12.6's
+functional tests with tests or contracts (constraints, contracts, data tests,
+incremental schema tests, primary keys, schema tests, sources), with dbt on
+DuckDB. It checks them with sverify-dbt and records every test, and every
+constraint of an enforced contract, beside dbt's own result, in
 [`replay/`](replay/) (#859). No test sverify-dbt proves fails in dbt's run.
 
 | Source | Proved | Not proved | Not checked | Refused | Inputs |
 |---|---|---|---|---|---|
 | dbt-utils 1.4.1 | 3 | 13 | 45 | 15 | 37 |
 | dbt-expectations 0.10.10 | 0 | 33 | 9 | 115 | 0 |
-| dbt-tests-adapter 1.20.0 | 8 | 11 | 86 | 10 | 13 |
+| dbt-tests-adapter 1.20.0 | 37 | 11 | 98 | 10 | 13 |
+| dbt-core v1.12.6 | 22 | 12 | 38 | 35 | 3 |
 
 These projects test macros more than they model data: most of their tests
 compare two relations or match patterns with flags, which sverify-dbt leaves
@@ -227,9 +231,12 @@ which Lean's model does not cover
 ([#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417)),
 or use `random()`. Every refusal and test not checked names its issue or the
 reason it is by design ([`replay/constructs.json`](replay/constructs.json)).
-The adapter suite's classes whose fixtures need a running warehouse, and the
-projects dbt cannot build, are listed under `unextracted` in its ledger.
-CI's `dbt` job replays them and warns when an outcome changes.
+dbt-core's refusals are mostly tables its suite creates outside dbt, which no
+`ref()` or `source()` names. The suites' classes whose fixtures need a running
+warehouse, abstract bases a subclass fills in, and the projects dbt cannot
+build are listed under `unextracted` in each ledger. CI's `dbt` job replays
+them: a changed outcome warns, and a test sverify-dbt proves that fails in
+dbt's own run fails the job.
 
 ## Development
 
