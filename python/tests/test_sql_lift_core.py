@@ -294,6 +294,9 @@ def test_duckdb_types_literals_and_decimals_its_own_way():
     ("query", "message"),
     [
         ("SELECT my_udf(id) FROM orders", "unknown function my_udf"),
+        # #328: DuckDB 2.0 has no `iff`, and its `if` takes three arguments.
+        ("SELECT iff(id > 1, 1, 0) FROM orders", "unknown function iff"),
+        ("SELECT if(id > 1, 1) FROM orders", "takes three arguments"),
         # Literals SQLGlot reads otherwise.
         ("SELECT 1__2", "underscore not between two digits"),
         ("SELECT 1._5", "underscore not between two digits"),
