@@ -48,12 +48,12 @@ def test_a_point_in_time_join_keeps_the_key(result: sverify_dbt.CheckResult) -> 
     assert got["dbt_utils.expression_is_true(valid_from < timestamp '9999-12-31')"] == "proved"
     # On the model's own result the open end has no condition (ruling 103);
     # SCD 2 derives the ranges (#763).
-    assert got["dbt_utils.mutually_exclusive_ranges"] == "not checked"
+    assert got["dbt_utils.mutually_exclusive_ranges"] == "not_checked"
 
 
 def test_refused_models_say_why(result: sverify_dbt.CheckResult) -> None:
     assert "WITH RECURSIVE" in (result["org_depth"].refused or "")
-    assert all(t.status == "not checked" for t in result["org_depth"].tests)
+    assert all(t.status == "not_checked" for t in result["org_depth"].tests)
 
 
 def test_a_surrogate_key_is_never_null(result: sverify_dbt.CheckResult) -> None:
@@ -61,7 +61,7 @@ def test_a_surrogate_key_is_never_null(result: sverify_dbt.CheckResult) -> None:
     since md5 is not injective."""
     assert statuses(result["stg_order_items"]) == {
         "not_null(item_key)": "proved",
-        "unique(item_key)": "not proved",
+        "unique(item_key)": "not_proved",
     }
 
 
@@ -236,7 +236,7 @@ def test_contract_mismatch_and_inputs_without_types(make_project) -> None:
     assert problems["extra"] == "declared, but the model has no such column"
     assert statuses(totals) == {"unique(kind)": "proved"}
     [nn] = totals.constraints
-    assert nn.status == "not proved" and nn.counterexample
+    assert nn.status == "not_proved" and nn.counterexample
     assert "no column types" in (res["latest"].refused or "")
     assert "no column types" in (res["downstream"].refused or "")
     assert main(["check", str(root), "--counterexamples", "0"]) == 1
@@ -270,7 +270,7 @@ def test_an_ephemeral_model_is_inlined_into_its_reader(make_project) -> None:
     res = sverify_dbt.check(root, counterexamples=0)
     assert res["totals"].refused is None, res["totals"].refused
     # A test on the ephemeral model is listed, not checked: dbt runs none on it.
-    assert statuses(res["stg"]) == {"not_null(id)": "not checked"}
+    assert statuses(res["stg"]) == {"not_null(id)": "not_checked"}
     assert statuses(res["totals"]) == {"unique(id)": "proved"}
     assert res["stg"].refused is None
     assert any("inlines it into totals" in n for n in res["stg"].notes)
@@ -339,7 +339,7 @@ def test_model_tests_are_inputs_downstream(make_project) -> None:
     assert statuses(res["a"]) == {
         "unique(id)": "proved",
         "not_null(id)": "proved",
-        "not_null(cents)": "not proved",
+        "not_null(cents)": "not_proved",
     }
     assert statuses(res["b"]) == {
         "unique(id)": "proved",
@@ -485,8 +485,8 @@ def test_needs_become_suggested_source_tests(make_project, capsys) -> None:
         ("source('raw', 'subs')", "mrr"),
         ("source('raw', 'subs')", "mrr"),
     ]
-    assert "mrr * 12" in (m.needed[0].because or "")
-    assert statuses(m) == {"not_null(arr)": "not proved"}
+    assert "mrr * 12" in (m.needed[0].why or "")
+    assert statuses(m) == {"not_null(arr)": "not_proved"}
     # `arr` is never NULL by the source's own test; the model may still overflow (#701).
     assert (m.tests[0].why or "").startswith("it holds, but the model may fail")
     assert "on source('raw', 'subs'), column mrr: dbt_utils.accepted_range" in str(res)
@@ -591,8 +591,11 @@ def test_an_unreadable_condition_is_dropped_and_the_rest_proved() -> None:
     from sverify_dbt.check import _Checker
     from sverify_dbt.result import ModelResult, TestResult
 
-    bad, good = TestResult(None, None, "bad", "test"), TestResult(None, None, "good", "test")
-    res = ModelResult("m", "model.p.m", None, "m")
+    bad, good = (
+        TestResult(test=None, name=None, label="bad", kind="test"),
+        TestResult(test=None, name=None, label="good", kind="test"),
+    )
+    res = ModelResult(name="m", unique_id="model.p.m", path=None, ref="m")
     res.sql = "SELECT x FROM t"
     ensures = [(bad, ["zz > 1"]), (good, ["x IS NOT NULL"])]
     report = _Checker._verify(
@@ -605,7 +608,7 @@ def test_an_unreadable_condition_is_dropped_and_the_rest_proved() -> None:
         {},
         ensures,
     )
-    assert bad.status == "not checked" and "cannot read" in (bad.why or "")
+    assert bad.status == "not_checked" and "cannot read" in (bad.why or "")
     assert good.status == "pending" and report is not None
     assert [r.condition for r in report.ensures] == ["x IS NOT NULL"]
 
@@ -618,8 +621,11 @@ def test_a_refusal_after_planning_is_isolated_to_its_test() -> None:
     from sverify_dbt.check import _Checker
     from sverify_dbt.result import ModelResult, TestResult
 
-    bad, good = TestResult(None, None, "bad", "test"), TestResult(None, None, "good", "test")
-    res = ModelResult("m", "model.p.m", None, "m")
+    bad, good = (
+        TestResult(test=None, name=None, label="bad", kind="test"),
+        TestResult(test=None, name=None, label="good", kind="test"),
+    )
+    res = ModelResult(name="m", unique_id="model.p.m", path=None, ref="m")
 
     def go(req: dict, ens: list) -> str:
         if "boom" in ens:
@@ -629,7 +635,7 @@ def test_a_refusal_after_planning_is_isolated_to_its_test() -> None:
     out = _Checker._isolate(
         go, res, {"t": []}, [(bad, ["boom"]), (good, ["ok"])], UnsupportedError("x")
     )
-    assert out == "report" and bad.status == "not checked" and good.status == "pending"
+    assert out == "report" and bad.status == "not_checked" and good.status == "pending"
 
 
 def test_a_manifest_of_another_schema_version_warns(tmp_path: Path) -> None:
@@ -697,7 +703,7 @@ def test_suggest_names_the_source_test_for_a_null_that_comes_through_an_expressi
         }
     )
     res = sverify_dbt.check(root, counterexamples=0)
-    assert statuses(res["fct"]) == {"not_null(order_day)": "not proved"}
+    assert statuses(res["fct"]) == {"not_null(order_day)": "not_proved"}
     [s] = res.suggestions()
     assert (s.relation.name, s.column, s.test) == ("orders", "ordered_at", "not_null")
     assert "fct: proves not_null(order_day)" in s.because
