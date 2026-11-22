@@ -51,6 +51,7 @@ def Profile.polars.table : ProfileTable where
     -- ungrouped, morsel sums added in scheduling order. In memory (not the
     -- target): pairwise, Kahan over groups.
     -- `COMPENSATED`: in memory, Kahan's sum over groups (polars-sum-float, #633).
+    -- Sverify runs the streaming engine only; dropping it is #2411.
     (none, "sum_order", .oneOf ["SEQUENTIAL", "ANY", "COMPENSATED"]),
     -- What Polars computes for the operations the lowering emits
     -- (polars-window-agg): a frame from UNBOUNDED PRECEDING reads
