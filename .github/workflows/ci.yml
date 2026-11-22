@@ -55,7 +55,10 @@ permissions:
 # Ibis and validator replays) and the dbt packages' replay step (`dbt`) run
 # when the package's code (not its I/O, CLI, skills or schemas) or an engine
 # package's code, the lock files, their own ledgers or a Lean input change. All three report and never fail a run, or
-# (`outside-repo`) repeat what `test` runs from the source.
+# (`outside-repo`) repeat what `test` runs from the source. One exception: the
+# dbt replay fails the job on an `unsound` entry (a test sverify-dbt proves
+# that dbt's own run fails), read from the fresh run: a wrong proof is a
+# correctness bug, where a changed outcome only warns.
 #
 # The other pull requests run `test (core)` and `test (duckdb)` always, and
 # skip a job when every file they change is one the job cannot read: the
@@ -1098,9 +1101,10 @@ jobs:
           $DBT seed $SHOP
           $DBT build $SHOP --exclude selector:sverify_proved
           $DBT test $SHOP --select selector:sverify_proved
-      # dbt packages' integration projects (#859): built with dbt on DuckDB
-      # and checked with sverify-dbt, against the ledgers in dbt/replay/.
-      # A gate: it reports a change as a warning and never fails the job.
+      # dbt packages' integration projects and dbt's own test suites (#859):
+      # built with dbt on DuckDB and checked with sverify-dbt, against the
+      # ledgers in dbt/replay/. A changed outcome warns (exit 1); an `unsound`
+      # entry, a proof dbt's run contradicts, fails the job (exit 2).
       - if: needs.changes.outputs.dbtreplay == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -1112,11 +1116,16 @@ jobs:
           DO_NOT_TRACK: "1"
           GH_TOKEN: ${{ github.token }}  # the closed-issue check asks `gh`
         run: |
-          if ! uv run --no-sync python -m sverify_dbt.replay --check > "$RUNNER_TEMP/replay.txt" 2>&1; then
+          code=0
+          uv run --no-sync python -m sverify_dbt.replay --check > "$RUNNER_TEMP/replay.txt" 2>&1 || code=$?
+          cat "$RUNNER_TEMP/replay.txt"
+          { echo "### dbt replays (#859)"; echo '```'; cat "$RUNNER_TEMP/replay.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" = 2 ]; then
+            echo "::error title=dbt replay: unsound::a test sverify-dbt proves fails in dbt's own run; see the step's log"
+            exit 1
+          elif [ "$code" != 0 ]; then
             echo "::warning title=dbt replay gate::the replay check found something (an outcome that differs from dbt/replay/, or an entry on a closed issue); see the step's log and the summary"
           fi
-          cat "$RUNNER_TEMP/replay.txt"
-          { echo "### dbt packages' integration projects (#859)"; echo '```'; cat "$RUNNER_TEMP/replay.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       # The tour's dbt notebook (`poe notebooks` skips it: the python/
       # environment has no dbt).
       - env:
