@@ -823,11 +823,13 @@ theorem fmul_lower {i j la lb : Int} (hla : 0 ≤ la) (hlb : 0 ≤ lb)
         · rw [canon_rnd, hs1, hs2]
           exact ofExactDiv_mono hK hprod
 
-/-! ### A quotient by a nonzero integer (#1787)
+/-! ### Quotients and products no larger than their first operand (#1787)
 
-`x / CAST(n AS DOUBLE)` with `n` a nonzero integer: `|n| ≥ 1`, so the
-quotient is at most `|x|` in magnitude, and rounding keeps a finite `x`'s
-quotient finite. -/
+A finite double divided by one of at least `1` in magnitude, or multiplied by
+one of at most `1`, is at most the first in magnitude. Rounding keeps it
+finite: the largest double rounds to itself, and rounding is monotone. So
+`x / 100.0`, `x * 0.01` and `x / CAST(n AS DOUBLE)` with `n ≠ 0` do not
+overflow. -/
 
 set_option exponentiation.threshold 2200 in
 theorem maxMag_le_2098 : maxMag ≤ 2 ^ 2098 := by rw [maxMag_def]; omega
@@ -838,54 +840,54 @@ theorem IsFin.scaled_le {c : Int} (h : IsFin c) : (scaled c).natAbs ≤ maxMag :
   obtain ⟨h1, h2⟩ := h
   unfold scaled; split <;> omega
 
-set_option exponentiation.threshold 2200 in
+/-- A quotient at most the largest double in magnitude rounds to a finite one. -/
+theorem ofExactDiv_fin_of_le {v : Int} {n : Nat} (hn : 0 < n) (h : v.natAbs ≤ n * maxMag) :
+    IsFin (ofExactDiv v n) := by
+  have hc : ((v.natAbs : Nat) : Int) ≤ ((n * maxMag : Nat) : Int) := Int.ofNat_le.mpr h
+  rw [Int.natCast_mul] at hc
+  have hup := ofExactDiv_mono hn (v := v) (w := n * (maxMag : Int)) (by
+    generalize (n : Int) * (maxMag : Int) = P at hc ⊢; omega)
+  have hlow := ofExactDiv_mono hn (v := n * -(maxMag : Int)) (w := v) (by
+    rw [Int.mul_neg]; generalize (n : Int) * (maxMag : Int) = P at hc ⊢; omega)
+  rw [ofExactDiv_mul _ hn] at hup hlow
+  have f1 := ofExact_fin_of_le (g := (maxMag : Int)) (by simp)
+  have f2 := ofExact_fin_of_le (g := -(maxMag : Int)) (by simp)
+  unfold IsFin at f1 f2 ⊢; omega
+
+/-- A finite double divided by one of at least `1` in magnitude is finite. -/
+theorem fdiv_fin_of_one_le {a b : Int} (ha : IsFin a) (hb : IsFin b)
+    (h1 : unitK ≤ (scaled b).natAbs) : IsFin (canon (fdiv a b)) := by
+  have hb0 : scaled b ≠ 0 := fun e => by
+    have := unitK_pos; rw [e] at h1; simp at h1; omega
+  rw [fdiv_fin ha hb hb0]
+  apply ofExactDiv_fin_of_le (Int.natAbs_pos.2 hb0)
+  have hv : ((if scaled b < 0 then -scaled a else scaled a) * (unitK : Int)).natAbs =
+      (scaled a).natAbs * unitK := by
+    rw [Int.natAbs_mul]; split <;> simp only [Int.natAbs_neg, Int.natAbs_natCast]
+  rw [hv, Nat.mul_comm (scaled b).natAbs]
+  exact Nat.mul_le_mul ha.scaled_le h1
+
+/-- A finite double multiplied by one of at most `1` in magnitude is finite. -/
+theorem fmul_fin_of_le_one {a b : Int} (ha : IsFin a) (hb : IsFin b)
+    (h1 : (scaled a).natAbs ≤ unitK ∨ (scaled b).natAbs ≤ unitK) : IsFin (canon (fmul a b)) := by
+  rw [fmul_fin ha hb]
+  apply ofExactDiv_fin_of_le unitK_pos
+  rw [Int.natAbs_mul]
+  rcases h1 with h | h
+  · rw [Nat.mul_comm, Nat.mul_comm unitK]; exact Nat.mul_le_mul hb.scaled_le h
+  · rw [Nat.mul_comm unitK]; exact Nat.mul_le_mul ha.scaled_le h
+
 /-- A finite double divided by a nonzero integer, as a double, is finite. -/
 theorem fdiv_ofInt_fin {a k : Int} (ha : IsFin a) (hk : k ≠ 0) : IsFin (canon (fdiv a (ofInt k))) := by
-  have hb : IsFin (ofInt k) := ofInt_bounds k
-  have hsa := ha.scaled_le
-  have hu : (unitK : Int) = 2 ^ 1074 := rfl
-  -- `|scaled (ofInt k)| ≥ 2¹⁰⁷⁴`, and `≥ 2¹⁰⁷⁵` unless `k = ±1`.
+  apply fdiv_fin_of_one_le ha (ofInt_bounds k)
   have hone : ∀ j : Int, j.natAbs ≤ 2 ^ 53 → scaled (ofInt j) = j * (unitK : Int) := fun j hj => by
     rw [ofInt_exact hj, scaled_exactCode]
-  have hsb : k.natAbs = 1 ∨ 2 * (unitK : Int) ≤ (scaled (ofInt k)).natAbs := by
-    rcases Int.lt_or_gt_of_ne hk with hneg | hpos
-    · by_cases h1 : k = -1
-      · exact .inl (by subst h1; rfl)
-      · right
-        have := scaled_mono (ofInt_mono (show k ≤ -2 by omega))
-        rw [hone (-2) (by decide)] at this
-        omega
-    · by_cases h1 : k = 1
-      · exact .inl (by subst h1; rfl)
-      · right
-        have := scaled_mono (ofInt_mono (show 2 ≤ k by omega))
-        rw [hone 2 (by decide)] at this
-        omega
-  have hb0 : scaled (ofInt k) ≠ 0 := by
-    rcases hsb with h1 | h2
-    · rcases Int.natAbs_eq k with e | e <;> rw [e, h1] <;>
-        (rw [hone _ (by decide)]; decide)
-    · intro e; rw [e] at h2; simp [hu] at h2
-  rw [fdiv_fin ha hb hb0]
-  rcases hsb with h1 | h2
-  · -- `k = ±1`: the quotient is `±a`, exactly.
-    have hk1 : k = 1 ∨ k = -1 := by omega
-    have hs : (scaled (ofInt k)).natAbs = unitK := by
-      rcases hk1 with rfl | rfl <;> rw [hone _ (by decide)] <;> rfl
-    rw [hs, Int.mul_comm, ofExactDiv_mul _ unitK_pos]
-    exact ofExact_fin_of_le (by split <;> (try rw [Int.natAbs_neg]) <;> exact hsa)
-  · apply ofExactDiv_fin (Int.natAbs_pos.2 hb0)
-    have hv : ((if scaled (ofInt k) < 0 then -scaled a else scaled a) * (unitK : Int)).natAbs =
-        (scaled a).natAbs * unitK := by
-      rw [Int.natAbs_mul]; split <;> simp only [Int.natAbs_neg, Int.natAbs_natCast]
-    rw [hv]
-    have h2' : 2 * unitK ≤ (scaled (ofInt k)).natAbs := by exact_mod_cast h2
-    have hmax : maxMag ≤ 2 * 2 ^ 2097 := by
-      have := maxMag_le_2098; rw [show (2 : Nat) ^ 2098 = 2 * 2 ^ 2097 from Nat.pow_succ' ..] at this
-      exact this
-    generalize (2 : Nat) ^ 2097 = P at hmax ⊢
-    calc (scaled a).natAbs * unitK ≤ 2 * P * unitK := Nat.mul_le_mul_right _ (Nat.le_trans hsa hmax)
-      _ = 2 * unitK * P := Nat.mul_right_comm 2 P unitK
-      _ ≤ (scaled (ofInt k)).natAbs * P := Nat.mul_le_mul_right _ h2'
+  rcases Int.lt_or_gt_of_ne hk with hneg | hpos
+  · have := scaled_mono (ofInt_mono (show k ≤ -1 by omega))
+    rw [hone (-1) (by decide)] at this
+    omega
+  · have := scaled_mono (ofInt_mono (show 1 ≤ k by omega))
+    rw [hone 1 (by decide)] at this
+    omega
 
 end Substrait.FloatCode

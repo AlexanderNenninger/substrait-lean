@@ -505,10 +505,25 @@ def BinFn.fBound : BinFn → Bound → Bound → Bound
   | .fdiv, x, y => fdivBound x y
   | _, _, _ => Bound.top
 
-/-- Do the arguments' bounds show the result finite (#582)? -/
+/-- Does a bound show its doubles at least `1` in magnitude? -/
+def Bound.atLeastOne (y : Bound) : Bool :=
+  y.allGe (FloatCode.exactCode 1) || y.allLe (FloatCode.exactCode (-1))
+
+/-- Does a bound show its doubles at most `1` in magnitude? -/
+def Bound.atMostOne (y : Bound) : Bool := y.within (FloatCode.exactCode (-1)) (FloatCode.exactCode 1)
+
+/-- Is the result at most the first argument in magnitude: a quotient by a
+double of at least `1`, or a product with one of at most `1` (#1787)? -/
+def BinFn.shrinks : BinFn → Bound → Bound → Bool
+  | .fdiv, _, y | .fdivIeee, _, y => y.atLeastOne
+  | .fmul, x, y => x.atMostOne || y.atMostOne
+  | _, _, _ => false
+
+/-- Do the arguments' bounds show the result finite (#582)? Their bounds
+bound the result's, or the call shrinks its first argument (#1787). -/
 def BinFn.finiteResult (f : BinFn) (aa ab : AVal) : Bool :=
   match aa.int, ab.int with
-  | some x, some y => match f.fBound x y with
+  | some x, some y => f.shrinks x y || match f.fBound x y with
     | ⟨some l, some h⟩ => decide (FloatCode.negInf < l) && decide (h < FloatCode.posInf)
     | _ => false
   | _, _ => false
@@ -530,8 +545,63 @@ theorem BinFn.fBound_mem (f : BinFn) {x y : Bound} {a b r : Int} (hx : x.Mem (Fl
   · rw [← FloatCode.fmul_canon]; exact fmulBound_mem hx hy
   · rw [← FloatCode.fdiv_canon_left]; exact fdivBound_mem hx hy
 
+omit [Boxes.Ambient] in
+theorem Bound.atLeastOne_scaled {y : Bound} {c : Int} (hy : y.Mem c) (h : y.atLeastOne = true) :
+    FloatCode.unitK ≤ (FloatCode.scaled c).natAbs := by
+  have e1 := FloatCode.scaled_exactCode 1
+  have e2 := FloatCode.scaled_exactCode (-1)
+  simp only [Bound.atLeastOne, Bool.or_eq_true] at h
+  rcases h with h | h
+  · have := FloatCode.scaled_mono (Bound.allGe_le h hy); omega
+  · have := FloatCode.scaled_mono (Bound.le_allLe h hy); omega
+
+omit [Boxes.Ambient] in
+theorem Bound.atMostOne_scaled {y : Bound} {c : Int} (hy : y.Mem c) (h : y.atMostOne = true) :
+    (FloatCode.scaled c).natAbs ≤ FloatCode.unitK := by
+  have e1 := FloatCode.scaled_exactCode 1
+  have e2 := FloatCode.scaled_exactCode (-1)
+  simp only [Bound.atMostOne, Bound.within, Bool.and_eq_true] at h
+  have := FloatCode.scaled_mono (Bound.allGe_le h.1 hy)
+  have := FloatCode.scaled_mono (Bound.le_allLe h.2 hy)
+  omega
+
+/-- A call that shrinks its first argument (`BinFn.shrinks`) has a finite
+result on finite arguments (`FloatCode.fdiv_fin_of_one_le`,
+`FloatCode.fmul_fin_of_le_one`). -/
+theorem BinFn.shrinks_fin {f : BinFn} {x y : Bound} {a b r : Int} (hx : x.Mem (FloatCode.canon a))
+    (hy : y.Mem (FloatCode.canon b)) (hfa : isFiniteCode (FloatCode.canon a) = true)
+    (hfb : isFiniteCode (FloatCode.canon b) = true) (hr : f.apply (.float a) (.float b) = .float r)
+    (hs : f.shrinks x y = true) : FloatCode.IsFin (FloatCode.canon r) := by
+  have fa : FloatCode.IsFin (FloatCode.canon a) := by
+    simpa [isFiniteCode, FloatCode.IsFin] using hfa
+  have fb : FloatCode.IsFin (FloatCode.canon b) := by
+    simpa [isFiniteCode, FloatCode.IsFin] using hfb
+  cases f <;> simp only [BinFn.shrinks, Bool.false_eq_true] at hs
+  case fmul =>
+    simp only [BinFn.apply, Value.float.injEq] at hr; subst hr
+    rw [← FloatCode.fmul_canon]
+    simp only [Bool.or_eq_true] at hs
+    exact FloatCode.fmul_fin_of_le_one fa fb
+      (hs.imp (Bound.atMostOne_scaled hx) (Bound.atMostOne_scaled hy))
+  case fdiv =>
+    simp only [BinFn.apply, Value.float.injEq] at hr; subst hr
+    rw [← FloatCode.fdiv_canon_left]
+    exact FloatCode.fdiv_fin_of_one_le fa fb (Bound.atLeastOne_scaled hy hs)
+  case fdivIeee =>
+    simp only [BinFn.apply, Value.float.injEq] at hr; subst hr
+    have h1 := Bound.atLeastOne_scaled hy hs
+    -- `|b| ≥ 1`: `b` is neither `-0.0` nor the negative NaN, so `canon` keeps it.
+    have hb : FloatCode.canon b = b := by
+      rcases FloatCode.canon_cases b with ⟨-, h0⟩ | ⟨-, hn⟩ | h
+      · rw [h0, show FloatCode.scaled 0 = 0 from rfl] at h1; have := FloatCode.unitK_pos; omega
+      · rw [hn] at fb; have := fb.not_nan; simp [FloatCode.isNanCode] at this
+      · exact h
+    rw [← FloatCode.fdiv_canon_left, ← hb]
+    exact FloatCode.fdiv_fin_of_one_le fa fb h1
+
 theorem BinFn.finiteResult_false (f : BinFn) {aa ab : AVal} {a b r : Int}
-    (ha : aa.Mem (.float a)) (hb : ab.Mem (.float b)) (hr : f.apply (.float a) (.float b) = .float r)
+    (ha : aa.Mem (.float a)) (hb : ab.Mem (.float b)) (hfa : isFiniteCode (FloatCode.canon a) = true)
+    (hfb : isFiniteCode (FloatCode.canon b) = true) (hr : f.apply (.float a) (.float b) = .float r)
     (hinf : isInfCode r = true) : f.finiteResult aa ab = false := by
   obtain ⟨x, hx, hxm, -⟩ := ha
   obtain ⟨y, hy, hym, -⟩ := hb
@@ -541,10 +611,17 @@ theorem BinFn.finiteResult_false (f : BinFn) {aa ab : AVal} {a b r : Int}
     rcases hinf with rfl | rfl
     · exact FloatCode.canon_posInf
     · exact FloatCode.canon_negInf
+  have hs : f.shrinks x y = false := by
+    rw [← Bool.not_eq_true]; intro hsh
+    have hfin := BinFn.shrinks_fin hxm hym hfa hfb hr hsh
+    rw [hcr] at hfin
+    obtain ⟨h1, h2⟩ := hfin
+    rcases hinf with rfl | rfl <;> omega
   rw [hcr] at hm
   unfold BinFn.finiteResult
   rw [hx, hy]
   dsimp only
+  rw [hs, Bool.false_or]
   split
   · rename_i l h heq
     rw [heq] at hm
@@ -602,7 +679,7 @@ theorem BinFn.mayInf_sound (f : BinFn) {aa ab : AVal} {v w : Value} {k : Issue} 
     · rename_i hc
       simp only [Bool.and_eq_true] at hc
       simp [BinFn.mayInf, hc.1.1.1.1, AVal.mayFinite_of_mem ha hc.1.1.1.2, AVal.mayFinite_of_mem hb hc.1.1.2,
-        BinFn.finiteResult_false f ha hb heq hc.1.2]
+        BinFn.finiteResult_false f ha hb hc.1.1.1.2 hc.1.1.2 heq hc.1.2]
     · simp at hk
   · simp at hk
 
