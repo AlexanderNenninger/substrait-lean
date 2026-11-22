@@ -165,7 +165,7 @@ def test_readme_examples_run(readme, tmp_path, monkeypatch):
 #: Pages a reader finishes in one sitting (#753): a tutorial or how-to page, and the user's README.
 #: `docs/README.md` records the ceilings.
 MAX_PAGE_LINES = 600
-MAX_README_LINES = 120
+MAX_README_LINES = 90
 
 
 @needs_repo
@@ -173,6 +173,7 @@ def test_the_pages_fit_a_sitting():
     pages = [
         ROOT / "docs" / "getting-started.md",
         ROOT / "docs" / "tasks.md",
+        ROOT / "docs" / "coverage.md",
         *sorted((ROOT / "docs").glob("how-to-*.md")),
     ]
     long = {p.name: n for p in pages if (n := len(p.read_text().splitlines())) > MAX_PAGE_LINES}

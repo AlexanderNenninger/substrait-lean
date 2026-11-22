@@ -27,7 +27,7 @@ the tables below give 43 of 60 (72 %) on 2026-11-07.
 
 A construct is covered when its probe verifies: a DuckDB SQL query that the
 lift reads and the checker accepts, and, where the Ibis API has the same
-construct, the case of the README's coverage table. The targets and their
+construct, the case of [the Ibis coverage table](coverage.md). The targets and their
 probes live in
 [`sverify_dev/coverage_targets/`](../python/tools/sverify_dev/coverage_targets/),
 one file per area, and
@@ -50,7 +50,7 @@ Real queries decide what is in. The sources, measured on 2026-11-05:
   (`generate_series`), `dbt-unpivot-longer` (`UNNEST`) and
   `ts-local-day-revenue` (`AT TIME ZONE`).
 - The Ibis API (epic [#60](https://github.com/AlexanderNenninger/substrait-lean/issues/60)):
-  184 of 211 probed operations verify (the README's coverage table).
+  184 of 211 probed operations verify ([the Ibis coverage table](coverage.md)).
 - dbt: the cross-database macros of dbt and dbt_utils (`date_spine`,
   `unpivot`, `generate_surrogate_key`, `split_part`, `listagg`, `bool_or`,
   `any_value`, `dateadd`), and the shop example, whose
