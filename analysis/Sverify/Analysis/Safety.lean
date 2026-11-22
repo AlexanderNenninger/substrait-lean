@@ -824,11 +824,12 @@ theorem decQuotFinite_sound {s : Nat} {aa ab : AVal} {a i : Int} {k : Issue}
         rcases hinf with h | h <;> omega
   · simp at hk
 
-/-- `BinFn.mayInf` of a call `f a b`, read with its divisor's shape
-: a double
+/-- `BinFn.mayInf` of a call `f a b`, read with its divisor's shape: a double
 divided by an integer cast to a double (`x / DOUBLE(n)`) does not overflow.
 Its divisor is zero, which raises first (`BinFn.issue`), or at least `1` in
-magnitude, so the quotient is at most `x` (`FloatCode.fdiv_ofInt_fin`, #1787). -/
+magnitude, so the quotient is at most `x` (`FloatCode.fdiv_ofInt_fin`, #1787).
+Nor does a double divided by a decimal as a double, where `decQuotFinite`
+bounds the quotient over the divisor's nonzero values (`decQuotFinite_sound`). -/
 def Expr.mayInfBin (f : BinFn) (b : Expr) (aa ab : AVal) : List Issue :=
   match f, b with
   | .fdiv, .un .itof _ => []
