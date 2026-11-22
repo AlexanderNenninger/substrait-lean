@@ -72,17 +72,8 @@ from sverify._lean_eval import (  # noqa: F401  (re-exported for the tests)
     literal,
     parse_rows,
 )
-from sverify.contracts import (
-    Condition,
-    Provenance,
-    References,
-    TableCondition,
-    _lookup,
-    condition_query,
-    label,
-    leaf_tables,
-    resolve,
-)
+from sverify.conditions import References, TableCondition, label, resolve
+from sverify.contracts import Provenance, _lookup, leaf_tables
 from sverify.engine import (
     ENGINES,
     Connection,
@@ -95,6 +86,7 @@ from sverify.engine import (
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import StaticSource, arrow_rows
 from sverify.nodes import Node, _Derived
+from sverify.report import Condition, condition_query
 
 if TYPE_CHECKING:
     from hypothesis.strategies import SearchStrategy

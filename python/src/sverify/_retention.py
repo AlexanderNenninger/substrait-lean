@@ -49,8 +49,9 @@ from sverify._weighted import (  # noqa: F401  (`after`, `buckets`, `through` ar
     rows_of,
     through,
 )
-from sverify.contracts import ArrivesWithin, Condition, label, show_duration
+from sverify.conditions import ArrivesWithin, label, show_duration
 from sverify.plan_json import INSTANT_NOTE, is_utc
+from sverify.report import Condition
 
 # `date_trunc` to these units is a bucket from 1970-01-01 (`Retention.trunc_eq_bucket`).
 _UNITS = {

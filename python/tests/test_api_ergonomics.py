@@ -7,7 +7,8 @@ import pytest
 from ibis import _
 
 import sverify as sv
-from sverify.contracts import Postcondition, References, requires_by_input
+from sverify.conditions import Postcondition, References
+from sverify.contracts import requires_by_input
 
 
 def _needed(report):

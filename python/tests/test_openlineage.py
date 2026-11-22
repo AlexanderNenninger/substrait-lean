@@ -23,7 +23,7 @@ import sverify as sv
 from _repo import ROOT, needs_repo
 from sverify import openlineage as ol
 from sverify.cli import main
-from sverify.contracts import MaxRows, Unique
+from sverify.conditions import MaxRows, Unique
 from sverify.errors import PreconditionError
 from sverify.io import Changes, DeltaSink, StaticSource
 
