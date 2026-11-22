@@ -1245,8 +1245,8 @@ class Field:
 # The operations of `Un` and `Bin`, by area: a new one goes into its area's.
 CoreUnOp = Literal[
     "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundEven", "froundTo",
-    "ftoi", "narrow", "itos", "dtext", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
-    "black_box", "raise",
+    "ftoi", "narrow", "itos", "dtext", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null",
+    "narrow_or_null", "black_box", "raise",
 ]  # fmt: skip
 CoreBinOp = Literal[
     "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fdivIeee",
