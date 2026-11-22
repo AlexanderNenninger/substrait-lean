@@ -105,3 +105,16 @@ def test_a_zoned_nanosecond_column_is_refused():
     z = ibis.table({"x": "timestamp('UTC', 9)"}, name="z")
     with pytest.raises(Exception, match="time zone in nanoseconds"):
         sv.verify(z.select("x"))
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # The last nanosecond 64 bits hold: written as microseconds it would lose its digits.
+        "SELECT TIMESTAMP_NS '2262-04-11 23:47:16.854775807' AS x",
+        "SELECT CAST(x AS TIMESTAMP_NS) AS z FROM t",
+    ],
+)
+def test_a_cast_or_literal_into_nanoseconds_is_refused(sql):
+    with pytest.raises(Exception, match=RANGE):
+        sv.verify(sql, tables={"t": t.schema()})

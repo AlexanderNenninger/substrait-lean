@@ -151,6 +151,15 @@ def _cast(lf: _Lift, node: sge.Cast, sub: Sub, scope: list[Column]) -> E:
             issue=323,
             construct="CAST",
         )
+    if isinstance(t, dt.Timestamp) and t.scale == 9:
+        # Nanoseconds (D61) are read from a column; a cast or a literal into them waits.
+        raise SqlUnsupported(
+            f"CAST to {node.to.sql(DIALECT)}: a timestamp in nanoseconds (1677-09-21 to "
+            "2262-04-11) is read from a column, and meets microseconds only through a cast, "
+            "which is not supported yet",
+            issue=2318,
+            construct="CAST",
+        )
     type_json(t)  # refuses the types outside the model
     a = sub(node.this)
     # DuckDB casts to and from a timestamp with a time zone in the session's zone (D53).

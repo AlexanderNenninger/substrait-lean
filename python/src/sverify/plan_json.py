@@ -249,6 +249,12 @@ def literal(value: Any, dtype: Any) -> Json:
         return {"literal": {"string": str(value)}}
     if dtype.is_timestamp():
         type_json(dtype)
+        if dtype.scale == 9:
+            # A literal is microseconds (`datetime`); nanoseconds are read from a column (D61).
+            raise ProducerUnsupported(
+                "a literal timestamp in nanoseconds is not supported (#2318); nanoseconds "
+                "(1677-09-21 to 2262-04-11) are read from a column"
+            )
         if value.tzinfo is not None or dtype.timezone is not None:
             return {"literal": {"precisionTimestampTz": {"precision": 6, "value": _instant(value)}}}
         micros = (value - EPOCH) // dt_.timedelta(microseconds=1)
