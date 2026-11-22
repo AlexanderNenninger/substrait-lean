@@ -107,7 +107,7 @@ What such sources can and cannot promise:
   dates, decimals, bytes and tuples are tagged).
 * A source without `restore` has its sinks record a digest of its contents.
   After a restart, a first read with the recorded digest resumes there and
-  writes nothing (#889). Otherwise, as for a `restore` that returns None
+  writes nothing. Otherwise, as for a `restore` that returns None
   (the cursor's rows are gone), it is read in full again: its versions
   continue above the ones the job's sinks recorded, so the stored nodes
   reading it are recomputed and written once, never skipped by mistake.
@@ -136,8 +136,9 @@ sink, so that holds across restarts too; without it, sverify remembers for
 the life of the process. If two processes may refresh the same sink, make
 `write` fail for the second one to commit: raise
 `sverify.errors.ConcurrentWriteError` when the sink no longer holds what
-`contract()` returned. Its next refresh writes the whole table, or skips
-the state the other process committed.
+`contract()` returned. If the sink then holds the state this refresh was
+writing, the refresh reports it as already committed; otherwise the error
+reaches the caller, and the next refresh writes the whole table.
 
 ```python
 import json

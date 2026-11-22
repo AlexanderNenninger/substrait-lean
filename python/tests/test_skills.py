@@ -19,7 +19,7 @@ FILES = sorted(SKILLS.glob("*/**/*.md"))
 
 def test_skills_exist():
     names = {p.parent.name for p in SKILLS.glob("*/SKILL.md")}
-    assert names == {"sverify", "sverify-pipelines", "sverify-engines"}
+    assert names == {"sverify", "sverify-pipelines", "sverify-engines", "sverify-patterns"}
     for p in SKILLS.glob("*/SKILL.md"):
         head = p.read_text().split("---")[1]
         assert f"name: {p.parent.name}\n" in head and "description:" in head
