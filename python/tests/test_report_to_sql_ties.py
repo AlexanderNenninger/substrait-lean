@@ -37,7 +37,8 @@ def test_the_window_is_written_without_a_tiebreak(report, dialect):
 @pytest.mark.parametrize("dialect", DIALECTS)
 def test_a_sequence_of_ties_is_refused(dialect):
     sequence = sv.verify(QUERY, tables={"t": T}, ensures=[sv.equivalent(rows="sequence")])
-    with pytest.raises((RouteError, UnsupportedError)):
+    error = UnsupportedError if dialect == "snowflake" else RouteError
+    with pytest.raises(error):
         sequence.to_sql(dialect)
 
 

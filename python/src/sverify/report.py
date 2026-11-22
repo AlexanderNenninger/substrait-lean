@@ -892,8 +892,10 @@ class Report:
         own sort keys alone for every dialect: which tied row gets which number
         is open in the reference, so any engine's choice is allowed, and
         `deterministic` is False. Under `rows="sequence"` the numbering must
-        follow the input's order, so Snowflake and Spark refuse the window
-        (their tables have no row order) unless the report is `deterministic`.
+        follow the input's order, which no dialect can write for ties: the
+        window is refused (`RouteError` on DuckDB and Spark, `UnsupportedError`
+        on Snowflake, whose tables have no row order). On Snowflake a
+        `deterministic` report lifts it.
         A plan verified under an engine's semantics
         (`semantics="duckdb"`) is written only for an engine its route
         reaches (`sverify.routes.choose`). Snowflake takes plans verified

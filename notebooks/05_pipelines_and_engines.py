@@ -1441,14 +1441,17 @@ def _(con, dialect, json, mo, sql_query, substrait_json):
 def _(mo):
     mo.md(r"""
     Try `select k, row_number() over (partition by k order by qty) as rn from t`
-    in each dialect. DuckDB gets an ordinal column, so ties break the way
-    Lean's stable sort breaks them. Snowflake and Spark write the window
-    with its own sort keys alone: which tied row gets which number is open in
-    the reference, so any engine's choice is allowed (`rows="multiset"`, the
-    default). A report that observes the rows as a sequence
-    (`rows="sequence"`) is refused on them, because their tables have no row
-    order, unless it says `deterministic` (chapter 4): then there are no ties
-    and `node.to_sql(dialect)` writes the window the same way.
+    in each dialect. Here the plan is written as it stands: DuckDB gets an
+    ordinal column, so ties break the way Lean's stable sort breaks them, and
+    Snowflake and Spark write the window with its own sort keys alone. A
+    report writes `rows="multiset"` for every dialect, the default: which tied
+    row gets which number is open in the reference, so any engine's choice is
+    allowed and `report.to_sql(dialect)` writes the same window without an
+    ordinal everywhere. A report that observes the rows as a sequence
+    (`rows="sequence"`) is refused on all three, because the numbering
+    cannot follow the input's order; on Snowflake, whose tables have no row
+    order, a `deterministic` report (chapter 4) lifts it, since there are no
+    ties.
 
     Snowflake: integers are `NUMBER(38,0)` checked against the 64-bit
     range, timestamps are `TIMESTAMP_NTZ(6)`, every identifier is quoted,
