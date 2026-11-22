@@ -1443,8 +1443,11 @@ def choose(
             "the postcondition observes the rows as a sequence, and the plan does not fix their "
             "order: its result is not sorted on a key of its input"
         )
+    from sverify.sql.core import _base
+
     try:
         _support.check(plan, e)
+        _base.check_decimal_text(plan, e)
     except ValueError as err:
         return refuse(str(err))
 

@@ -301,7 +301,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .un (.narrowOrNull _) _ => .int
   | .un (.wrap _) a => a.kind cols
   | .un (.approx _) a => a.kind cols
-  | .un .itos _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _
+  | .un .itos _ | .un .dtext _ | .un .dtextFull _ | .un .upper _ | .un .lower _ | .un .reverse _ | .un (.replace _ _) _
   | .un (.regexExtract _ _) _ | .un (.regexReplace _ _ _) _ | .un .md5 _ | .un .sha256 _ => .str
   | .un .widen _ => .float
   | .un (.atUtc true) _ => .timeTz
@@ -692,6 +692,11 @@ def singleTie (f : Float) : Bool :=
 #guard singleTie (1.0 + 2.0 ^ (-24 : Float)) && singleTie (-(1.0 + 2.0 ^ (-24 : Float)))
 #guard !singleTie 0.1 && !singleTie 1.5
 
+/-- A `DECIMAL(p, p)` cast to a string stays a call: DuckDB prints it without its integer part
+(`.500`), so the text depends on the profile (D72) and a constant must not fold it. -/
+def keepsDecimalText (ty : Json) (c : Const) : Bool :=
+  typeKind ty == .str && (match c with | .dec _ p s => p == s | _ => false)
+
 def castConst (ty : Json) (c : Const) : J Const := do
   if unsignedType ty then throw "unsigned integers are not supported"
   if let .null := c then return .null
@@ -739,6 +744,7 @@ def castConst (ty : Json) (c : Const) : J Const := do
     | .str s => return .str s
     | .bool b => return .str (if b then "true" else "false")
     | .date d => return .str (Time.strftime "%Y-%m-%d" (d * Time.usPerDay))
+    | .dec m _ s => return .str (decText s m)
     | _ => throw "casts of this value to strings are not supported"
   | .tod =>
     match c with
@@ -915,7 +921,7 @@ def arrowCast (c : Const) (ty : String) : Option Const :=
     else if ty.startsWith "Int" then some (dummy "i64")
     else if ty == "Utf8" then some (dummy "string")
     else none
-  target >>= fun t => (castConst t c).toOption
+  target >>= fun t => if keepsDecimalText t c then none else (castConst t c).toOption
 
 /-- Negation of a double constant: NaN stays NaN. -/
 def fneg (c : Int) : Int := if c == FloatCode.nan then c else FloatCode.neg c
@@ -960,6 +966,7 @@ partial def constOf? (fns : List (Nat × String)) (j : Json) : J (Option Const) 
     -- A cast to an instant keeps its kind: `parseExpr` reads it as the conversion.
     if typeKind (← field c "type") == .timeTz then return none
     let some x ← constOf? fns (← field c "input") | return none
+    if keepsDecimalText (← field c "type") x then return none
     return some (← castConst (← field c "type") x)
   if let some f := field? j "scalarFunction" then
     let anchor ← natD f "functionReference"
@@ -2238,6 +2245,8 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         if orNull then throw "TRY_CAST of a DECIMAL to an integer is not supported yet"
         return .un (.narrow bits) (.un (.dtrunc s₀) e)
       | .float => return .un (.dtof s₀) e
+      -- A decimal's text: its scale's digits, exact (D72, #346).
+      | .str => return .un (if p₀ == s₀ then .dtextFull else .dtext) e
       | _ => throw s!"unsupported cast from DECIMAL to {repr target}"
     -- A duration (`ts - ts`) compared with an interval compares as
     -- microseconds; comparisons with intervals of days or months are refused
@@ -2274,6 +2283,12 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
     -- Fails on NaN, ±∞ and out-of-range values (`analysis/Sverify/Analysis/Safety.lean`).
     if target == .int && k == .float then return .un (if orNull then .ftoiOrNull else .ftoi) e
     if target == .str && k == .int then return .un .itos e
+    -- DuckDB and Spark trim the fraction's trailing zeros and Polars prints six digits
+    -- (D72, ruling 244); a format that states the text is the same on every engine.
+    if target == .str then
+      if k == .time || k == .timeTz then
+        throw ("casts of timestamps to strings are not supported: the engines print the fraction " ++
+          "differently; write strftime with an explicit format, for example '%Y-%m-%d %H:%M:%S'")
     -- `true` / `false`, as every tier-1 engine prints a boolean; NULL stays NULL (#346).
     if target == .str && k == .bool then
       return .ifThen e (.lit (.str "true")) (.ifThen (.un .not e) (.lit (.str "false")) (.lit .null))

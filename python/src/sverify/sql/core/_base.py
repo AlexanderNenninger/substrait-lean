@@ -9,7 +9,7 @@ import math
 import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 from sverify import _case_tables, _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
 from sverify._support import DUCKDB_ONLY, ISSUE_271
-from sverify._unsupported import ISSUE_1725
+from sverify._unsupported import DECIMAL_38_38, ISSUE_1725
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify.black_box import BlackBox
 
@@ -454,6 +454,11 @@ class Dialect:
 
     def int_to_str(self, a: str) -> str:
         """Decimal digits with a leading `-` for negatives (Lean's `toString`)."""
+        return self.cast(a, "str")
+
+    def decimal_to_str(self, a: str, p: int, s: int) -> str:
+        """A `DECIMAL(p, s)`'s text (D72): `-` for a negative value, the integer part with at
+        least one digit, then `.` and exactly `s` digits (none for `s = 0`)."""
         return self.cast(a, "str")
 
     def float_floor(self, x: str) -> str:
@@ -1185,6 +1190,23 @@ def _timestamp_text(micros: int) -> str:
     return f"{ts.year:04d}-" + ts.strftime("%m-%d %H:%M:%S.%f")
 
 
+def _decimal_text(unscaled: int, scale: int) -> str:
+    """`decText` (D72): the digits of `unscaled / 10 ** scale`, `scale` of them after the
+    point, with a `-` for a negative value."""
+    sign = "-" if unscaled < 0 else ""
+    digits = str(abs(unscaled))
+    if scale == 0:
+        return sign + digits
+    digits = digits.rjust(scale + 1, "0")
+    return f"{sign}{digits[:-scale]}.{digits[-scale:]}"
+
+
+def _keeps_decimal_text(ty: dict, c: Const) -> bool:
+    """`Parse.keepsDecimalText`: a `DECIMAL(p, p)` cast to a string stays a call (its text
+    depends on the engine, D72), so a constant does not fold it."""
+    return "string" in ty and c.tag == "dec" and c.precision == c.scale
+
+
 def _date_text(days: int) -> str:
     try:
         return (date(1970, 1, 1) + timedelta(days=days)).isoformat()
@@ -1213,7 +1235,7 @@ class Field:
 # The operations of `Un` and `Bin`, by area: a new one goes into its area's.
 CoreUnOp = Literal[
     "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo", "ftoi",
-    "narrow", "itos", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
+    "narrow", "itos", "dtext", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
     "black_box", "raise",
 ]  # fmt: skip
 CoreBinOp = Literal[
@@ -1716,7 +1738,8 @@ def _lean_lit_kind(v: Any) -> LeanKind:
 UN_KINDS: dict[str, FixedKind] = {
     "itof": "float", "fneg": "float", "ffloor": "float", "fceil": "float", "fround": "float",
     "froundTo": "float", "ftoi": "int", "ftoi_or_null": "int", "narrow_or_null": "int",
-    "narrow": "int", "fit": "int", "itos": "str", **_functions.kinds("core", un=True),
+    "narrow": "int", "fit": "int", "itos": "str", "dtext": "str",
+    **_functions.kinds("core", un=True),
 }  # fmt: skip
 BIN_KINDS: dict[str, FixedKind] = {
     "fadd": "float", "fsub": "float", "fmul": "float", "fdiv": "float", "fdivIeee": "float",
@@ -2204,6 +2227,8 @@ def _cast_const(ty: dict, c: Const) -> Const:
                 return Const("str", "true" if c.value else "false")
             if c.tag == "int" and c.kind == "date":
                 return Const("str", _date_text(c.value))
+            if c.tag == "dec":
+                return Const("str", _decimal_text(c.value, c.scale))
             raise WriterUnsupported("casts of this value to strings are not supported")
         # An instant literal: the microseconds of a timestamp literal, read at UTC (D53).
         case "instant":
@@ -2342,6 +2367,8 @@ def _arrow_cast(c: Const, ty: str) -> Const | None:
     elif ty == "Utf8":
         target = "string"
     else:
+        return None
+    if _keeps_decimal_text({target: {}}, c):
         return None
     try:
         return _cast_const({target: {}}, c)
@@ -2574,7 +2601,9 @@ class _Parser:
             return _const_literal(lit)
         if (c := _field(j, "cast")) is not None:
             x = self.const(_req(c, "input"))
-            return None if x is None else _cast_const(_req(c, "type"), x)
+            if x is None or _keeps_decimal_text(_req(c, "type"), x):
+                return None
+            return _cast_const(_req(c, "type"), x)
         if (f := _field(j, "scalarFunction")) is not None:
             name = self.fns.get(_nat_d(f, "functionReference"))
             if name is None:
@@ -2882,6 +2911,8 @@ class _Parser:
                         return Un("narrow", t, digits=bits)
                     if target == "float":
                         return Un("dtof", e)
+                    if target == "str":
+                        return Un("dtext", e, digits=k.p, param=str(k.s))
                     raise WriterUnsupported(f"unsupported cast from DECIMAL to {target}")
                 if k == "time" and _interval_type(_req(v, "type")):
                     return e
@@ -5627,6 +5658,8 @@ class _Writer:
                 return d.decimal_to_int(go(a, kind(a)))
             case Un(op="dtof", arg=a):
                 return d.decimal_to_float(go(a, kind(a)))
+            case Un(op="dtext", arg=a, digits=p, param=s):
+                return d.decimal_to_str(go(a, kind(a)), p, int(s))
             case Un(op="not", arg=a):
                 return d.not3(go(a, "bool"))
             case Un(op="raise", arg=a, param=msg):
@@ -6428,3 +6461,28 @@ def to_sql(
     items = [f"{w.ref(a, w.c(i))} AS {dialect.quote(name)}" for i, name in enumerate(names)]
     rest = f"ORDER BY {w.asc(w.ordinal(a))}" if ordered else ""
     return w.select(items, dialect.subquery(w.rel(p.root, ordered), a), rest)
+
+
+def _decimal_text_38(node: Any) -> bool:
+    """Does the core term `node` cast a `DECIMAL(38, 38)` to a string?"""
+    if isinstance(node, Un) and node.op == "dtext" and node.digits == 38 and node.param == "38":
+        return True
+    if is_dataclass(node) and not isinstance(node, type):
+        return any(_decimal_text_38(getattr(node, f.name)) for f in fields(node))
+    if isinstance(node, (list, tuple)):
+        return any(_decimal_text_38(x) for x in node)
+    return False
+
+
+def check_decimal_text(plan: Any, engine: str, err: type[Exception] = ValueError) -> None:
+    """Raise `err` for a plan that casts a `DECIMAL(38, 38)` to a string on DuckDB: its writer
+    has no wider decimal to print it from (D72, ruling 245, E6). The route check calls this, so
+    `verify` reports it before anything runs. A plan the writer cannot read is not refused here."""
+    if engine.lower() != "duckdb" or not isinstance(plan, dict):
+        return
+    try:
+        root = parse_plan(plan).root
+    except Unsupported:
+        return
+    if _decimal_text_38(root):
+        raise err(DECIMAL_38_38)

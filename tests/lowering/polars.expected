@@ -13,6 +13,9 @@ UnFn.ftoiOrNull	native
 UnFn.narrowOrNull	native
 UnFn.wrap	native
 UnFn.itos	native
+UnFn.dtext	native
+UnFn.dtextFull	native
+UnFn.dwiden	native
 UnFn.widen	native
 UnFn.atUtc	native
 UnFn.upper	native

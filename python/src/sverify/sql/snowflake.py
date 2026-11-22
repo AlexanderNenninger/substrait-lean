@@ -109,6 +109,9 @@ class SnowflakeDialect(Dialect):
             )
         return _TYPES[kind]
 
+    def decimal_to_str(self, a: str, p: int, s: int) -> str:
+        raise self.not_written("the text of a decimal")
+
     def result_kind(self, kind: Kind | None) -> None:
         if kind == "interval":
             raise self.to_duckdb(
