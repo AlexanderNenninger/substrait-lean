@@ -247,6 +247,8 @@ end Substrait.Examples
 #print axioms Substrait.Rel.eval_allowed
 #print axioms Substrait.Rel.allowed_perm_eval
 #print axioms Substrait.Rel.refines_of_perm
+#print axioms Substrait.Rel.optimize_refines
+#print axioms Substrait.Rel.AllowedP_mono
 #print axioms Substrait.Rel.guardFree_allowed
 #print axioms Substrait.Rel.duckdb_shim_allowed
 #print axioms Substrait.Rel.eval_orderAllowed
