@@ -321,10 +321,11 @@ part, as `Profile.duckdb` is for DuckDB):
   precondition rules out. On Polars a double `SUM` is summed in Polars's own
   order (`sum_order`), so `agg_makes_infinite` flags the groups whose own sum
   overflows, which differ from the sequential sum's only at the edge;
-- the error side: `Polars.written_faithful` (Polars, with the value shims,
-  agrees with the reference wherever the reference reports no issue) and
-  `Rel.polars_sound` (a plan `verify` proves free of issues, up to the
-  assumed ones whose guards stay, runs on Polars as `Rel.eval`).
+- the error side: `Polars.impl` is Polars's functions, `Profile.polars`'s
+  values and Polars's own where the profile raises (a wrapped integer, `NULL`
+  for a zero divisor, NaN), and `Rel.polars_sound` (a plan `verify` proves
+  free of issues, up to the assumed ones whose guards stay, lowered by
+  Polars's table, runs on Polars as `Rel.eval`).
 
 Integer `//` and `%`, and `round` and `ceil`, are no shims of their own: the
 translation writes them from the generated lowering table

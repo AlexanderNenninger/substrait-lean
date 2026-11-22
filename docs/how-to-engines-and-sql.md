@@ -114,7 +114,7 @@ only if one applies:
 `report.routes[engine]` records the route, with its class, which says what
 you can rely on. A route prints its class first, then
 the evidence, and the route where it is not `translated`:
-`shim (integer division rewritten to truncate); evidence proved by Rel.polars_sound, Polars.int_div_trunc`, or
+`shim (integer division rewritten to truncate); evidence proved by Rel.polars_sound, Lowering.polars_exact`, or
 `exact; transfer: verified under semantics="duckdb"; …`.
 
 | Class (`route.cls`) | What it means for you |
@@ -129,7 +129,7 @@ or on anything else, tests and probes among them (`tested`). `route.theorems`
 names the proofs, and `route.facts` and `route.version` the engine facts and
 the engine version they were probed at. `print(report.details())` shows the same before
 any run, one `evidence:` line per engine:
-`evidence: polars shim, proved by Rel.polars_sound, Polars.int_div_trunc on polars's model (facts …)` or
+`evidence: polars shim, proved by Rel.polars_sound, Lowering.polars_exact on polars's model (facts …)` or
 `evidence: spark exact, tested at 4.3.0 (facts spark-int-arith, …; #…)`. A proof
 "on the engine's model" proves the model the engine's facts describe; those facts
 say the engine is that model. Before the plan runs, its preconditions,
