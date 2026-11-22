@@ -181,23 +181,23 @@ jobs:
 
       # Test the installed wheel, not the source tree: `wheel_tests.sh`
       # copies the tests out so `sverify` can only come from the wheel (CI's
-      # `outside-repo` job runs the same script on every pull request).
+      # `outside-repo` job runs the same script from the source).
       #
-      # A pull request runs the fast set (`poe test`'s: no `slow` tests, a
-      # tenth of the Hypothesis examples): it checks the packaging, and CI's
-      # `test` jobs run the whole suite on the same code from source. A
-      # release, the nightly and the weekly run test the whole suite here,
-      # and so does a release's version-bump pull request (`release-*`), so
-      # a test the wheel fails shows up before the tag.
+      # A pull request skips it: the packaging check below builds the wheels,
+      # and CI's `test` jobs run the whole suite from source. A release, the
+      # nightly and the weekly run test the whole suite here, and so does a
+      # release's version-bump pull request (`release-*`), so a test the
+      # wheel fails shows up before the tag.
       - name: Test installed wheel
-        env:
-          FAST: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-') && !startsWith(github.base_ref, 'release/') }}
+        # A pull request builds the wheels and checks the packages; its
+        # tests from the wheel run on a release's pull request, on the tag
+        # and in the schedules (CI's `outside-repo` runs them from the source
+        # when the packaging, the tests or the data files change).
+        if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release/')
         run: |
-          fast=()
-          if [ "$FAST" = true ]; then fast=(--fast); fi
           bash python/scripts/wheel_tests.sh --wheel wheelhouse/*.whl \
             --engine-wheel dist-polars/*.whl --engine-wheel dist-spark/*.whl \
-            --engine-wheel dist-duckdb/*.whl ${fast[@]+"${fast[@]}"}
+            --engine-wheel dist-duckdb/*.whl
 
       # Without extras: no optional package is installed or imported, a refresh
       # names the extra that runs it, `sverify check` runs, and `import sverify` stays
