@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from sverify.errors import SverifyError
+from sverify._unsupported import SverifyError
 
 #: What each SQL engine raises for the writer's guard, anchored at the start of
 #: the error's text: the guard writes `sverify: <message>: <value>` and the
