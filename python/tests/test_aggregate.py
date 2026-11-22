@@ -17,6 +17,7 @@ from fractions import Fraction
 
 import duckdb
 import ibis
+import pyarrow as pa
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -741,6 +742,36 @@ def test_covariance_agrees_with_duckdb(rows):
     assert len(got) == len(lean)
     for g, e in zip(got, lean, strict=True):
         assert all(near(a, b) for a, b in zip(g, e, strict=True)), (g, e)
+
+
+B = ibis.table({"g": "int64", "year": "int64"}, name="t")
+
+
+def booleans_cov(t, fn: str, where: bool, how: str):
+    cond = t.year.isin([2009, 2015]) if where else None
+    return getattr(t.g > 34.0, fn)(t.g <= 34.0, where=cond, how=how)
+
+
+@pytest.mark.parametrize("where", [False, True], ids=["no_cond", "cond"])
+@pytest.mark.parametrize(
+    ("fn", "how"), [("corr", "pop"), ("cov", "pop"), ("cov", "sample")]
+)  # Ibis's DuckDB has no sample correlation
+def test_covariance_of_booleans_is_written_and_agrees(fn, where, how):
+    """#2158: the checker's run-time check of a plan over booleans takes `abs`
+    of a double built from an `IF`, which the writer once read as an integer
+    and compared with an integer zero. Lean, the written plan on DuckDB and
+    Ibis's own DuckDB give the same value."""
+    rows = [(10, 2009), (40, 2015), (50, 2015), (None, 2015), (20, 2000), (35, 2009)]
+    expr = booleans_cov(B, fn, where, how).name("v").as_table()
+    plan = to_substrait_json(expr)
+    (lean,) = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows})))
+    con = connect()
+    con.create("t", B.schema(), rows)
+    (written,) = sv.verify(expr, on_inferred="warn").run(con, "duckdb").column("v").to_pylist()
+    memtable = ibis.memtable(pa.table({"g": [r[0] for r in rows], "year": [r[1] for r in rows]}))
+    expected = ibis.duckdb.connect().execute(booleans_cov(memtable, fn, where, how))
+    lean_value = decode_double(lean[0]) if isinstance(lean[0], int) else lean[0]
+    assert near(lean_value, written) and near(written, expected), (lean, written, expected)
 
 
 def test_correlation_is_null_where_the_standard_says():
