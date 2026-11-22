@@ -2123,10 +2123,11 @@ result leaves 64 bits. Calendar functions take microsecond timestamps. A
 microsecond and a nanosecond timestamp meet only through a written cast.
 
 Where it stands: the second and millisecond reads, the narrowing cast and the
-refusals are built (#323, PR a). The nanosecond kinds and the two casts are
-the next step (PR b); until then a plan column of a precision other than
-microseconds is refused when the plan is read (#2004), since reading it as a
-count of microseconds would compare raw counts of different units.
+refusals are built (#323, PR a). The nanosecond kinds are built for reading
+(#323): a column is read, compared with its own kind, used as a key, counted
+and its `MIN` and `MAX` taken, and Spark refuses it. The casts between
+microseconds and nanoseconds wait until after 1.0 (maintainer, ruling 237);
+until then the two kinds never meet.
 
 Recomputes sinks: no
 

@@ -197,6 +197,10 @@ def kindType : Kind → Json
       ("nullability", "NULLABILITY_NULLABLE")])]
   | .timeTz => obj [("precisionTimestampTz", obj [("precision", toJson 6),
       ("nullability", "NULLABILITY_NULLABLE")])]
+  | .timeNs => obj [("precisionTimestamp", obj [("precision", toJson 9),
+      ("nullability", "NULLABILITY_NULLABLE")])]
+  | .timeTzNs => obj [("precisionTimestampTz", obj [("precision", toJson 9),
+      ("nullability", "NULLABILITY_NULLABLE")])]
   | .date => obj [("date", nullable)]
   | .dec p s => obj [("decimal", obj [("precision", toJson p), ("scale", toJson s),
       ("nullability", "NULLABILITY_NULLABLE")])]
@@ -216,6 +220,8 @@ them apart to write a literal compared with, or added to, an interval as an
 interval (#65). -/
 inductive WKind where
   | int | float | time | instant | date | interval | str | bool | tod | other
+  /-- Timestamps in nanoseconds (D61), naive and instants. -/
+  | timeNs | instantNs
   | list (elem : WKind)
   | struct (fields : List WKind)
   | dec (p s : Nat)
@@ -228,12 +234,14 @@ def WKind.ofKind : Kind → WKind
   | .dec p s => .dec p s
   -- An instant (#1725): compared with another instant, never mixed (`checkArgKinds`).
   | .timeTz => .instant
+  | .timeNs => .timeNs | .timeTzNs => .instantNs
   -- Carried, never read (D67).
   | .opaque => .other
 
 /-- The model's view: an interval is a time (`Expr.kind`). -/
 def WKind.toKind : WKind → Kind
   | .int => .int | .float => .float | .time | .interval => .time | .instant => .timeTz
+  | .timeNs => .timeNs | .instantNs => .timeTzNs
   | .date => .date
   | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (toKind k)
   | .struct ks => .struct (ks.attach.map fun ⟨k, _⟩ => toKind k)

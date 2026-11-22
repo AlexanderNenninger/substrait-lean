@@ -972,6 +972,9 @@ def outputKindJson (k : Write.WKind) (bits : Nat) : Json := match k with
   | .date => Json.mkObj [("kind", "date")]
   | .time => Json.mkObj [("kind", "time")]
   | .instant => Json.mkObj [("kind", "instant")]
+  -- Nanoseconds (D61): the run's types keep their precision.
+  | .timeNs => Json.mkObj [("kind", "timeNs")]
+  | .instantNs => Json.mkObj [("kind", "instantNs")]
   | .interval => Json.mkObj [("kind", "interval")]
   | .tod => Json.mkObj [("kind", "tod")]
   | .list _ => Json.mkObj [("kind", "list")]

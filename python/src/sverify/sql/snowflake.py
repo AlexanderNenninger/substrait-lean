@@ -107,6 +107,8 @@ class SnowflakeDialect(Dialect):
             raise self.to_duckdb(
                 "a timestamp with a time zone is not yet supported on Snowflake", ISSUE_1725
             )
+        if kind == "timeNs":
+            raise self.to_duckdb("a timestamp in nanoseconds is not yet supported on Snowflake")
         return _TYPES[kind]
 
     def decimal_to_str(self, a: str, p: int, s: int) -> str:
