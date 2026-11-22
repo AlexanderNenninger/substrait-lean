@@ -1,0 +1,853 @@
+{
+  "source": "dbt-core",
+  "repo": "https://github.com/dbt-labs/dbt-core",
+  "tag": "v1.12.6",
+  "commit": "78d8367e143e753fe53c553af478708d23ccf5cc",
+  "packages": [],
+  "project": "tests/functional",
+  "license": "Apache-2.0",
+  "summary": {
+    "proved": 22,
+    "not proved": 12,
+    "not checked": 38,
+    "refused": 35,
+    "input": 3
+  },
+  "unsound": 0,
+  "results": {
+    "constraints.test_custom_constraints.TestCustomConstraintStateModified::my_model::custom(id)": {
+      "test": "custom(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for a custom constraint; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "data_tests.test_hooks.BaseSingularTestHooks::orders_test": {
+      "test": "singular test",
+      "model": "orders",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "incremental_schema_tests.test_incremental_schema.TestIncrementalSchemaChange::select_from_a": {
+      "test": "singular test",
+      "model": "model_a",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "incremental_schema_tests.test_incremental_schema.TestIncrementalSchemaChange::select_from_incremental": {
+      "test": "singular test",
+      "model": "incremental_ignore",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "incremental_schema_tests.test_incremental_schema.TestIncrementalSchemaChange::select_from_incremental_append_new_columns": {
+      "test": "singular test",
+      "model": "incremental_append_new_columns",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "incremental_schema_tests.test_incremental_schema.TestIncrementalSchemaChange::select_from_incremental_append_new_columns_target": {
+      "test": "singular test",
+      "model": "incremental_append_new_columns_target",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "incremental_schema_tests.test_incremental_schema.TestIncrementalSchemaChange::select_from_incremental_ignore_target": {
+      "test": "singular test",
+      "model": "incremental_ignore_target",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "incremental_schema_tests.test_incremental_schema.TestIncrementalSchemaChange::select_from_incremental_sync_all_columns": {
+      "test": "singular test",
+      "model": "incremental_sync_all_columns",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "incremental_schema_tests.test_incremental_schema.TestIncrementalSchemaChange::select_from_incremental_sync_all_columns_target": {
+      "test": "singular test",
+      "model": "incremental_sync_all_columns_target",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "primary_keys.test_primary_keys.TestInvalidModelUniqueTest::unique_simple_model_None.722a6632f8": {
+      "test": "unique",
+      "model": "simple_model",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for unique; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "primary_keys.test_primary_keys.TestSimpleModelCombinationOfColumns::dbt_utils_unique_combination_of_columns_simple_model_id__color.8db10fbc3a": {
+      "test": "dbt_utils.unique_combination_of_columns(id, color)",
+      "model": "simple_model",
+      "outcome": "proved",
+      "dbt": "error"
+    },
+    "primary_keys.test_primary_keys.TestSimpleModelConstraints::simple_model::not_null(id)": {
+      "test": "not_null(id)",
+      "model": "simple_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "primary_keys.test_primary_keys.TestSimpleModelConstraints::simple_model::primary_key(id)": {
+      "test": "primary_key(id)",
+      "model": "simple_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "primary_keys.test_primary_keys.TestSimpleModelUniqueNotNullTests::not_null_simple_model_id.3d4fb31824": {
+      "test": "not_null(id)",
+      "model": "simple_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "primary_keys.test_primary_keys.TestSimpleModelUniqueNotNullTests::unique_simple_model_id.ebd7d41567": {
+      "test": "unique(id)",
+      "model": "simple_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "primary_keys.test_primary_keys.TestSimpleModelUniqueTests::unique_simple_model_id.ebd7d41567": {
+      "test": "unique(id)",
+      "model": "simple_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "primary_keys.test_primary_keys.TestVersionedSimpleModel::not_null_simple_model_v1_id.54cdb72ecb": {
+      "test": "not_null(id)",
+      "model": "simple_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "primary_keys.test_primary_keys.TestVersionedSimpleModel::not_null_simple_model_v2_id.f768cdcaa5": {
+      "test": "not_null(id)",
+      "model": "simple_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "primary_keys.test_primary_keys.TestVersionedSimpleModel::unique_simple_model_v1_id.2aaf022778": {
+      "test": "unique(id)",
+      "model": "simple_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "primary_keys.test_primary_keys.TestVersionedSimpleModel::unique_simple_model_v2_id.cca352713c": {
+      "test": "unique(id)",
+      "model": "simple_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "primary_keys.test_primary_keys.TestVersionedSimpleModelExcludeTests::not_null_simple_model_v1_id.54cdb72ecb": {
+      "test": "not_null(id)",
+      "model": "simple_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "primary_keys.test_primary_keys.TestVersionedSimpleModelExcludeTests::unique_simple_model_v1_id.2aaf022778": {
+      "test": "unique(id)",
+      "model": "simple_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "schema_tests.test_custom_test_config.TestCustomDataTestConfig::accepted_values_table_color__blue__red.9482147132": {
+      "test": "accepted_values(color)",
+      "model": "table",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "fail"
+    },
+    "schema_tests.test_custom_test_config.TestCustomDataTestConfig::custom_color_from_config_table_color.737440d6b7": {
+      "test": "custom_color_from_config(color)",
+      "model": "table",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for custom_color_from_config; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "pass",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_custom_test_config.TestCustomDataTestConfig::not_null_table_color.8718750ce5": {
+      "test": "not_null(color)",
+      "model": "table",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "schema_tests.test_custom_test_config.TestMixedDataTestConfig::accepted_values_table_color__blue__red.9482147132": {
+      "test": "accepted_values(color)",
+      "model": "table",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "warn"
+    },
+    "schema_tests.test_custom_test_config.TestMixedDataTestConfig::custom_color_from_config_table_color.737440d6b7": {
+      "test": "custom_color_from_config(color)",
+      "model": "table",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for custom_color_from_config; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "fail",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_schema_v2_tests.TestCliVarsSchemaTests::equivalent_model__var_myvar_baz_bar.83f0e8b7f4": {
+      "test": "equivalent",
+      "model": "model",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for equivalent; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_schema_v2_tests.TestConfiguredVarsSchemaTests::equivalent_model__var_myvar_baz_bar.83f0e8b7f4": {
+      "test": "equivalent",
+      "model": "model",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for equivalent; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_schema_v2_tests.TestCustomConfigSchemaTests::error_if_table_copy_.3a42545806": {
+      "test": "error_if",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestCustomConfigSchemaTests::fail_calc_table_copy_.f57f51b857": {
+      "test": "fail_calc",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestCustomConfigSchemaTests::limit_table_copy_.98a5105d9d": {
+      "test": "limit",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestCustomConfigSchemaTests::relationships_table_copy_id__id__ref_table_copy_.5d62f313bc": {
+      "test": "relationships(id)",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestCustomConfigSchemaTests::warn_if_table_copy_.025e4d32b3": {
+      "test": "warn_if",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestCustomConfigSchemaTests::where_table.copy.with.dots_.c15dd141f8": {
+      "test": "where",
+      "model": "table.copy.with.dots",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "schema_tests.test_schema_v2_tests.TestCustomConfigSchemaTests::where_table_copy_.b67db82b83": {
+      "test": "where",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestCustomConfigSchemaTests::where_table_copy_another_one_.6acd5f116e": {
+      "test": "where",
+      "model": "table_copy_another_one",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "schema_tests.test_schema_v2_tests.TestCustomSchemaTestMacroResolutionOrder::my_custom_test_my_model_.e69a0abc9f": {
+      "test": "my_custom_test",
+      "model": "my_model",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for my_custom_test; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_schema_v2_tests.TestCustomSchemaTests::every_value_is_blue_table_copy_favorite_color.19334d8297": {
+      "test": "every_value_is_blue(favorite_color)",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestCustomSchemaTests::local_dep_equality_table_copy_ref_table_copy_.35ca27fe20": {
+      "test": "local_dep.equality",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestCustomSchemaTests::not_null_table_copy_email.e91f3d1ec0": {
+      "test": "not_null(email)",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestCustomSchemaTests::rejected_values_table_copy_favorite_color__orange__purple.8bb5ed46e4": {
+      "test": "rejected_values(favorite_color)",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestCustomSchemaTests::unique_table_copy_id.6c33da4940": {
+      "test": "unique(id)",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestDefaultBoolType::not_null_my_model_failure_id.4c496f4329": {
+      "test": "not_null(id)",
+      "model": "my_model_failure",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "fail"
+    },
+    "schema_tests.test_schema_v2_tests.TestDefaultBoolType::not_null_my_model_pass_id.2aaf6b4523": {
+      "test": "not_null(id)",
+      "model": "my_model_pass",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestDefaultBoolType::not_null_my_model_warning_id.03aa1285bb": {
+      "test": "not_null(id)",
+      "model": "my_model_warning",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "warn"
+    },
+    "schema_tests.test_schema_v2_tests.TestGenericTestsCustomNames::not_null_where_1_equals_1.7b96089006": {
+      "test": "not_null(id)",
+      "model": "model_a",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestGenericTestsCustomNames::not_null_where_1_equals_2.8ae586e17f": {
+      "test": "not_null(id)",
+      "model": "model_a",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestGenericTestsCustomNamesAltFormat::not_null_where_1_equals_1.7b96089006": {
+      "test": "not_null(id)",
+      "model": "model_a",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestGenericTestsCustomNamesAltFormat::not_null_where_1_equals_2.8ae586e17f": {
+      "test": "not_null(id)",
+      "model": "model_a",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestHooksForWhich::unique_ephemeral_id.1344b5ff8f": {
+      "test": "unique(id)",
+      "model": "ephemeral",
+      "outcome": "not checked",
+      "why": "dbt runs no test on an ephemeral model",
+      "dbt": "not run",
+      "design": "dbt does not run the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestHooksInTests::unique_ephemeral_id.1344b5ff8f": {
+      "test": "unique(id)",
+      "model": "ephemeral",
+      "outcome": "not checked",
+      "why": "dbt runs no test on an ephemeral model",
+      "dbt": "pass",
+      "design": "dbt does not run the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestLimitedSchemaTests::not_null_table_failure_limit_null_count.fae1e52dfd": {
+      "test": "not_null(count)",
+      "model": "table_failure_limit_null",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "schema_tests.test_schema_v2_tests.TestLimitedSchemaTests::not_null_table_limit_null_count.4d178a0092": {
+      "test": "not_null(count)",
+      "model": "table_limit_null",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestLimitedSchemaTests::not_null_table_warning_limit_null_count.cec9b2e817": {
+      "test": "not_null(count)",
+      "model": "table_warning_limit_null",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "schema_tests.test_schema_v2_tests.TestNonBoolType::not_null_my_model_id.43e0e9183a": {
+      "test": "not_null(id)",
+      "model": "my_model",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "fail"
+    },
+    "schema_tests.test_schema_v2_tests.TestOtherBoolType::not_null_my_model_failure_id.4c496f4329": {
+      "test": "not_null(id)",
+      "model": "my_model_failure",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "fail"
+    },
+    "schema_tests.test_schema_v2_tests.TestOtherBoolType::not_null_my_model_pass_id.2aaf6b4523": {
+      "test": "not_null(id)",
+      "model": "my_model_pass",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestOtherBoolType::not_null_my_model_warning_id.03aa1285bb": {
+      "test": "not_null(id)",
+      "model": "my_model_warning",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "warn"
+    },
+    "schema_tests.test_schema_v2_tests.TestQuotedSchemaTestColumns::not_null_model__Id_.87a23960cf": {
+      "test": "not_null(\"Id\")",
+      "model": "model",
+      "outcome": "not checked",
+      "why": "the model has no column …",
+      "dbt": "pass",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "schema_tests.test_schema_v2_tests.TestQuotedSchemaTestColumns::not_null_model_again__Id_.67183ddf39": {
+      "test": "not_null(\"Id\")",
+      "model": "model_again",
+      "outcome": "not checked",
+      "why": "the model has no column …",
+      "dbt": "pass",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "schema_tests.test_schema_v2_tests.TestQuotedSchemaTestColumns::not_null_model_noquote_Id.4c2f7852d1": {
+      "test": "not_null(Id)",
+      "model": "model_noquote",
+      "outcome": "not checked",
+      "why": "the model has no column Id",
+      "dbt": "pass",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "schema_tests.test_schema_v2_tests.TestQuotedSchemaTestColumns::source_unique_my_source_2_model__Id_.2cc5ae72c7": {
+      "test": "unique(\"Id\")",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestQuotedSchemaTestColumns::source_unique_my_source_2_model_noquote_Id.9838320f5c": {
+      "test": "unique(Id)",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestQuotedSchemaTestColumns::source_unique_my_source_model__Id_.e54fffa7c7": {
+      "test": "unique(\"Id\")",
+      "outcome": "input",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestQuotedSchemaTestColumns::unique_model__Id_.eaa5bb6990": {
+      "test": "unique(\"Id\")",
+      "model": "model",
+      "outcome": "not checked",
+      "why": "the model has no column …",
+      "dbt": "pass",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "schema_tests.test_schema_v2_tests.TestQuotedSchemaTestColumns::unique_model_again__Id_.8e5d1ca241": {
+      "test": "unique(\"Id\")",
+      "model": "model_again",
+      "outcome": "not checked",
+      "why": "the model has no column …",
+      "dbt": "pass",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "schema_tests.test_schema_v2_tests.TestQuotedSchemaTestColumns::unique_model_noquote_Id.b5f039c2f9": {
+      "test": "unique(Id)",
+      "model": "model_noquote",
+      "outcome": "not checked",
+      "why": "the model has no column Id",
+      "dbt": "pass",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaCaseInsensitive::unique_lowercase__id_.1e753820f9": {
+      "test": "unique(\"id\")",
+      "model": "lowercase",
+      "outcome": "not checked",
+      "why": "the model has no column …",
+      "dbt": "pass",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaCaseInsensitive::unique_uppercase__id_.2e904f3948": {
+      "test": "unique(\"id\")",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestContext::call_pkg_macro_model_c_.d67ad0d02c": {
+      "test": "call_pkg_macro",
+      "model": "model_c",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for call_pkg_macro; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestContext::local_utils_dispatch_model_c_.5a206c261c": {
+      "test": "local_utils.dispatch",
+      "model": "model_c",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for local_utils.dispatch; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestContext::my_datediff_model_c_.ad26e93587": {
+      "test": "my_datediff",
+      "model": "model_c",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for my_datediff; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestContext::type_one_model_a_.695f1765a5": {
+      "test": "type_one",
+      "model": "model_a",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for type_one; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestContext::type_two_model_a_.842bc6c2a7": {
+      "test": "type_two",
+      "model": "model_a",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for type_two; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestContextWhereSubq::self_referential_model_a_.0c5ea02efa": {
+      "test": "self_referential",
+      "model": "model_a",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for self_referential; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestContextWithMacroNamespace::call_pkg_macro_model_c_.d67ad0d02c": {
+      "test": "call_pkg_macro",
+      "model": "model_c",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for call_pkg_macro; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestContextWithMacroNamespace::test_utils_dispatch_model_c_.29d846a1fa": {
+      "test": "test_utils.dispatch",
+      "model": "model_c",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for test_utils.dispatch; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestContextWithMacroNamespace::type_one_model_a_.695f1765a5": {
+      "test": "type_one",
+      "model": "model_a",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for type_one; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestContextWithMacroNamespace::type_two_model_a_.842bc6c2a7": {
+      "test": "type_two",
+      "model": "model_a",
+      "outcome": "not checked",
+      "why": "sverify-dbt has no mapping for type_two; dbt still runs it; write it as dbt_utils.expression_is_true to have sverify prove it",
+      "dbt": "error",
+      "design": "a project's own generic test: sverify-dbt maps the tests of dbt, dbt-utils and dbt-expectations; the project can state it as dbt_utils.expression_is_true"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestNameCollision::not_null_base_extension_id.922d83a56c": {
+      "test": "not_null(id)",
+      "model": "base_extension",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestNameCollision::not_null_base_extension_id.c8d18fe069": {
+      "test": "not_null(extension_id)",
+      "model": "base",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestStoreFailuresFalseHierarchicalParsing::not_null_my_model_id.43e0e9183a": {
+      "test": "not_null(id)",
+      "model": "my_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestStoreFailuresFalseParsing::not_null_my_model_id.43e0e9183a": {
+      "test": "not_null(id)",
+      "model": "my_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestStoreFailuresTrueHierarchicalParsing::not_null_my_model_id.43e0e9183a": {
+      "test": "not_null(id)",
+      "model": "my_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTestStoreFailuresTrueParsing::not_null_my_model_id.43e0e9183a": {
+      "test": "not_null(id)",
+      "model": "my_model",
+      "outcome": "proved",
+      "dbt": "pass"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::accepted_values_table_copy_fav_number__False__3_14159265.f58b8ed874": {
+      "test": "accepted_values(fav_number)",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::accepted_values_table_copy_favorite_color__True__blue__green.a4d80fac20": {
+      "test": "accepted_values(favorite_color)",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::accepted_values_table_disabled_favorite_color__red.b5b700560f": {
+      "test": "accepted_values(favorite_color)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::accepted_values_table_failure_copy_favorite_color__blue__green.6c75366b2c": {
+      "test": "accepted_values(favorite_color)",
+      "model": "table_failure_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed_failure, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::accepted_values_table_failure_summary_favorite_color__red.81628d80d9": {
+      "test": "accepted_values(favorite_color)",
+      "model": "table_failure_summary",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::accepted_values_table_summary_favorite_color_copy__blue__green.a631f31212": {
+      "test": "accepted_values(favorite_color_copy)",
+      "model": "table_summary",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::not_null_table_copy_first_name.1aeb056790": {
+      "test": "not_null(first_name)",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::not_null_table_copy_id.7c504b04df": {
+      "test": "not_null(id)",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::not_null_table_copy_ip_address.760ead9882": {
+      "test": "not_null(ip_address)",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::not_null_table_copy_updated_at.37714c496b": {
+      "test": "not_null(updated_at)",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::not_null_table_failure_copy_id.34fcce12bc": {
+      "test": "not_null(id)",
+      "model": "table_failure_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed_failure, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::not_null_table_summary_count.5efd16ac64": {
+      "test": "not_null(count)",
+      "model": "table_summary",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::not_null_table_summary_favorite_color_copy.613de04b4e": {
+      "test": "not_null(favorite_color_copy)",
+      "model": "table_summary",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::relationships_table_disabled_favorite_color__favorite_color__ref_table_copy_.ecb2011718": {
+      "test": "relationships(favorite_color)",
+      "outcome": "not checked",
+      "why": "not on a model sverify-dbt reports",
+      "dbt": "not run",
+      "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::relationships_table_failure_null_relation_id__id__ref_table_failure_copy_.a002a50bab": {
+      "test": "relationships(id)",
+      "model": "table_failure_null_relation",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::relationships_table_failure_summary_favorite_color__favorite_color__ref_table_copy_.e7baa567d0": {
+      "test": "relationships(favorite_color)",
+      "model": "table_failure_summary",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::relationships_table_summary_favorite_color_copy__favorite_color__ref_table_copy_.2c0041a1a0": {
+      "test": "relationships(favorite_color_copy)",
+      "model": "table_summary",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::unique_table_copy_email.3535e5dd66": {
+      "test": "unique(email)",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::unique_table_copy_id.6c33da4940": {
+      "test": "unique(id)",
+      "model": "table_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::unique_table_failure_copy_id.100d8de989": {
+      "test": "unique(id)",
+      "model": "table_failure_copy",
+      "outcome": "refused",
+      "construct": "it reads main.seed_failure, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}",
+      "dbt": "skipped",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    "schema_tests.test_schema_v2_tests.TestSchemaTests::unique_table_summary_favorite_color_copy.f0a4bbac45": {
+      "test": "unique(favorite_color_copy)",
+      "model": "table_summary",
+      "outcome": "refused",
+      "construct": "no compiled SQL in the manifest: run … (or …) first; …, … and a … without the model leave it out",
+      "dbt": "skipped",
+      "design": "dbt itself fails to build the model on DuckDB"
+    },
+    "schema_tests.test_sql_header_config.TestGenericDataTestSqlHeader::generic_test_with_sql_header.7f3ae44626": {
+      "test": "not_null(id)",
+      "model": "table",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "schema_tests.test_sql_header_config.TestGenericDataTestSqlHeaderDeprecation::generic_test_with_sql_header.7f3ae44626": {
+      "test": "not_null(id)",
+      "model": "table",
+      "outcome": "not proved",
+      "why": "sverify cannot rule out a row that fails it, from the tests upstream",
+      "dbt": "pass"
+    },
+    "schema_tests.test_sql_header_config.TestSingularDataTestSqlHeader::singular_test_with_sql_header": {
+      "test": "singular test",
+      "model": "table",
+      "outcome": "not checked",
+      "why": "a singular test: sverify-dbt reads generic tests only",
+      "dbt": "pass",
+      "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    }
+  },
+  "unextracted": {
+    "tests.functional.primary_keys.test_primary_keys.TestInvalidModelCombinationOfColumns": "crashed: TypeError: sequence item N: expected str instance, NoneType found",
+    "tests.functional.schema_tests.test_custom_test_config.TestConfigNotDictError": "not replayed: no /tmp/tmps6fmnowk/tests_functional_schema_tests_test_custom_test_config_TestConfigNotDictError/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functiona",
+    "tests.functional.schema_tests.test_custom_test_config.TestSameKeyErrorDataTestConfig": "not replayed: no /tmp/tmps6fmnowk/tests_functional_schema_tests_test_custom_test_config_TestSameKeyErrorDataTestConfig/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_f",
+    "tests.functional.schema_tests.test_schema_v2_tests.TestGenericTestsCollide": "not replayed: no /tmp/tmps6fmnowk/tests_functional_schema_tests_test_schema_v2_tests_TestGenericTestsCollide/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_",
+    "tests.functional.schema_tests.test_schema_v2_tests.TestGenericTestsConfigCustomMacros": "not replayed: no /tmp/tmps6fmnowk/tests_functional_schema_tests_test_schema_v2_tests_TestGenericTestsConfigCustomMacros/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_",
+    "tests.functional.schema_tests.test_schema_v2_tests.TestInvalidSchema": "not replayed: no /tmp/tmps6fmnowk/tests_functional_schema_tests_test_schema_v2_tests_TestInvalidSchema/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_schema",
+    "tests.functional.schema_tests.test_schema_v2_tests.TestMalformedSchemaTests": "not replayed: no /tmp/tmps6fmnowk/tests_functional_schema_tests_test_schema_v2_tests_TestMalformedSchemaTests/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional",
+    "tests.functional.sources.common_source_setup.BaseSourcesTest": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_common_source_setup_BaseSourcesTest/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_sources_common",
+    "tests.functional.sources.test_name_chars.TestNameChars": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_name_chars_TestNameChars/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_sources_test_name_ch",
+    "tests.functional.sources.test_simple_source.SuccessfulSourcesTest": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_simple_source_SuccessfulSourcesTest/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_sources_t",
+    "tests.functional.sources.test_simple_source.TestMalformedSources": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_simple_source_TestMalformedSources/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_sources_te",
+    "tests.functional.sources.test_simple_source.TestRenderingInSourceTests": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_simple_source_TestRenderingInSourceTests/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_sour",
+    "tests.functional.sources.test_source_freshness.TestHooksInSourceFreshness": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_source_freshness_TestHooksInSourceFreshness/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_s",
+    "tests.functional.sources.test_source_freshness.TestHooksInSourceFreshnessDefault": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_source_freshness_TestHooksInSourceFreshnessDefault/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_funct",
+    "tests.functional.sources.test_source_freshness.TestHooksInSourceFreshnessDisabled": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_source_freshness_TestHooksInSourceFreshnessDisabled/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_func",
+    "tests.functional.sources.test_source_freshness.TestSourceFreshnessMacroOverride": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_source_freshness_TestSourceFreshnessMacroOverride/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functi",
+    "tests.functional.sources.test_source_freshness.TestSourceFreshnessSelection": "LookupError: project_config_update needs the pytest fixture logs_dir"
+  }
+}
