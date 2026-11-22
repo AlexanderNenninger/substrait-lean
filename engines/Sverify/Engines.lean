@@ -2,6 +2,7 @@ import Sverify.Engines.Engine
 import Sverify.Engines.Entry
 import Sverify.Engines.Generated
 import Sverify.Engines.Lowering
+import Sverify.Engines.LoweringRaises
 import Sverify.Engines.LoweringExport
 import Sverify.Engines.LoweringGuards
 import Sverify.Engines.LoweringHint

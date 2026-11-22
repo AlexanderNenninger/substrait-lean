@@ -71,11 +71,16 @@ def Profile.WithinOk (p : Profile) (t : ProfileTable) : Prop :=
   (∀ f v w, p.un f v = .ok w → w = f.apply v ∨ CallExtra t (.un f) [v]) ∧
     ∀ f v w x, p.bin f v w = .ok x → x = f.apply v w ∨ CallExtra t (.bin f) [v, w]
 
+/-- `p`'s functions where a call does not raise, `I`'s where it does: an
+engine's own values on the error side, where its profile keeps the reference's
+raise (`Polars.impl`). -/
+def Profile.okImplOr (p : Profile) (I : Impl) : Impl :=
+  ⟨fun f v => match p.un f v with | .ok w => w | .error _ => I.un f v,
+   fun f v w => match p.bin f v w with | .ok x => x | .error _ => I.bin f v w⟩
+
 /-- `p`'s functions where a call does not raise, the reference's where it
 does. -/
-def Profile.okImpl (p : Profile) : Impl :=
-  ⟨fun f v => match p.un f v with | .ok w => w | .error _ => f.apply v,
-   fun f v w => match p.bin f v w with | .ok x => x | .error _ => f.apply v w⟩
+def Profile.okImpl (p : Profile) : Impl := p.okImplOr Impl.lean
 
 theorem Profile.okImpl_within {p : Profile} {t : ProfileTable} (h : p.WithinOk t) :
     p.okImpl.Within t := by
@@ -102,10 +107,10 @@ theorem Impl.lean_within (t : ProfileTable) : Impl.lean.Within t :=
 
 /-! ## `okImpl` computes the engine's run where nothing raises -/
 
-/-- Where `p` does not raise on `e`, `okImpl` gives its value (as `impl` does,
-`Expr.evalI_of_evalP`). -/
-theorem Expr.evalOk_of_evalP {p : Profile} :
-    ∀ {e : Expr} {row : Row} {v : Value}, e.evalP p row = .ok v → e.eval row p.okImpl = v
+/-- Where `p` does not raise on `e`, `okImplOr` gives its value (as `impl` does,
+`Expr.evalI_of_evalP`), whatever its error side. -/
+theorem Expr.evalOkOr_of_evalP {p : Profile} {I : Impl} :
+    ∀ {e : Expr} {row : Row} {v : Value}, e.evalP p row = .ok v → e.eval row (p.okImplOr I) = v
   | .lit _, _, _, h | .field _, _, _, h => by
     simp only [Expr.evalP, Except.ok.injEq] at h; subst h; rfl
   | .un f a, row, v, h => by
@@ -113,8 +118,8 @@ theorem Expr.evalOk_of_evalP {p : Profile} :
     | error k => simp [Expr.evalP, ha, bind, Except.bind] at h
     | ok x =>
       simp only [Expr.evalP, ha, bind, Except.bind] at h
-      simp only [Expr.eval]; rw [evalOk_of_evalP ha]
-      simp only [Profile.okImpl, h]
+      simp only [Expr.eval]; rw [evalOkOr_of_evalP ha]
+      simp only [Profile.okImplOr, h]
   | .bin f a b, row, v, h => by
     cases ha : a.evalP p row with
     | error k => simp [Expr.evalP, ha, bind, Except.bind] at h
@@ -123,18 +128,18 @@ theorem Expr.evalOk_of_evalP {p : Profile} :
       | error k => simp [Expr.evalP, ha, hb, bind, Except.bind] at h
       | ok y =>
         simp only [Expr.evalP, ha, hb, bind, Except.bind] at h
-        simp only [Expr.eval]; rw [evalOk_of_evalP ha, evalOk_of_evalP hb]
-        simp only [Profile.okImpl, h]
+        simp only [Expr.eval]; rw [evalOkOr_of_evalP ha, evalOkOr_of_evalP hb]
+        simp only [Profile.okImplOr, h]
   | .ifThen c t e, row, v, h => by
     cases hc : c.evalP p row with
     | error k => simp [Expr.evalP, hc, bind, Except.bind] at h
     | ok x =>
       simp only [Expr.evalP, hc, bind, Except.bind] at h
-      simp only [Expr.eval, evalOk_of_evalP hc]
+      simp only [Expr.eval, evalOkOr_of_evalP hc]
       split
-      · rename_i hx; simp only [hx, ↓reduceIte] at h; exact evalOk_of_evalP h
+      · rename_i hx; simp only [hx, ↓reduceIte] at h; exact evalOkOr_of_evalP h
       · rename_i hx
-        simp only [hx, Bool.false_eq_true, ↓reduceIte] at h; exact evalOk_of_evalP h
+        simp only [hx, Bool.false_eq_true, ↓reduceIte] at h; exact evalOkOr_of_evalP h
   | .hof f l b, row, v, h => by
     cases hl : l.evalP p row with
     | error k => simp [Expr.evalP, hl, bind, Except.bind] at h
@@ -144,12 +149,17 @@ theorem Expr.evalOk_of_evalP {p : Profile} :
       · cases h
       · rename_i hn
         simp only [Except.ok.injEq] at h; subst h
-        simp only [Expr.eval, evalOk_of_evalP hl]
+        simp only [Expr.eval, evalOkOr_of_evalP hl]
         refine HoFn.apply_congr f _ fun x hx => ?_
         have := (List.findSome?_eq_none_iff.mp hn) x hx
         cases hb : b.evalP p (x :: row) with
         | error k => simp [hb, Outcome.err?] at this
-        | ok y => rw [evalOk_of_evalP hb]; rfl
+        | ok y => rw [evalOkOr_of_evalP hb]; rfl
+
+/-- Where `p` does not raise on `e`, `okImpl` gives its value. -/
+theorem Expr.evalOk_of_evalP {p : Profile} {e : Expr} {row : Row} {v : Value}
+    (h : e.evalP p row = .ok v) : e.eval row p.okImpl = v :=
+  Expr.evalOkOr_of_evalP h
 
 theorem hasMatch_congr {I J : Impl} {on : Expr} {x : Row} :
     ∀ {ys : Relation}, (∀ y ∈ ys, on.eval (x ++ y) I = on.eval (x ++ y) J) →
