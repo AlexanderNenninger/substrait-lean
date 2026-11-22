@@ -51,7 +51,7 @@ from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
 from sverify.engine import ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
-from sverify.incremental import BatchRefresh, IncrementalView, Pipeline, Source, Stored
+from sverify.incremental import BatchRefresh, IncrementalView, Pipeline, Stored, VersionedSource
 from sverify.io._credentials import CredentialUse
 from sverify.io._credentials import uses as credential_uses
 from sverify.observation import PLAN_BOUND, Lenses
@@ -726,7 +726,7 @@ class Node:
 class _Source(Node):
     """A source as a node: the leaf of a stage."""
 
-    def __init__(self, source: Source):
+    def __init__(self, source: VersionedSource):
         schema = ibis.Schema.from_pyarrow(plain_schema(source.schema()))
         super().__init__(source.name, ibis.table(schema, name=source.name), [])
         self.source = source
@@ -757,7 +757,7 @@ class _Stored(Node):
         super().__init__(sink.name, expr, [upstream])
         sink._node = self  # type: ignore[attr-defined]
         self.upstream, self.sink = upstream, sink
-        self._reader: Source = sink._source()
+        self._reader: VersionedSource = sink._source()
         if quarantine is True:
             raise TypeError(
                 "quarantine= takes a sink, None (a table next to the sink's) or False "
@@ -1780,7 +1780,7 @@ def wants_node(args: Sequence[Any], kwargs: dict[str, Any]) -> bool:
     return any(isinstance(v, Node) or is_source(v) for v in [*args, *kwargs.values()])
 
 
-def _source_node(source: Source) -> _Source:
+def _source_node(source: VersionedSource) -> _Source:
     """The node of a source: one per source, so that every transform reading
     it reads the same table."""
     node = getattr(source, "_sverify_node", None)
