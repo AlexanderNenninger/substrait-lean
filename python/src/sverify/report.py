@@ -491,6 +491,9 @@ class Report:
     _windows_total: bool = field(default=True, repr=False)
     """False only for the window and ordered-aggregate ties of
     `deterministic`."""
+    _table_ignores: list[tuple[list[str], list[str]]] = field(default_factory=list, repr=False)
+    """For each table condition of the postconditions, the open aggregate columns it reads and the
+    components the observation ignores that it depends on, as the checker reports them (#1071)."""
     _tie_places: list[TiePlace] = field(default_factory=list, repr=False)
     """Where the plan leaves its result open, one entry per window, ordered
     aggregate, `LIMIT` or value the reference leaves open, class picks
