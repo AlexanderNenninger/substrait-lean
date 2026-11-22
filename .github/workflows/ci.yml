@@ -392,7 +392,7 @@ jobs:
           # sources.
           float_deps() {
             local todo seen="" m f p
-            todo=$(grep -rhoE '^import Sverify\.[A-Za-z0-9_.]+' float-bounds --include='*.lean' | cut -d' ' -f2 | sort -u)
+            todo=$(grep -rhoE '^((public|meta|private) )*import Sverify\.[A-Za-z0-9_.]+' float-bounds --include='*.lean' | awk '{print $NF}' | sort -u)
             while [ -n "$todo" ]; do
               m=${todo%%$'\n'*}
               case "$todo" in *$'\n'*) todo=${todo#*$'\n'} ;; *) todo= ;; esac
@@ -402,7 +402,7 @@ jobs:
               for p in core analysis; do [ -f "$p/${m//.//}.lean" ] && f="$p/${m//.//}.lean"; done
               [ -n "$f" ] || continue
               echo "$f"
-              todo="$todo"$'\n'$(grep -hoE '^import Sverify\.[A-Za-z0-9_.]+' "$f" | cut -d' ' -f2 || true)
+              todo="$todo"$'\n'$(grep -hoE '^((public|meta|private) )*import Sverify\.[A-Za-z0-9_.]+' "$f" | awk '{print $NF}' || true)
             done
           }
           float_deps > "$RUNNER_TEMP/float-deps"
