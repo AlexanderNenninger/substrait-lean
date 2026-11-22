@@ -115,7 +115,7 @@ def behaviourRefines : List (String × Behaviour × Behaviour × String) := [
   ("round_zero_sign", "IEEE", "ANY", "-0.0 is one of the zeros the reference leaves open (duckdb-R15-round, polars-round)"),
   ("round_zero_sign", "POSITIVE", "ANY", "+0.0 is one of the zeros the reference leaves open (spark-round)"),
   ("avg_int_result", "EXACT_TRUNCATE", "DECLARED_TYPE", "AggFn.iavg: the exact mean, truncated (duckdb-R6)"),
-  ("stat_algo", "WELFORD_CHAN", "GENERIC", "Welford with Chan's merge meets the generic properties (duckdb-var-stddev, polars-var-std)")]
+  ("stat_algo", "WELFORD_CHAN", "GENERIC", "Welford with Chan's merge meets the generic properties (duckdb-var-stddev, polars-var-std-streaming)")]
 
 /-- Each behaviour of `a` is one of `b`'s, or refines one of them. -/
 private def sub (o : String) (a b : List Behaviour) : Bool :=
