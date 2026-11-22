@@ -371,8 +371,8 @@ def test_other_engines_read_the_iceberg_quarantine_table(tmp_path) -> None:
     if DUCKDB_READS_PYICEBERG:
         assert _held(duckdb_rows()) == SET_ASIDE
     # Fixed upstream: pyiceberg sees the table empty. DuckDB's iceberg_scan
-    # fails on it ("Invalid Avro file block count or size"), so that read is
-    # left out here.
+    # fails on it ("Invalid Avro file block count or size", DD-12), so that
+    # read is left out here.
     orders.apply(Changes(deletes=pa.Table.from_pylist([{"id": 2, "amount": -5}])))
     node.refresh()
     assert cat.load_table("db.paid_quarantine").scan().to_arrow().num_rows == 0
