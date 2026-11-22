@@ -37,12 +37,16 @@ def test_one_ledger_per_source(ledgers) -> None:
 def test_no_proved_test_fails_in_dbt(ledgers) -> None:
     """A test sverify-dbt proves passes in dbt's own run of the project, or
     dbt could not run it (`error`: a macro the suite's project does not
-    install); it never fails or warns there, which would make it `unsound`."""
+    install); it never fails or warns there, which would make it `unsound`. A
+    constraint it proves is on a model dbt builds (`success`)."""
     for name, led in ledgers.items():
         assert led["unsound"] == 0, name
         for key, r in led["results"].items():
-            if r["outcome"] == "proved" and r.get("kind") != "constraint":
-                assert r["dbt"] in ("pass", "error"), f"{name}: {key}"
+            if r["outcome"] != "proved":
+                continue
+            assert not r.get("unsound"), f"{name}: {key}"
+            ok = ("success",) if r.get("kind") == "constraint" else ("pass", "error")
+            assert r["dbt"] in ok, f"{name}: {key}"
 
 
 def test_summaries_count_the_results(ledgers) -> None:
@@ -89,6 +93,18 @@ def test_records_name_every_test_and_flag_a_proof_dbt_contradicts(shop: Path) ->
     failed = replay._records(proj, result, {proved[0]: "fail"})
     assert failed[proved[0].split(".", 2)[-1]].get("unsound") is True
     assert not any(r.get("unsound") for r in records.values())
+    # A constraint it proves on a model whose build dbt fails is unsound too.
+    held = [
+        (m.unique_id, c.label)
+        for m in result.models
+        if m.enforced and not m.refused
+        for c in m.constraints
+        if c.status == "proved"
+    ]
+    assert held, "the shop proves a constraint of an enforced contract"
+    model, label = held[0]
+    broken = replay._records(proj, result, {model: "error"})
+    assert broken[f"{model.split('.', 2)[-1]}::{label}"].get("unsound") is True
 
 
 def test_an_entry_waiting_on_a_closed_issue_is_found() -> None:

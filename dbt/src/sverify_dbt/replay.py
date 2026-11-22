@@ -321,6 +321,11 @@ def _records(proj: Any, result: Any, statuses: dict[str, str]) -> dict[str, Any]
                 if c.why:
                     rec["why"] = normalize(c.why)
             rec["dbt"] = statuses.get(m.unique_id, "not run")
+            if rec["outcome"] == "proved" and rec["dbt"] in ("error", "fail"):
+                # dbt's build of a model enforces its contract: a build that
+                # fails is a contract its data breaks, which the proof says
+                # cannot happen.
+                rec["unsound"] = True
             out[f"{m.unique_id.split('.', 2)[-1]}::{c.label}"] = rec
     return out
 
