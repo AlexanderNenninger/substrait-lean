@@ -232,14 +232,15 @@ theorem Dbl.magDbl {c : Int} (h : Dbl c) (hm : mag c ≤ maxMag) : fp64.magDbl (
   · subst h; exact absurd hm (Nat.not_le.mpr m1)
   · exact h
 
-/-- A double's magnitude of `2⁵³ · K` or more is a multiple of `K`. -/
-theorem K_dvd_of_magDbl {m : Nat} (hd : fp64.magDbl m = true) (hm : 2 ^ 53 * K ≤ m) : K ∣ m := by
+/-- A double's magnitude of `2⁵² · K` or more is a multiple of `K`: a double
+of `2⁵²` or more is an integer. -/
+theorem K_dvd_of_magDbl {m : Nat} (hd : fp64.magDbl m = true) (hm : 2 ^ 52 * K ≤ m) : K ∣ m := by
   simp only [FloatFormat.magDbl, beq_iff_eq] at hd
   have hm0 : m ≠ 0 :=
-    Nat.pos_iff_ne_zero.mp (Nat.lt_of_lt_of_le (Nat.mul_pos (Nat.two_pow_pos 53) K_pos) hm)
-  have hL : 1127 ≤ m.log2 := by
+    Nat.pos_iff_ne_zero.mp (Nat.lt_of_lt_of_le (Nat.mul_pos (Nat.two_pow_pos 52) K_pos) hm)
+  have hL : 1126 ≤ m.log2 := by
     rw [Nat.le_log2 hm0]
-    have e : (2 : Nat) ^ 1127 = 2 ^ 53 * K := by unfold K; rw [← Nat.pow_add]
+    have e : (2 : Nat) ^ 1126 = 2 ^ 52 * K := by unfold K; rw [← Nat.pow_add]
     rw [e]; exact hm
   have hdvd : 2 ^ (m.log2 + 1 - fp64.p) ∣ m := Nat.dvd_of_mod_eq_zero hd
   exact Nat.dvd_trans (Nat.pow_dvd_pow 2 (show 1074 ≤ m.log2 + 1 - fp64.p by
@@ -251,7 +252,8 @@ theorem magDbl_roundK {f : Nat → Nat} (hfix : ∀ m, K ∣ m → f m = m)
     (hform : ∀ m, ∃ j, j ≤ m / K + 1 ∧ f m = j * K) {m : Nat} (hd : fp64.magDbl m = true) :
     fp64.magDbl (f m) = true := by
   by_cases hbig : 2 ^ 53 * K ≤ m
-  · rw [hfix m (K_dvd_of_magDbl hd hbig)]; exact hd
+  · rw [hfix m (K_dvd_of_magDbl hd (Nat.le_trans (Nat.mul_le_mul_right K (by decide)) hbig))]
+    exact hd
   · obtain ⟨j, hj, he⟩ := hform m
     have : m / K < 2 ^ 53 := (Nat.div_lt_iff_lt_mul K_pos).mpr (by rw [Nat.mul_comm]; omega)
     rw [he]
@@ -480,5 +482,42 @@ theorem magDbl_sqrtMag (a b : Nat) : fp64.magDbl (sqrtMag a b) = true := by
     with h | h <;> rw [h]
   · exact fp64.magDbl_mul (by decide) (by show _ ≤ 2 ^ 53; omega) _
   · exact fp64.magDbl_mul (by decide) (by show _ ≤ 2 ^ 53; omega) _
+
+/-- **A double of `2⁵²` or more is an integer**: a rounding of magnitudes that
+leaves the multiples of `K` leaves it, so `floor`, `ceil` and `round` do. -/
+theorem onMag_dbl_big {pos neg : Nat → Nat} (hp : ∀ m, K ∣ m → pos m = m)
+    (hn : ∀ m, K ∣ m → neg m = m) {c : Int} (hc : Dbl c) (hm : 2 ^ 52 * K ≤ mag c) :
+    onMag pos neg c = c := by
+  by_cases hb : maxMag < mag c
+  · exact onMag_of_big hb
+  have hm' : mag c ≤ maxMag := Nat.le_of_not_lt hb
+  have hK := hc.magDbl hm'
+  have hdv := K_dvd_of_magDbl hK hm
+  have hpos : 0 < mag c := Nat.lt_of_lt_of_le (Nat.mul_pos (Nat.two_pow_pos 52) K_pos) hm
+  -- A code of magnitude at most `maxMag`, not `0`, is `±(2m + 1)`.
+  have hodd : c.natAbs = 2 * mag c + 1 := by
+    have hP := fp64.posInf_eq; have hN := fp64.negInf_eq; have hZ := fp64.negZero_eq
+    have hY := fp64.negNan_eq; have hQ := fp64.nan_eq
+    have e : (maxMag : Int) = fp64.maxMag := rfl
+    have hmc : mag c = (c.natAbs - 1) / 2 := rfl
+    unfold Dbl FloatFormat.Dbl FloatFormat.dbl at hc
+    simp only [Bool.or_eq_true, beq_iff_eq, Bool.and_eq_true, decide_eq_true_eq] at hc
+    rcases hc with (((((h | h) | h) | h) | h) | h) | ⟨⟨⟨h1, _⟩, _⟩, _⟩
+    all_goals first
+      | omega
+      | (subst h; exfalso; unfold mag at hm'; omega)
+      | (subst h; exact absurd hpos (by simp [mag]))
+  unfold onMag
+  simp only [hb, ↓reduceIte]
+  unfold code
+  split
+  · rw [hn _ hdv]; simp only [Nat.pos_iff_ne_zero.mp hpos, ↓reduceIte]; omega
+  · rw [hp _ hdv]; simp only [Nat.pos_iff_ne_zero.mp hpos, ↓reduceIte]; omega
+
+theorem floor_dbl_big {c : Int} (hc : Dbl c) (hm : 2 ^ 52 * K ≤ mag c) : floor c = c := by
+  unfold floor; exact onMag_dbl_big (fun _ h => floorMag_fix h) (fun _ h => ceilMag_fix h) hc hm
+
+theorem ceil_dbl_big {c : Int} (hc : Dbl c) (hm : 2 ^ 52 * K ≤ mag c) : ceil c = c := by
+  unfold ceil; exact onMag_dbl_big (fun _ h => ceilMag_fix h) (fun _ h => floorMag_fix h) hc hm
 
 end Substrait.FloatCode

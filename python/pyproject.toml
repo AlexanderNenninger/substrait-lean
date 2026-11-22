@@ -248,12 +248,14 @@ cwd = "${POE_ROOT}/.."
 # search path finds `Sverify.Engines.*` in `core/`'s build, the first one
 # with a `Sverify` directory (#1189).
 [tool.poe.tasks.regen-lowering]
-help = "Search for the DuckDB and Polars lowerings again and write them to engines/duckdb/Sverify/DuckDB/LoweringOn and engines/polars/Sverify/Polars/LoweringOn (a build only checks them); Lean capped at 8 GB, so run it on homelab (homelab-run)"
+help = "Search for the DuckDB, Polars and Spark lowerings again and write them to engines/duckdb/Sverify/DuckDB/LoweringOn, engines/polars/Sverify/Polars/LoweringOn and engines/spark/Sverify/Spark/LoweringOn (a build only checks them); Lean capped at 8 GB, so run it on homelab (homelab-run)"
 shell = """
 lake build Sverify.Engines.LoweringSearch Sverify.DuckDB.LoweringCache Sverify.DuckDB.LoweringLemmas \
   Sverify.DuckDB.LoweringSchemas Sverify.DuckDB.Boxes Sverify.Polars.LoweringSchemas \
+  Sverify.Spark.LoweringSchemas \
   && lake lean scripts/RegenLowering.lean -- -M 8192 \
-  && lake lean scripts/RegenLoweringPolars.lean -- -M 8192
+  && lake lean scripts/RegenLoweringPolars.lean -- -M 8192 \
+  && lake lean scripts/RegenLoweringSpark.lean -- -M 8192
 """
 cwd = "${POE_ROOT}/.."
 
