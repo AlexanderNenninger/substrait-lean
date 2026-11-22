@@ -151,3 +151,82 @@ def test_a_check_with_no_engine_named_runs_the_proved_plan(monkeypatch):
     assert runs == ["duckdb"]
     with pytest.raises(PreconditionError, match=r"1 row\(s\) of t violate"):
         plus_one(_con([0, -1]).table("t"))
+
+
+def test_a_table_of_the_callers_own_backend_is_checked_by_ibis(monkeypatch):
+    """F219 (#2342): a table of a plain Ibis backend has no sverify engine,
+    so with `check_engine` unset Ibis counts its conditions there, and a
+    violation still refuses the call."""
+    runs: list[str] = []
+    real = report_module._run_conditions
+
+    def spy(con, table, conds, engine):
+        runs.append(engine)
+        return real(con, table, conds, engine)
+
+    monkeypatch.setattr(report_module, "_run_conditions", spy)
+
+    @sv.transform(requires={"t": [_.x >= 0, _.x < 100]})
+    def plus_one(t):
+        return t.select(y=t.x + 1)
+
+    def table(rows: list[int]):
+        backend = ibis.duckdb.connect()
+        backend.con.register("t", pa.table({"x": pa.array(rows, pa.int64())}))
+        return backend.table("t")
+
+    assert plus_one(table([0, 5])).to_pyarrow().num_rows == 2
+    with pytest.raises(PreconditionError, match=r"1 row\(s\) of t violate"):
+        plus_one(table([0, -1]))
+    assert runs == []
+
+
+@pytest.fixture
+def berlin(monkeypatch):
+    """The host, and DuckDB's global setting, in Europe/Berlin (#2280's way of
+    setting the host zone), restored afterwards."""
+    import time
+
+    from sverify import _duckdb
+
+    if not hasattr(time, "tzset"):
+        pytest.skip("the host zone is set with time.tzset, which Windows lacks")
+    monkeypatch.setenv("TZ", "Europe/Berlin")
+    time.tzset()
+    cursor = _duckdb.cursor()
+    cursor.execute("SET GLOBAL TimeZone = 'Europe/Berlin'").fetchall()
+    yield
+    cursor.execute("RESET GLOBAL TimeZone").fetchall()
+    monkeypatch.undo()
+    time.tzset()
+
+
+def test_a_utc_instant_round_trips_through_a_check_outside_utc(berlin):
+    """sverify's DuckDB cursors run at UTC (#2342): a batch's UTC instant comes
+    back zoned UTC on a host in another zone, so the checker-written plan of a
+    precondition reads it, and the node's rows keep their zone."""
+    import datetime as dt
+
+    from sverify.io import Changes, StaticSource
+
+    utc = pa.timestamp("us", tz="UTC")
+    t0 = dt.datetime(2026, 11, 3, tzinfo=dt.UTC)
+
+    def rows(minutes: list[int]) -> pa.Table:
+        return pa.table(
+            {"ts": [t0 + dt.timedelta(minutes=m) for m in minutes], "cpu": [1] * len(minutes)},
+            schema=pa.schema([("ts", utc), ("cpu", pa.int64())]),
+        )
+
+    @sv.transform(requires={"s": [_.cpu.notnull(), _.cpu >= 0]})
+    def busy(s):
+        return s.filter(s.cpu > 0)
+
+    src = StaticSource(rows([0]), name="s")
+    node = src.pipe(busy)
+    node.refresh()
+    src.apply(Changes(inserts=rows([5])))
+    node.refresh()
+    out = node.to_arrow()
+    assert out.schema.field("ts").type == utc
+    assert sorted(out.column("ts").to_pylist()) == [t0, t0 + dt.timedelta(minutes=5)]

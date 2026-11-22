@@ -154,7 +154,10 @@ reference, the `__all__`s and that closure equal. In the Python API "verify" pro
 (`sv.verify`, `ContractedTransform.verify`) and "check" reads data
 (`check_requires`, `Report.check_inputs`, `proved_with_checks`); the
 commands named `check` (`sverify check`, `sverify-dbt check`) verify a
-project. Every other module is
+project. A check on data of a table of `sv.connect()` runs the plan the checker
+wrote for the condition. A check through Ibis, on a table of the caller's own
+Ibis backend, reads the condition as that backend does, and which rows it
+flags where backends differ is outside the 1.x promise (F219). Every other module is
 internal, whether or not its name starts with an underscore, and so are
 the maintainer tooling `sverify_dev` and the printed text of a report
 (`str(report)`); tools read the report through its attributes or its JSON.
