@@ -516,10 +516,12 @@ def _evaluate(plan: dict, e: dict, row: tuple):
             return None if None in a else a[0] < a[1]
         case "gte":
             return None if None in a else a[0] >= a[1]
+        case "floor" | "ceil" if a[0] is None or not math.isfinite(a[0]):
+            return a[0]
         case "floor":
-            return None if a[0] is None else float(math.floor(a[0]))
+            return float(math.floor(a[0]))
         case "ceil":
-            return None if a[0] is None else float(math.ceil(a[0]))
+            return float(math.ceil(a[0]))
         case "and":
             return False if False in a else None if None in a else True
         case "or":
@@ -887,13 +889,15 @@ def test_st6_apply_plan_truncates_on_duckdb() -> None:
         assert r.run(con, "duckdb").column("c").to_pylist() == [y for _, y in TRUNCATED]
 
 
-def test_st6_apply_plan_raises_on_nan_on_duckdb() -> None:
-    """Without the precondition against NaN, NaN reaches the cast through the
-    shim (`ceil(NaN)` is NaN) and the cast raises, as the reference's does."""
-    pytest.importorskip("duckdb")
-    report = sv.verify(CAST, requires={"f": [_.a.notnull()]})
-    back = sv.Report.from_substrait(report.to_substrait(shims="apply"))
-    con = connect()
-    put_table(con, "f", pa.table({"a": pa.array([NAN], pa.float64())}))
-    with pytest.raises(Exception, match="(?i)cast|convert|out of range|nan"):
-        back.run(con, "duckdb")
+def test_st6_shim_passes_nan_and_infinities_to_the_cast() -> None:
+    """NaN and the infinities pass through the shim (`ceil(NaN)` is NaN) and reach the
+    cast, which throws (`failureBehavior`), as DuckDB's cast of NaN does."""
+    duckdb = pytest.importorskip("duckdb")
+    plan = read(_cast_report().to_substrait(shims="apply")).plan
+    [cast] = _casts(plan)
+    assert cast["failureBehavior"] == "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+    for x in (NAN, float("inf"), float("-inf")):
+        y = _evaluate(plan, cast["input"], (x,))
+        assert y != y if x != x else y == x
+        with pytest.raises(duckdb.Error):
+            duckdb.execute("SELECT CAST(?::DOUBLE AS BIGINT)", [y]).fetchall()
