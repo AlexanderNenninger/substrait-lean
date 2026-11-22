@@ -250,7 +250,7 @@ theorem builtinEngines_leCore : builtinEngines.all (·.leCore) := by
 
 `Rel.raises_mapExprs`, `Lowering.lowerRel_raises` and `Lowering.lowerRel?_raises`
 are in `engines/Sverify/Engines/LoweringRaises.lean`, and `Rel.hasIssue_of_raises`
-in `analysis/Sverify/Analysis/Guards.lean`, beside the theorems that use them. -/
+in `analysis/Sverify/Analysis/ProfileImpl.lean`. -/
 
 variable [Boxes.Ambient]
 

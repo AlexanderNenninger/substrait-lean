@@ -6,7 +6,7 @@ import Sverify.Engines.Lowering
 A lowered plan raises only where the reference may (`Lowering.lowerRel_raises`,
 `Lowering.lowerRel?_raises` for a partial table), since each entry agrees with
 the reference (`Lowering.lower_correct`). With `Rel.hasIssue_of_raises`
-(`analysis/Sverify/Analysis/Guards.lean`), a report with only assumed issues
+(`analysis/Sverify/Analysis/ProfileImpl.lean`), a report with only assumed issues
 discharges an engine's no-raise side condition: DuckDB's (`Engine.duckdb_sound`)
 and Polars's guard-free run (`Rel.polars_sound`).
 -/

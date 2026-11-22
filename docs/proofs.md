@@ -60,7 +60,7 @@ contract's preconditions.
 | A window's result does not depend on how its ties are broken | `eval`, `OrderAllowed` | `Rel.window_deterministic`, `Rel.keyedWindows_soundAll` | `Keys.lean` |
 | A plan with no reported issue raises no runtime error | `eval` | `Rel.mayIssues_sound` | `Safety.lean` |
 | … on every order of the ties the reference allows: an engine that breaks a window's ties another way meets no unreported issue either (#1484) | `OrderAllowed` | `Rel.mayIssues_sound_all` | `Safety.lean` |
-| A raise of the reference is an issue, so a plan with no reported issue meets DuckDB's side condition (`Engine.NoRaiseSide`), for a plan whose loose rows include its rows (`Rel.looseSub`). Where `Rel.looseSub` fails (an `UNNEST`, or a left join whose right side has a filter, an inner join or a `DISTINCT`), the step from a report without issues to "the reference does not raise" is not proved yet | `eval` | `Rel.hasIssue_of_raises`, `Rel.not_raises_of_assumed`, `Engine.duckdb_noRaise_of_mayIssues` | `Guards.lean`, `Engine.lean` |
+| A raise of the reference is an issue, so a plan with no reported issue meets DuckDB's side condition (`Engine.NoRaiseSide`), for a plan whose loose rows include its rows (`Rel.looseSub`). Where `Rel.looseSub` fails (an `UNNEST`, or a left join whose right side has a filter, an inner join or a `DISTINCT`), the step from a report without issues to "the reference does not raise" is not proved yet | `eval` | `Rel.hasIssue_of_raises`, `Rel.not_raises_of_assumed`, `Engine.duckdb_noRaise_of_mayIssues` | `ProfileImpl.lean`, `Engine.lean` |
 | Row caps rule out `SUM` overflow | `eval` | `Rel.issuesCapped_sound`, `Rel.capJoins_eval` | `Rows.lean` |
 | A well-formed plan on a well-formed catalog gives rows of its declared arity | `eval` | `Rel.eval_arity` | `Rel.lean` |
 | On a catalog of doubles, every double a plan computes is a double's code, not merely an integer magnitude below the largest (ruling 248) | `eval` | `Rel.eval_dbl`, `Expr.eval_dbl`, `AggFn.apply_dbl` | `EvalDbl.lean`, `FloatDbl.lean` |
@@ -247,10 +247,10 @@ as the guard. Engines-common and the modules below import it as
 | `Keys.lean` | Derived keys and functional dependencies, in one walk, and window tie-breaking |
 | `FunctionalDeps.lean` | Functional dependencies (`FDOn`), their rules through each operator, `fdClosure` and the keys it adds (`closeKeys`), one node's dependencies (`Rel.fdsNode`) |
 | `Partition.lean` | Sharded evaluation and two-phase aggregates |
-| `Guards.lean` | Guard elimination for the SQL writers; a reference raise is an issue that is not assumed (`Rel.hasIssue_of_raises`) |
+| `Guards.lean` | Guard elimination for the SQL writers |
 | `AsofSite.lean` | As-of joins read off a plan (`Rel.asofSite`, `Rel.asofSite_sound`: the site rebuilds its plan) and the count of the pairs their range join compares (`AsofSite.pairs`, #1447) |
 | `Knowledge.lean` | `Knowledge`, what the analysis knows of a relation, `Rel.analyse` and its one soundness theorem, the consumers on one hypothesis |
-| `ProfileImpl.lean` | The reference's values are a faithful implementation (`Profile.reference_faithful`) |
+| `ProfileImpl.lean` | The reference's values are a faithful implementation (`Profile.reference_faithful`); a reference raise is an issue that is not assumed (`Rel.hasIssue_of_raises`, `Rel.not_raises_of_assumed`) |
 | `AllowedAnalysis.lean` | What the analysis proves of the allowed results: plans without choices, row caps, postconditions on every allowed result |
 | `Refines.lean` | A refinement carried up through each operator: up to the order of rows through `FILTER`, `PROJECT` and `EMIT`, exact above the operators that read their input in any order, exact through `FETCH` only from an exact one (#1787) |
 | `Choices.lean` | The values an open order allows on concrete data, a test oracle |
