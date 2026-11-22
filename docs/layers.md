@@ -17,7 +17,7 @@ holds the order (`LAYERS`) and fails on an import against it.
 | checker | `engine`, `_engine_settings`, `_builtin` | Connections, `plan_json`, `run_plan`, delta plans, the engines' settings, sverify's own engines as plugins |
 | conditions | `observation`, `counterexample`, `conditions`, `_quarantine` | The table conditions and their checks on data, what a result is observed up to, the counterexample search, the rows a source sets aside |
 | report | `routes`, `report`, `_verdict`, `report_json`, `substrait_export`, `_substrait_shims` | What a proof found (`Report`, `Issue`, the errors that carry a report), the one report of a checker answer (`verdict`), the routes a plan runs by, the report as JSON and as Substrait |
-| transform | `contracts` | `verify`, inferred preconditions, composition and provenance, `transform` |
+| transform | `proposers`, `contracts` | The proposers `infer` and `search`, and the conditions `infer` writes; `verify`, inferred preconditions, composition and provenance, `transform` |
 | incremental | `_state`, `_retention`, `_linear`, `_semi`, `_touched`, `incremental` | Incremental views and their state |
 | io | `io` | Delta, Iceberg and Flight sources and sinks |
 | nodes | `steps`, `nodes`, `sql_model`, `partition`, `asof` | Pipelines: nodes, steps, SQL steps, partitioned and as-of nodes |
