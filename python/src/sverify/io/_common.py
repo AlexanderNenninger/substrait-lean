@@ -26,9 +26,11 @@ from sverify import profiles
 from sverify._cursor import _TAG, UNRECORDED, cursor_json, cursor_value  # noqa: F401  (re-exported)
 from sverify._pipe import Pipeable
 from sverify._unsupported import MemoryLimitError, SverifyError
-from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
+from sverify.conditions import TableCondition, Unique, resolve
+from sverify.contracts import Fact, _prove_from
 from sverify.incremental import IncrementalView, Snapshot, SourceBatch, plan_digest
 from sverify.plan_json import is_utc
+from sverify.report import Condition
 
 if TYPE_CHECKING:
     import duckdb

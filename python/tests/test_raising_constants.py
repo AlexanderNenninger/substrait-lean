@@ -14,8 +14,8 @@ import pyarrow as pa
 import pytest
 
 import sverify as sv
-from sverify.contracts import CONSTANT_HINT
 from sverify.engine import connect, put_table, run_plan, substrait_json, written_plan
+from sverify.report import CONSTANT_HINT
 
 #: These tests are about inferred preconditions: assume them, as before
 #: `on_inferred` (#655); `test_on_inferred.py` tests the default.

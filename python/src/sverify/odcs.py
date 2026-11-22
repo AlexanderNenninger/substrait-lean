@@ -53,8 +53,8 @@ from sverify.io._common import public_uri
 if TYPE_CHECKING:
     import ibis
 
-    from sverify.contracts import Condition
     from sverify.nodes import Node
+    from sverify.report import Condition
 
 __all__ = [
     "ODCSContract",
@@ -205,14 +205,8 @@ def export(
         ValueError: `node` has no contract (a source, or a transform without
             one).
     """
-    from sverify.contracts import (
-        MaxRows,
-        References,
-        RowsPer,
-        Unique,
-        _lookup,
-        label,
-    )
+    from sverify.conditions import MaxRows, References, RowsPer, Unique, label
+    from sverify.contracts import _lookup
     from sverify.incremental import plan_digest
     from sverify.io._common import condition_sql, not_null_column
     from sverify.report import proved_not_null
@@ -648,7 +642,7 @@ def _not_coalesce(e: sg.exp.Expr) -> sg.exp.Expr | None:
 def _rows_per(query: str, cols: set[str]) -> Any | None:
     """`rows_per` of `SELECT COUNT(*) FROM (SELECT k FROM {object} GROUP BY k
     HAVING COUNT(*) > n)`."""
-    from sverify.contracts import rows_per
+    from sverify.conditions import rows_per
 
     try:
         e = sg.parse_one(query.replace("{object}", "__object__"), read=_DIALECT)
@@ -782,7 +776,7 @@ class _Reader:
             )
 
     def library(self, column: str | None, rule: Mapping[str, Any]) -> None:
-        from sverify.contracts import max_rows, unique
+        from sverify.conditions import max_rows, unique
 
         metric = rule.get("metric") or rule.get("rule")
         args = rule.get("arguments") or {}
@@ -847,7 +841,7 @@ class _Reader:
         """A relationship on the object: a foreign key from its columns to the
         columns of one table (`from` and `to` as one reference each, or lists
         of the same length)."""
-        from sverify.contracts import references
+        from sverify.conditions import references
 
         def refs(v: Any) -> list[tuple[str, str] | None]:
             return [self.resolve(r) for r in (v if isinstance(v, list) else [v])]
@@ -887,7 +881,7 @@ class _Reader:
             self.skip(column, rule, f"a rule of type {kind!r}")
 
     def property(self, p: Mapping[str, Any]) -> None:
-        from sverify.contracts import references, unique
+        from sverify.conditions import references, unique
 
         col = p["name"]
         start = len(self.out)
@@ -1044,7 +1038,7 @@ def read(
 
 
 def _dedupe(conds: Sequence[Any]) -> list[Any]:
-    from sverify.contracts import label
+    from sverify.conditions import label
 
     seen: set[str] = set()
     out = []
