@@ -6,6 +6,7 @@ The round trips export, read back and prove the contract again."""
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
 from typing import Literal
@@ -505,6 +506,12 @@ def _evaluate(plan: dict, e: dict, row: tuple):
             return None if None in a else a[0] + a[1]
         case "lt":
             return None if None in a else a[0] < a[1]
+        case "gte":
+            return None if None in a else a[0] >= a[1]
+        case "floor":
+            return None if a[0] is None else float(math.floor(a[0]))
+        case "ceil":
+            return None if a[0] is None else float(math.ceil(a[0]))
         case "and":
             return False if False in a else None if None in a else True
         case "or":
@@ -793,3 +800,86 @@ def test_st8_holds_or_refuses_by_the_decimal_calls() -> None:
     typer, b = _typed(d.select(a=_.d.abs()))
     assert any(c.name == "abs" for c in typer.calls)
     assert st8(typer, b) is None
+
+
+# -- ST-6: a cast of a double to an integer (#2438) ------------------------------------
+
+F = ibis.table({"a": "float64"}, name="f")
+CAST = F.select(c=_.a.cast("int64"))
+#: #2438's repro: no NULL, no NaN, a bound that keeps the cast inside 64 bits.
+F_BOUNDED = {"f": [_.a.notnull(), ~_.a.isnan(), _.a >= -100.0, _.a <= 100.0]}
+#: Values where truncation, ties away from zero and ties to even disagree, with
+#: the integers truncation gives.
+TRUNCATED = [(2.5, 2), (-2.5, -2), (-0.5, 0), (3.5, 3), (-3.7, -3)]
+
+
+def _casts(node) -> list[dict]:
+    """The `cast` expressions of a Substrait plan in JSON form."""
+    if isinstance(node, dict):
+        here = [node["cast"]] if isinstance(node.get("cast"), dict) else []
+        return here + [c for v in node.values() for c in _casts(v)]
+    if isinstance(node, list):
+        return [c for v in node for c in _casts(v)]
+    return []
+
+
+def test_st6_apply_truncates_before_the_cast() -> None:
+    """#2438: the cast reads `float_to_int`, which Substrait leaves open (ST-6),
+    so `apply` writes the truncation before it."""
+    exported = read(_verify(CAST, F_BOUNDED).to_substrait(shims="apply"))
+    [shim] = [s for s in exported.manifest["shims"] if s["option"] == "float_to_int"]
+    assert shim["gap"] == "ST-6"
+    assert not exported.manifest["assumptions"]
+    [cast] = _casts(exported.plan)
+    assert "ifThen" in cast["input"], cast
+
+
+def test_st6_shim_is_exact_under_every_rounding() -> None:
+    """The cast's input is integral after the shim, so a consumer's cast gives the
+    reference's truncation whichever way it rounds (`float_to_int`'s three modes)."""
+    plan = read(_verify(CAST, F_BOUNDED).to_substrait(shims="apply")).plan
+    [cast] = _casts(plan)
+    modes = {
+        "TRUNCATE": math.trunc,
+        "TIE_AWAY_FROM_ZERO": lambda v: math.copysign(math.floor(abs(v) + 0.5), v),
+        "TIE_TO_EVEN": round,
+    }
+    for x, want in TRUNCATED:
+        y = _evaluate(plan, cast["input"], (x,))
+        assert {name: int(r(y)) for name, r in modes.items()} == dict.fromkeys(modes, want), x
+
+
+def test_st6_annotate_ships_the_assumption() -> None:
+    m = read(_verify(CAST, F_BOUNDED).to_substrait(shims="annotate")).manifest
+    [found] = [a for a in m["assumptions"] if a["option"] == "float_to_int"]
+    assert (found["gap"], found["assumes"]) == ("ST-6", ["TRUNCATE"])
+    assert not [s for s in m["shims"] if s["option"] == "float_to_int"]
+
+
+def test_st6_refuse_names_the_gap() -> None:
+    with pytest.raises(ExportError, match=re.escape("(ST-6, upstream/bugs/ST-6.json)")):
+        _verify(CAST, F_BOUNDED).to_substrait(shims="refuse")
+
+
+def test_st6_apply_plan_truncates_on_duckdb() -> None:
+    """The plan `apply` writes, read back and run on DuckDB, whose own cast rounds
+    half to even (duckdb-R9), gives the reference's truncation."""
+    pytest.importorskip("duckdb")
+    report = _verify(CAST, F_BOUNDED)
+    back = sv.Report.from_substrait(report.to_substrait(shims="apply"))
+    con = connect()
+    put_table(con, "f", pa.table({"a": pa.array([x for x, _ in TRUNCATED], pa.float64())}))
+    for r in (report, back):
+        assert r.run(con, "duckdb").column("c").to_pylist() == [y for _, y in TRUNCATED]
+
+
+def test_st6_apply_plan_raises_on_nan_on_duckdb() -> None:
+    """Without the precondition against NaN, NaN reaches the cast through the
+    shim (`ceil(NaN)` is NaN) and the cast raises, as the reference's does."""
+    pytest.importorskip("duckdb")
+    report = sv.verify(CAST, requires={"f": [_.a.notnull()]})
+    back = sv.Report.from_substrait(report.to_substrait(shims="apply"))
+    con = connect()
+    put_table(con, "f", pa.table({"a": pa.array([NAN], pa.float64())}))
+    with pytest.raises(Exception, match="(?i)cast|convert|out of range|nan"):
+        back.run(con, "duckdb")
