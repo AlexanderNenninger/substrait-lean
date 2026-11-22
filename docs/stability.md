@@ -269,7 +269,7 @@ contradicts an outside source is a soundness bug ([#867](https://github.com/Alex
 | The ODCS contracts (`sverify.odcs`) | The ODCS v3.2.0 JSON Schema, and the standard's published examples read through `sverify.odcs` ([#864](https://github.com/AlexanderNenninger/substrait-lean/issues/864)). | `tests/test_odcs.py`, `sverify_dev.odcs_examples` |
 | The Python API | The API has no outside test of its names: `tests/test_public_api.py` holds them, and our own tests are the oracle. The programs written against it do have one. Ibis's own backend tests replay through the Ibis frontend ([#860](https://github.com/AlexanderNenninger/substrait-lean/issues/860)), and dbt's test projects through sverify-dbt ([#859](https://github.com/AlexanderNenninger/substrait-lean/issues/859)). | the `evidence` and `dbt` jobs of CI |
 | DuckDB's SQL through the lift | DuckDB's sqllogictests replay through the lift (oracle A). | the `oracle-a` jobs of CI |
-| Spark's and Snowflake's SQL through the lift | None yet ([#866](https://github.com/AlexanderNenninger/substrait-lean/issues/866)). | |
+| Spark's and Snowflake's SQL through the lift | None yet, and none in 1.0: [#866](https://github.com/AlexanderNenninger/substrait-lean/issues/866) is after 1.0. | |
 | The engines' behaviour | Each profile rests on engine facts with their evidence: DuckDB's, Polars' and Spark's own tests, fuzzing against the engines and the Snowflake recordings. | [`engines/<engine>/facts/`](../engines/) |
 
 ## Releases
