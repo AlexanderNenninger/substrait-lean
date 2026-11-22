@@ -1,0 +1,13 @@
+{
+  "id": "F272",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "A cast of a double to an integer reads `float_to_int`: the core's table of which options each function reads gains `ftoi` and `ftoiOrNull`, as `docs/core-semantics.md`'s `cast.num` group already says. `Rel.eval` doesn't change, and `ftoi` keeps truncating, the reference's choice (#209). So the Substrait export now sees the dependency: `shims=\"apply\"` writes ST-6's truncation before the cast, `\"annotate\"` ships ST-6's assumption, and `\"refuse\"` refuses.",
+  "issues": [
+    2438
+  ],
+  "source": "fable-ruling-272-2438-cast-float-to-int.md",
+  "note": "No D-number: the option, the reference's choice, Substrait's openness (ST-6) and the documented group already exist, and this brings the Lean in line with them. Writing the truncation in the export alone was declined, because it would leave `Profile.substrait` claiming a Substrait cast truncates. Integer narrowing reads no `float_to_int`, and `cast_failure` stays out: the two failure behaviours are two functions, and `core-semantics.md`'s row is made to match the Lean. Each engine's `float_to_int` choice now applies to its casts and must be true of its written cast: Polars and Spark truncate natively, and DuckDB's lowering writes the truncation, so no regeneration is expected (confirmed with `check_generated` on homelab). Conditions: K1, `#print axioms` is unchanged. K2, the engines' `float_to_int` rows are checked. K3, a test compares the doc's group table with `Functions.lean` row for row. K4, the generated tables are regenerated on main. K5, Fixes #2438, on the 1.0 milestone."
+}
