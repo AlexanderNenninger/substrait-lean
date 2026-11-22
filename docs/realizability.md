@@ -47,8 +47,8 @@ Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 23 | 1 | 18 | 2 | 0 | 0 | 15 |
-| Polars | 30 | 1 | 17 | 0 | 0 | 0 | 17 |
+| DuckDB | 25 | 1 | 16 | 2 | 0 | 0 | 15 |
+| Polars | 34 | 1 | 13 | 0 | 0 | 0 | 17 |
 | Spark | 18 | 16 | 14 | 0 | 0 | 0 | 16 |
 
 ## Shims
@@ -114,8 +114,8 @@ Rows per evidence level:
 | every | `on_log_zero` | raise | `ERROR` | `NAN`, `ERROR`, `MINUS_INFINITY` | not characterized | missing |  |
 | every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | proof | proved `Rel.duckdb_shim_sound`; [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json), [duckdb-R15-double-modulus](../engines/duckdb/facts/duckdb-R15-double-modulus.json), [duckdb-nonfinite-aggregates](../engines/duckdb/facts/duckdb-nonfinite-aggregates.json) |
 | every | `zero_sign` | choose | `ONE_ZERO` | `ONE_ZERO` | native | probe | tested: [duckdb-R14](../engines/duckdb/facts/duckdb-R14.json), [duckdb-float-signs](../engines/duckdb/facts/duckdb-float-signs.json), [duckdb-minmax-zero-sign](../engines/duckdb/facts/duckdb-minmax-zero-sign.json) |
-| every | `round_zero_sign` | open | `ANY` | `IEEE` | shim `round: 0.0 for a negative value that rounds to zero` (expression) | probe | tested: [duckdb-R15-round](../engines/duckdb/facts/duckdb-R15-round.json), [duckdb-R15-round-digits](../engines/duckdb/facts/duckdb-R15-round-digits.json) |
-| every | `pow_one_inf` | choose | `ONE` | `ONE` | native | probe | tested: [duckdb-pow-one-inf](../engines/duckdb/facts/duckdb-pow-one-inf.json) |
+| every | `round_zero_sign` | open | `ANY` | `IEEE` | shim `round: 0.0 for a negative value that rounds to zero` (expression) | proof | proved `Lowering.duckdb_exact`; [duckdb-R15-round](../engines/duckdb/facts/duckdb-R15-round.json), [duckdb-R15-round-digits](../engines/duckdb/facts/duckdb-R15-round-digits.json) |
+| every | `pow_one_inf` | choose | `ONE` | `ONE` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-pow-one-inf](../engines/duckdb/facts/duckdb-pow-one-inf.json) |
 | every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-nan-equality](../engines/duckdb/facts/duckdb-nan-equality.json) |
 | every | `nan_order` | choose | `GREATEST` | `GREATEST` | native | probe | tested: [duckdb-arg-min-nulls](../engines/duckdb/facts/duckdb-arg-min-nulls.json) |
 | every | `nan_kind` | choose | `ONE_NAN` | `IEEE` | observed: up to zeros canon | probe | tested: [duckdb-signbit](../engines/duckdb/facts/duckdb-signbit.json) |
@@ -170,7 +170,7 @@ Rows per evidence level:
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `decimal_round_half_away` (expression) | proof | proved `Polars.decimal_round_half_away`; [polars-decimal-arith](../engines/polars/facts/polars-decimal-arith.json), [polars-decimal-casts](../engines/polars/facts/polars-decimal-casts.json) |
 | dec.div | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `decimal_div_half_away` (expression) | proof | proved `Polars.decimal_div_half_away`; [polars-decimal-arith](../engines/polars/facts/polars-decimal-arith.json) |
-| every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | probe | tested: [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json), [polars-ieee-arith-macos-arm64](../engines/polars/facts/polars-ieee-arith-macos-arm64.json), [polars-ieee-arith-linux-x86-64](../engines/polars/facts/polars-ieee-arith-linux-x86-64.json) |
+| every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | proof | proved `Lowering.polars_exact`; [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json), [polars-ieee-arith-macos-arm64](../engines/polars/facts/polars-ieee-arith-macos-arm64.json), [polars-ieee-arith-linux-x86-64](../engines/polars/facts/polars-ieee-arith-linux-x86-64.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `round_half_away` (argument) | proof | proved `Polars.round_half_away`; [polars-round](../engines/polars/facts/polars-round.json) |
 | fp.div | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN`, `RECIPROCAL` | observed: within the plan's bound | probe | tested: [polars-scalar-divisor](../engines/polars/facts/polars-scalar-divisor.json) |
 | agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json), [polars-sum-float-streaming](../engines/polars/facts/polars-sum-float-streaming.json), [polars-mean-float-streaming](../engines/polars/facts/polars-mean-float-streaming.json), [polars-sum-float](../engines/polars/facts/polars-sum-float.json), [polars-mean-float](../engines/polars/facts/polars-mean-float.json) |
@@ -184,16 +184,16 @@ Rows per evidence level:
 | agg.order | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Shim.one_zero`; [polars-zero-order](../engines/polars/facts/polars-zero-order.json), [polars-min-max-zero](../engines/polars/facts/polars-min-max-zero.json) |
 | fp.arith | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Shim.one_zero`; [polars-zero-sign](../engines/polars/facts/polars-zero-sign.json), [polars-zero-add](../engines/polars/facts/polars-zero-add.json) |
 | every | `round_zero_sign` | open | `ANY` | `IEEE` | shim `one_zero` (expression) | probe | tested: [polars-round](../engines/polars/facts/polars-round.json), [polars-round-digits](../engines/polars/facts/polars-round-digits.json) |
-| every | `pow_one_inf` | choose | `ONE` | `ONE` | native | probe | tested: [polars-pow-one-inf](../engines/polars/facts/polars-pow-one-inf.json) |
+| every | `pow_one_inf` | choose | `ONE` | `ONE` | native | proof | proved `Lowering.polars_exact`; [polars-pow-one-inf](../engines/polars/facts/polars-pow-one-inf.json) |
 | every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | probe | tested: [polars-nan-equality](../engines/polars/facts/polars-nan-equality.json) |
 | every | `nan_order` | choose | `GREATEST` | `GREATEST` | native | probe | tested: [polars-nan-order](../engines/polars/facts/polars-nan-order.json) |
 | agg.order | `nan_order` | choose | `GREATEST` | `IGNORED` | shim `max_nan_greatest` (expression) | proof | proved `Polars.max_nan_greatest`; [polars-min-max-nan](../engines/polars/facts/polars-min-max-nan.json) |
 | every | `nan_kind` | choose | `ONE_NAN` | `IEEE` | observed: up to zeros canon | probe | tested: [polars-nan-sign](../engines/polars/facts/polars-nan-sign.json) |
-| every | `negative_start` | choose | `WRAP_FROM_END` | `WRAP_FROM_END` | native; stated `LEFT_OF_BEGINNING`: not native | probe | tested: [polars-substring](../engines/polars/facts/polars-substring.json) |
+| every | `negative_start` | choose | `WRAP_FROM_END` | `WRAP_FROM_END` | native; stated `LEFT_OF_BEGINNING`: not native | proof | proved `Lowering.polars_exact`; [polars-substring](../engines/polars/facts/polars-substring.json) |
 | every | `substring_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `non_ascii_text` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `case_mapping` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
-| every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | probe | tested: [polars-match-functions](../engines/polars/facts/polars-match-functions.json) |
+| every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | proof | proved `Lowering.polars_exact`; [polars-match-functions](../engines/polars/facts/polars-match-functions.json) |
 | every | `char_set` | choose | `UTF8` | `UTF8`, `ASCII_ONLY` | not characterized | missing |  |
 | every | `null_handling` | choose | `ACCEPT_NULLS` | `IGNORE_NULLS`, `ACCEPT_NULLS` | not characterized | missing |  |
 | every | `date_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |

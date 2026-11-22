@@ -44,7 +44,9 @@ def _scalar_subquery(lf: _Lift, node: sge.Subquery, sub: Sub, scope: list[Column
     # groups, LIMIT 1); no row is NULL.
     rel, cols = lf.nested(node.this, scope)
     if len(cols) != 1:
-        raise Unsupported("a scalar subquery must return one column", construct="SCALAR SUBQUERY")
+        raise SqlUnsupported(
+            "a scalar subquery must return one column", construct="SCALAR SUBQUERY"
+        )
     return E({"subquery": {"scalar": {"input": rel}}}, cols[0].type.copy(nullable=True))
 
 
@@ -73,7 +75,7 @@ def _values(lf: _Lift, node: sge.Values) -> tuple[Json, list[Column]]:
     alias names them."""
     rows = [list(r.expressions) if isinstance(r, sge.Tuple) else [r] for r in node.expressions]
     if not rows or len({len(r) for r in rows}) != 1:
-        raise Unsupported(
+        raise SqlUnsupported(
             f"{_shown(node)}: every row of VALUES needs the same number of values",
             construct="VALUES",
         )
@@ -97,7 +99,7 @@ def _values(lf: _Lift, node: sge.Values) -> tuple[Json, list[Column]]:
     alias = node.args.get("alias")
     given = [c.name for c in alias.columns] if alias is not None else []
     if len(given) > width:
-        raise Unsupported(
+        raise SqlUnsupported(
             f"{_shown(node)} names {len(given)} columns of {width}; name at most {width}",
             construct="VALUES",
         )
@@ -259,13 +261,13 @@ def _asof(lf: _Lift, rel: Json, scope: list[Column], join: sge.Join) -> tuple[Js
     native ASOF JOIN rests on too (#1447)."""
     side, kind = (join.side or "").upper(), (join.kind or "").upper()
     if kind or side not in ("", "LEFT"):
-        raise Unsupported(
+        raise SqlUnsupported(
             f"ASOF {side} {kind} JOIN is not supported; only ASOF [LEFT] JOIN",
             construct="ASOF JOIN",
         )
     on = join.args.get("on")
     if on is None or join.args.get("using"):
-        raise Unsupported(
+        raise SqlUnsupported(
             "ASOF JOIN needs an ON condition (USING is not supported yet)", construct="ASOF JOIN"
         )
     right, cols = lf.source(join.this)
@@ -285,13 +287,13 @@ def _asof(lf: _Lift, rel: Json, scope: list[Column], join: sge.Join) -> tuple[Js
     conjuncts = list(on.flatten()) if isinstance(on, sge.And) else [on]
     ineqs = [c for c in conjuncts if isinstance(c, sge.GTE | sge.GT | sge.LTE | sge.LT)]
     if len(ineqs) != 1:
-        raise Unsupported(
+        raise SqlUnsupported(
             "ASOF JOIN needs exactly one of >=, >, <= and < in its ON", construct="ASOF JOIN"
         )
     ineq = ineqs[0]
     lhs, rhs = is_right(ineq.this), is_right(ineq.expression)
     if {lhs, rhs} != {True, False}:
-        raise Unsupported(
+        raise SqlUnsupported(
             f"ASOF JOIN: {_shown(ineq)} must compare a left and a right expression",
             construct="ASOF JOIN",
         )

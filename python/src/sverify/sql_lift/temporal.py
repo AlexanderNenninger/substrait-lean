@@ -24,7 +24,18 @@ from sverify.plan_json import (
     literal,
     make_date_json,
 )
-from sverify.sql_lift._base import _KNOWN, DIALECT, Column, E, Sub, _fn, _Lift, _shown, register
+from sverify.sql_lift._base import (
+    _KNOWN,
+    CONSTANT_FIX,
+    DIALECT,
+    Column,
+    E,
+    Sub,
+    _fn,
+    _Lift,
+    _shown,
+    register,
+)
 from sverify.sql_lift.strings import _ANONYMOUS_STRINGS
 
 
@@ -123,7 +134,7 @@ def _date_trunc(lf: _Lift, node: sge.TimestampTrunc, sub: Sub, scope: list[Colum
     unit = node.args.get("unit")
     name = unit.name.lower() if isinstance(unit, sge.Var | sge.Literal) else None
     if name not in _TRUNC_UNITS:
-        raise Unsupported(
+        raise SqlUnsupported(
             f"date_trunc to {_shown(unit) if unit is not None else '?'} is not supported; "
             f"the unit must be one of {', '.join(_TRUNC_UNITS)}",
             construct="function date_trunc",
@@ -205,7 +216,7 @@ def _interval(lf: _Lift, node: sge.Interval, sub: Sub, scope: list[Column]) -> E
     rest = re.sub(r"(-?\d+)\s*([a-z]+)", "", (text or "").lower()).strip()
     units = [u.removesuffix("s") for _, u in pairs]
     if not pairs or rest or any(u not in _INTERVAL_UNITS for u in units):
-        raise Unsupported(
+        raise SqlUnsupported(
             f"{_shown(node)} is not supported yet; an interval is integers, each with a "
             f"unit ({', '.join(_INTERVAL_UNITS)})",
             construct="INTERVAL",
@@ -348,7 +359,11 @@ def _anonymous(lf: _Lift, node: sge.Anonymous, sub: Sub, scope: list[Column]) ->
     if name in ("date_part", "datepart") and len(args) == 2:
         part = args[0]
         if not (isinstance(part, sge.Literal) and part.is_string):
-            raise Unsupported(f"{name} needs a constant part", construct=f"function {name.lower()}")
+            raise SqlUnsupported(
+                f"{name} needs a constant part",
+                CONSTANT_FIX,
+                construct=f"function {name.lower()}",
+            )
         return _date_part(lf, part.this, sub(args[1]))
     if name in ("isoyear", "epoch_us") and len(args) == 1:
         a = _when(sub(args[0]))
@@ -563,10 +578,14 @@ def _strftime(lf: _Lift, node: sge.TimeToStr, sub: Sub, scope: list[Column]) -> 
     `Time.parseFormat`; the checker refuses any other. A date is its midnight."""
     fmt = node.args.get("format")
     if not (isinstance(fmt, sge.Literal) and fmt.is_string):
-        raise Unsupported("strftime needs a constant format", construct="function strftime")
+        raise SqlUnsupported(
+            "strftime needs a constant format",
+            CONSTANT_FIX,
+            construct="function strftime",
+        )
     # `%F` and `%T` are the model's (chrono's), but DuckDB rejects them.
     if bad := [d for d in re.findall(r"%(.?)", fmt.this) if d not in "YmdHMSj%" or not d]:
-        raise Unsupported(
+        raise SqlUnsupported(
             f"strftime format '{fmt.this}': %{bad[0]} is not supported; "
             "only %Y %m %d %H %M %S %j and %% are",
             construct="function strftime",

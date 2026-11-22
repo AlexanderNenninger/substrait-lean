@@ -149,8 +149,8 @@ def load(path: str | Path, out: Discovery | None = None) -> Discovery:
         raise FileNotFoundError(f"{path}: no such file")
     if path.suffix != ".py":
         raise UsageError(
-            f"{path}: sverify check reads Python files; check SQL through `sv.sql` in a "
-            "`.py` file, or a dbt project through `sverify-dbt check`"
+            f"{path}: sverify check reads Python and SQL files; check a dbt project "
+            "through `sverify-dbt check`"
         )
     name = f"_sverify_cli_{abs(hash(str(path.resolve())))}"
     spec = importlib.util.spec_from_file_location(name, path)

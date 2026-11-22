@@ -29,6 +29,7 @@ from sverify.plan_json import (
     logical,
 )
 from sverify.sql_lift._base import (
+    CONSTANT_FIX,
     DUCKDB,
     Column,
     E,
@@ -220,7 +221,7 @@ def _int_div(lf: _Lift, node: sge.IntDiv, sub: Sub, scope: list[Column]) -> E:
     a, b = sub(node.this), sub(node.expression)
     t = lf.common([a, b], "//")
     if not t.is_integer():
-        raise Unsupported(
+        raise SqlUnsupported(
             f"// of {a.type} and {b.type} is not supported; it divides integers",
             construct="INTEGER DIVISION",
         )
@@ -377,7 +378,7 @@ def _is(lf: _Lift, node: sge.Is, sub: Sub, scope: list[Column]) -> E:
         test = x if node.expression.this else sge.Not(this=sge.Paren(this=x))
         return sub(sge.Coalesce(this=test, expressions=[sge.false()]))
     if not isinstance(node.expression, sge.Null):
-        raise Unsupported(
+        raise SqlUnsupported(
             f"IS {_shown(node.expression)} is not supported; only IS [NOT] NULL, TRUE or FALSE is",
             construct="IS",
         )
@@ -410,7 +411,7 @@ def _in(lf: _Lift, node: sge.In, sub: Sub, scope: list[Column]) -> E:
         needle = sub(node.this)
         rel, cols = lf.nested(query, scope)
         if len(cols) != 1:
-            raise Unsupported("an IN subquery must return one column", construct="IN SUBQUERY")
+            raise SqlUnsupported("an IN subquery must return one column", construct="IN SUBQUERY")
         t = cols[0].type
         if not needle.type.is_null() and not _same(lf.common([needle, E({}, t)], "IN"), t):
             raise SqlUnsupported(
@@ -463,6 +464,15 @@ def _case(lf: _Lift, node: sge.Case, sub: Sub, scope: list[Column]) -> E:
     pairs = [(c, lf.to(r, t).json) for c, r in zip(conds, results, strict=True)]
     midnight = t.is_date() and any(r.midnight for r in [*results, dflt])
     return E(if_then(pairs, lf.to(dflt, t).json), t, midnight=midnight)
+
+
+def _if(lf: _Lift, node: sge.If, sub: Sub, scope: list[Column]) -> E:
+    """DuckDB's `if(c, a, b)`, another spelling of `CASE WHEN c THEN a ELSE b END`
+    (#328)."""
+    case = sge.Case(
+        ifs=[sge.If(this=node.this, true=node.args["true"])], default=node.args.get("false")
+    )
+    return _case(lf, case, sub, scope)
 
 
 def _coalesce(lf: _Lift, node: sge.Coalesce, sub: Sub, scope: list[Column]) -> E:
@@ -581,8 +591,10 @@ def _rounding(name: str) -> Callable[..., E]:
         if digits is not None:
             d = sub(digits)
             if not (d.constant and isinstance(d.value, int)):
-                raise Unsupported(
-                    "round needs a constant number of digits", construct="function round"
+                raise SqlUnsupported(
+                    "round needs a constant number of digits",
+                    CONSTANT_FIX,
+                    construct="function round",
                 )
             if a.type.is_integer():
                 raise SqlUnsupported(
@@ -695,6 +707,7 @@ register(
         sge.Between: _between,
         sge.In: _in,
         sge.Case: _case,
+        sge.If: _if,
         sge.Coalesce: _coalesce,
         sge.Pow: _pow,
         sge.Abs: _abs,

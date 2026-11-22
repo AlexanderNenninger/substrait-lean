@@ -246,7 +246,7 @@
     },
     "test_strftime[duckdb-column_format_str]": {
       "outcome": "refused",
-      "construct": "Unsupported: strftime formats must be constants",
+      "construct": "ProducerUnsupported: strftime formats must be constants; use a literal, or write each case with ifelse",
       "issue": 347
     },
     "test_strftime[duckdb-literal_format_str]": {

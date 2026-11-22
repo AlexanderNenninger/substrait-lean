@@ -1,0 +1,6 @@
+The JSON schema of SARIF 2.1.0 (OASIS standard, errata 01, draft-04), copied unchanged from
+https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json
+(112,768 bytes, sha256 c3b4bb2d6093897483348925aaa73af03b3e3f4bd4ca38cef26dcb4212a2682e).
+Licence: the sarif-spec repository has no software licence file; its LICENSE.md says its content is
+governed by the OASIS IPR Policy (RF on RAND Terms Mode) and the OASIS Feedback License.
+Read by tests/_sarif.py (#793).

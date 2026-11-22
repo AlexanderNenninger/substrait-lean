@@ -438,6 +438,28 @@ def test_remainder_by_minus_one_is_zero(width):
     assert check_three_ways(sql, {"r": rest}) == [(0,), (None,)]
 
 
+@pytest.mark.parametrize(
+    ("alias", "name"),
+    [
+        ("len(s)", "length(s)"),
+        ("substr(s, 2, 3)", "substring(s, 2, 3)"),
+        ("substr(s, -2)", "substring(s, -2)"),
+        ("main.lower(s)", "lower(s)"),
+        ("main.len(s)", "length(s)"),
+        ("system.main.length(s)", "length(s)"),
+    ],
+)
+def test_an_alias_is_the_function_it_names(alias, name):
+    """#328: `len`, `substr` and a call qualified by its built-in schema lift
+    to the plan of the function they name, and DuckDB and Lean agree on it."""
+    r = pa.table({"s": pa.array(["héllo", "", "ab", None], pa.string())})
+    tables, sql = {"r": r}, f"SELECT {alias} AS u FROM r"
+    assert plan_of(sql, tables) == plan_of(f"SELECT {name} AS u FROM r", tables)
+    native = duckdb.connect()
+    native.register("r", r)
+    assert check_three_ways(sql, tables) == native.execute(sql).fetchall()
+
+
 def test_a_lens_power_with_a_zero_exponent_is_strict():
     """D71: `power(x, 0)` is 1 for a value and NULL for a NULL `x`, as DuckDB
     gives it; the lift folds nothing under `semantics="duckdb"`."""

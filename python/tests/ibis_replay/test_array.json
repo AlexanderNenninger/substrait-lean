@@ -5,9 +5,9 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_array",
   "summary": {
-    "agree": 10,
+    "agree": 19,
     "disagree": 0,
-    "refused": 126,
+    "refused": 117,
     "unproved": 0,
     "skipped": 46
   },
@@ -83,9 +83,7 @@
       "issue": 60
     },
     "test_array_column[duckdb]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
-      "issue": 60
+      "outcome": "agree"
     },
     "test_array_concat[duckdb]": {
       "outcome": "refused",
@@ -238,34 +236,22 @@
       "outcome": "agree"
     },
     "test_array_literal_with_exprs[duckdb-array]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
-      "issue": 60
+      "outcome": "agree"
     },
     "test_array_literal_with_exprs[duckdb-float-float]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
-      "issue": 60
+      "outcome": "agree"
     },
     "test_array_literal_with_exprs[duckdb-float-int]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
-      "issue": 60
+      "outcome": "agree"
     },
     "test_array_literal_with_exprs[duckdb-int-float-exprs]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
-      "issue": 60
+      "outcome": "agree"
     },
     "test_array_literal_with_exprs[duckdb-int-float]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
-      "issue": 60
+      "outcome": "agree"
     },
     "test_array_literal_with_exprs[duckdb-int-int]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
-      "issue": 60
+      "outcome": "agree"
     },
     "test_array_map[duckdb-deferred-no_nulls]": {
       "outcome": "skipped",
@@ -356,9 +342,7 @@
       "reason": "fails or is xfailed on DuckDB in Ibis's own run"
     },
     "test_array_scalar[duckdb]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
-      "issue": 60
+      "outcome": "agree"
     },
     "test_array_slice[duckdb--3--1]": {
       "outcome": "refused",
@@ -707,9 +691,7 @@
       "issue": 60
     },
     "test_repr_timestamp_array[duckdb]": {
-      "outcome": "refused",
-      "construct": "ProducerUnsupported: Array is not supported yet (see #60, ",
-      "issue": 60
+      "outcome": "agree"
     },
     "test_table_unnest[duckdb-deferred]": {
       "outcome": "agree"

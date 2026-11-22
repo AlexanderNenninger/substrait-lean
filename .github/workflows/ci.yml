@@ -970,12 +970,24 @@ jobs:
       - run: uv sync
       - run: |
           uv run --no-sync ruff check .
+          # Text files name their encoding (PLW1514, a preview rule, alone), as
+          # sverify's `poe lint` checks: Windows reads cp1252 otherwise (#183).
+          uv run --no-sync ruff check --preview --select PLW1514 .
           uv run --no-sync ruff format --check .
           uv run --no-sync pyrefly check
       # The sample project's packages once: the tests' copies of it take
       # them (tests/conftest.py), and the steps below too.
       - run: uv run --no-sync dbt --no-use-colors deps --project-dir examples/shop --profiles-dir examples/shop
-      - run: uv run --no-sync pytest -q
+      # The coverage of `sverify_dbt` (#750), as `sverify`'s: in the job
+      # summary, a warning under 90 %, never a failure, and traced outside pull
+      # requests only (tracing costs time).
+      - if: github.event_name == 'pull_request'
+        run: uv run --no-sync pytest -q
+      - if: github.event_name != 'pull_request'
+        run: |
+          uv run --no-sync --with coverage coverage run --branch --source=sverify_dbt -m pytest -q
+          uv run --no-sync --with coverage coverage json -o coverage.json
+          python3 ../python/scripts/coverage_summary.py coverage.json --package sverify_dbt --target 90 >> "$GITHUB_STEP_SUMMARY"
       - env:
           DBT: uv run --no-sync dbt --no-use-colors
           SHOP: --project-dir examples/shop --profiles-dir examples/shop
