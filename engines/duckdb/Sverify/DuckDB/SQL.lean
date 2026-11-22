@@ -209,8 +209,7 @@ theorem toIntEven?_eq_toInt?_roundEven (c : Int) : toIntEven? c = toInt? (roundE
           have := hq; rw [h0] at this; simpa using this.symm
         simp [h0, code, this]
       · have hpos : 0 < code (evenMag (mag c)) := by unfold code; simp [h0]; omega
-        have : -code (evenMag (mag c)) < 0 := by omega
-        simp [this]
+        simp
         intro h; omega
     · rw [hr]; simp only [hc, ↓reduceIte]
       have : ¬ code (evenMag (mag c)) < 0 := by have := code_nonneg (evenMag (mag c)); omega
@@ -732,12 +731,14 @@ theorem DuckDBSQL.ref_fround_null : Profile.reference.un .fround .null = .ok .nu
 theorem DuckDBSQL.ref_froundEven_float (c : Int) :
     Profile.reference.un .froundEven (.float c) = .ok (.float (FloatCode.roundEven c)) := rfl
 theorem DuckDBSQL.ref_froundEven_null : Profile.reference.un .froundEven .null = .ok .null := rfl
+omit [Boxes.Ambient] in
 /-- **DuckDB's cast is the model's cast of the half-even round** (D55). -/
 theorem DuckDBSQL.duckCast_eq_castOut_roundEven (c : Int) :
     duckCastBigint (.float c) = DuckDBSQL.castOut (FloatCode.roundEven c) := by
   simp only [duckCastBigint, DuckDBSQL.castOut]
   rw [← FloatCode.canon_roundEven_canon, FloatCode.canon_roundEven (FloatCode.canon_idem c),
     FloatCode.toIntEven?_eq_toInt?_roundEven]
+omit [Boxes.Ambient] in
 theorem DuckDBSQL.duckCast_null : duckCastBigint .null = .ok .null := rfl
 theorem DuckDBSQL.ref_fceil_float (c : Int) :
     Profile.reference.un .fceil (.float c) = .ok (.float (FloatCode.ceil c)) := rfl
