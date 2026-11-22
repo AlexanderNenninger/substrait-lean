@@ -66,7 +66,7 @@ def _footer(path: str, connect: bool) -> pa.Schema:
     if local_path(path) is None:
         raise Unsupported(
             f"{path}: the driver reads Parquet footers of local files only; reading the "
-            "footers on the server is N12 of #173"
+            "footers on the server is N12 of #173; use a local copy of the file"
         )
     try:
         return pq.read_schema(path)
@@ -225,7 +225,8 @@ def _renaming(file: str, scan: Scan, connect: bool) -> tuple[dict[str, str], tup
         want = scan.schema.field(logical).type
         if not widens(f.type, want) and not _strings(f.type, want):
             raise Unsupported(
-                f"{file}: column {logical!r} is {f.type} in the file and {want} in the table"
+                f"{file}: column {logical!r} is {f.type} in the file and {want} in the table; "
+                f"declare the table's column with the file's type ({f.type}), or rewrite the file"
             )
         out[f.name] = logical
         kinds.append(f"{f.name}:{f.type}")

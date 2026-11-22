@@ -102,7 +102,8 @@ def _renaming(file: str, scan: Scan) -> dict[str, str]:
         want = scan.schema.field(logical).type
         if not widens(f.type, want) and not _same_family(f.type, want):
             raise Unsupported(
-                f"{file}: column {logical!r} is {f.type} in the file and {want} in the table"
+                f"{file}: column {logical!r} is {f.type} in the file and {want} in the table; "
+                f"declare the table's column with the file's type ({f.type}), or rewrite the file"
             )
         out[f.name] = logical
     return out
