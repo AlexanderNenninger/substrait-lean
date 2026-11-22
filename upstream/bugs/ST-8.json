@@ -40,6 +40,14 @@
         "substrait-extensions": "v0.108.0"
       },
       "note": "functions_arithmetic_decimal.yaml and the cast docs on main; the gap is there"
+    },
+    {
+      "checked_at": "2026-11-22",
+      "against": {
+        "substrait": "main@c7b8e0383eab",
+        "substrait-extensions": "v0.109.0"
+      },
+      "note": "functions_arithmetic_decimal.yaml L8-L87 on main (= v0.109.0): result types and overflow only, no decimal add/subtract/multiply/divide test cases; proposal drafted as a comment on #1224 (#1093)"
     }
   ],
   "upstream": [
