@@ -8,18 +8,19 @@ fresh run with the record (`python/tests/route_pins.json`).
 
 * A catalogue query with a contract is verified under it, as `catalogue.probe_contract` does; the
   others, and every coverage case the checker accepts, with no condition.
-* Each engine's route is taken twice: by default, and with an exact rerun required
-  (`reproducible=sv.equivalent(rows="sequence")`'s strictest form). Both are `report_json.route_json`'s
-  fields, so a change to the class, the evidence, the shims, the reason, the lenses or the rerun
-  evidence shows up as a changed line.
-* An engine that cannot be reached (an engine package or session that is not installed) is left
-  out of the record and of the comparison.
+* Each engine's route is taken by default and with each rerun in `RERUNS` required: the multiset
+  default, the strict sequence (the path `routes.reproducibility` takes for a sink) and a tolerance
+  on doubles. Each is `report_json.route_json`'s fields, so a change to the class, the evidence,
+  the shims, the reason, the lenses or the rerun evidence shows up as a changed line.
+* A route that raises (`EngineVersionError`, `EngineSettingsError`, `KeyError`, anything else) is
+  pinned as `{"raised": <exception name>}`: it never drops out of the record.
 
 Regenerate with `python -m sverify_dev.route_pins --write` and review the diff.
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import sys
 import warnings
@@ -32,6 +33,7 @@ PINS = Path(__file__).resolve().parents[2] / "tests" / "route_pins.json"
 ENGINES = ("duckdb", "polars", "spark")
 
 
+@functools.cache
 def _reports() -> list[tuple[str, Any]]:
     """`(id, report)` for every catalogue query and coverage case that verifies, or
     `(id, message)` where `verify` refuses it."""
@@ -50,11 +52,11 @@ def _reports() -> list[tuple[str, Any]]:
             inputs = cat.tables(schemas, q.dataset, "native") if isinstance(query, str) else None
             if q.requires is not None:
                 requires, ensures = cat.contract(q, schemas, "native")
+                report = sverify.verify(
+                    query, requires=requires, ensures=ensures, tables=inputs, counterexamples=0
+                )
             else:
-                requires, ensures = None, None
-            report = sverify.verify(
-                query, requires=requires, ensures=ensures, tables=inputs, counterexamples=0
-            )
+                report = sverify.verify(query, tables=inputs, counterexamples=0)
         except Exception as e:  # noqa: BLE001 - what verify refuses is pinned too
             out.append((f"catalogue: {q.id}", f"{type(e).__name__}: {str(e).splitlines()[0]}"))
             continue
@@ -78,22 +80,35 @@ def _reports() -> list[tuple[str, Any]]:
     return out
 
 
-def _routes(report: Any, engine: str) -> dict[str, Any] | None:
+def _reruns() -> dict[str, Any]:
     import sverify
+
+    return {
+        "multiset": sverify.equivalent(),
+        "sequence": sverify.equivalent(rows="sequence"),
+        "within": sverify.equivalent(floats=sverify.within(rel=1e-9)),
+    }
+
+
+def _routes(report: Any, engine: str) -> dict[str, Any]:
+    """The engine's routes for the report: `auto`, then one per rerun. A route that raises is
+    pinned by the exception's name."""
     from sverify import report_json
 
-    try:
-        default = report.route(engine)
-        rerun = report.route(engine, reproducible=sverify.equivalent())
-    except Exception as e:  # noqa: BLE001 - an engine that is not installed, a version outside range
-        if type(e).__name__ in ("EngineVersionError", "EngineSettingsError", "KeyError"):
-            return None
-        return {"error": f"{type(e).__name__}: {str(e).splitlines()[0]}"}
-    return {"auto": report_json.route_json(default), "rerun": report_json.route_json(rerun)}
+    out: dict[str, Any] = {}
+    for name, rerun in (("auto", None), *_reruns().items()):
+        try:
+            route = report.route(engine, reproducible=rerun)
+        except Exception as e:  # noqa: BLE001 - a raise is an outcome to pin
+            out[name] = {"raised": type(e).__name__}
+        else:
+            out[name] = report_json.route_json(route)
+    return out
 
 
 def pins(engines: tuple[str, ...] = ENGINES) -> dict[str, dict[str, Any]]:
-    """The record: id to `{"verify": message}` where verify refuses, else engine to its routes."""
+    """The record: id to `{"verify": message}` where verify refuses, else engine to its routes.
+    An engine that is not installed is left out."""
     from sverify import _engines
 
     available = [e for e in engines if e in _engines.SUPPORTED]
@@ -104,8 +119,7 @@ def pins(engines: tuple[str, ...] = ENGINES) -> dict[str, dict[str, Any]]:
             if isinstance(report, str):
                 out[ident] = {"verify": report}
                 continue
-            routes = {e: r for e in available if (r := _routes(report, e)) is not None}
-            out[ident] = routes
+            out[ident] = {e: _routes(report, e) for e in available}
     return out
 
 
