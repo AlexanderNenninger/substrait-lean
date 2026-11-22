@@ -46,8 +46,8 @@ can compute with.
 ## What it rules out
 
 - A `SUM` that lands above `max hi (N·hi)` plus the tolerance, for values in
-  `[lo, hi]` and at most `N` rows: a postcondition above the bound is not
-  proved, and one below it is.
+  `[lo, hi]` and at most `N` rows: a postcondition `total <= X` is proved
+  where `X` is at or above the bound, and not proved where `X` is below it.
 - A sum that is not finite, for finite bounded values: `hlo` and `hhi` keep
   the bound far below the largest double.
 
@@ -63,8 +63,9 @@ can compute with.
 
 ## Its side conditions
 
-`hne`, `hN` and `h32` are the row cap the contract states and the checker
-checks on the data on each run. `hlo`, `hhi` and `hb` are the column's
+`hne` is the group being non-empty (the `SUM` of no rows is NULL). `hN` and
+`h32` are the row cap the contract states, which the checker checks on the
+data on each run. `hlo`, `hhi` and `hb` are the column's
 range, a precondition checked on the data. The checker computes `sumTolScaled`
 from `N` and the bound.
 

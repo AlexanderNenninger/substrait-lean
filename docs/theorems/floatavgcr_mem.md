@@ -11,9 +11,12 @@ Layer: `eval`, the reference's value of the aggregate. Axioms: `propext`, `Class
 
 The reference's `AVG` of doubles is the exact sum divided by the count,
 rounded once (D25). A mean of values in `[lo, hi]` lies in `[lo, hi]`, and the
-rounded mean lies within the checker's tolerance `avgTolScaled` of that
-range. Unlike the sum, the mean needs no row cap: dividing by the count keeps
-the bound where it is.
+rounded mean lies within the checker's tolerance `avgTolScaled N` of that
+range. The checker's own bound for a mean (`floatBound`, with `crBound`) is
+the range rounded once, with no row count, so a mean needs no row cap. This
+theorem is #85's statement of the tolerance around the exact result, which
+adds nothing to that bound where the bounds are finite; `N` is the cap it
+takes, and the proof does not use `N ≤ 2³²`.
 
 ## The statement, line by line
 
@@ -30,8 +33,9 @@ with its sign, so a bound on doubles becomes a bound on integers the checker
 can compute with. 
 - `cs`, `hne`: the codes of the doubles averaged, and the assumption that
   there is at least one.
-- `N`, `hN`, `_h32`: a cap on how many there are. The tolerance depends on
-  it, and the bound on `N` is in the statement; the proof does not use it.
+- `N`, `hN`, `_h32`: a cap on how many there are, which the tolerance
+  `avgTolScaled N` depends on. The checker's bound for a mean uses no count,
+  so a plan without `sv.max_rows` needs no `N`.
 - `lo`, `hi`, `hlo`, `hhi`: bounds in scaled units, finite doubles'.
 - `hb`: every value lies between them, in canonical form.
 - The conclusion: the scaled mean, `floatAvgCR`, lies between `lo` and `hi`
@@ -55,9 +59,10 @@ can compute with.
 
 ## Its side conditions
 
-`hne`, `hN` and `h32` are a row count the checker bounds, from `sv.max_rows`
-where a cap is stated. `hlo`, `hhi` and `hb` are the column's range, a
-precondition checked on the data on each run.
+`hne` is the group being non-empty (the mean of no rows is NULL). `hN` is a
+row count the tolerance is stated for, from `sv.max_rows` where a cap is
+stated; the checker's bound for a mean uses none. `hlo`, `hhi` and `hb` are
+the column's range, a precondition checked on the data on each run.
 
 ## Example
 

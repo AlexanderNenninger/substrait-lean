@@ -11,7 +11,8 @@ Layer: `eval`, the reference's value of the aggregate. Axioms: `propext`, `Class
 
 The reference computes `VAR_POP`, `STDDEV_POP` and the other moments of
 doubles exactly (D30), as integers: `n · Σx² − (Σx)²` is `n²` times the
-population variance's numerator, with no rounding. This theorem says that
+population variance, which is `n` times the numerator `Σ(x − x̄)²`, with no
+rounding. This theorem says that
 number is not negative, by Lagrange's identity: it is a sum of squares.
 Rounded once at the end, a variance is therefore not negative, and a
 postcondition `var >= 0.0` is proved.
