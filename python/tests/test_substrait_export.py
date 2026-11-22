@@ -5,6 +5,7 @@ The round trips export, read back and prove the contract again."""
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 import re
@@ -230,10 +231,18 @@ GAP_CASES = {
 }
 
 
+@functools.cache
+def _gap_report(case: str) -> sv.Report:
+    """The case's report, verified once for the three modes (an export does not
+    change it)."""
+    expr, requires, _ = GAP_CASES[case]
+    return _verify(expr, requires)
+
+
 @pytest.mark.parametrize("case", list(GAP_CASES))
 def test_apply_rewrites_the_gap(case: str) -> None:
-    expr, requires, option = GAP_CASES[case]
-    m = read(_verify(expr, requires).to_substrait(shims="apply")).manifest
+    option = GAP_CASES[case][2]
+    m = read(_gap_report(case).to_substrait(shims="apply")).manifest
     # D30: a consumer's own variance is within the plan's bound of the
     # reference's exact moments rounded once, and a consumer's double keys
     # pick a member of a zero's class, which the default observation reads as one.
@@ -244,8 +253,8 @@ def test_apply_rewrites_the_gap(case: str) -> None:
 
 @pytest.mark.parametrize("case", list(GAP_CASES))
 def test_annotate_ships_the_assumption(case: str) -> None:
-    expr, requires, option = GAP_CASES[case]
-    report = _verify(expr, requires)
+    option = GAP_CASES[case][2]
+    report = _gap_report(case)
     m = read(report.to_substrait(shims="annotate")).manifest
     assert m["class"] == "assumed"
     assert not [s for s in m["shims"] if s.get("source") != "written plan"]
@@ -260,10 +269,9 @@ def test_annotate_ships_the_assumption(case: str) -> None:
 
 @pytest.mark.parametrize("case", list(GAP_CASES))
 def test_refuse_names_the_gap(case: str) -> None:
-    expr, requires, option = GAP_CASES[case]
-    gap = "ST-3" if option == "stat_degenerate" else "ST-4"
+    gap = "ST-3" if GAP_CASES[case][2] == "stat_degenerate" else "ST-4"
     with pytest.raises(ExportError, match=re.escape(f"({gap}, upstream/bugs/{gap}.json)")):
-        _verify(expr, requires).to_substrait(shims="refuse")
+        _gap_report(case).to_substrait(shims="refuse")
 
 
 def test_gaps_where_the_reference_raises_need_no_shim() -> None:
@@ -813,6 +821,12 @@ F_BOUNDED = {"f": [_.a.notnull(), ~_.a.isnan(), _.a >= -100.0, _.a <= 100.0]}
 TRUNCATED = [(2.5, 2), (-2.5, -2), (-0.5, 0), (3.5, 3), (-3.7, -3)]
 
 
+@functools.cache
+def _cast_report() -> sv.Report:
+    """#2438's report, verified once for the export tests."""
+    return _verify(CAST, F_BOUNDED)
+
+
 def _casts(node) -> list[dict]:
     """The `cast` expressions of a Substrait plan in JSON form."""
     if isinstance(node, dict):
@@ -826,7 +840,7 @@ def _casts(node) -> list[dict]:
 def test_st6_apply_truncates_before_the_cast() -> None:
     """#2438: the cast reads `float_to_int`, which Substrait leaves open (ST-6),
     so `apply` writes the truncation before it."""
-    exported = read(_verify(CAST, F_BOUNDED).to_substrait(shims="apply"))
+    exported = read(_cast_report().to_substrait(shims="apply"))
     [shim] = [s for s in exported.manifest["shims"] if s["option"] == "float_to_int"]
     assert shim["gap"] == "ST-6"
     assert not exported.manifest["assumptions"]
@@ -837,7 +851,7 @@ def test_st6_apply_truncates_before_the_cast() -> None:
 def test_st6_shim_is_exact_under_every_rounding() -> None:
     """The cast's input is integral after the shim, so a consumer's cast gives the
     reference's truncation whichever way it rounds (`float_to_int`'s three modes)."""
-    plan = read(_verify(CAST, F_BOUNDED).to_substrait(shims="apply")).plan
+    plan = read(_cast_report().to_substrait(shims="apply")).plan
     [cast] = _casts(plan)
     modes = {
         "TRUNCATE": math.trunc,
@@ -850,7 +864,7 @@ def test_st6_shim_is_exact_under_every_rounding() -> None:
 
 
 def test_st6_annotate_ships_the_assumption() -> None:
-    m = read(_verify(CAST, F_BOUNDED).to_substrait(shims="annotate")).manifest
+    m = read(_cast_report().to_substrait(shims="annotate")).manifest
     [found] = [a for a in m["assumptions"] if a["option"] == "float_to_int"]
     assert (found["gap"], found["assumes"]) == ("ST-6", ["TRUNCATE"])
     assert not [s for s in m["shims"] if s["option"] == "float_to_int"]
@@ -858,7 +872,7 @@ def test_st6_annotate_ships_the_assumption() -> None:
 
 def test_st6_refuse_names_the_gap() -> None:
     with pytest.raises(ExportError, match=re.escape("(ST-6, upstream/bugs/ST-6.json)")):
-        _verify(CAST, F_BOUNDED).to_substrait(shims="refuse")
+        _cast_report().to_substrait(shims="refuse")
 
 
 def test_st6_apply_plan_truncates_on_duckdb() -> None:
