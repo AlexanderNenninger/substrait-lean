@@ -17,7 +17,7 @@ _FENCE = re.compile(r"^```.*?^```", re.DOTALL | re.MULTILINE)
 
 
 def _links(page: Path) -> list[tuple[str, str]]:
-    text = _FENCE.sub("", page.read_text())
+    text = _FENCE.sub("", page.read_text(encoding="utf-8"))
     return [(m.group(1), m.group(2) or "") for m in _LINK.finditer(text)]
 
 
@@ -28,7 +28,7 @@ def _slug(heading: str) -> str:
 
 
 def _anchors(page: Path) -> set[str]:
-    text = _FENCE.sub("", page.read_text())
+    text = _FENCE.sub("", page.read_text(encoding="utf-8"))
     headings = {_slug(m.group(1)) for m in re.finditer(r"^#{1,6}\s+(.*)$", text, re.MULTILINE)}
     return headings | set(re.findall(r'<a id="([^"]+)">', text))
 
@@ -96,7 +96,7 @@ def test_a_user_page_names_no_lean_theorem(page: Path):
     the page introduces."""
     named = [
         f"{n}: {line.strip()[:70]}"
-        for n, line in enumerate(page.read_text().splitlines(), 1)
+        for n, line in enumerate(page.read_text(encoding="utf-8").splitlines(), 1)
         if _LEAN_NAME.search(line) and "proved by" not in line
     ]
     assert not named, f"{page.name}: {named}"

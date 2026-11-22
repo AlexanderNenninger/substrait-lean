@@ -5,6 +5,7 @@ import FloatBounds.IntExact
 import FloatBounds.Epsilon
 import Sverify.Core.AllowedP
 import Sverify.Core.FloatArith
+import Sverify.Core.SumBound
 
 /-!
 # The core's summation orders are the standard model's tree sums (#1196, part 2)
@@ -282,10 +283,12 @@ theorem reals_scaled :
       · push_cast; rw [add_mul, add_mul, ha, tiny_scaled, ih.2]; ring
     | _ => simpa [reals, floatsOf, exactSum, scaledAbsSum] using ih
 
-/-- **The core's `SumBound` holds of every `ANY`, `PAIRWISE` and `SEQUENTIAL`
-sum** (#1196): what `SumOrder` asserts of these orders beside their shape
-follows from the shape, by `TreeSum.error` under the core's rounding. -/
-theorem FloatSums.sumBound {vs : List Value} {c : Int} (h : FloatSums vs c) : SumBound vs c := by
+/-- **The core's `SumBoundRaw` holds of every `ANY`, `PAIRWISE` and
+`SEQUENTIAL` sum** (#1196): what `SumOrder` asserts of these orders beside
+their shape follows from the shape, by `TreeSum.error` under the core's
+rounding. -/
+theorem FloatSums.sumBoundRaw {vs : List Value} {c : Int} (h : FloatSums vs c) :
+    SumBoundRaw vs c := by
   intro hfin hlen hov
   have hpos := two_pow_pos'
   have hu := u_pos
@@ -364,5 +367,12 @@ theorem FloatSums.sumBound {vs : List Value} {c : Int} (h : FloatSums vs c) : Su
       Int.cast_abs]
     exact key
   exact_mod_cast hcast
+
+/-- **The core's `SumBound` holds of every `ANY`, `PAIRWISE` and `SEQUENTIAL`
+sum** (#1196, ruling 242): of the codes as they are by `FloatSums.sumBoundRaw`,
+and of the canonical codes since the same order over the canonical values
+gives the same sum up to `canon` (`FloatSums.canonV`). -/
+theorem FloatSums.sumBound {vs : List Value} {c : Int} (h : FloatSums vs c) : SumBound vs c :=
+  Substrait.FloatSums.sumBound_of_raw FloatSums.sumBoundRaw h
 
 end FloatBridge

@@ -848,9 +848,6 @@ given wins over the variable, and the variable over the default.
 | `SVERIFY_SECRETS` | | `Resolver.from_config(path)` | the nearest `pyproject.toml` | the TOML file whose `[tool.sverify.secrets]` table configures named secrets ([Credentials](#credentials)) |
 | `SVERIFY_PREBUILT_CHECKER` | | | | for contributors: an editable install links this checker and skips `lake build` |
 
-`SVERIFY_CHECK` and `SVERIFY_SPILL_DIRECTORY`, their names in 0.6, are read
-too, with a `DeprecationWarning`.
-
 ### Composing contracts
 
 When one contracted transformation's result feeds another, the downstream
@@ -2031,7 +2028,7 @@ column. Each sverify term maps to its ODCS field:
 | `_.col.isin([...])` | an `invalidValues` rule, `arguments.validValues`, `mustBe: 0` |
 | `sv.max_rows(n)` | a `rowCount` rule, `mustBeLessOrEqualTo: n` |
 | `sv.rows_per(cols, n)` | a `sql` rule counting the keys with more than `n` rows |
-| `sv.references(col, to=...)` | a `foreignKey` relationship on the property |
+| `sv.references(col, to=...)` | a `foreignKey` relationship on the property; for several columns, on the object with `from` and `to` lists |
 | any other row condition, such as a range | a `sql` rule, `SELECT COUNT(*) FROM {object} WHERE NOT COALESCE(<condition>, FALSE)`, `mustBe: 0` |
 | the transform's docstring, `descriptions=` | `description` |
 

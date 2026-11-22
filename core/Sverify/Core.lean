@@ -10,12 +10,14 @@ import Sverify.Core.Conversions
 import Sverify.Core.Decomposable
 import Sverify.Core.Dedup
 import Sverify.Core.Digest
+import Sverify.Core.EvalDbl
 import Sverify.Core.EvalFast
 import Sverify.Core.ExactBound
 import Sverify.Core.Expr
 import Sverify.Core.Float
 import Sverify.Core.FloatArith
 import Sverify.Core.FloatArithCheck
+import Sverify.Core.FloatDbl
 import Sverify.Core.FloatExact
 import Sverify.Core.FloatFormat
 import Sverify.Core.FloatMoments

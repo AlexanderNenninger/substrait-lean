@@ -32,7 +32,6 @@ from __future__ import annotations
 import math
 import struct
 import unicodedata
-import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -611,21 +610,3 @@ def why(components: Sequence[str]) -> str:
     if ignored:
         parts.append(f"depends on {', '.join(ignored)}, which the observation ignores")
     return "; ".join(parts)
-
-
-def _deterministic_arg(
-    where: str, deterministic: bool | None, reproducible: Observation | None
-) -> Observation | None:
-    """`reproducible`, with the deprecated `deterministic=True` (B5 of the
-    1.0 API review) read as `sv.equivalent()`."""
-    if deterministic is None:
-        return reproducible
-    warnings.warn(
-        f"{where}(deterministic=...) is deprecated; write reproducible=sv.equivalent() "
-        "(Report.deterministic stays as the fact)",
-        DeprecationWarning,
-        stacklevel=3,
-    )
-    if deterministic and reproducible is None:
-        return Observation()
-    return reproducible

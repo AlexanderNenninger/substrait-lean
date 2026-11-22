@@ -5,9 +5,7 @@ environment variables. Each renamed released name warns for one release."""
 
 import importlib
 import re
-import warnings
 
-import ibis
 import pytest
 from ibis import _
 
@@ -15,12 +13,9 @@ import sverify as sv
 import sverify.engines
 import sverify.errors
 from _pipelines import make_orders
-from sverify import engine as engine_module
 from sverify.contracts import ContractedTransform
 from sverify.engines import ENGINES
 from sverify.errors import (
-    InferredWarning,
-    NotIncrementalError,
     SverifyError,
     SverifyWarning,
     UnprovedWarning,
@@ -30,34 +25,11 @@ from sverify.errors import (
 # -- H1: names that end in Error ----------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("module", "old", "new"),
-    [
-        (sverify.errors, "Unsupported", UnsupportedError),
-        (sverify.errors, "NotIncremental", NotIncrementalError),
-    ],
-)
-def test_the_old_exception_names_warn(module, old, new) -> None:
-    with pytest.warns(DeprecationWarning, match=rf"{module.__name__}\.{old} is deprecated"):
-        assert getattr(module, old) is new
-    assert old not in module.__all__ and new.__name__ in module.__all__
-
-
-def test_the_old_names_still_catch() -> None:
-    with pytest.warns(DeprecationWarning):
-        from sverify.errors import Unsupported
-    with pytest.raises(Unsupported):
-        sv.verify(
-            "with recursive c as (select 1 as x) select * from c",
-            tables={"t": ibis.schema({"x": "int64"})},
-        )
-
-
-def test_inferred_precondition_warning_is_inferred_warning() -> None:
-    import sverify.contracts as contracts
-
-    with pytest.warns(DeprecationWarning, match="InferredWarning"):
-        assert contracts.InferredPreconditionWarning is InferredWarning
+def test_the_old_exception_names_are_gone() -> None:
+    for old in ("Unsupported", "NotIncremental"):
+        assert not hasattr(sverify.errors, old)
+    assert not hasattr(sverify.contracts, "InferredPreconditionWarning")
+    assert "NotIncrementalError" in sverify.errors.__all__
 
 
 # -- H2 and H4: SverifyWarning and .code --------------------------------------
@@ -139,15 +111,20 @@ def test_contracted_transform_takes_keywords() -> None:
 # -- J1: SVERIFY_CHECKER ----------------------------------------------------------
 
 
-def test_sverify_check_is_sverify_checker(monkeypatch, tmp_path) -> None:
+def test_the_old_environment_names_are_not_read(monkeypatch, tmp_path) -> None:
+    from sverify import _checker, _duckdb
+
     monkeypatch.delenv("SVERIFY_CHECKER", raising=False)
     monkeypatch.setenv("SVERIFY_CHECK", str(tmp_path / "old"))
-    with pytest.warns(DeprecationWarning, match="SVERIFY_CHECK is deprecated; set SVERIFY_CHECKER"):
-        assert engine_module.checker_env() == str(tmp_path / "old")
-    monkeypatch.setenv("SVERIFY_CHECKER", str(tmp_path / "new"))
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", DeprecationWarning)
-        assert engine_module.checker_env() == str(tmp_path / "new")
+    monkeypatch.setattr(_checker, "__file__", str(tmp_path / "sverify" / "_checker.py"))
+    with pytest.raises(
+        FileNotFoundError
+    ):  # the wheel's checker is not there, and `old` is not read
+        _checker._checker_file()
+    monkeypatch.setenv("SVERIFY_MEMORY_LIMIT", "1GB")
+    monkeypatch.delenv("SVERIFY_TEMP_DIRECTORY", raising=False)
+    monkeypatch.setenv("SVERIFY_SPILL_DIRECTORY", str(tmp_path))
+    assert _duckdb.limits()["temp_directory"] != str(tmp_path)
 
 
 def test_sverify_temp_directory_sets_duckdbs_temp_directory(monkeypatch, tmp_path) -> None:
@@ -156,16 +133,6 @@ def test_sverify_temp_directory_sets_duckdbs_temp_directory(monkeypatch, tmp_pat
     monkeypatch.setenv("SVERIFY_MEMORY_LIMIT", "1GB")
     monkeypatch.setenv("SVERIFY_TEMP_DIRECTORY", str(tmp_path))
     assert _duckdb.limits() == {"memory_limit": "1GB", "temp_directory": str(tmp_path)}
-
-
-def test_sverify_spill_directory_is_sverify_temp_directory(monkeypatch, tmp_path) -> None:
-    from sverify import _duckdb
-
-    monkeypatch.setenv("SVERIFY_MEMORY_LIMIT", "1GB")
-    monkeypatch.delenv("SVERIFY_TEMP_DIRECTORY", raising=False)
-    monkeypatch.setenv("SVERIFY_SPILL_DIRECTORY", str(tmp_path))
-    with pytest.warns(DeprecationWarning, match="set SVERIFY_TEMP_DIRECTORY"):
-        assert _duckdb.limits()["temp_directory"] == str(tmp_path)
 
 
 def test_result_dataclasses_are_keyword_only() -> None:

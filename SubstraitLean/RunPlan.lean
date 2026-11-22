@@ -508,7 +508,7 @@ def runPlanJson : List (String × Json) :=
     let W := K.windows R.cat
     [("run_plan", Write.writePlan (Write.planSchemas p) R.cat s p.names),
       ("run_gate", .null),
-      ("run_unchecked", if s.looseSub then s.marksJson (s.marks R.cat A F W false) else .null)]
+      ("run_unchecked", if s.looseSub then s.marksJson (s.marks R.cat A F W R.caps false) else .null)]
   | _, .error g => [("run_plan", .null), ("run_gate", g.name), ("run_unchecked", .null)]
   | none, .ok _ => [("run_plan", .null), ("run_gate", RunGate.noRewrite.name),
       ("run_unchecked", .null)]

@@ -97,7 +97,10 @@ def Profile.polars.obs : ObsTable := [
   (some "int.div", "division_type", (ObsRow.shimmed "int_div_trunc" ["polars-int-divide"]).proved "Polars.int_div_trunc"),
   (some "int.mod", "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Polars.int_mod_trunc"),
   (none, "min_mod_neg_one", (ObsRow.native ["polars-int-modulus"]).proved "Rel.polars_sound"),
-  (none, "rounding", (ObsRow.native ["polars-fp-ieee", "polars-ieee-arith-macos-arm64", "polars-ieee-arith-linux-x86-64"]).tracking 271),
+  -- `rounding`, `pow_one_inf`, `negative_start` and `case_sensitivity`: Polars's
+  -- choice is the reference's (`Profile.polars` states no case), so the generated
+  -- lowering's entries are native (`Lowering.polars_exact`, #271).
+  (none, "rounding", (ObsRow.native ["polars-fp-ieee", "polars-ieee-arith-macos-arm64", "polars-ieee-arith-linux-x86-64"]).proved "Lowering.polars_exact"),
   (none, "nan_creation", (ObsRow.native ["polars-double-arith", "polars-nonfinite-aggregates"]).proved "Rel.polars_sound"),
   -- Up to one zero; the shim `one_zero` makes it exact.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-sign", "polars-zero-order"]
@@ -105,7 +108,7 @@ def Profile.polars.obs : ObsTable := [
   -- `round` and `ceil` emit IEEE's `-0.0`; the shim `one_zero` makes it exact.
   (none, "round_zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-round",
     "polars-round-digits"] with shim := some "one_zero" }).tracking 271),
-  (none, "pow_one_inf", (ObsRow.native ["polars-pow-one-inf"]).tracking 271),
+  (none, "pow_one_inf", (ObsRow.native ["polars-pow-one-inf"]).proved "Lowering.polars_exact"),
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["polars-nan-sign"]).tracking 271),
   (none, "nan_order", (ObsRow.native ["polars-nan-order"]).tracking 271),
   (none, "nan_equality", (ObsRow.native ["polars-nan-equality"]).tracking 271),
@@ -195,8 +198,8 @@ def Profile.polars.obs : ObsTable := [
   (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
     ["polars-zero-sign", "polars-zero-add"] with shim := some "one_zero" }).proved "Shim.one_zero"),
   (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Shim.makes_infinite"),
-  (none, "negative_start", (ObsRow.native ["polars-substring"]).tracking 271),
-  (none, "case_sensitivity", (ObsRow.native ["polars-match-functions"]).tracking 271),
+  (none, "negative_start", (ObsRow.native ["polars-substring"]).proved "Lowering.polars_exact"),
+  (none, "case_sensitivity", (ObsRow.native ["polars-match-functions"]).proved "Lowering.polars_exact"),
   (some "str.sub", "string_positions", (ObsRow.shimmed "substring_wrap" ["polars-substring"]).proved "Polars.substring_wrap"),
   (some "str.match", "string_positions", (ObsRow.shimmed "strpos_chars" ["polars-strpos"]).proved "Polars.strpos_chars"),
   (none, "null_join_keys", (ObsRow.native ["polars-null-keys"]).tracking 271),

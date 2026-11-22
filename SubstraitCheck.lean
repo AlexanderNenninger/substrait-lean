@@ -634,8 +634,15 @@ def commands (entries : List EngineEntry) : List (Flag (Unit → IO UInt32)) :=
        for (c, how, _) in duckdbOn.coverage do
          IO.println s!"error_on_division_by_zero=on\t{c}\t{how}"
        return 0 },
-   prints "--lowering-table" .tables "the DuckDB lowering's templates, as JSON (#241)" fun _ =>
-     Lowering.duckdbTableJson.compress ++ "\n",
+   { flag := "--lowering-coverage-polars", group := .tables,
+     help := "how each construct is lowered to Polars (#271), one per line",
+     run := fun _ => do
+       for (c, how, _) in polarsOn.coverage do
+         IO.println s!"{c}\t{how}"
+       return 0 },
+   prints "--lowering-table" .tables
+     "the DuckDB lowering's templates, and Polars's under \"polars\", as JSON (#241, #271)" fun _ =>
+     (Lowering.duckdbTableJson.setObjVal! "polars" Lowering.polarsTableJson).compress ++ "\n",
    prints "--lowering-cache" .tables "a new LoweringCache.lean from this build's coverage (#242)"
      fun _ => loweringCacheSource,
    prints "--lift-table" .tables "what each DuckDB SQL function lifts to, as JSON (#268)" fun _ =>

@@ -91,13 +91,7 @@ Warnings:
   reference's.
 * `ProfilePluginWarning`: an entry point of `sverify.profiles` did not load
   a `ProfilePlugin`, and is skipped.
-
-`Unsupported` and `NotIncremental` are deprecated names of
-`UnsupportedError` and `NotIncrementalError`.
 """
-
-import warnings
-from typing import Any
 
 from sverify._unsupported import (
     ConditionError,
@@ -130,28 +124,6 @@ from sverify.routes import (
     UnverifiedRunWarning,
 )
 from sverify.substrait_export import ExportError
-
-_DEPRECATED = {"Unsupported": UnsupportedError, "NotIncremental": NotIncrementalError}
-
-
-def deprecated_name(module: str, name: str) -> Any:
-    """`module.name` where `name` is a deprecated name of an exception
-    (`_DEPRECATED`), with a `DeprecationWarning`; an `AttributeError`
-    otherwise."""
-    if name in _DEPRECATED:
-        new = _DEPRECATED[name].__name__
-        warnings.warn(
-            f"{module}.{name} is deprecated; write {module}.{new}",
-            DeprecationWarning,
-            stacklevel=3,
-        )
-        return _DEPRECATED[name]
-    raise AttributeError(f"module {module!r} has no attribute {name!r}")
-
-
-def __getattr__(name: str) -> Any:
-    return deprecated_name(__name__, name)
-
 
 __all__ = [
     "AuditError",

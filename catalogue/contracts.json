@@ -79,19 +79,19 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.m <= _.mx) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures m \u2264 mx is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.m <= _.mx) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures m \u2264 mx is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.m <= _.mx) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures m \u2264 mx is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "spark": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.m <= _.mx) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures m \u2264 mx is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       }
     },
     "pattern": "compare",
@@ -454,19 +454,19 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "not verified: ensures approx(_.r.between(-1, 1), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures approx(r.between(-1, 1), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "not verified: ensures approx(_.r.between(-1, 1), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures approx(r.between(-1, 1), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified: ensures approx(_.r.between(-1, 1), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures approx(r.between(-1, 1), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "spark": {
         "outcome": "refused",
-        "reason": "not verified: ensures approx(_.r.between(-1, 1), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures approx(r.between(-1, 1), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       }
     },
     "pattern": "bound",
@@ -479,19 +479,19 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.total > 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures total > 100 is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.total > 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures total > 100 is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.total > 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures total > 100 is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "spark": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.total > 100) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures total > 100 is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       }
     },
     "pattern": "having",
@@ -762,19 +762,19 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.mn <= _.m) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures mn \u2264 m is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.mn <= _.m) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures mn \u2264 m is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.mn <= _.m) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures mn \u2264 m is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "spark": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.mn <= _.m) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures mn \u2264 m is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       }
     },
     "pattern": "compare",
@@ -887,8 +887,7 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
-          "row tested: fp.arith's rounding (#271)"
+          "robust only by the engine's facts (#1045)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -961,8 +960,7 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
-          "row tested: agg.var's rounding (#271)"
+          "robust only by the engine's facts (#1045)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -995,8 +993,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding (#271)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1021,19 +1018,19 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "not verified: ensures approx((_.sd <= 100), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures approx((sd \u2264 100), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "not verified: ensures approx((_.sd <= 100), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures approx((sd \u2264 100), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified: ensures approx((_.sd <= 100), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures approx((sd \u2264 100), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "spark": {
         "outcome": "refused",
-        "reason": "not verified: ensures approx((_.sd <= 100), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures approx((sd \u2264 100), rel=1e-06) is not proved: it may be FALSE or NULL on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       }
     },
     "pattern": "bound",
@@ -1125,19 +1122,19 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.total.isnull() | (_.total >= _.top)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures total is NULL or (total \u2265 top) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.total.isnull() | (_.total >= _.top)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures total is NULL or (total \u2265 top) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.total.isnull() | (_.total >= _.top)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures total is NULL or (total \u2265 top) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "spark": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.total.isnull() | (_.total >= _.top)) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures total is NULL or (total \u2265 top) is not proved: it may be FALSE on some rows (see report.unproved); run(..., unverified=True) runs it anyway"
       }
     },
     "pattern": "compare",
@@ -1247,19 +1244,19 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.total.isnull() | (_.total >= 0)) depends on floats, which the observation ignores (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures total is NULL or (total \u2265 0) depends on floats, which the observation ignores (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.total.isnull() | (_.total >= 0)) depends on floats, which the observation ignores (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures total is NULL or (total \u2265 0) depends on floats, which the observation ignores (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.total.isnull() | (_.total >= 0)) depends on floats, which the observation ignores (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures total is NULL or (total \u2265 0) depends on floats, which the observation ignores (see report.unproved); run(..., unverified=True) runs it anyway"
       },
       "spark": {
         "outcome": "refused",
-        "reason": "not verified: ensures (_.total.isnull() | (_.total >= 0)) depends on floats, which the observation ignores (see report.unproved); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: ensures total is NULL or (total \u2265 0) depends on floats, which the observation ignores (see report.unproved); run(..., unverified=True) runs it anyway"
       }
     },
     "pattern": "observation",
@@ -1409,8 +1406,7 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
-          "row tested: agg.var's rounding (#271)"
+          "robust only by the engine's facts (#1045)"
         ],
         "class": "observed",
         "outcome": "tested"

@@ -137,6 +137,8 @@ def duckdb_zone() -> Iterator:
 
 @pytest.fixture
 def host_zone() -> Iterator:
+    if not hasattr(time, "tzset"):
+        pytest.skip("the host zone is set with time.tzset, which Windows lacks")
     old = os.environ.get("TZ")
 
     def set_zone(zone: str) -> None:

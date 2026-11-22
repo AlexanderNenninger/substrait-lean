@@ -29,6 +29,7 @@ file's values, from the table's log.
 from __future__ import annotations
 
 import os
+import re
 import uuid
 import weakref
 from collections.abc import Callable
@@ -52,10 +53,32 @@ def local_path(uri: str) -> str | None:
     object stores."""
     parsed = urlparse(uri)
     if parsed.scheme == "file":
-        return os.path.abspath(unquote(parsed.path))
+        return os.path.abspath(file_uri_path(uri))
     if parsed.scheme == "" or (len(parsed.scheme) == 1 and os.name == "nt"):
         return os.path.abspath(uri)
     return None
+
+
+#: A Windows drive: `C:`, alone or before a slash of either kind.
+_DRIVE = re.compile(r"^[A-Za-z]:(?:[\\/]|$)")
+
+
+def file_uri_path(uri: str) -> str:
+    """The path of a `file:` URI, on any platform's rules: `file:///tmp/t` is
+    `/tmp/t`, `file:///C:/t` is `C:/t`, and `file://C:/t` or `file://C:\\t`
+    (pyarrow and pyiceberg accept a drive in the host, as an f-string of a
+    Windows path writes it) is `C:/t` or `C:\\t`. Another host is a UNC
+    share (`//server/share/t`)."""
+    parsed = urlparse(uri)
+    path = unquote(parsed.path)
+    host = unquote(parsed.netloc)
+    if _DRIVE.match(host):
+        return host + path
+    if host and host != "localhost":
+        return f"//{host}{path}"
+    if _DRIVE.match(path[1:]):
+        return path[1:]
+    return path
 
 
 def _q(name: str) -> str:

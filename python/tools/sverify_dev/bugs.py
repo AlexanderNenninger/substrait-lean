@@ -284,7 +284,7 @@ def validate_backlog(path: Path = BACKLOG) -> list[str]:
     """What is wrong with the lift's backlog: its shape, ids that repeat, and
     ids whose file or test function does not exist. (A parametrization is
     only known after collection; a stale one fails the run as not listed.)"""
-    doc = json.loads(path.read_text())
+    doc = json.loads(path.read_text(encoding="utf-8"))
     where = path.name
     errors = list(jsonschema.Draft202012Validator(BACKLOG_SCHEMA).iter_errors(doc))
     if errors:
