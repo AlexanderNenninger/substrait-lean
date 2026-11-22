@@ -20,7 +20,7 @@ dbt 1.12.6 and the DuckDB adapter ran every measurement. sverify-dbt reads DuckD
 | [dbt-labs/jaffle_shop](https://github.com/dbt-labs/jaffle_shop) (the classic project) | `fd7bfac` | DuckDB-compatible | its seeds, built with `dbt build` |
 | [Cal-ITP/data-infra](https://github.com/Cal-ITP/data-infra), `warehouse/` | `546e354` | BigQuery | none: compiled only |
 
-The classic jaffle_shop stands in for its successor, dbt-labs/jaffle-shop, which needs dbt 2. GitLab's analytics project went private, and Cal-ITP's warehouse is the public project closest to it in size: 628 models and 351 declared tests, on BigQuery.
+The classic jaffle_shop stands in for its successor, [dbt-labs/jaffle-shop](https://github.com/dbt-labs/jaffle-shop), which needs dbt 2. [GitLab's analytics project](https://gitlab.com/gitlab-data/analytics) went private (it now redirects to a sign-in), and Cal-ITP's warehouse is the public project closest to it in size: 628 models and 351 declared tests, on BigQuery.
 
 ## Results
 
@@ -43,7 +43,7 @@ A dollar saving depends on the warehouse. Each skipped test is one query the war
 
 Sverify-dbt needs a column type for every source column: from `catalog.json` or from a `data_type` in the sources' YAML. Cal-ITP declares none, so the project as published has no types. The types file [`dbt/scripts/measure_types/calitp.yml`](../dbt/scripts/measure_types/calitp.yml) supplies them. It lists 5,379 columns of 182 source tables, taken from the catalog Cal-ITP publishes at [dbt-docs.dds.dot.ca.gov](https://dbt-docs.dds.dot.ca.gov/catalog.json), each with its origin (`catalog`). No column carries an inferred type, so the third reading below equals the second.
 
-Two judgment calls changed a type, and the file lists the columns:
+The file lists the columns behind two judgment calls on types and one omission:
 
 - `NUMERIC` and `BIGNUMERIC` (about 1,576 columns) become `DECIMAL(38,9)`.
 - `TIMESTAMP` becomes `TIMESTAMPTZ` and `DATETIME` becomes `TIMESTAMP`.
@@ -83,7 +83,7 @@ The full list is in each run's JSON record (`top_root_causes`).
 ## What the numbers say
 
 - On a DuckDB project (jaffle_shop), sverify-dbt reads every model and proves a quarter of the declared tests.
-- Source column types decide the second run. Typing 5,379 columns lifted Cal-ITP's reading from 6 models to 13 and moved 600 refusals from "needs column types" to "dialect". A project on DuckDB gets them from `dbt docs generate`.
+- Source column types decide the second run. Typing 5,379 columns lifted Cal-ITP's reading from 6 models to 13 and cut the refusals that need column types from 617 to 9 and raised the dialect refusals from 3 to 598. A project on DuckDB gets them from `dbt docs generate`.
 - Dialect decides the first. A BigQuery project reads at 2.1% raw and 46% with the dialect set apart. The 598 dialect models are not in it, so the BigQuery lift decides how far the rate moves.
 - No test was proved on Cal-ITP, so nothing was skipped there. The proof rate waits on a project that sverify-dbt can read, and on the lift.
 
