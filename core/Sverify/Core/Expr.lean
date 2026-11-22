@@ -128,8 +128,8 @@ inductive UnFn where
   unscaled integer at its scale, exact and total. -/
   | dtext
   /-- `CAST(x AS VARCHAR)` of a `DECIMAL(p, p)`: `dtext`'s text (`0.500`, `UnFn.apply_dtextFull`).
-  DuckDB's own cast prints it without the integer part (`.500`), so the DuckDB writer widens
-  the decimal first (`dwiden`, ruling 245). -/
+  An engine that prints a `DECIMAL(p, p)` without its integer part widens it first
+  (`dwiden`, D72). -/
   | dtextFull
   /-- A decimal of precision `p`, written at precision `p + 1`: the same value, as `widen` is for
   a `FLOAT`. It marks where a written plan widens (D72). -/
