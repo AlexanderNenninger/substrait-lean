@@ -27,19 +27,19 @@ def test_native_and_reference(con) -> None:
     for engine in ("duckdb", "polars"):
         out = report.run(con, engine, route="auto")
         r = report.routes[engine]
-        assert r.kind == "translated" and r.profile == "portable", r
+        assert r.taken == "translated" and r.profile == "portable", r
         assert sorted(out.column("j").to_pylist()) == [-6, 3, 4]
     assert "route on polars: exact" in report.details()
     duck = sv.verify("SELECT k, i % 3 AS m FROM t", tables={"t": t}, semantics="duckdb")
-    assert routes.choose(duck, "duckdb").kind == "native"
+    assert routes.choose(duck, "duckdb").taken == "native"
 
 
 def test_explicit_route_is_taken_or_refused(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select("k", j=t.i + 1), requires={"t": [_.i.between(-100, 100)]})
-    assert routes.choose(report, "duckdb", "translated").kind == "translated"
+    assert routes.choose(report, "duckdb", "translated").taken == "translated"
     r = routes.choose(report, "duckdb", "native")
-    assert r.refused and 'not verified under semantics="duckdb"' in r.reason
+    assert r.refused and 'not verified under semantics="duckdb"' in r.why
     with pytest.raises(routes.RouteError, match="refused on duckdb"):
         report.run(con, "duckdb", route="native")
     with pytest.raises(ValueError, match="route must be"):
@@ -52,10 +52,10 @@ def test_explicit_route_refusal_names_its_exit(con) -> None:
         "SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")}, semantics="duckdb"
     )
     r = routes.choose(duck, "polars", "translated")
-    assert r.refused and "verify with semantics='portable' to run on polars" in r.reason
+    assert r.refused and "verify with semantics='portable' to run on polars" in r.why
     ref = sv.verify("SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")})
     r = routes.choose(ref, "duckdb", "native")
-    assert r.refused and 'route="auto" tries every route' in r.reason
+    assert r.refused and 'route="auto" tries every route' in r.why
 
 
 def test_run_chooses_a_route_by_default(con) -> None:
@@ -63,7 +63,7 @@ def test_run_chooses_a_route_by_default(con) -> None:
         "SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")}, semantics="duckdb"
     )
     duck.run(con, "duckdb")
-    assert duck.routes["duckdb"].kind == "native"
+    assert duck.routes["duckdb"].taken == "native"
 
 
 def test_transfer_check(con) -> None:
@@ -84,16 +84,16 @@ def test_transfer_check(con) -> None:
     } in r.failures
     assert (
         "int.mod's division_type: duckdb gives TRUNCATE, polars gives FLOOR (polars-int-modulus)"
-        in r.reason
+        in r.why
     )
     # #655: under "auto", the refusal leads with what to do. The checker
     # cannot prove under `Profile.polars` yet (#271), so there is no re-check.
     auto = routes.choose(duck, "polars")
-    assert auto.reason.startswith("verify with semantics='portable' to run on polars")
+    assert auto.why.startswith("verify with semantics='portable' to run on polars")
     # Where the check passes, the route is taken.
     assert duck._engines is not None
     duck._engines["polars"]["transfer"]["duckdb"] = {"ok": True, "failures": []}
-    assert routes.choose(duck, "polars", "transfer").kind == "transfer"
+    assert routes.choose(duck, "polars", "transfer").taken == "transfer"
 
 
 def test_transfer_without_a_verdict_is_refused_with_the_reason(con) -> None:
@@ -102,18 +102,18 @@ def test_transfer_without_a_verdict_is_refused_with_the_reason(con) -> None:
     )
     duck._engines = None
     r = routes.choose(duck, "polars", "transfer")
-    assert r.refused and "gave no transfer check" in r.reason
+    assert r.refused and "gave no transfer check" in r.why
     # `auto` has no re-check to go on to: the checker reports `polars` as
     # pending (#271), so it names the reference as the way.
     auto = routes.choose(duck, "polars")
-    assert auto.refused and auto.reason.startswith("verify with semantics='portable'"), auto
+    assert auto.refused and auto.why.startswith("verify with semantics='portable'"), auto
 
 
 def test_unproved_plan_is_refused(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select("k", j=t.i * t.i), on_inferred="off")
     assert report.verdict == sv.Verdict.UNPROVED
-    reason = routes.choose(report, "duckdb").reason
+    reason = routes.choose(report, "duckdb").why
     assert reason.startswith("not verified: may fail: overflow: i * i (see report.errors)")
     assert "unverified=True" in reason
 
@@ -128,7 +128,7 @@ def test_run_refuses_an_unproved_plan_unless_asked(con) -> None:
     with pytest.warns(routes.UnverifiedRunWarning, match="running on duckdb unverified"):
         out = report.run(con, unverified=True)
     assert out.schema.metadata[b"sverify.verified"] == b"false"
-    assert report.routes["duckdb"].kind == "unverified"
+    assert report.routes["duckdb"].taken == "unverified"
     assert "route on duckdb: unverified: not verified" in report.details()
 
 
@@ -138,10 +138,10 @@ def test_determinism_is_reported_and_required_on_request() -> None:
     report = sv.verify(expr)
     assert report.verdict == sv.Verdict.PROVED and not report.deterministic
     r = routes.choose(report, "duckdb")
-    assert r.kind == "translated" and not r.deterministic
+    assert r.taken == "translated" and not r.deterministic
     assert any("ties stay open" in w for w in r.warnings)
     strict = routes.choose(report, "duckdb", reproducible=sv.equivalent())
-    assert strict.refused and "rerun must give the same result" in strict.reason
+    assert strict.refused and "rerun must give the same result" in strict.why
 
 
 def test_sequence_needs_a_total_sort(con) -> None:
@@ -152,15 +152,15 @@ def test_sequence_needs_a_total_sort(con) -> None:
     req = {"t": [_.i.between(-100, 100)]}
     seq = sv.equivalent(rows="sequence")
     unsorted = sv.verify(t.select("k", "i"), requires=req, ensures=[seq])
-    assert "not sorted" in routes.choose(unsorted, "duckdb").reason
+    assert "not sorted" in routes.choose(unsorted, "duckdb").why
     order = [ibis.asc("k", nulls_first=True), "i"]
     tied = sv.verify(t.select("k", "i").order_by(order), requires=req, ensures=[seq])
     assert not tied._sequence_determined
-    assert "not sorted on a key" in routes.choose(tied, "duckdb").reason
+    assert "not sorted on a key" in routes.choose(tied, "duckdb").why
     keyed = {"t": [*req["t"], sv.unique("k", "i")]}
     total = sv.verify(t.select("k", "i").order_by(order), requires=keyed, ensures=[seq])
     assert total._sequence_determined
-    assert routes.choose(total, "duckdb").kind == "translated"
+    assert routes.choose(total, "duckdb").taken == "translated"
 
 
 def test_engine_versions(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -299,7 +299,11 @@ def test_the_route_carries_the_checker_s_evidence(con) -> None:
     report = sv.verify(t.select("k"))
     assert _on_polars(report, evidence="tested").evidence == "tested"
     r = _on_polars(report, theorems=["Polars.a", "Polars.b"], facts=["polars-a"])
-    assert (r.evidence, r.theorems, r.facts) == ("proved", ("Polars.a", "Polars.b"), ("polars-a",))
+    assert (r.evidence, r.theorems, r.engine_facts) == (
+        "proved",
+        ("Polars.a", "Polars.b"),
+        ("polars-a",),
+    )
     assert "evidence: polars exact, proved by Polars.a, Polars.b" in report.details()
     from sverify import report_json
 
@@ -308,7 +312,7 @@ def test_the_route_carries_the_checker_s_evidence(con) -> None:
     r = _on_polars(
         report, evidence="tested", facts=["polars-a", "polars-b"], version="2.1.1", issues=[1166]
     )
-    assert (r.version, r.issues) == ("2.1.1", (1166,))
+    assert (r.probed_version, r.issues) == ("2.1.1", (1166,))
     assert str(r).endswith("; evidence tested at 2.1.1 (facts polars-a, polars-b; #1166)")
     assert report_json.route(report_json.route_json(r)) == r
 
@@ -338,16 +342,16 @@ def test_the_class_and_the_refusals_are_the_checker_s(con) -> None:
     report = sv.verify(t.select("k"))
     shim = {"group": "", "option": "b", "shim": "CASE"}
     r = _on_polars(report, cls="shim", evidence="tested", shims=[shim], facts=["polars-b"])
-    assert (r.kind, r.cls, r.evidence, r.shims) == ("translated", "shim", "tested", ("b: CASE",))
+    assert (r.taken, r.cls, r.evidence, r.shims) == ("translated", "shim", "tested", ("b: CASE",))
     assert str(r).startswith("shim (") and str(r).endswith(
         "; evidence tested at 2.1.0 (facts polars-b)"
     )
     refused = {"code": "option_refused", "group": "", "option": "b", "facts": ["polars-b"]}
     r = _on_polars(report, cls="refused", problems=[refused])
-    assert r.refused and r.cls == "refused" and "b is refused on polars (polars-b)" in r.reason
+    assert r.refused and r.cls == "refused" and "b is refused on polars (polars-b)" in r.why
     report._engines = None
     r = routes.choose(report, "polars")
-    assert r.refused and "gave no verdict on polars" in r.reason
+    assert r.refused and "gave no verdict on polars" in r.why
 
 
 def test_q_refinement_against_the_postcondition(con) -> None:
@@ -359,7 +363,7 @@ def test_q_refinement_against_the_postcondition(con) -> None:
     canon = sv.verify(t.select("k"), ensures=[sv.equivalent(zeros="canon")])
     zeros = [_observed("zero_sign", {"zeros": "canon"})]
     r = _on_polars(exact, cls="observed", observed=zeros)
-    assert r.refused and "observes its zeros" in r.reason and "sv.equivalent" in r.reason
+    assert r.refused and "observes its zeros" in r.why and "sv.equivalent" in r.why
     assert _on_polars(canon, cls="observed", observed=zeros).cls == "observed"
     shimmed = [_observed("zero_sign", {"zeros": "canon"}, shim="canon")]
     assert _on_polars(exact, cls="observed", observed=shimmed).cls == "shim"
@@ -378,7 +382,7 @@ def test_unsupported_functions_are_refused(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select(h=t.k.cast("string").hexdigest("md5")))
     r = routes.choose(report, "polars")
-    assert r.refused and r.cls == "refused" and "see #271" in r.reason
+    assert r.refused and r.cls == "refused" and "see #271" in r.why
 
 
 def test_inputs_are_checked_before_the_run(con) -> None:
@@ -416,8 +420,8 @@ def test_a_plan_dependent_float_bound(con) -> None:
     assert route(sv.within(rel=1e-9), both).cls == "observed"
     assert route(sv.within(abs=1e3), both).cls == "observed"
     r = route(sv.within(rel=1e-15, abs=1.0), both)
-    assert r.refused and "total is within abs=222 (tested), rel=1e-10 (tested)" in r.reason
-    assert "no per-plan bound" in route(sv.within(rel=1e-9), None).reason
+    assert r.refused and "total is within abs=222 (tested), rel=1e-10 (tested)" in r.why
+    assert "no per-plan bound" in route(sv.within(rel=1e-9), None).why
     # A bound is proved only where Lean says so; otherwise the route rests
     # on a test.
     assert route(sv.within(rel=1e-9), both).evidence == "tested"
@@ -441,7 +445,7 @@ def test_a_shim_does_not_lift_the_plans_bound(con) -> None:
         return _on_polars(report, cls="observed", observed=plan)
 
     r = route(sv.within(rel=1e-9))
-    assert r.refused and "v is within abs=1.77815e-07" in r.reason
+    assert r.refused and "v is within abs=1.77815e-07" in r.why
     assert route(sv.within(abs=1e-6)).cls == "observed"
 
 
@@ -455,7 +459,7 @@ def test_rows_that_may_flip_under_the_bound_are_refused(con) -> None:
     plan = [_observed("sum_order", {"floats": {"bound": "plan"}})]
     assert _on_polars(report, cls="observed", observed=plan).cls == "observed"
     r = _on_polars(report, cls="refused", observed=plan, problems=[{"code": "threshold"}])
-    assert r.refused and "may keep other rows on polars" in r.reason
+    assert r.refused and "may keep other rows on polars" in r.why
 
 
 def test_a_threshold_computed_from_the_data_names_exact_columns() -> None:

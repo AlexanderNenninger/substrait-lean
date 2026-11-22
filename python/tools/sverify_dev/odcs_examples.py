@@ -134,7 +134,7 @@ def entry(path: Path) -> dict[str, Any]:
             objects[table] = {
                 "conditions": [label(c) for c in conds],
                 "unread": [
-                    {"column": u.column, "reason": u.reason, **waits_on(u.reason)}
+                    {"column": u.column, "reason": u.why, **waits_on(u.why)}
                     for u in contract.unread
                     if u.table == table
                 ],

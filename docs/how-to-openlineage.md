@@ -98,7 +98,7 @@ it (`producer`), and
 - `evidence`: everything else, as checked evidence: other
   tools' `dataQualityAssertions` (a dbt test, a Great Expectations suite),
   and the claims of a facet sverify could not prove again
-  (`why_unverified` says why).
+  (`why` says why).
 
 ```python
 # Another pipeline, in another repository, reads what `shop` wrote.

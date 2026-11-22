@@ -18,7 +18,7 @@ from ibis import _
 import sverify as sv
 from sverify import routes
 from sverify.errors import ExportError, RouteError
-from sverify.observation import PLAN_BOUND, Observation, Within
+from sverify.observation import PLAN_BOUND, Lenses, Within
 
 pytest.importorskip("polars")
 
@@ -91,7 +91,7 @@ def test_a_postcondition_that_holds_on_every_engine_is_not_held(con) -> None:
     [c] = report.ensures
     assert c.proved and c.robust and c.robust_on == ("duckdb", "spark")
     route = report.route("duckdb")
-    assert not route.refused, route.reason
+    assert not route.refused, route.why
     # On Polars, whose sums are Kahan's, the sign rests on a fact: tested.
     polars = report.route("polars")
     assert not polars.refused and polars.evidence == "tested"
@@ -112,9 +112,9 @@ def test_a_sign_postcondition_runs_with_or_without_a_bound(con) -> None:
 def test_plan_bound_equality_uses_the_bound() -> None:
     a = pa.table({"m": [1.0]})
     b = pa.table({"m": [1.0 + 1e-9]})
-    assert not Observation(floats="plan").equal(a, b)
-    assert Observation(floats="plan", bound=Within(abs=1e-8)).equal(a, b)
-    assert Observation(floats="plan", bound=Within(abs=1e-8)) == Observation(floats="plan")
+    assert not Lenses(floats="plan").equal(a, b)
+    assert Lenses(floats="plan", bound=Within(abs=1e-8)).equal(a, b)
+    assert Lenses(floats="plan", bound=Within(abs=1e-8)) == Lenses(floats="plan")
 
 
 # -- tolerances and exact doubles at verify -----------------------------------
@@ -203,7 +203,7 @@ def test_a_window_over_a_key_has_a_class() -> None:
     for engine in ("duckdb", "polars"):
         assert report.run(c, engine).num_rows == 4
         route = report.routes[engine]
-        assert route.kind == "translated"
+        assert route.taken == "translated"
         assert route.cls in routes.CLASSES
         # The window's sort keys are options the plan meets (#1032): the
         # evidence is that of the engine's row for their NULL placement,

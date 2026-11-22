@@ -87,7 +87,7 @@ def test_route_without_a_run() -> None:
     assert route.cls == "exact" and not route.refused
     assert report.routes == {}  # nothing ran
     refused = unit.verify(orders=SCHEMA).route("duckdb")
-    assert refused.refused and refused.reason.startswith("not verified")
+    assert refused.refused and refused.why.startswith("not verified")
 
 
 def test_messages_are_the_lines_of_the_report() -> None:

@@ -1,0 +1,16 @@
+{
+  "id": "F259",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#271 Polars step 2: `Profile.polars`'s double `fmod` can differ from the exact `fmod`, so the within proof fails there. For this PR the impl keeps the reference's value for `fmod` of doubles, which is unreachable because Polars's lowering refuses `%` of doubles. A core option on fp.mod is After 1.0.",
+  "issues": [
+    271
+  ],
+  "amends": [
+    "F255"
+  ],
+  "source": "fable-ruling-259-271-polars-double-mod.md",
+  "note": "A core option needs a tier-1 engine whose plans cannot be checked without it, and Polars's can: `semantics=\"polars\"` verifies under `Profile.polars`. The gap is on main too and is claimed by nothing proved today. Conditions: R1, a Lean lemma proves the lowering emits no `fmod` of doubles, and if it can, this is withdrawn. R2, the exception is stated once, by a decidable list, and the impl's docstring cites the polars-double-modulus fact. R3, the fp.mod rows keep their citations and the `division_type` row names R1's lemma. R4, the integer `//` and `%` within proofs land as proposed. R5, the fp.mod option is recorded After 1.0, with the exact `fmod` as the reference's value."
+}

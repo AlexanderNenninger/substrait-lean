@@ -21,7 +21,7 @@ each node's contract as ODCS and reads ODCS contracts back as conditions.
   `status` says how sverify knows it: `proved` by Lean, `checked` on the
   data at every refresh (`on_unproved="check"`), or `declared` and neither.
   Descriptions stay text.
-* `read` gives an `OdcsContract`: the conditions sverify reads, per schema
+* `read` gives an `ODCSContract`: the conditions sverify reads, per schema
   object, for `requires` on an input or `ensures` on a node, and in
   `unread` every rule it cannot read, with the reason. Unread rules are
   never dropped silently: `read` warns (`UnreadRuleWarning`) and, with
@@ -57,7 +57,7 @@ if TYPE_CHECKING:
     from sverify.nodes import Node
 
 __all__ = [
-    "OdcsContract",
+    "ODCSContract",
     "Unread",
     "UnreadRuleWarning",
     "export",
@@ -76,7 +76,7 @@ _ZERO = ({"mustBe": 0}, {"mustBeLessThan": 1}, {"mustBeLessOrEqualTo": 0})
 
 
 class UnreadRuleWarning(SverifyWarning):
-    """`read` met rules it cannot read as conditions; `OdcsContract.unread`
+    """`read` met rules it cannot read as conditions; `ODCSContract.unread`
     lists them with the reason."""
 
 
@@ -468,21 +468,21 @@ class Unread:
         table: The schema object it is on.
         column: The property it is on, or None for a rule on the object.
         rule: The rule (or the property's field) as the document has it.
-        reason: Why sverify cannot read it.
+        why: Why sverify cannot read it.
     """
 
     table: str
     column: str | None
     rule: Any
-    reason: str
+    why: str
 
     def __str__(self) -> str:
         where = self.table if self.column is None else f"{self.table}.{self.column}"
-        return f"{where}: {self.reason}: {json.dumps(self.rule, default=str)}"
+        return f"{where}: {self.why}: {json.dumps(self.rule, default=str)}"
 
 
 @dataclass
-class OdcsContract:
+class ODCSContract:
     """An ODCS contract as `read` gives it.
 
     Attributes:
@@ -972,10 +972,10 @@ def read(
     source: str | Path | Mapping[str, Any],
     *,
     strict: bool = False,
-) -> OdcsContract:
+) -> ODCSContract:
     """Read an ODCS contract as conditions.
 
-    Each schema object gives a list of conditions (`OdcsContract.conditions`):
+    Each schema object gives a list of conditions (`ODCSContract.conditions`):
     `required` columns NOT NULL, the `primaryKey` columns `sv.key`,
     `unique` columns and `duplicateValues` rules `sv.unique`, value sets
     (`enum`, `invalidValues` with `validValues`) `IN` lists, the bounds in
@@ -995,7 +995,7 @@ def read(
         strict: Raise if any rule is unread. Default False: warn.
 
     Returns:
-        An `OdcsContract`.
+        An `ODCSContract`.
 
     Raises:
         ValueError: The document is no ODCS 3.x contract, or with `strict`,
@@ -1011,7 +1011,7 @@ def read(
         )
     from sverify.conditions import key
 
-    out = OdcsContract(doc)
+    out = ODCSContract(doc)
     resolve = _resolver(doc)
     for obj in doc.get("schema") or []:
         name = obj.get("name")
@@ -1036,7 +1036,7 @@ def read(
         if strict:
             raise ValueError(f"{len(out.unread)} ODCS rule(s) sverify cannot read:\n{text}")
         warnings.warn(
-            f"{len(out.unread)} ODCS rule(s) sverify cannot read (OdcsContract.unread):\n{text}",
+            f"{len(out.unread)} ODCS rule(s) sverify cannot read (ODCSContract.unread):\n{text}",
             UnreadRuleWarning,
             stacklevel=2,
         )
