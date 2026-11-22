@@ -259,10 +259,10 @@ theorem Polars.floorModT_eval (a b : Int) :
       by_cases d1 : a < 0 <;> by_cases d2 : 0 < b <;> by_cases d3 : b < 0 <;>
         by_cases d4 : 0 < a <;> simp only [d1, d2, d3, d4, ↓reduceIte] <;> omega
 
+omit [Boxes.Ambient] in
 /-- A floored quotient or remainder is the truncated one, or the call is in
 `division_type`'s scope (`floorDiffers`: the signs differ and the division is
 not exact). -/
-omit [Boxes.Ambient] in
 theorem Polars.floor_or_differs {a b : Int} (h : floorDiffers [.int a, .int b] = false) :
     a.fdiv b = a.tdiv b ∧ a.fmod b = a.tmod b := by
   have hd : a * b < 0 → b ∣ a := fun hab => by
@@ -368,7 +368,7 @@ theorem Polars.impl_within : Polars.impl.Within Profile.polars.table := by
     | ok w => exact Profile.polars_un_within f v w hu
     | error _ => exact .inl rfl
   · by_cases hx : f ∈ Polars.implExceptions
-    · simp only [Polars.impl, hx, ↓reduceIte]; exact .inl rfl
+    · exact .inl (by simp [Polars.impl, hx])
     simp only [Polars.impl, hx, ↓reduceIte]
     show (match Profile.polars.bin f v w with | .ok x => x | .error _ => Polars.errBin f v w) = _ ∨ _
     cases hb : Profile.polars.bin f v w with
@@ -439,7 +439,7 @@ theorem Engine.polars_contract_example :
     ∀ row ∈ postRows Engine.examplePost [2]
         (Engine.examplePlan.eval Engine.exampleCat Engine.polars.impl),
       ∀ v ∈ row, v = .bool true := by
-  exact Engine.example_contract Engine.polars_sound (T' := Engine.examplePlan) (by decide)
+  exact Engine.example_contract Engine.polars_sound (T' := Engine.examplePlan) rfl
     Engine.guardFreeSide_example
 
 end Example
