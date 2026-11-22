@@ -45,6 +45,7 @@ import ibis.expr.types as ir
 import pyarrow as pa
 
 from sverify import _duckdb, _engines, _hooks, _quarantine, _stages
+from sverify._fired import fired_check
 from sverify._quarantine import Held, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
 from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
@@ -694,6 +695,16 @@ class Node:
             out.held, out.held_error = _held_text(h, self._stage), h.error
             if self._stage is None:
                 return out
+        except Exception as e:
+            if (check := fired_check(e)) is None:
+                raise
+            # A run-time check fired: the node holds, as for a failed condition
+            # (ruling 258). The run stopped part-way, so the stage is dropped; the
+            # next refresh resumes from the sink's state.
+            out.held = _fired_text(check, self._stage)
+            out.held_error = e
+            self._stage = None
+            return out
         stage = self._stage
         if out.report is not None:
             out.quarantine += out.report.quarantine
@@ -980,7 +991,8 @@ class StageRefresh:
     a condition no row rule covers), or "waiting for <node>" when a stored
     node it reads has no state yet; None if it took it."""
     held_error: Exception | None = None
-    """The `PreconditionError` that held it, with `.rows`."""
+    """The `PreconditionError` that held it, with `.rows`; or, for a run-time
+    check that fired, the engine's error."""
     credentials: list[CredentialUse] = field(default_factory=list)
     """The credentials the node's stage used, by name, for reading its
     sources and writing its sink; never a value."""
@@ -1211,7 +1223,14 @@ class Refresh:
                 held = getattr(s.held_error, "rows", None)
                 if rows and held is not None and held.num_rows:
                     lines.append(_markdown_rows(held))
-                lines.append("Fix the rows upstream: the next refresh reads the batch again.")
+                if s.held_error is not None and fired_check(s.held_error) is not None:
+                    lines.append(
+                        "State what the check needs on the node's inputs in `requires=` "
+                        "(`sverify check --fix` suggests it where it can; a bound such as "
+                        "`_.value < …` removes an overflow check), or fix the data upstream."
+                    )
+                else:
+                    lines.append("Fix the rows upstream: the next refresh reads the batch again.")
             for q in s.quarantine:
                 if not (q.quarantined or q.released or q.deleted):
                     continue
@@ -1509,6 +1528,16 @@ def _held_text(h: Held, stage: _Stage | None) -> str:
         else "it stays at " + ", ".join(f"{t}@v{n}" for t, n in stage.view.versions.items())
     )
     return f"{h.error} ({h.policy}); nothing was committed, {at}"
+
+
+def _fired_text(check: str, stage: _Stage | None) -> str:
+    """Why a stage holds when a run-time check fired, and where it stays."""
+    at = (
+        "it has no state yet"
+        if stage is None
+        else "it stays at " + ", ".join(f"{t}@v{n}" for t, n in stage.view.versions.items())
+    )
+    return f"a run-time check fired: {check}; nothing was committed, {at}"
 
 
 def _write_quarantine(name: str, stage: _Stage, target: Sink, first: bool) -> None:
