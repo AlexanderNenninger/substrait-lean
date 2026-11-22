@@ -10,8 +10,9 @@ fresh run with the record (`python/tests/route_pins.json`).
   others, and every coverage case the checker accepts, with no condition.
 * Each engine's route is taken by default and with each rerun in `RERUNS` required: the multiset
   default, the strict sequence (the path `routes.reproducibility` takes for a sink) and a tolerance
-  on doubles. Each is `report_json.route_json`'s fields, so a change to the class, the evidence,
-  the shims, the reason, the lenses or the rerun evidence shows up as a changed line.
+  on doubles. Each is `report_json.route_json`'s fields but the session's `settings`, so a
+  change to the class, the evidence, the shims, the reason, the lenses or the rerun evidence shows
+  up as a changed line.
 * A route that raises (`EngineVersionError`, `EngineSettingsError`, `KeyError`, anything else) is
   pinned as `{"raised": <exception name>}`: it never drops out of the record.
 
@@ -105,7 +106,8 @@ def _routes(report: Any, engine: str) -> dict[str, Any]:
         except Exception as e:  # noqa: BLE001 - a raise is an outcome to pin
             out[name] = {"raised": type(e).__name__}
         else:
-            out[name] = report_json.route_json(route)
+            # The settings read are the session's, not the route's decision (#1130).
+            out[name] = {k: v for k, v in report_json.route_json(route).items() if k != "settings"}
     return out
 
 

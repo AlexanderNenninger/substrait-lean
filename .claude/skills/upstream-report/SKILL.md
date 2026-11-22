@@ -73,9 +73,9 @@ What changes the draft itself, as of 2026-11-04:
 
 ### Spec-gap proposals (#1093)
 
-A spec gap goes upstream as a proposal with the formal reading attached, so the discussion starts from a definition. The draft (`ST-<n>-substrait.md`) has five parts, in this order, each as bullets ("Bullets, not prose" above) except the tables, diffs and cases:
+A spec gap goes upstream as a proposal with the formal reading attached, so the discussion starts from a definition. [`upstream/substrait-proposals.md`](../../../upstream/substrait-proposals.md) lists the drafted proposals, what each engine does and what Sverify does, and whether each is posted. The draft (`ST-<n>-substrait.md`) has five parts, in this order, each as bullets ("Bullets, not prose" above) except the tables, diffs and cases:
 
-1. **The gap**: the YAML or spec file and lines at the commit checked (re-check `main` and the latest release the day of drafting), and the question in one paragraph, with the calls and types (`subtract(inf::fp64, inf::fp64)`) or the plan (a `SortRel` field with `SORT_DIRECTION_UNSPECIFIED`) that exposes it.
+1. **The gap**: the YAML or spec file and lines at the commit checked (re-check `main` and the latest release the day of drafting), and the question in a few bullets, with the calls and types (`subtract(inf::fp64, inf::fp64)`) or the plan (a `SortRel` field with `SORT_DIRECTION_UNSPECIFIED`) that exposes it.
 2. **What engines do**: a table from the entry's `facts` ids, DuckDB, Spark and Polars with their versions, plus engines another thread already cites. Leave out Snowflake. Leave out DataFusion, except as a recorded engine. Where an engine's docs are silent, say each cell comes from running the engine. A cell derived from a fact that did not run the exact case goes in the author's notes as such.
 3. **The readings**: the formalization's, in its words (the core's open option, and the reference's choice), with the alternatives. The draft names no D-number or Lean name; the author's notes give the D-number and the `docs/core-semantics.md` option for checking.
 4. **The proposed text as a diff**: reuse an existing option name and its values (`on_domain_error`, `overflow`, `rounding`) before inventing one, and say whether the change is breaking under Substrait's policy.
