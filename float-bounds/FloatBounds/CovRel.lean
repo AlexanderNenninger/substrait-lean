@@ -1089,18 +1089,19 @@ theorem cmerge_com {Ca Cb ΔC Sha Shb Sh1 T Sh Ea Eb P Y R A h : ℝ} (hP : 0 �
   linarith
 
 /-- The terms of `cmerge_fold`. -/
-theorem cfold_terms {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La Lb L : ℝ}
+theorem cfold_terms {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La Lb L Y : ℝ}
     (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hm1 : 1 ≤ m) (_hh : 0 ≤ h) (hhm : h ≤ m)
     (hAxa : 0 ≤ Axa) (hAxb : 0 ≤ Axb) (hAya : 0 ≤ Aya) (hAyb : 0 ≤ Ayb)
     (hDxa : 0 ≤ Dxa) (hDxb : 0 ≤ Dxb) (hDya : 0 ≤ Dya) (hDyb : 0 ≤ Dyb) (hXx : 0 ≤ Xx)
-    (hXy : 0 ≤ Xy) (hRa : 0 ≤ Ra) (hRb : 0 ≤ Rb) (hR : Ra + Rb ≤ R) (hLa : 0 ≤ La) (hLb : 0 ≤ Lb)
-    (hL : La + Lb + 2 * m ≤ L) :
+    (hXy : 0 ≤ Xy) (hRa : 0 ≤ Ra) (hRb : 0 ≤ Rb) (hY : 0 ≤ Y) (hR : Ra + Rb + Y ≤ R)
+    (hLa : 0 ≤ La) (hLb : 0 ≤ Lb) (hL : La + Lb + 2 * m ≤ L) :
     (8.5 * u * (Axa * Dya + Aya * Dxa) + 10 * u * na * Ra + 60 * u ^ 2 * La * (Axa * Aya)
         + 12 * u * tiny * La)
       + (8.5 * u * (Axb * Dyb + Ayb * Dxb) + 10 * u * nb * Rb + 60 * u ^ 2 * Lb * (Axb * Ayb)
         + 12 * u * tiny * Lb)
       + (7.3 * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
-        + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny)
+        + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny
+        + 4 * u * (na + nb) * Y)
       ≤ 8.5 * u * ((Axa + Axb) * (Dya + Dyb + Xy) + (Aya + Ayb) * (Dxa + Dxb + Xx))
         + 10 * u * (na + nb) * R + 60 * u ^ 2 * L * ((Axa + Axb) * (Aya + Ayb))
         + 12 * u * tiny * L := by
@@ -1117,8 +1118,13 @@ theorem cfold_terms {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La 
     mul_le_mul_of_nonneg_left (mul_le_mul_of_nonneg_right (by linarith) hRa) hu.le
   have b2 : u * (nb * Rb) ≤ u * ((na + nb - 1) * Rb) :=
     mul_le_mul_of_nonneg_left (mul_le_mul_of_nonneg_right (by linarith) hRb) hu.le
-  have b3 : u * ((na + nb - 1) * (Ra + Rb)) ≤ u * ((na + nb - 1) * R) :=
+  have b3 : u * ((na + nb - 1) * (Ra + Rb + Y)) ≤ u * ((na + nb - 1) * R) :=
     mul_le_mul_of_nonneg_left (mul_le_mul_of_nonneg_left hR (by linarith)) hu.le
+  -- the term `4 u n Y` takes what `R ≥ R_a + R_b + Y` leaves: `n ≤ 2 (n - 1)`.
+  have b5 : 4 * u * (na + nb) * Y ≤ 10 * (u * ((na + nb - 1) * Y)) := by
+    have := mul_le_mul_of_nonneg_left (by linarith : 4 * (na + nb) ≤ 10 * (na + nb - 1))
+      (mul_nonneg hu.le hY)
+    nlinarith
   have b4 : 0 ≤ u * R := mul_nonneg hu.le (by linarith)
   have hAA : 0 ≤ (Axa + Axb) * (Aya + Ayb) := by positivity
   have c1 : Axa * Aya ≤ (Axa + Axb) * (Aya + Ayb) := mul_le_mul (by linarith) (by linarith) hAya (by linarith)
@@ -1142,16 +1148,17 @@ theorem cfold_terms {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La 
 
 /-- **A merge of pairs keeps the invariant's bound**, with `m = min(n_a, n_b)`,
 `h = n_a n_b / n ≤ m`, `X_x = h |Δx|` and `X_y = h |Δy|`. -/
-theorem cmerge_fold {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La Lb L Ea Eb : ℝ}
+theorem cmerge_fold {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La Lb L Ea Eb Y : ℝ}
     (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hm1 : 1 ≤ m) (_hma : m ≤ na) (_hmb : m ≤ nb) (hh : 0 ≤ h)
     (hhm : h ≤ m) (hn : (na + nb) * u ≤ 1 / 2 ^ 21)
     (hAxa : 0 ≤ Axa) (hAxb : 0 ≤ Axb) (hAya : 0 ≤ Aya) (hAyb : 0 ≤ Ayb)
     (hDxa : 0 ≤ Dxa) (hDxb : 0 ≤ Dxb) (hDya : 0 ≤ Dya) (hDyb : 0 ≤ Dyb) (hXx : 0 ≤ Xx)
-    (hXy : 0 ≤ Xy) (hRa : 0 ≤ Ra) (hRb : 0 ≤ Rb) (hR : Ra + Rb ≤ R) (hLa : 0 ≤ La) (hLb : 0 ≤ Lb)
-    (hL : La + Lb + 2 * m ≤ L)
+    (hXy : 0 ≤ Xy) (hRa : 0 ≤ Ra) (hRb : 0 ≤ Rb) (hY : 0 ≤ Y) (hR : Ra + Rb + Y ≤ R)
+    (hLa : 0 ≤ La) (hLb : 0 ≤ Lb) (hL : La + Lb + 2 * m ≤ L)
     (hEa : Ea ≤ cBound na Axa Aya Dxa Dya Ra La) (hEb : Eb ≤ cBound nb Axb Ayb Dxb Dyb Rb Lb) :
     (1 + u) ^ 2 * (Ea + Eb) + 7.3 * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
         + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny
+        + 4 * u * (na + nb) * Y
       ≤ cBound (na + nb) (Axa + Axb) (Aya + Ayb) (Dxa + Dxb + Xx) (Dya + Dyb + Xy) R L := by
   obtain ⟨hu, -, ht, -, -⟩ := fpFacts
   unfold cBound at hEa hEb ⊢
@@ -1176,10 +1183,11 @@ theorem cmerge_fold {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La 
         _ ≤ _ := by gcongr
     linarith
   have k2 := cfold_terms hna hnb hm1 hh hhm hAxa hAxb hAya hAyb hDxa hDxb hDya hDyb hXx hXy hRa
-    hRb hR hLa hLb hL
+    hRb hY hR hLa hLb hL
   rw [← hTa, ← hTb] at k2
   obtain ⟨N, hN⟩ : ∃ N, N = 7.3 * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
-      + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny := ⟨_, rfl⟩
+      + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny
+      + 4 * u * (na + nb) * Y := ⟨_, rfl⟩
   have hR0 : 0 ≤ R := by linarith
   have hN0 : 0 ≤ N := by rw [hN]; positivity
   have k3 : N ≤ (1 + 3 * (na + nb) * u) * N := le_mul_of_one_le_left hN0 (by nlinarith)
@@ -1194,21 +1202,24 @@ theorem cmerge_fold {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La 
       = (1 + 3 * (na + nb) * u) * (Ta + Tb) + (1 + 3 * (na + nb) * u) * N := by ring
   have e2 : (1 + u) ^ 2 * (Ea + Eb) + 7.3 * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
       + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny
+      + 4 * u * (na + nb) * Y
       = (1 + u) ^ 2 * (Ea + Eb) + N := by rw [hN]; ring
   rw [e2]
   linarith
 
 /-- What a merge of pairs adds to the co-moment's bound, beside the sides'
-own bounds: `h = n_a n_b / n`, `A` the magnitudes, `D` the differences of the
-exact means, `R = √(S_xx S_yy)` after the merge. -/
-noncomputable def cMergeNew (h Ax Ay Dx Dy R : ℝ) : ℝ :=
+own bounds: `n` pairs after it, `h = n_a n_b / n`, `A` the magnitudes, `D` the
+differences of the exact means, `R = √(S_xx S_yy)` after the merge. The last
+term, `4 u n · h D_x D_y`, is Schubert and Gertz's (`n_b` times a deviation of
+the merged mean); DuckDB's merge has none. -/
+noncomputable def cMergeNew (n h Ax Ay Dx Dy R : ℝ) : ℝ :=
   7.3 * u * (Ax * (h * Dy) + Ay * (h * Dx)) + 9.2 * u * R + 105 * u ^ 2 * h * (Ax * Ay)
-    + (7.1 + 5.1 * h) * u * tiny
+    + (7.1 + 5.1 * h) * u * tiny + 4 * u * n * (h * (Dx * Dy))
 
 /-- **One merge of pairs, as DuckDB computes it**: the co-moment is within the
 sides' bounds and `cMergeNew` of the exact one. -/
-theorem cmerge_step_com {h Axa Axb Aya Ayb R Mxa Mxb Mya Myb mxa mxb mya myb Dhx Dhy T Ca Cb
-    Sha Shb Sh1 Sh Ea Eb : ℝ} (hh : 0 ≤ h)
+theorem cmerge_step_com {n h Axa Axb Aya Ayb R Mxa Mxb Mya Myb mxa mxb mya myb Dhx Dhy T Ca Cb
+    Sha Shb Sh1 Sh Ea Eb : ℝ} (hn0 : 0 ≤ n) (hh : 0 ≤ h)
     (hAxa : 0 ≤ Axa) (hAxb : 0 ≤ Axb) (hAya : 0 ≤ Aya) (hAyb : 0 ≤ Ayb)
     (htx : tiny ≤ Axa + Axb) (hty : tiny ≤ Aya + Ayb)
     (hMxa : |Mxa| ≤ Axa) (hMxb : |Mxb| ≤ Axb) (hMya : |Mya| ≤ Aya) (hMyb : |Myb| ≤ Ayb)
@@ -1223,7 +1234,7 @@ theorem cmerge_step_com {h Axa Axb Aya Ayb R Mxa Mxb Mya Myb mxa mxb mya myb Dhx
     (h1 : |Sh1 - (Sha + Shb)| ≤ u * (|Sha + Shb| + tiny))
     (h2 : |Sh - (Sh1 + T)| ≤ u * (|Sh1 + T| + tiny)) :
     |Sh - (Ca + Cb + (Mxa - Mxb) * (Mya - Myb) * h)|
-      ≤ (1 + u) ^ 2 * (Ea + Eb) + cMergeNew h (Axa + Axb) (Aya + Ayb) |Mxa - Mxb| |Mya - Myb| R := by
+      ≤ (1 + u) ^ 2 * (Ea + Eb) + cMergeNew n h (Axa + Axb) (Aya + Ayb) |Mxa - Mxb| |Mya - Myb| R := by
   have hu := u_pos
   have hAx : |Mxa - Mxb| ≤ Axa + Axb := by have := abs_sub Mxa Mxb; linarith
   have hAy : |Mya - Myb| ≤ Aya + Ayb := by have := abs_sub Mya Myb; linarith
@@ -1249,6 +1260,7 @@ theorem cmerge_step_com {h Axa Axb Aya Ayb R Mxa Mxb Mya Myb mxa mxb mya myb Dhx
     rw [abs_mul, abs_mul, abs_of_nonneg hh]; linarith
   have hT := cT_err (by positivity) hYabs (by positivity) hh hQ eT'
   have hc := cmerge_com (by positivity) (by positivity) hY (by positivity) hh hR1 hR2 hEa hEb hT h1 h2
+  have : 0 ≤ 4 * u * n * (h * (|Mxa - Mxb| * |Mya - Myb|)) := by positivity
   unfold cMergeNew
   linarith
 
@@ -1319,8 +1331,8 @@ def CMergeSpec (mg : WState → WState → WState) : Prop :=
       ≤ 6 * u * ((nb : ℝ) * Aya + na * Ayb) / ((na : ℝ) + nb) ∧
     |(mg ⟨na, mxa, mya, Sha⟩ ⟨nb, mxb, myb, Shb⟩).c
         - (Ca + Cb + (Mxa - Mxb) * (Mya - Myb) * ((na : ℝ) * nb / ((na : ℝ) + nb)))|
-      ≤ (1 + u) ^ 2 * (Ea + Eb) + cMergeNew ((na : ℝ) * nb / ((na : ℝ) + nb)) (Axa + Axb) (Aya + Ayb)
-          |Mxa - Mxb| |Mya - Myb| R
+      ≤ (1 + u) ^ 2 * (Ea + Eb) + cMergeNew ((na : ℝ) + nb) ((na : ℝ) * nb / ((na : ℝ) + nb))
+          (Axa + Axb) (Aya + Ayb) |Mxa - Mxb| |Mya - Myb| R
 
 set_option maxHeartbeats 2000000 in
 /-- **DuckDB's merge meets `CMergeSpec`**: the weighted means of `wmean_spec`,
@@ -1420,7 +1432,7 @@ theorem StdModel.chan_spec : CMergeSpec M.chan := by
       have := sa.Axt; have := sb.Ax0; have := mul_le_mul_of_nonneg_right hna1 htn.le; linarith
     have hty : tiny ≤ Aya + Ayb := by
       have := sa.Ayt; have := sb.Ay0; have := mul_le_mul_of_nonneg_right hna1 htn.le; linarith
-    exact cmerge_step_com hh0 sa.Ax0 sb.Ax0 sa.Ay0 sb.Ay0 htx hty hMxaA hMxbA hMyaA hMybA
+    exact cmerge_step_com (by positivity) hh0 sa.Ax0 sb.Ax0 sa.Ay0 sb.Ay0 htx hty hMxaA hMxbA hMyaA hMybA
       sa.ex sb.ex sa.ey sb.ey eDx eDy eT hR1 (by rw [hh]; exact hR2) (by rw [hh]; exact hY)
       sa.com sb.com e1 e2
 
@@ -1577,9 +1589,20 @@ theorem cInv_merge_of {mg : WState → WState → WState} (hmg : CMergeSpec mg)
     simp only [← hSxa', ← hSya', ← hSxb', ← hSyb'] at hc'
     refine le_trans hc' ?_
     unfold cMergeNew
-    have := cmerge_fold (Xx := h * |mx a - mx b|) (Xy := h * |my a - my b|) hna1 hnb1 hm1 hmA hmB
+    have hRY : √(Sxa * Sya) + √(Sxb * Syb) + h * (|mx a - mx b| * |my a - my b|) ≤ R := by
+      have e : h * (|mx a - mx b| * |my a - my b|)
+          = √(((mx a - mx b) ^ 2 * h) * ((my a - my b) ^ 2 * h)) := by
+        rw [show ((mx a - mx b) ^ 2 * h) * ((my a - my b) ^ 2 * h)
+            = (h * (|mx a - mx b| * |my a - my b|)) ^ 2 by
+              rw [mul_pow, mul_pow, sq_abs, sq_abs]; ring]
+        exact (Real.sqrt_sq (by positivity)).symm
+      rw [e, hR']
+      exact le_trans (add_le_add_left (sqrt_add_sqrt_le hSxa0 hSya0 hSxb0 hSyb0) _)
+        (sqrt_add_sqrt_le (by positivity) (by positivity) hΔx0 hΔy0)
+    have := cmerge_fold (Xx := h * |mx a - mx b|) (Xy := h * |my a - my b|)
+      (Y := h * (|mx a - mx b| * |my a - my b|)) hna1 hnb1 hm1 hmA hmB
       hh0 hhm hnu hAxa0 hAxb0 hAya0 hAyb0 hDxa0 hDxb0 hDya0 hDyb0 (by positivity) (by positivity)
-      (Real.sqrt_nonneg _) (Real.sqrt_nonneg _) hRab hLa0 hLb0 hLm le_rfl le_rfl
+      (Real.sqrt_nonneg _) (Real.sqrt_nonneg _) (by positivity) hRY hLa0 hLb0 hLm le_rfl le_rfl
     linarith
 
 /-- **DuckDB's merge keeps the covariance invariant.** -/
