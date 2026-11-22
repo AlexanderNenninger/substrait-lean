@@ -447,6 +447,11 @@ def test_remainder_by_minus_one_is_zero(width):
         ("main.lower(s)", "lower(s)"),
         ("main.len(s)", "length(s)"),
         ("system.main.length(s)", "length(s)"),
+        ("if(length(s) > 2, s, 'short')", "CASE WHEN length(s) > 2 THEN s ELSE 'short' END"),
+        (
+            "main.if(s IS NULL, 'none', upper(s))",
+            "CASE WHEN s IS NULL THEN 'none' ELSE upper(s) END",
+        ),
     ],
 )
 def test_an_alias_is_the_function_it_names(alias, name):
@@ -458,6 +463,13 @@ def test_an_alias_is_the_function_it_names(alias, name):
     native = duckdb.connect()
     native.register("r", r)
     assert check_three_ways(sql, tables) == native.execute(sql).fetchall()
+
+
+def test_arbitrary_is_the_value_of_a_group():
+    """#328: `arbitrary(x)` lifts as `first(x)`; a group with one value is exact."""
+    r = pa.table({"k": pa.array([1, 1, 2], pa.int64()), "v": pa.array([7, 7, 9], pa.int64())})
+    sql = "SELECT k, arbitrary(v) AS a FROM r GROUP BY k ORDER BY k"
+    assert check_three_ways(sql, {"r": r}) == [(1, 7), (2, 9)]
 
 
 def test_a_lens_power_with_a_zero_exponent_is_strict():

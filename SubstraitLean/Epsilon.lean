@@ -40,7 +40,7 @@ give (`Measure.abs`, `floatBound`):
 `"proved"` marks a bound those theorems cover (`provedEps`): the engines'
 `sum_order` behaviours are among the proved ones, the plan has no
 single-precision column (Polars sums `Float32` in single precision,
-polars-sum-float), and the argument, its rows and its groups are the same on
+polars-sum-float-streaming), and the argument, its rows and its groups are the same on
 every engine (`colEps`). That an engine's algorithm is the one its
 behaviour names rests on its characterization (duckdb-sum-double,
 polars-sum-float, polars-sum-float-streaming).
@@ -735,7 +735,7 @@ def rowsExact (es : List EngineProfile) (engine : String) (cat : Catalog) (A : S
   (rowSites es engine cat A F T r).all (·.1)
 
 /-- Does the plan read or write a single-precision column? Polars sums
-`Float32` in single precision (polars-sum-float), which no bound here covers. -/
+`Float32` in single precision (polars-sum-float-streaming), which no bound here covers. -/
 def hasFp32 (tj : Json) : Bool := (tj.compress.splitOn "\"fp32\"").length > 1
 
 /-- What `"epsilon"` says of a double `SUM` of exact values with no row cap,

@@ -358,7 +358,7 @@ def test_every_code_check_prints_is_explained():
     from typing import get_args
 
     from sverify.cli import _explain
-    from sverify.contracts import UnprovedReason
+    from sverify.report import UnprovedReason
 
     reasons = get_args(UnprovedReason)
     assert all(_explain.explain(r) for r in reasons)

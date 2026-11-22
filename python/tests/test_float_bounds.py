@@ -243,7 +243,7 @@ def test_approx_rewrites_comparisons() -> None:
     relaxed = sv.approx((_.x <= 100) & (_.x > -5) | (_.x == 0), rel=1e-3)(t)
     sql = ibis.to_sql(t.filter(relaxed), dialect="duckdb")
     assert "100.1" in sql and "-5.005" in sql
-    assert "approx" in sv.contracts.label(sv.approx(_.x <= 100))
+    assert "approx" in sv.conditions.label(sv.approx(_.x <= 100))
     with pytest.raises(TypeError):
         sv.approx("x <= 100")
     with pytest.raises(TypeError):
@@ -379,7 +379,7 @@ def test_casts_of_rounded_aggregates_keep_their_bounds() -> None:
 
 
 def test_the_cast_of_a_sum_needs_a_cap() -> None:
-    capless = [c for c in HOSTS if not isinstance(c, sv.contracts.MaxRows)]
+    capless = [c for c in HOSTS if not isinstance(c, sv.conditions.MaxRows)]
     total = hosts.group_by("host").aggregate(si=hosts.n.cast("float64").sum().cast("int64"))
     report = sv.verify(total, requires={"hosts": capless}, ensures=[_.si >= 0])
     assert [i.kind for i in report.issues] == ["cast out of range"]

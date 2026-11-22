@@ -328,7 +328,10 @@ def _drop_null(op: Any) -> Json:
         else [ops.Field(op.parent, n) for n in op.parent.schema.names]
     )
     tests = [call("is_not_null", [x(c)]) for c in cols]
-    cond = chain("and" if op.how == "any" else "or", tests)
+    # No column to test: `any` of none is vacuous (every row stays), `all` of none keeps no row.
+    cond = chain(
+        "and" if op.how == "any" else "or", tests or [literal(op.how == "any", dt.boolean)]
+    )
     return {"filter": {"input": rel(op.parent), "condition": cond}}
 
 

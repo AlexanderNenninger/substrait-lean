@@ -19,7 +19,7 @@ import sverify as sv
 from _repo import needs_repo
 from sverify import odcs
 from sverify.cli import main
-from sverify.contracts import Key, MaxRows, References, RowsPer, Unique, label
+from sverify.conditions import Key, MaxRows, References, RowsPer, Unique, label
 from sverify.io import StaticSource
 
 # The wheel's tests install only what the Wheels workflow lists.

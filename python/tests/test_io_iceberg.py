@@ -14,7 +14,8 @@ import sverify as sv
 from _pipelines import batch, discharged, recomputed, rows
 from sverify import routes
 from sverify._weighted import consolidated
-from sverify.contracts import ON_DATA, SCHEMA
+from sverify.conditions import ON_DATA
+from sverify.contracts import SCHEMA
 from sverify.errors import PreconditionError
 from sverify.incremental import arrow_rows, change_table, snapshot_diff
 from sverify.io import IcebergSink, IcebergSource

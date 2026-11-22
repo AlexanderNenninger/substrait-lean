@@ -69,7 +69,7 @@ def options : List OptionSpec := [
   { id := "nan_creation", substrait := none, core := ["NAN", "ERROR"],
     extra := [("NAN", "duckdb-R15-double-arith")] },
   { id := "zero_sign", substrait := none, core := ["IEEE", "ONE_ZERO"],
-    extra := [("IEEE", "polars-zero-sign")] },
+    extra := [("IEEE", "polars-zero-sign-streaming")] },
   -- Which zero a negative double that rounds to zero is (`round(-0.4)`,
   -- `ceil(-0.4)`): IEEE's `-0.0`, or `+0.0` (Spark's `round` goes through a
   -- decimal). Another axis than `zero_sign`, which says where the two zeros
@@ -118,7 +118,8 @@ def options : List OptionSpec := [
   -- they are within #85's bound only.
   { id := "sum_order", substrait := none,
     core := ["ANY", "SEQUENTIAL", "PAIRWISE", "COMPENSATED", "SCALED_CONSTANT", "EXACT"],
-    extra := [("SEQUENTIAL", "polars-sum-float"), ("PAIRWISE", "polars-sum-float"),
+    extra := [("SEQUENTIAL", "polars-sum-float-streaming"),
+      ("PAIRWISE", "polars-sum-float-streaming"),
       ("COMPENSATED", "duckdb-kahan-sum"), ("SCALED_CONSTANT", "duckdb-sum-double")] },
   -- `EXACT`: the correctly rounded formula over the exact moments, the reference's (D30).
   -- `SCHUBERT_GERTZ`: two-pass blocks with Schubert and Gertz's merge, Polars's (ruling 271).
