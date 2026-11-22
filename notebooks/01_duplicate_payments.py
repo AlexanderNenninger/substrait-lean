@@ -368,63 +368,49 @@ def _(mo):
     charge would be refunded twice. The checker catches both without running
     anything and without test data that contains the bad case.
 
-    ## 3. One plan, every engine
-
-    You might develop on DuckDB on a laptop and run the job elsewhere in
-    production. The node's plan is the one Lean checked. Sverify runs it on
-    each engine through its own translation, which keeps Lean's semantics
-    (NULL keys never match, integers don't wrap around, ties break one way)
-    or refuses the plan. Lean's reference profile is the reference, one of
-    the [profiles that refine the core](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#core-profiles-and-engines), and
-    [the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines) lists which engines run plans, each with a proved
-    profile. With `route="auto"`, `refresh` also says how the proof reaches
-    the engine ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-engines-and-sql.md#routes-classes-and-profiles)).
-    A node refreshed with `engine=` has the same rows on each:
+    A postcondition can also fail for want of a fact about the input. We
+    drop `_.amount_cents >= 0` from the requires: nothing then says an
+    amount is never negative, and the report names the precondition that
+    would prove `amount_cents >= 0`:
     """)
     return
 
 
 @app.cell
-def _(ENGINES, duplicate_payments, dups, transactions):
-    on_each = {}
-    for _engine in ENGINES:
-        _node = transactions.pipe(duplicate_payments)
-        _node.refresh(engine=_engine)
-        on_each[_engine] = _node.to_arrow().to_pylist()
-    assert all(rows == dups.to_arrow().to_pylist() for rows in on_each.values())
-    {e: len(rows) for e, rows in on_each.items()}
+def _(ENSURES, find_duplicates, ibis, mo, sv):
+    _transactions = ibis.table(
+        {
+            "txn_id": "!int64",
+            "card_id": "!int64",
+            "merchant": "string",
+            "amount_cents": "!int64",
+            "ts": "!timestamp",
+        },
+        name="transactions",
+    )
+    _without_bound = {"transactions": [sv.unique("txn_id")]}
+    mo.md(
+        sv.verify(
+            find_duplicates(_transactions), requires=_without_bound, ensures=ENSURES
+        )._repr_markdown_()
+    )
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    For a warehouse, sverify writes the plan as SQL. The SQL is long because
-    it spells out every choice an engine would otherwise make. The Spark
-    SQL is what `engine="spark"` runs, and the Snowflake SQL runs in your
-    account, from the written SQL
-    ([the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)):
+    The suggestion is the checker's, and it is only a suggestion: the
+    contract stays unproved until we declare the bound in `requires`, and
+    then each run checks it on the data.
     """)
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
-    dialect = mo.ui.radio(["snowflake", "spark", "duckdb"], value="snowflake", inline=True)
-    dialect
-    return (dialect,)
-
-
-@app.cell(hide_code=True)
-def _(dialect, dups, mo):
-    mo.md(f"```sql\n{dups.to_sql(dialect.value)}\n```")
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
     mo.md(r"""
-    ## 4. New transactions: keeping the result up to date
+    ## 3. New transactions: keeping the result up to date
 
     An hour later, two things have happened to the source table:
 
@@ -520,7 +506,7 @@ def _(mo):
     refresh diffs the two snapshots and says so. `dups.refresh(audit=True)`
     also compares every batch with a recompute before applying it.
 
-    ## 5. The sink carries the contract
+    ## 4. The sink carries the contract
 
     `dups.write(DeltaSink(...))` stores the node in a Delta table, and every
     refresh writes it exactly once per state: the commit is keyed by the
@@ -570,6 +556,62 @@ def _(DeltaSource, lake, sv):
 
     refund_queue = DeltaSource(str(lake / "duplicate_payments"), name="dups").pipe(refunds)
     [str(p) for p in refund_queue.refresh()[refund_queue.name].preconditions]
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 5. One plan, every engine
+
+    You might develop on DuckDB on a laptop and run the job elsewhere in
+    production. The node's plan is the one Lean checked. Sverify runs it on
+    each engine through its own translation, which keeps Lean's semantics
+    (NULL keys never match, integers don't wrap around, ties break one way)
+    or refuses the plan. Lean's reference profile is the reference, one of
+    the [profiles that refine the core](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#core-profiles-and-engines), and
+    [the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines) lists which engines run plans, each with a proved
+    profile. With `route="auto"`, `refresh` also says how the proof reaches
+    the engine ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-engines-and-sql.md#routes-classes-and-profiles)).
+    A node refreshed with `engine=` has the same rows on each:
+    """)
+    return
+
+
+@app.cell
+def _(ENGINES, duplicate_payments, dups, transactions):
+    on_each = {}
+    for _engine in ENGINES:
+        _node = transactions.pipe(duplicate_payments)
+        _node.refresh(engine=_engine)
+        on_each[_engine] = _node.to_arrow().to_pylist()
+    assert all(rows == dups.to_arrow().to_pylist() for rows in on_each.values())
+    {e: len(rows) for e, rows in on_each.items()}
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    For a warehouse, sverify writes the plan as SQL. The SQL is long because
+    it spells out every choice an engine would otherwise make. The Spark
+    SQL is what `engine="spark"` runs, and the Snowflake SQL runs in your
+    account, from the written SQL
+    ([the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)):
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    dialect = mo.ui.radio(["snowflake", "spark", "duckdb"], value="snowflake", inline=True)
+    dialect
+    return (dialect,)
+
+
+@app.cell(hide_code=True)
+def _(dialect, dups, mo):
+    mo.md(f"```sql\n{dups.to_sql(dialect.value)}\n```")
     return
 
 
