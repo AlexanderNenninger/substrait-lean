@@ -29,7 +29,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
 
 def cmd_export(args: argparse.Namespace) -> int:
     from sverify import odcs
-    from sverify.cli._common import OK, UsageError, split_target
+    from sverify.cli._common import ExitCode, UsageError, split_target
     from sverify.cli._discover import Discovery, load
 
     path, target = split_target(args.target)
@@ -53,4 +53,4 @@ def cmd_export(args: argparse.Namespace) -> int:
         Path(out).write_text(
             odcs.dumps(doc, "json" if out.endswith(".json") else "yaml"), encoding="utf-8"
         )
-    return OK
+    return ExitCode.PROVED
