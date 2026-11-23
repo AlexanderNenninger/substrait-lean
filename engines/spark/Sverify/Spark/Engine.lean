@@ -24,7 +24,7 @@ def Profile.sparkExtras : List (Functions.Ctor × String) :=
      (.bin .fpow, "pow_one_inf"), (.un .ffloor, "float_to_int"), (.un .fceil, "float_to_int"),
      (.bin .fatan2, "on_domain_error"), (.bin .fatan2, "zero_sign"),
      (.bin (.bit .shl), "shift_range"), (.bin (.bit .shr), "shift_range"),
-     (.bin .dateAdd, "date_range")]
+     (.bin .dateAdd, "date_range"), (.un (.ftod 0), "decimal_rescale")]
 
 theorem Profile.spark_extras :
     (Profile.sparkExtras.all fun p => extraAtB Profile.spark.table p.1 p.2) = true := by
@@ -34,8 +34,9 @@ variable [Boxes.Ambient]
 
 /-- **Spark's functions are within its table**: each value `sparkBin` and
 `sparkUn` change is in the scope of an option Spark's table allows another
-behaviour: a created NaN (`nan_creation`), a domain error's NaN or NULL, or
-an out-of-range shift's masked count (`on_domain_error`). `date_add`'s wrap
+behaviour: a created NaN (`nan_creation`), a domain error's NaN or NULL, an
+out-of-range shift's masked count (`on_domain_error`), or a double cast to a
+decimal (`decimal_rescale`). `date_add`'s wrap
 at 2³¹ days (SP-2) is in the scope of `date_range`, which the table leaves
 uncharacterized (`Profile.spark.table` has no row for it, so it allows
 `COMPUTE`). -/
@@ -63,6 +64,12 @@ theorem Profile.spark_withinOk : Profile.spark.WithinOk Profile.spark.table := b
         · exact callExtra_of_at (o := "float_to_int") (extraAt_of_all Profile.spark_extras (by decide))
             (by simp [optionScope])
         · split at hs <;> cases hs; cases h
+      -- A double to a decimal: every one is in `decimal_rescale`'s scope.
+      case h_4 s _ =>
+        have hd : extraAtB Profile.spark.table (.un (.ftod s)) "decimal_rescale" = true :=
+          (show extraAtB Profile.spark.table (.un (.ftod 0)) "decimal_rescale" = true from
+            extraAt_of_all Profile.spark_extras (by decide))
+        exact callExtra_of_at hd (by simp [optionScope])
       all_goals cases hs
   · simp only [Profile.spark] at h
     cases hs : sparkBin f v w with
@@ -189,7 +196,7 @@ theorem Profile.sparkWritten_okImpl_faithful : Profile.sparkWritten.okImpl.Faith
         split at hs
         · rename_i hc; simp [UnFn.issue, domainIssue, hc] at h
         · cases hs
-      case h_2 | h_3 => simp [UnFn.sparkWritten] at hw
+      case h_2 | h_3 | h_4 => simp [UnFn.sparkWritten] at hw
       all_goals cases hs
   · show (match Profile.sparkWritten.bin f v w with | .ok x => x | .error _ => f.apply v w) =
       f.apply v w

@@ -331,7 +331,7 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | windows | `win.value` | `lag`, `lead`, `first_value`, `last_value`, `nth_value` | `tie_order` |
 | windows | `win.agg` | aggregates over a frame | the aggregate's group's, and `window_sum_algo` (how the frame's sum is kept) |
 | casts | `cast.num` | double or decimal to integer (`CAST`, `TRY_CAST`) | `float_to_int` |
-| casts | `cast.dec` | a decimal to a smaller scale | `decimal_rescale` |
+| casts | `cast.dec` | a decimal to a smaller scale, a double to a decimal | `decimal_rescale` |
 | relations | `rel.sort` | `orderBy`, a window's order | `null_order`, `clustered`, `tie_order` |
 | relations | `rel.fetch` | `fetch` | `tie_order` (the rows taken of a tie) |
 | relations | `rel.keys` | `aggregate`'s keys, `distinct`, joins, `UNION DISTINCT`, `INTERSECT`, `EXCEPT` | `nan_equality`, `zero_sign` |
@@ -344,9 +344,14 @@ constructors, so neither reads `cast_failure`; the writer states the cast's
 `failureBehavior` ([#2438](https://github.com/AlexanderNenninger/substrait-lean/issues/2438)).
 `cast.dec` holds `dround`, a decimal brought to a smaller scale, which the
 reference rounds half away from zero; Substrait leaves that rounding open
-([ST-8](../upstream/bugs/ST-8.json), ruling 273). The other decimal casts have no
-row yet: to a larger scale and from an integer they are exact, and a decimal to a
-double (`dtof`) and a double to a decimal (`ftod`) read no option.
+([ST-8](../upstream/bugs/ST-8.json), ruling 273). It also holds `ftod`, a double to a
+decimal of scale `s`: the reference rounds the double product `x · 10ˢ` half away
+from zero, and Substrait leaves open both which value is rounded and how (ST-8,
+ruling 278). Each engine's profile states its own: Polars rounds the product half
+to even, and Spark's native cast rounds the double's shortest decimal text, within
+one unit of the product's rounding. The other decimal casts have no row yet: to a
+larger scale and from an integer they are exact, and a decimal to a double
+(`dtof`) is correctly rounded.
 `tests/test_functions.py` checks this table against `Functions.groups`.
 
 `fp32` adds no group: once

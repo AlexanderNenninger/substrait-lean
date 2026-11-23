@@ -87,7 +87,8 @@ theorem Polars.written_within : Polars.written.Within Profile.polars.table := by
 /-- **`Profile.polars`'s unary functions are within Polars's table** (S1,
 ruling 235): each is the reference's, but `round` and `ceil`'s IEEE `-0.0`
 for a negative value that rounds to zero, in the scope of `round_zero_sign`,
-which Polars's table allows (`IEEE`, D34). -/
+which Polars's table allows (`IEEE`, D34), and a double cast to a decimal, in
+the scope of `decimal_rescale` (`TIE_TO_EVEN`, ruling 278). -/
 theorem Profile.polars_un_within (f : UnFn) (v w : Value) (h : Profile.polars.un f v = .ok w) :
     w = f.apply v ∨ CallExtra Profile.polars.table (.un f) [v] := by
   have hx : ∀ g : UnFn, g = .fround ∨ g = .froundEven ∨ g = .fceil →
@@ -96,9 +97,9 @@ theorem Profile.polars_un_within (f : UnFn) (v w : Value) (h : Profile.polars.un
   cases hf : f.polarsTmpl with
   | none => simp only [Profile.polars, hf] at h; exact .inl (raiseIf_ok h)
   | some t =>
-    have hfc : f = .fround ∨ f = .froundEven ∨ f = .fceil := by
+    have hfc : f = .fround ∨ f = .froundEven ∨ f = .fceil ∨ ∃ s, f = .ftod s := by
       cases f <;> simp only [UnFn.polarsTmpl, reduceCtorEq] at hf <;> simp
-    rcases hfc with rfl | rfl | rfl
+    rcases hfc with rfl | rfl | rfl | ⟨s, rfl⟩
     · cases v
       case float c =>
         rw [Profile.polars_un_negZero (f := .fround) rfl (fun _ => rfl) FloatCode.round_negZero
@@ -138,6 +139,10 @@ theorem Profile.polars_un_within (f : UnFn) (v w : Value) (h : Profile.polars.un
         · simp only [hc, ↓reduceIte, Option.getD_none, Except.ok.injEq] at h
           exact .inl (by rw [← h]; rfl)
       all_goals exact .inl (raiseIf_ok ((Profile.polars_un_not_float _ _ (fun _ h => by cases h)).symm.trans h))
+    · -- Every double cast to a decimal is in `decimal_rescale`'s scope.
+      have hd : extraAtB Profile.polars.table (.un (.ftod s)) "decimal_rescale" = true :=
+        (show extraAtB Profile.polars.table (.un (.ftod 0)) "decimal_rescale" = true by decide)
+      exact .inr (callExtra_of_at hd (by simp [optionScope]))
 
 /-- Polars, as the translation writes the plan (`Polars.written`). -/
 def Engine.polars : Engine where

@@ -79,7 +79,7 @@ def Substrait.polarsOn : Substrait.Lowering (Substrait.Profile.polars) :=
     | Substrait.UnFn.dkind a0 a1 => some (Substrait.polarsOn.dkind a0 a1)
     | Substrait.UnFn.dround a0 => some (Substrait.polarsOn.dround a0)
     | Substrait.UnFn.dtrunc a0 => some (Substrait.polarsOn.dtrunc a0)
-    | Substrait.UnFn.ftod a0 => some (Substrait.polarsOn.ftod a0)
+    | Substrait.UnFn.ftod _ => none
     | Substrait.UnFn.dtof a0 => some (Substrait.polarsOn.dtof a0)
     | Substrait.UnFn.structField a0 => some (Substrait.polarsOn.structField a0)
     | Substrait.UnFn.listElement a0 => some (Substrait.polarsOn.listElement a0)
@@ -184,7 +184,7 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("UnFn.dkind", "native", 0),
   ("UnFn.dround", "native", 0),
   ("UnFn.dtrunc", "native", 0),
-  ("UnFn.ftod", "native", 0),
+  ("UnFn.ftod", "refused", 0),
   ("UnFn.dtof", "native", 0),
   ("UnFn.structField", "native", 0),
   ("UnFn.listElement", "native", 0),

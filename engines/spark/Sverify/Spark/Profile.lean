@@ -35,6 +35,13 @@ Where Spark differs, by its facts:
 * `atan2` adds `0.0` to its arguments, so `-0.0` is `0.0`: `atan2(-0.0, -1)`
   is `π`, and `atan2(0, 0)` is `0` (`zero_sign`, `on_domain_error`). The
   writer refuses double `atan2`.
+* A double cast to a decimal of scale `s` rounds the double's shortest
+  decimal text half up, where the reference rounds the double product `x · 10ˢ`
+  half away from zero: `1.005` at scale 2 is `1.01` there, `1.00` in the
+  reference (spark-double-to-decimal, ruling 278). The profile states it
+  loosely, as a value within one unit at scale `s` of the reference's
+  (`Spark.doubleToDecimal`), in `decimal_rescale`'s scope. The writer writes
+  the reference's (`SparkDialect.decimal_cast`).
 
 Integer arithmetic, `div` and `%` raise where the reference raises
 (spark-int-arith, spark-int-divide, spark-int-modulus): no diff. Functions
@@ -101,6 +108,22 @@ def sparkBin : BinFn → Value → Value → Option Outcome
     if -2 ^ 31 ≤ b ∧ b < 2 ^ 31 then some (.ok (.date (Spark.wrap32 (a + b)))) else none
   | _, _, _ => none
 
+/-- A cast of doubles to decimals within one unit at its scale of the
+reference's (`FloatCode.toDecimal?`), defined where the reference's is. -/
+structure Spark.DoubleToDecimal where
+  conv : Int → Nat → Option Int
+  defined : ∀ c s, (conv c s).isSome = (FloatCode.toDecimal? c s).isSome
+  near : ∀ {c s a b}, conv c s = some a → FloatCode.toDecimal? c s = some b → (a - b).natAbs ≤ 1
+
+/-- **Spark's native cast of a double to a decimal**, as the profile states it:
+some cast within one unit at the scale of the reference's. Spark rounds the
+double's shortest decimal text half up (`BigDecimal(Double.toString(x))`), so
+it differs from the product's rounding only at a near-tie (`1.005`, `0.285`),
+and the opaque constant states no more than the bound. The reference's cast
+shows that such a cast exists. -/
+opaque Spark.doubleToDecimal : Spark.DoubleToDecimal :=
+  ⟨FloatCode.toDecimal?, fun _ _ => rfl, fun ha hb => by simp_all⟩
+
 /-- A logarithm (`ln`, `log10`, `log2`), which Spark makes NULL at `x ≤ 0`. -/
 def FMath.sparkNull : FMath → Bool
   | .ln | .log10 | .log2 => true
@@ -121,6 +144,11 @@ def sparkUn : UnFn → Value → Option Outcome
     else if isInfCode x ∨ (FloatCode.ofInt (2 ^ 63) ≤ x ∧ x < FloatCode.posInf) ∨
         (FloatCode.negInf < x ∧ x < FloatCode.ofInt (-(2 ^ 63)))
     then some (.error .overflow) else none
+  -- A double to a decimal: within one unit of the reference's (`decimal_rescale`),
+  -- failing where it fails (`badCast`: NaN, `±∞`, a product that overflows).
+  | .ftod s, .float x => some (match Spark.doubleToDecimal.conv (FloatCode.canon x) s with
+    | some m => .ok (.int m)
+    | none => .error .badCast)
   | _, _ => none
 
 variable [Boxes.Ambient]
@@ -132,9 +160,11 @@ def Profile.spark : Profile where
 
 /-- `floor` and `ceil`, which the writer computes as the reference does
 (`sverify_spark.dialect`: NaN, `±∞` and doubles of `2⁵²` and more pass
-through, the rest through `BIGINT` and back). -/
+through, the rest through `BIGINT` and back), and a double cast to a decimal,
+which it writes as the product rounded half away from zero
+(`SparkDialect.decimal_cast`). -/
 def UnFn.sparkWritten : UnFn → Bool
-  | .ffloor | .fceil => true
+  | .ffloor | .fceil | .ftod _ => true
   | _ => false
 
 /-- `power` and `atan2` of doubles, which the writer refuses (Spark's are

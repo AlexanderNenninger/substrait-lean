@@ -74,7 +74,12 @@ def Profile.spark.table : ProfileTable where
     -- Decimals raise past their type under ANSI (spark-decimal-arith).
     (some "dec.arith", "overflow", .oneOf ["ERROR"]),
     -- `ROUND_HALF_UP` on `BigDecimal` (spark-decimal-arith).
-    (none, "decimal_rescale", .oneOf ["TIE_AWAY_FROM_ZERO"])] ++ uncharacterized prototypeSlice
+    (none, "decimal_rescale", .oneOf ["TIE_AWAY_FROM_ZERO"]),
+    -- A double to a decimal rounds the double's shortest decimal text half up,
+    -- no tie mode of the product the reference rounds (spark-double-to-decimal,
+    -- ruling 278): loose, as `Spark.doubleToDecimal` states it.
+    (some "cast.dec", "decimal_rescale", .loose ["TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN", "TRUNCATE"])] ++
+    uncharacterized prototypeSlice
 
 def Profile.spark.obs : ObsTable := [
   (none, "overflow", (ObsRow.native ["spark-int-arith", "spark-int-abs"]).proved "Rel.spark_sound"),
@@ -171,6 +176,12 @@ def Profile.spark.obs : ObsTable := [
     cls := .refused
     note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, spark-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference. The neighbours are those of the engine's double position, `⌊(n − 1)·q⌋` and `⌈(n − 1)·q⌉` in doubles (`contNeighboursD`, spark-quantile)." }).tracking 900),
   (none, "decimal_rescale", (ObsRow.native ["spark-decimal-arith"]).tracking 739),
+  -- A double to a decimal: the native cast rounds the shortest decimal text
+  -- (spark-double-to-decimal), so the writer rounds the double product half away
+  -- from zero (`SparkDialect.decimal_cast`); a decimal to a smaller scale is
+  -- native, `ROUND_HALF_UP` (spark-decimal-arith).
+  (some "cast.dec", "decimal_rescale", (ObsRow.shimmed "decimal_cast"
+    ["spark-double-to-decimal", "spark-decimal-arith"]).tracking 2523),
   -- `-x` and `abs` round past 34 digits (SP-1); the writer's `0 - x` is exact
   -- where its type keeps the scale, and a type past 38 digits at a scale
   -- above 6, which Spark would round, is refused.
@@ -180,7 +191,8 @@ def Profile.spark.obs : ObsTable := [
 /-- What each shim Spark's rows name costs at run time. -/
 def Profile.spark.shimCosts : List (String × ShimCost) :=
   [("int_sum_decimal", .expression), ("int_avg_decimal", .expression),
-   ("null_order", .argument), ("sort on the keys", .sort), ("decimal_negate_sub", .expression)]
+   ("null_order", .argument), ("sort on the keys", .sort), ("decimal_negate_sub", .expression),
+   ("decimal_cast", .expression)]
 
 theorem Profile.spark_leB : Profile.spark.table.leB Profile.core.table = true := by
   decide +kernel

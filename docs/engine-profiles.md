@@ -346,6 +346,7 @@ and the plan runs on Polars by the translated route until then.
 | `overflow` (integers) | `ERROR` | `SILENT` | tightened: wrapping rarely helps a query, and a proved plan never wraps |
 | `on_division_by_zero` (integers) | `ERROR` | `NULL` | tightened, as the reference |
 | `nan_creation`, `on_domain_error` | `ERROR` | `NAN` | tightened, as the reference |
+| `decimal_rescale` (a double to a decimal) | `TIE_TO_EVEN` on the product `x · 10ˢ` (`Polars.ftodEvenT`) | the same ([decimal-casts](../engines/polars/facts/polars-decimal-casts.json)) | Polars's own value; the translation writes the reference's half away from zero (`double_to_decimal`), and the lowering refuses the cast (ruling 278) |
 | every other option | the reference's | the table above | the translation keeps its written arguments and shims there |
 
 A plan states the choice: under `semantics="polars"` the Ibis producer
@@ -402,6 +403,7 @@ from its [facts](../engines/spark/facts/). Option by option:
 | `nan_creation`, `on_domain_error` | `NAN`, NULL for a logarithm of `x ≤ 0` | the same ([math-domain](../engines/spark/facts/spark-math-domain.json)) | the reference raises there, so a proved plan never reaches them |
 | `avg_int_result` | the reference's | `FP64` ([avg-int](../engines/spark/facts/spark-avg-int.json)) | shim `int_avg_decimal` |
 | `null_order` | the reference's | first for an ascending key ([null-order](../engines/spark/facts/spark-null-order.json)) | shim `null_order`, a written argument |
+| `decimal_rescale` (a double to a decimal) | within one unit at the scale of the reference's (`Spark.doubleToDecimal`) | the double's shortest decimal text, half up ([double-to-decimal](../engines/spark/facts/spark-double-to-decimal.json)) | loose: no tie mode of the product; the writer writes the reference's (`decimal_cast`), and the lowering refuses the cast (ruling 278) |
 | every other option | the reference's | the table | native, or the writer's shims |
 
 Spark gives the reference's value wherever the reference reports no issue
