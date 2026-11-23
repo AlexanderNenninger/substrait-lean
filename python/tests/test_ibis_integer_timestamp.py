@@ -48,8 +48,9 @@ def test_an_integer_cast_to_a_timestamp_is_seconds(con, to) -> None:
     [
         lambda t: t.i.try_cast("timestamp"),
         lambda t: t.i.cast("timestamp('UTC')"),
+        lambda t: t.i.cast("timestamp(9)"),
     ],
-    ids=["try_cast", "time zone"],
+    ids=["try_cast", "time zone", "nanoseconds"],
 )
 def test_the_other_integer_casts_to_a_timestamp_are_refused(con, build) -> None:
     t = con.table("t")
@@ -95,8 +96,12 @@ def test_a_double_cast_to_a_timestamp_rounds_its_microseconds_half_to_even(engin
 
 @pytest.mark.parametrize(
     "build",
-    [lambda t: t.x.try_cast("timestamp"), lambda t: t.x.cast("timestamp('UTC')")],
-    ids=["try_cast", "time zone"],
+    [
+        lambda t: t.x.try_cast("timestamp"),
+        lambda t: t.x.cast("timestamp('UTC')"),
+        lambda t: t.x.cast("timestamp(9)"),
+    ],
+    ids=["try_cast", "time zone", "nanoseconds"],
 )
 def test_the_other_double_casts_to_a_timestamp_are_refused(build) -> None:
     t = ibis.table({"x": "float64"}, name="t")

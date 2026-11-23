@@ -54,15 +54,19 @@ def _from_seconds(x: Exprs, op: Any, try_: bool, to: dt.DataType) -> Json | None
     t = op.arg.dtype
     if not (isinstance(to, dt.Timestamp) and (t.is_integer() or t.is_floating())):
         return None
-    if to.scale not in (None, 6):
-        # Another precision: the cast's own refusal names it (D61).
+    nanos = to.scale == 9
+    if t.is_floating() and to.scale not in (None, 6, 9):
+        # A precision sverify does not read: its own refusal names it (#323, D61).
         return None
-    if try_ or to.timezone is not None:
+    if try_ or to.timezone is not None or to.scale not in (None, 6):
         what, hint = (
             ("an integer", '; write .as_timestamp("s") for seconds since the epoch')
             if t.is_integer()
             else ("a double", "")
         )
+        if nanos:
+            # Nanoseconds meet microseconds only through a cast (D61), after 1.0.
+            hint += " (#2318)"
         raise Unsupported(
             f"a {'try_' if try_ else ''}cast of {what} to {op.to} is not supported{hint}",
             construct="TRY_CAST" if try_ else "CAST",
