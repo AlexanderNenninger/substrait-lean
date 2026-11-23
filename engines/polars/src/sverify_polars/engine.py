@@ -2148,7 +2148,7 @@ class Measure:
             )
         if self.fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
             # `AggFn.var` (#54) with Polars's algorithm (`stat_algo =
-            # WELFORD_CHAN`, polars-var-std-streaming), within the plan's bound
+            # SCHUBERT_GERTZ`, polars-var-std-streaming), within the plan's bound
             # of the exact moments rounded once (D30); a sample of one is NULL
             # in both. An infinity makes
             # a deviation NaN (#257); finite values may overflow (#575).
