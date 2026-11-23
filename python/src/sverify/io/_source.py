@@ -394,6 +394,12 @@ class Source(Pipeable, ABC):
 
     # -- internals ------------------------------------------------------------
 
+    def consumed(self, reader: object, version: int) -> None:
+        """`reader` has committed `version`: the log drops the batches every
+        reader has read (`ChangeLog.consumed`)."""
+        if self._state is not None:
+            self._state.log.consumed(reader, version)
+
     def _st(self) -> _State:
         """The state, reading the table the first time."""
         if self._state is None:

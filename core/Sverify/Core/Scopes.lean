@@ -51,6 +51,12 @@ def Value.anyZero : List Value → Bool
   | v :: vs => v.hasZero || Value.anyZero vs
 end
 
+/-- A list, or a struct, whose fields may be lists: where a NULL element's
+place in an order can matter (`list_null_order`, #2439). -/
+def Value.mayList : Value → Bool
+  | .list _ | .struct _ => true
+  | _ => false
+
 /-- A finite double, or a value that is not a double. -/
 def Value.finiteOrOther : Value → Bool
   | .float c => isFiniteCode c
@@ -138,7 +144,8 @@ def optionScope (o : String) (c : Ctor) (args : List Value) : Bool :=
   | "null_handling" => args.any (· == .null)
   | "date_range" => iss == some .overflow
   | "time_interval_months" => true
-  | "list_null_order" => true
+  -- A list among the arguments: `MIN`, `MAX` and `list_lt` of anything else order no list (#2439).
+  | "list_null_order" => args.any Value.mayList
   -- Aggregates, windows and relations.
   | "sum_order" => true
   | "stat_algo" => true
@@ -220,6 +227,12 @@ def scopedOptions : List String :=
           | some row => (((Functions.groups.lookup row.group).getD []).filter (optionApplies · probe)).contains o
           | none => false
         reports == reads
+
+-- `list_null_order` is in scope where an argument is a list (#2439): a `MAX` of lists, not of
+-- integers.
+#guard letI := Boxes.Ambient.none;
+  optionScope "list_null_order" (.agg .max) [.list [.int 1, .null], .list [.int 1]] &&
+    !optionScope "list_null_order" (.agg .max) [.int 1, .int 2, .null]
 
 -- `pow_one_inf` is `power`'s alone (D40): it sits on the group of `power` and on no other, and
 -- `atan2`, whose `zero_sign` is not the unary functions', has a group of its own (ruling 163).

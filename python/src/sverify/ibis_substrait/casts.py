@@ -13,7 +13,7 @@ import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 
 from sverify.ibis_substrait._base import Exprs, register, same_type
-from sverify.ibis_substrait.temporal import wall_clock
+from sverify.ibis_substrait.temporal import from_unix, wall_clock
 from sverify.plan_json import Json, Unsupported, call, cast_json, literal
 
 
@@ -44,19 +44,54 @@ def _from_varchar(x: Exprs, op: Any, try_: bool, to: dt.DataType) -> Json | None
 
 
 def _from_seconds(x: Exprs, op: Any, try_: bool, to: dt.DataType) -> Json | None:
-    """A cast of an integer to a timestamp: Ibis reads the integer as seconds
+    """A cast of a number to a timestamp: Ibis reads the number as seconds
     since the epoch (`pd.to_datetime(unit="s")` in its tests, DuckDB's
-    `to_timestamp`), where Substrait's cast reads microseconds. So it is
-    `as_timestamp("s")` (#860). None for the other casts."""
-    if not (op.arg.dtype.is_integer() and isinstance(to, dt.Timestamp)):
+    `to_timestamp`), where Substrait's cast reads microseconds (#860). An
+    integer is `as_timestamp("s")`. A double is its microseconds `x * 1e6`
+    computed as a double and rounded half to even, as DuckDB's `to_timestamp`
+    does (ruling 266, D55, `duckdb-to-timestamp-double`). None for the other
+    casts."""
+    t = op.arg.dtype
+    if not (isinstance(to, dt.Timestamp) and (t.is_integer() or t.is_floating())):
+        return None
+    nanos = to.scale == 9
+    if t.is_floating() and to.scale not in (None, 6, 9):
+        # A precision sverify does not read: its own refusal names it (#323, D61).
         return None
     if try_ or to.timezone is not None or to.scale not in (None, 6):
+        what = "an integer" if t.is_integer() else "a double"
+        cast = f"a {'try_' if try_ else ''}cast of {what}"
+        construct = "TRY_CAST" if try_ else "CAST"
+        if t.is_integer() and nanos:
+            # Nanoseconds meet microseconds only through a cast (D61), after 1.0.
+            raise Unsupported(
+                f'{cast} to {op.to} is not supported; write .as_timestamp("s") for seconds '
+                "since the epoch in microseconds (nanosecond casts wait on #2318)",
+                construct=construct,
+            )
+        if nanos:
+            raise Unsupported(
+                f"{cast} to {op.to} is not supported; cast to `timestamp` instead "
+                "(microseconds; nanosecond casts wait on #2318)",
+                construct=construct,
+            )
+        if t.is_integer():
+            raise Unsupported(
+                f"{cast} to {op.to} is not supported; "
+                'write .as_timestamp("s") for seconds since the epoch',
+                construct=construct,
+            )
         raise Unsupported(
-            f"a {'try_' if try_ else ''}cast of an integer to {op.to} is not supported; "
-            'write .as_timestamp("s") for seconds since the epoch',
-            construct="TRY_CAST" if try_ else "CAST",
+            f"{cast} to {op.to} is not supported; "
+            "use `cast` to `timestamp`, with the column's bounds in `requires`",
+            construct=construct,
         )
-    return cast_json(call("multiply", [x(op.arg, dt.int64), literal(10**6, dt.int64)]), to)
+    if t.is_integer():
+        return from_unix(x, op.arg, "s", to)
+    us = call("multiply", [x(op.arg, dt.float64), literal(1e6, dt.float64)])
+    even = call("round", [us])
+    even["scalarFunction"]["options"] = [{"name": "rounding", "preference": ["TIE_TO_EVEN"]}]
+    return cast_json(cast_json(even, dt.int64), to)
 
 
 def _instant_to_calendar(x: Exprs, op: Any) -> Callable[..., Json]:

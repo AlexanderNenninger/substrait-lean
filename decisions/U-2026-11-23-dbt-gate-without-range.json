@@ -1,0 +1,19 @@
+{
+  "id": "U-2026-11-23-dbt-gate-without-range",
+  "date": "2026-11-23",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "The #1487 evidence gate reads jaffle_shop's relationship-only number: 17 of 38 dbt tests proved (45 %, against the 25 % bar). The `dbt_utils.accepted_range` stopgap in the measurement overlay (#2526) doesn't count toward it, and #2534, which would prove the five amounts without the range, stays After 1.0.",
+  "issues": [
+    1487,
+    2526,
+    2534
+  ],
+  "amends": [
+    "U-2026-11-22-dbt-bars",
+    "F279"
+  ],
+  "source": "https://github.com/AlexanderNenninger/substrait-lean/issues/1487#issuecomment-7100260947",
+  "note": "The maintainer's words: \"17, without the range\". Settles the choice ruling 279 left to the maintainer, which number the gate reads."
+}

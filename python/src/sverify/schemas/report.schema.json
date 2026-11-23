@@ -309,6 +309,22 @@
         "additionalProperties": false
       }
     },
+    "fk_joins": {
+      "description": "The transformation's left joins on a foreign key: the table and column the left key comes from, the table and column the right side keeps every value of, and whether the contract declares the reference. The proofs read the declared ones as inner joins.",
+      "type": "array",
+      "items": {
+        "type": "array",
+        "prefixItems": [
+          {"type": "string"},
+          {"type": "string"},
+          {"type": "string"},
+          {"type": "string"},
+          {"type": "boolean"}
+        ],
+        "minItems": 5,
+        "maxItems": 5
+      }
+    },
     "rewrites": {
       "description": "The rewrites of the optimized plan.",
       "type": "array",

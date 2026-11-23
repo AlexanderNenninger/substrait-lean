@@ -603,7 +603,7 @@ def drift(committed: Contract, node: Any) -> Drift:
         try:
             got = verify(expr, requires=vc.requires, ensures=[text], semantics=vc.profile)
         except MemoryLimitError:
-            raise  # a budget, which the CLI reports as one (exit 4)
+            raise  # a budget, which the CLI reports as one (exit 5)
         except Exception as e:  # noqa: BLE001 - unreadable now: weakened, with why
             why[text] = f"not proved: sverify cannot read it against the node ({e})"
             continue

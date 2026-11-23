@@ -683,17 +683,26 @@ def _plan_bound(
             # No bound on the column (a double `SUM` without a row cap, a value
             # computed from one, a window aggregate of doubles): nothing proves
             # it, and a stated tolerance is not met. `why` names what lifts it.
-            # A postcondition on it runs: the checker knows only its sign
-            # there (`floatBound`'s signed part), which a sum of values of one
-            # sign keeps in every order but Kahan's
-            # (`FloatBounds.StdModel.TreeSum.sign`), a variance by its clamp.
+            # A postcondition that holds of every value near the reference's
+            # (`robust`: a sign, which a sum of values of one sign keeps in
+            # every order but Kahan's, `FloatBounds.StdModel.TreeSum.sign`; a
+            # variance by its clamp) is not held, and runs. One that reads the
+            # value (`avg <= 100`, proved of the exact mean) is held, as for a
+            # column with a bound: the engine's value is only near it.
             unproved = True
+            why = f" ({eps['why']})" if eps.get("why") else ""
             if isinstance(stated, Within):
-                why = f" ({eps['why']})" if eps.get("why") else ""
                 problems.append(
                     f"{col} has no bound on its distance to the reference{why}, and the "
                     f'postcondition asks {stated}: state sv.equivalent(floats="plan") '
                     "or drop the tolerance"
+                )
+            if held and col in held:
+                problems.append(
+                    f"the postcondition {held[col]} reads {col}, which has no bound on its "
+                    f"distance to the reference{why}: write it as sv.approx({held[col]}), or "
+                    "bound the column with sv.max_rows(n) in requires and state "
+                    "sv.equivalent(floats=sv.within(...)) in ensures"
                 )
             continue
         if not any(v for v, _ in bounds.values()):
@@ -772,10 +781,12 @@ def _smallest(bounds: Mapping[str, tuple[float, bool]]) -> str:
     return f"sv.within({kind}={smallest:g})"
 
 
-#: Why #568's threshold rule refuses a plan, as `realization` words it.
+#: Why #568's threshold rule refuses a plan, as `realization` words it; ruling 275
+#: extends it to a projection that rounds, casts or compares a double.
 _THRESHOLD = (
-    "a filter, grouping key or sort on a double may keep other rows on {engine} than "
-    "the reference: its threshold lies within the doubles' bound of their range; "
+    "a filter, grouping key or sort on a double, or a projection that rounds, casts or "
+    "compares one, may keep other rows or give other values on {engine} than the "
+    "reference: its threshold lies within the doubles' bound of their range; "
     "for a constant threshold, state a precondition that keeps the values away from it; "
     "for a threshold computed from the data (a mean, a sum), compare exact columns: "
     "for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact "
@@ -1448,7 +1459,8 @@ def choose(
     if report.lenses.rows == "sequence" and not report._sequence_determined:
         return refuse(
             "the postcondition observes the rows as a sequence, and the plan does not fix their "
-            "order: its result is not sorted on a key of its input"
+            "order: its result is not sorted on a key of its input; sort the result with "
+            'order_by on a key, or state sv.equivalent(rows="multiset")'
         )
     from sverify.sql.core import _base
 

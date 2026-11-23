@@ -1,0 +1,18 @@
+{
+  "id": "U-2026-11-23-n6c-engine-scaled-state",
+  "date": "2026-11-23",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "Where incremental state lives (N6c) is 1.0 work: the store's bar includes scaling on the engine, not the driver. That means a native state store, and cluster-side state on Spark, so the driver's memory doesn't grow with the input.",
+  "issues": [
+    1329,
+    1485
+  ],
+  "amends": [
+    "U-2026-11-09-incremental-store-gate",
+    "F261"
+  ],
+  "source": "https://github.com/AlexanderNenninger/substrait-lean/issues/1329",
+  "note": "The maintainer's words, on #1329: \"N6c is 1.0 work. The bar's 'scales on the engine, not the driver' must be met\". The optimizer's measurement is the baseline: a driver peak of 1.0–1.35 GB at 1M rows and 2.7–3.1 GB at 4M. Settles what F261 left conditional, #1485 item 14 folded into #1329 as 1.0 work only if the bar needs it."
+}

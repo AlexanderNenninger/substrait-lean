@@ -5,7 +5,9 @@ The round trips export, read back and prove the contract again."""
 
 from __future__ import annotations
 
+import functools
 import json
+import math
 import re
 from pathlib import Path
 from typing import Literal
@@ -229,10 +231,18 @@ GAP_CASES = {
 }
 
 
+@functools.cache
+def _gap_report(case: str) -> sv.Report:
+    """The case's report, verified once for the three modes (an export does not
+    change it)."""
+    expr, requires, _ = GAP_CASES[case]
+    return _verify(expr, requires)
+
+
 @pytest.mark.parametrize("case", list(GAP_CASES))
 def test_apply_rewrites_the_gap(case: str) -> None:
-    expr, requires, option = GAP_CASES[case]
-    m = read(_verify(expr, requires).to_substrait(shims="apply")).manifest
+    option = GAP_CASES[case][2]
+    m = read(_gap_report(case).to_substrait(shims="apply")).manifest
     # D30: a consumer's own variance is within the plan's bound of the
     # reference's exact moments rounded once, and a consumer's double keys
     # pick a member of a zero's class, which the default observation reads as one.
@@ -243,8 +253,8 @@ def test_apply_rewrites_the_gap(case: str) -> None:
 
 @pytest.mark.parametrize("case", list(GAP_CASES))
 def test_annotate_ships_the_assumption(case: str) -> None:
-    expr, requires, option = GAP_CASES[case]
-    report = _verify(expr, requires)
+    option = GAP_CASES[case][2]
+    report = _gap_report(case)
     m = read(report.to_substrait(shims="annotate")).manifest
     assert m["class"] == "assumed"
     assert not [s for s in m["shims"] if s.get("source") != "written plan"]
@@ -259,10 +269,9 @@ def test_annotate_ships_the_assumption(case: str) -> None:
 
 @pytest.mark.parametrize("case", list(GAP_CASES))
 def test_refuse_names_the_gap(case: str) -> None:
-    expr, requires, option = GAP_CASES[case]
-    gap = "ST-3" if option == "stat_degenerate" else "ST-4"
+    gap = "ST-3" if GAP_CASES[case][2] == "stat_degenerate" else "ST-4"
     with pytest.raises(ExportError, match=re.escape(f"({gap}, upstream/bugs/{gap}.json)")):
-        _verify(expr, requires).to_substrait(shims="refuse")
+        _gap_report(case).to_substrait(shims="refuse")
 
 
 def test_gaps_where_the_reference_raises_need_no_shim() -> None:
@@ -485,7 +494,8 @@ def _evaluate(plan: dict, e: dict, row: tuple):
         for x in plan["extensions"]
     }
     if "selection" in e:
-        return row[e["selection"]["directReference"]["structField"]["field"]]
+        # Substrait's JSON leaves out a field of 0.
+        return row[e["selection"]["directReference"]["structField"].get("field", 0)]
     if "literal" in e:
         return None if "null" in e["literal"] else float(e["literal"]["fp64"])
     if "ifThen" in e:
@@ -505,6 +515,14 @@ def _evaluate(plan: dict, e: dict, row: tuple):
             return None if None in a else a[0] + a[1]
         case "lt":
             return None if None in a else a[0] < a[1]
+        case "gte":
+            return None if None in a else a[0] >= a[1]
+        case "floor" | "ceil" if a[0] is None or not math.isfinite(a[0]):
+            return a[0]
+        case "floor":
+            return float(math.floor(a[0]))
+        case "ceil":
+            return float(math.ceil(a[0]))
         case "and":
             return False if False in a else None if None in a else True
         case "or":
@@ -793,3 +811,128 @@ def test_st8_holds_or_refuses_by_the_decimal_calls() -> None:
     typer, b = _typed(d.select(a=_.d.abs()))
     assert any(c.name == "abs" for c in typer.calls)
     assert st8(typer, b) is None
+
+
+# -- ST-6: a cast of a double to an integer (#2438) ------------------------------------
+
+F = ibis.table({"a": "float64"}, name="f")
+CAST = F.select(c=_.a.cast("int64"))
+#: #2438's repro: no NULL, no NaN, a bound that keeps the cast inside 64 bits.
+F_BOUNDED = {"f": [_.a.notnull(), ~_.a.isnan(), _.a >= -100.0, _.a <= 100.0]}
+#: Values where truncation, ties away from zero and ties to even disagree, with
+#: the integers truncation gives.
+TRUNCATED = [(2.5, 2), (-2.5, -2), (-0.5, 0), (3.5, 3), (-3.7, -3)]
+
+
+@functools.cache
+def _cast_report() -> sv.Report:
+    """#2438's report, verified once for the export tests."""
+    return _verify(CAST, F_BOUNDED)
+
+
+def _casts(node) -> list[dict]:
+    """The `cast` expressions of a Substrait plan in JSON form."""
+    if isinstance(node, dict):
+        here = [node["cast"]] if isinstance(node.get("cast"), dict) else []
+        return here + [c for v in node.values() for c in _casts(v)]
+    if isinstance(node, list):
+        return [c for v in node for c in _casts(v)]
+    return []
+
+
+def test_st6_apply_truncates_before_the_cast() -> None:
+    """#2438: the cast reads `float_to_int`, which Substrait leaves open (ST-6),
+    so `apply` writes the truncation before it."""
+    exported = read(_cast_report().to_substrait(shims="apply"))
+    [shim] = [s for s in exported.manifest["shims"] if s["option"] == "float_to_int"]
+    assert shim["gap"] == "ST-6"
+    assert not exported.manifest["assumptions"]
+    [cast] = _casts(exported.plan)
+    assert "ifThen" in cast["input"], cast
+
+
+def test_st6_shim_is_exact_under_every_rounding() -> None:
+    """The cast's input is integral after the shim, so a consumer's cast gives the
+    reference's truncation whichever way it rounds (`float_to_int`'s three modes)."""
+    plan = read(_cast_report().to_substrait(shims="apply")).plan
+    [cast] = _casts(plan)
+    modes = {
+        "TRUNCATE": math.trunc,
+        "TIE_AWAY_FROM_ZERO": lambda v: math.copysign(math.floor(abs(v) + 0.5), v),
+        "TIE_TO_EVEN": round,
+    }
+    for x, want in TRUNCATED:
+        y = _evaluate(plan, cast["input"], (x,))
+        assert {name: int(r(y)) for name, r in modes.items()} == dict.fromkeys(modes, want), x
+
+
+def test_st6_annotate_ships_the_assumption() -> None:
+    m = read(_cast_report().to_substrait(shims="annotate")).manifest
+    [found] = [a for a in m["assumptions"] if a["option"] == "float_to_int"]
+    assert (found["gap"], found["assumes"]) == ("ST-6", ["TRUNCATE"])
+    assert not [s for s in m["shims"] if s["option"] == "float_to_int"]
+
+
+def test_st6_refuse_names_the_gap() -> None:
+    with pytest.raises(ExportError, match=re.escape("(ST-6, upstream/bugs/ST-6.json)")):
+        _cast_report().to_substrait(shims="refuse")
+
+
+def test_st6_apply_plan_truncates_on_duckdb() -> None:
+    """The plan `apply` writes, read back and run on DuckDB, whose own cast rounds
+    half to even (duckdb-R9), gives the reference's truncation."""
+    pytest.importorskip("duckdb")
+    report = _verify(CAST, F_BOUNDED)
+    back = sv.Report.from_substrait(report.to_substrait(shims="apply"))
+    con = connect()
+    put_table(con, "f", pa.table({"a": pa.array([x for x, _ in TRUNCATED], pa.float64())}))
+    for r in (report, back):
+        assert r.run(con, "duckdb").column("c").to_pylist() == [y for _, y in TRUNCATED]
+
+
+def test_st6_shim_passes_nan_and_infinities_to_the_cast() -> None:
+    """NaN and the infinities pass through the shim (`ceil(NaN)` is NaN) and reach the
+    cast, which throws (`failureBehavior`), as DuckDB's cast of NaN does."""
+    duckdb = pytest.importorskip("duckdb")
+    plan = read(_cast_report().to_substrait(shims="apply")).plan
+    [cast] = _casts(plan)
+    assert cast["failureBehavior"] == "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+    for x in (NAN, float("inf"), float("-inf")):
+        y = _evaluate(plan, cast["input"], (x,))
+        assert y != y if x != x else y == x
+        with pytest.raises(duckdb.Error):
+            duckdb.execute("SELECT CAST(?::DOUBLE AS BIGINT)", [y]).fetchall()
+
+
+# -- #2439: MIN and MAX read `list_null_order` of lists only ------------------------------
+
+MM = ibis.table({"i": "int64", "x": "float64", "s": "string"}, name="mm")
+
+
+def _reads_list_null_order(report: sv.Report) -> bool:
+    return any(d["option"] == "list_null_order" for d in report._depends or [])
+
+
+@pytest.mark.parametrize("col", ["i", "x", "s"])
+@pytest.mark.parametrize("fn", ["min", "max"])
+def test_min_and_max_of_a_value_that_is_no_list_depend_on_no_list_order(fn: str, col: str) -> None:
+    """#2439: `list_null_order` was met by every `MIN` and `MAX`, whatever the
+    argument's type; its scope is a list argument (`optionScope`, whose `#guard`s
+    in `Scopes.lean` cover a list's, since the model refuses `MIN` of a list)."""
+    assert not _reads_list_null_order(_verify(MM.aggregate(m=getattr(MM[col], fn)())))
+
+
+@pytest.mark.parametrize("col", ["i", "x"])
+@pytest.mark.parametrize("fn", ["min", "max"])
+def test_min_and_max_of_numbers_export(fn: str, col: str) -> None:
+    """The default export refused every `MIN` and `MAX` at `list_null_order` (#2439)."""
+    m = read(_verify(MM.aggregate(m=getattr(MM[col], fn)())).to_substrait()).manifest
+    rows = [r for k in ("shims", "assumptions", "unexercised", "up_to") for r in m[k]]
+    assert not [r for r in rows if r.get("option") == "list_null_order"], m
+
+
+def test_max_of_strings_has_no_substrait_impl() -> None:
+    """Substrait's YAMLs have no `min` or `max` of strings: the export refuses for that
+    reason alone, after #2439."""
+    with pytest.raises(ExportError, match=r"no impl of max in Substrait's YAMLs takes \(string\)"):
+        _verify(MM.aggregate(m=MM.s.max())).to_substrait()
