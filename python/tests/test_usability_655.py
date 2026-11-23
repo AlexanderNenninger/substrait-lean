@@ -214,7 +214,7 @@ def test_an_engine_refusal_names_the_users_function(con) -> None:
     with pytest.raises(
         RouteError,
         match=r"median\(\) or quantile\(\) .*runs on duckdb only: run it with engine='duckdb' "
-        r".*https://github.com/AlexanderNenninger/substrait-lean/issues/271",
+        r".*https://github.com/AlexanderNenninger/substrait-lean/issues/2540",
     ):
         report.run(con, "polars")
 

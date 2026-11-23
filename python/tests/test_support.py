@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from _repo import needs_repo
-from sverify import _support, black_box
+from sverify import _support, _unsupported, black_box
 from sverify.sql import Unsupported
 
 FUNCTIONS_LEAN = (
@@ -53,7 +53,8 @@ def test_duckdb_only(name: str, dialect: str) -> None:
     with pytest.raises(
         Unsupported,
         match=f"^{label} runs on duckdb only: run it with engine='duckdb' "
-        f"\\({dialect} does not run it yet; see #271, https://github.com/.*/issues/271\\)$",
+        f"\\({dialect} does not run it yet; "
+        f"{re.escape(_unsupported.not_yet(dialect))}\\)$",
     ):
         _support.check(plan(name, "measure"), dialect, Unsupported)
     _support.check(plan(name, "measure"), "duckdb", Unsupported)
@@ -64,12 +65,12 @@ def test_messages() -> None:
     assert _support.refusal(bb, "spark") == black_box.refusal(bb, "spark")
     assert _support.refusal("sverify_pair", "spark").startswith(
         "covariance and correlation (Ibis cov, corr) runs on duckdb only: "
-        "run it with engine='duckdb' (spark does not run it yet; see #271, https://"
+        "run it with engine='duckdb' (spark does not run it yet; see #2540, https://"
     )
     assert _support.refusal("sverify_raise", "snowflake").endswith(
         ": Snowflake's SQL of the date guards grows past what it runs: a date from "
         "columns writes 208 MB of nested CASEs; run it with engine='duckdb' "
-        "(see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+        "(Snowflake is out of tree (private profile))"
     )
 
 

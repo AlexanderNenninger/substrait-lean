@@ -1,1 +1,1 @@
--- Unsupported: the snowflake writer does not run UPPER on non-literal text yet: Snowflake's case mapping is recorded privately (D51): run it with engine='duckdb' (see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)
+-- Unsupported: the snowflake writer does not run UPPER on non-literal text yet: Snowflake's case mapping is recorded privately (D51): run it with engine='duckdb' (Snowflake is out of tree (private profile))

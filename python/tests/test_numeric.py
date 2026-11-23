@@ -389,7 +389,7 @@ def test_try_cast_is_no_error_and_cast_is():
     con = connect()
     con.create("t", TC.schema(), [(1.5, 1)])
     plan = written_plan(to_substrait_json(try_casts(TC)))
-    with pytest.raises(Exception, match="see #271"):
+    with pytest.raises(Exception, match="see #2540"):
         run_plan(con, plan, "polars")
     with pytest.raises(Exception, match="TRY_CAST to DECIMAL"):
         written_plan(to_substrait_json(TC.select(d=TC.f.try_cast("decimal(10, 2)"))))

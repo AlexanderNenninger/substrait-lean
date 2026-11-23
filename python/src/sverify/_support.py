@@ -16,8 +16,9 @@ from typing import Any
 from sverify import _plan_read, black_box
 from sverify._unsupported import (  # noqa: F401  (re-exported)
     DUCKDB_ONLY,
-    ISSUE_271,
+    ISSUE_2540,
     MIN_MOD_GUARD,
+    not_yet,
 )
 
 
@@ -130,14 +131,16 @@ def refusal(name: str, engine: str, window: bool = False) -> str:
     if not runs:
         # No installed engine runs it. DuckDB is a base dependency, so it refuses too.
         why = f"{reason[0]}; " if reason else ""
-        issue = reason[1] if reason else ISSUE_271
+        issue = reason[1] if reason else not_yet(engine)
         return f"{label}: {why}no installed engine runs it; rewrite the step ({issue})"
     exit_ = f"run it with engine={runs[0]!r}"
     if reason:
         why, issue = reason
         return f"{label}: {why}; {exit_} ({issue})"
     where = " and ".join(runs)
-    return f"{label} runs on {where} only: {exit_} ({engine} does not run it yet; {ISSUE_271})"
+    return (
+        f"{label} runs on {where} only: {exit_} ({engine} does not run it yet; {not_yet(engine)})"
+    )
 
 
 #: The nodes that call a function by its anchor.
@@ -165,7 +168,7 @@ def check(plan: Any, engine: str, err: type[Exception] = ValueError) -> None:
                             runs = " and ".join(sorted(guard))
                             raise err(
                                 f"{_guard_text(call)} runs on {runs} only: {engine} has "
-                                f"no way to raise its guard ({ISSUE_271})"
+                                f"no way to raise its guard ({not_yet(engine)})"
                             )
                     elif name is not None and not ok(name, engine):
                         raise err(refusal(_plan_read.base_name(name), engine, window))
