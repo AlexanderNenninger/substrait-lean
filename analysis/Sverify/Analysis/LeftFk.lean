@@ -448,4 +448,37 @@ theorem contract_sound_all_fk {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
 
 end Knowledge
 
+
+/-! ## What the report says of it
+
+Untrusted: the report's account of which left joins the analysis read as inner
+joins, and which would be if a foreign key were declared. -/
+
+/-- The foreign key a left join `a ⟕ b ON on` would need: the table and column
+the left key comes from, and the table and column the right side keeps every
+value of. -/
+def Rel.fkShape (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (T : WindowKeys) (a b : Rel) (on : Expr) : Option (String × Nat × String × Nat) :=
+  match eqPair (a.arity cat) on with
+  | some (i, j) => match a.originS cat i, b.cover cat j with
+    | some (t, c), some (s, p) =>
+      if ((a.aeval cat A F T).getD i AVal.top).null then none else some (t, c, s, p)
+    | _, _ => none
+  | none => none
+
+/-- Every left join of the plan with the foreign key it needs, and whether `R`
+declares it. -/
+def Rel.fkJoins (cat : Catalog) (A : String → List AVal) (F : String → List Fact)
+    (T : WindowKeys) (R : ForeignKeys) : Rel → List ((String × Nat × String × Nat) × Bool)
+  | .read _ | .values _ _ => []
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _
+  | .distinct r | .aggregate r _ _ | .unnest r _ => r.fkJoins cat A F T R
+  | .cross a b | .unionAll a b | .semi a b _ _ | .join a b .inner _ =>
+      a.fkJoins cat A F T R ++ b.fkJoins cat A F T R
+  | .join a b .left on =>
+      a.fkJoins cat A F T R ++ b.fkJoins cat A F T R ++
+        (match Rel.fkShape cat A F T a b on with
+         | some (t, c, s, p) => [((t, c, s, p), (R t).contains (c, s, p))]
+         | none => [])
+
 end Substrait

@@ -657,7 +657,7 @@ theorem Request.issuesIn_sound (R : Request) {data : Catalog} (hD : DataMeets R 
 what `DataMeets` asks. -/
 theorem DataMeets.withRoot {R : Request} {data : Catalog} (hD : DataMeets R data) (s : Rel) :
     DataMeets (R.withRoot s) data :=
-  ⟨hD.wf, hD.arity, hD.schemas, hD.pre, hD.keys, hD.ranges, hD.caps⟩
+  ⟨hD.wf, hD.arity, hD.schemas, hD.pre, hD.keys, hD.ranges, hD.caps, hD.fks⟩
 
 /-- **DuckDB's side condition for the plan to run, from the report**: under
 the reference, where the transformation is guard-free, DuckDB's lowered plan
