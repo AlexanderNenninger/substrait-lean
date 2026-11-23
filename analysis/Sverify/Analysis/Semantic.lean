@@ -169,7 +169,13 @@ def Rel.origin (cat : Catalog) : Rel → Nat → Option (String × Nat)
 /-- A table column whose non-NULL values all occur in column `j`. -/
 def Rel.cover (cat : Catalog) : Rel → Nat → Option (String × Nat)
   | .read t, j => some (t, j)
-  | .project r _, j => if j < r.arity cat then r.cover cat j else none
+  | .project r es, j =>
+      if j < r.arity cat then r.cover cat j
+      -- A computed column that is a plain field (the checker's guards copy
+      -- the key through `PROJECT`).
+      else match es[j - r.arity cat]? with
+        | some (.field j') => r.cover cat j'
+        | _ => none
   | .emit r m, j => m[j]?.bind (r.cover cat)
   | .orderBy r _, j | .distinct r, j => r.cover cat j
   -- A group key column: every value of the input column is a group.
@@ -617,13 +623,31 @@ theorem Rel.cover_sound {cat : Catalog} (hcat : cat.WF) : ∀ {r : Rel}, r.WF ca
       simp only [cover, Option.some.injEq, Prod.mk.injEq] at h
       obtain ⟨rfl, rfl⟩ := h; exact ⟨y, hy, rfl⟩
   | .project r es, hwf => fun h y hy hn => by
+      rename_i j _ _
       simp only [cover] at h
       split at h
       · rename_i hj
         obtain ⟨z, hz, he⟩ := cover_sound hcat hwf.1 h y hy hn
         refine ⟨_, List.mem_map.mpr ⟨z, hz, rfl⟩, ?_⟩
         rw [getD_append_left' (by rw [eval_arity hcat hwf.1 z hz]; exact hj), he]
-      · simp at h
+      · rename_i hj
+        cases hg : es[j - r.arity cat]? with
+        | none => simp [hg] at h
+        | some e =>
+          cases e with
+          | field j' =>
+            simp only [hg] at h
+            obtain ⟨z, hz, he⟩ := cover_sound hcat hwf.1 h y hy hn
+            refine ⟨_, List.mem_map.mpr ⟨z, hz, rfl⟩, ?_⟩
+            obtain ⟨d, rfl⟩ : ∃ d, j = z.length + d := ⟨j - z.length, by
+              have := eval_arity hcat hwf.1 z hz; omega⟩
+            have hl := eval_arity hcat hwf.1 z hz
+            rw [← hl, Nat.add_sub_cancel_left] at hg
+            rw [getD_append_right']
+            simp only [List.getD_eq_getElem?_getD, List.getElem?_map, hg, Option.map_some,
+              Option.getD_some, Expr.eval] at he ⊢
+            exact he
+          | _ => simp [hg] at h
   | .emit r m, hwf => fun h y hy hn => by
       rename_i j _ _
       simp only [cover] at h

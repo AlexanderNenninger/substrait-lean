@@ -4,6 +4,12 @@
 # assumption shows up as a dbt failure in the record.
 version: 2
 
+# `dbt_utils.accepted_range` bounds the payments: a sum of doubles is only
+# known to have a value where its terms are known to be finite.
+packages:
+  - package: dbt-labs/dbt_utils
+    version: 1.3.0
+
 seeds:
   - name: raw_customers
     columns:
@@ -36,7 +42,11 @@ seeds:
               to: ref('raw_orders')
               field: id
       - name: amount
-        tests: [not_null]
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100000000
       - name: payment_method
         tests:
           - accepted_values:
@@ -62,4 +72,8 @@ models:
   - name: stg_payments
     columns:
       - name: amount
-        tests: [not_null]
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1000000

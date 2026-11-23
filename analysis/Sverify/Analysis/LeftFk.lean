@@ -162,7 +162,23 @@ theorem Rel.cover_sound_all {cat : Catalog} (hcat : cat.WF) :
         obtain ⟨z, hz, he⟩ := cover_sound_all hcat hwf.1 h hi y hy hn
         refine ⟨_, List.mem_map.mpr ⟨z, hz, rfl⟩, ?_⟩
         rw [getD_append_left' (by rw [Rel.orderAllowed_arity hcat hwf.1 hi z hz]; exact hj), he]
-      · simp at h
+      · rename_i hj
+        cases hg : es[j - r.arity cat]? with
+        | none => simp [hg] at h
+        | some e =>
+          cases e with
+          | field j' =>
+            simp only [hg] at h
+            obtain ⟨z, hz, he⟩ := cover_sound_all hcat hwf.1 h hi y hy hn
+            refine ⟨_, List.mem_map.mpr ⟨z, hz, rfl⟩, ?_⟩
+            have hl := Rel.orderAllowed_arity hcat hwf.1 hi z hz
+            obtain ⟨d, rfl⟩ : ∃ d, j = z.length + d := ⟨j - z.length, by omega⟩
+            rw [← hl, Nat.add_sub_cancel_left] at hg
+            rw [getD_append_right']
+            simp only [List.getD_eq_getElem?_getD, List.getElem?_map, hg, Option.map_some,
+              Option.getD_some, Expr.eval] at he ⊢
+            exact he
+          | _ => simp [hg] at h
   | .emit r m, hwf => fun h out ⟨i, hi, hout⟩ y hy hn => by
       subst hout
       rename_i j _ _ _
