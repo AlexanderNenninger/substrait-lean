@@ -113,8 +113,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -147,8 +146,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -237,7 +235,7 @@
       },
       "polars": {
         "causes": [
-          "robust only by the engine's facts (#1045)"
+          "translation tested (no row for the options; #271)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -267,11 +265,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "robust only by the engine's facts (#1045)"
-        ],
         "class": "exact",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -295,11 +290,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "robust only by the engine's facts (#1045)"
-        ],
         "class": "exact",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -323,11 +315,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "robust only by the engine's facts (#1045)"
-        ],
         "class": "exact",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -353,7 +342,7 @@
       },
       "polars": {
         "causes": [
-          "robust only by the engine's facts (#1045)"
+          "translation tested (no row for the options; #271)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -418,7 +407,6 @@
       },
       "polars": {
         "causes": [
-          "robust only by the engine's facts (#1045)",
           "row tested: cmp's nan_equality (#271)",
           "row tested: cmp's nan_order (#271)"
         ],
@@ -531,7 +519,6 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
           "row tested: cmp's nan_equality (#271)",
           "row tested: cmp's nan_order (#271)"
         ],
@@ -568,8 +555,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -701,7 +687,6 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
           "row tested: cmp's nan_equality (#271)",
           "row tested: cmp's nan_order (#271)"
         ],
@@ -792,7 +777,6 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
           "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "shim",
@@ -847,11 +831,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "robust only by the engine's facts (#1045)"
-        ],
         "class": "observed",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -880,8 +861,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -918,7 +898,6 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
           "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "shim",
@@ -953,8 +932,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1149,8 +1127,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1318,7 +1295,6 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
           "row tested: cmp's nan_equality (#271)",
           "row tested: cmp's nan_order (#271)"
         ],
@@ -1399,8 +1375,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"

@@ -1016,7 +1016,7 @@ Consequences:
 - `Rel.AllowedP` only narrows. `Rel.allowedP_reference`, `Rel.AllowedP_mono`
   and `Rel.AllowedP_transfer` keep their statements.
 - The engines' functions show each of their deviations in an option's scope
-  (`Profile.duckdb_withinOk`, `Polars.written_within`). DuckDB's
+  (`Profile.duckdb_withinOk`, `Polars.impl_within`). DuckDB's
   `fmod(x, 0)` is NaN under `nan_creation`, since its table gives `fp.mod`
   no other `on_division_by_zero`; Polars's NaN for `power` is a domain
   error's (`on_domain_error`), since `power` has no `nan_creation`.
