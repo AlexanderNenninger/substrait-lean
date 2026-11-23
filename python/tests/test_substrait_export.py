@@ -820,6 +820,10 @@ def test_st8_holds_or_refuses_by_the_decimal_calls() -> None:
     typer, b = _typed(d.select(u=_.d.cast("decimal(12,4)")))
     typer.casts = [(cast, None) for cast, _t in typer.casts]  # pyrefly: ignore
     assert st8(typer, b) is None
+    # A cast of a double to a decimal: which value is rounded is open too (ruling 278).
+    f = ibis.table({"x": "float64"}, name="f")
+    typer, b = _typed(f.select(c=_.x.cast("decimal(12,2)")), {"f": [_.x.abs() < 1000]})
+    assert st8(typer, b) is None
 
 
 # -- ST-6: a cast of a double to an integer (#2438) ------------------------------------
@@ -1052,3 +1056,45 @@ def test_st4_refuses_a_double_max_without_nan() -> None:
         report.to_substrait(shims="apply")
     m = read(report.to_substrait(shims="annotate")).manifest
     assert {a["option"] for a in m["assumptions"]} >= {"nan_order"}
+
+
+# -- ST-8: a cast of a double to a decimal (ruling 278, #2523) ---------------------------
+
+FD = ibis.table({"x": "float64"}, name="f")
+
+
+@functools.cache
+def _double_to_decimal_report() -> sv.Report:
+    """#2523's repro: a cast of a double to a decimal, which Substrait leaves open
+    in which value it rounds and how (ST-8); the export called it exact."""
+    return _verify(FD.select(c=_.x.cast("decimal(10,2)")), {"f": [_.x.abs() < 1000]})
+
+
+def test_st8_apply_refuses_a_double_to_decimal() -> None:
+    """ST-8 rewrites nothing, and no rewrite fixes which value is rounded."""
+    with pytest.raises(
+        ExportError,
+        match=r"a cast of a double to a decimal leaves open which value is rounded and how "
+        r"\(ST-8, upstream/bugs/ST-8\.json\); no shim writes",
+    ):
+        _double_to_decimal_report().to_substrait(shims="apply")
+
+
+def test_st8_annotate_ships_the_double_product_assumption() -> None:
+    m = read(_double_to_decimal_report().to_substrait(shims="annotate")).manifest
+    assert m["class"] == "assumed"
+    [found] = [a for a in m["assumptions"] if a["option"] == "decimal_rescale"]
+    assert (found["group"], found["gap"], found["assumes"]) == (
+        "cast.dec",
+        "ST-8",
+        ["TIE_AWAY_FROM_ZERO"],
+    )
+    assert found["text"] == (
+        "the consumer gives TIE_AWAY_FROM_ZERO at cast.dec's decimal_rescale, and a cast of a "
+        "double to a decimal of scale s rounds the double product x * 10^s half away from zero"
+    )
+
+
+def test_st8_refuse_names_the_gap_of_a_double_to_decimal() -> None:
+    with pytest.raises(ExportError, match=re.escape("(ST-8, upstream/bugs/ST-8.json)")):
+        _double_to_decimal_report().to_substrait(shims="refuse")
