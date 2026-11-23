@@ -474,15 +474,31 @@ end Example
 
 -- Every function the generated lowering writes natively reads the reference's
 -- behaviour from the table at each of its options (`nativeOffReference`, ruling
--- 278's addendum), but at the groups and options listed, which wait for a
--- ruling: there `Profile.polars` states the reference's function, which the
--- translation writes around Polars's own choice.
+-- 278's addendum), but at the pending groups and options listed. Ruling 282 (F282)
+-- accepts the list: it only shrinks (the guard fails on a new entry and on a fixed
+-- one), and a pending function stays on the hand-written translation path until
+-- its entry is resolved. Each entry's class is ruling 282's: C1 a scope artefact,
+-- C2 absorbed by an `upTo canon` observation, C3 absorbed by the plan's bound, C4
+-- likely real.
 #guard letI := Boxes.Ambient.none
   nativeOffIs Profile.polars.table Lowering.polars.nativeUn Lowering.polars.nativeBin
-    [("cmp", "zero_sign"), ("fp.neg", "zero_sign"), ("fp.arith", "zero_sign"),
-     ("fp.div", "zero_sign"), ("fp.pow", "zero_sign"), ("fp.elem", "zero_sign"),
-     ("fp.atan2", "zero_sign"), ("dec.arith", "decimal_rescale"), ("fp.div", "rounding"),
-     ("fp.round", "rounding"), ("int.shift", "shift_range"), ("str.concat", "null_handling"),
-     ("str.match", "string_positions"), ("str.sub", "string_positions")]
+    [-- C1 for `not`, `and`, `or`, `isNull`, which read it only through their group;
+     -- C2 for `=`, `<`, `greatest`, `least` of doubles.
+     ("cmp", "zero_sign"),
+     -- C2: functions of doubles, whose zero the observation reads through canon.
+     ("fp.neg", "zero_sign"), ("fp.arith", "zero_sign"), ("fp.div", "zero_sign"),
+     ("fp.pow", "zero_sign"), ("fp.elem", "zero_sign"), ("fp.atan2", "zero_sign"),
+     -- C3: `/` by a literal as `x · (1/c)`, carried in the plan's ε.
+     ("fp.div", "rounding"),
+     -- C4: `round(x, d)` half to even.
+     ("fp.round", "rounding"),
+     -- C4: zero-based characters and bytes.
+     ("str.match", "string_positions"), ("str.sub", "string_positions"),
+     -- C4: a result past 38 digits that rescales.
+     ("dec.arith", "decimal_rescale"),
+     -- C4: a loose row whose first behaviour is `ERROR`.
+     ("int.shift", "shift_range"),
+     -- C4: a loose row whose first behaviour is `IGNORE_NULLS`.
+     ("str.concat", "null_handling")]
 
 end Substrait

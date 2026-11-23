@@ -264,9 +264,15 @@ end Example
 
 -- Every function the generated lowering writes natively reads the reference's
 -- behaviour from the table at each of its options (`nativeOffReference`, ruling
--- 278's addendum), but `concat`'s `null_handling`, which waits for a ruling.
+-- 278's addendum), but at the pending groups and options listed. Ruling 282 (F282)
+-- accepts the list: it only shrinks (the guard fails on a new entry and on a fixed
+-- one), and a pending function stays on the hand-written translation path until
+-- its entry is resolved. Each entry's class is ruling 282's: C1 a scope artefact,
+-- C2 absorbed by an `upTo canon` observation, C3 absorbed by the plan's bound, C4
+-- likely real.
 #guard letI := Boxes.Ambient.none
   nativeOffIs Profile.spark.table Lowering.spark.nativeUn Lowering.spark.nativeBin
-    [("str.concat", "null_handling")]
+    [-- C4: a loose row whose first behaviour is `IGNORE_NULLS`.
+     ("str.concat", "null_handling")]
 
 end Substrait
