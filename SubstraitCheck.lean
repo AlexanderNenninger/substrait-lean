@@ -652,9 +652,16 @@ def commands (entries : List EngineEntry) : List (Flag (Unit → IO UInt32)) :=
        for (c, how, _) in polarsOn.coverage do
          IO.println s!"{c}\t{how}"
        return 0 },
+   { flag := "--lowering-coverage-spark", group := .tables,
+     help := "how each construct is lowered to Spark (#271), one per line",
+     run := fun _ => do
+       for (c, how, _) in sparkOn.coverage do
+         IO.println s!"{c}\t{how}"
+       return 0 },
    prints "--lowering-table" .tables
-     "the DuckDB lowering's templates, and Polars's under \"polars\", as JSON (#241, #271)" fun _ =>
-     (Lowering.duckdbTableJson.setObjVal! "polars" Lowering.polarsTableJson).compress ++ "\n",
+     "the DuckDB lowering's templates, Polars's under \"polars\" and Spark's under \"spark\", as JSON (#241, #271)" fun _ =>
+     ((Lowering.duckdbTableJson.setObjVal! "polars" Lowering.polarsTableJson).setObjVal! "spark"
+       Lowering.sparkTableJson).compress ++ "\n",
    prints "--lowering-cache" .tables "a new LoweringCache.lean from this build's coverage (#242)"
      fun _ => loweringCacheSource,
    prints "--lift-table" .tables "what each DuckDB SQL function lifts to, as JSON (#268)" fun _ =>
