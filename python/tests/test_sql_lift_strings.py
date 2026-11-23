@@ -119,6 +119,7 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT regexp_replace(customer, 'a', 'b', 'i') FROM orders", "only 'g'"),
         ("SELECT lpad(customer, qty, 'x') FROM orders", "lpad needs a constant int"),
         ("SELECT rpad(customer, 3, '') FROM orders", "empty fill"),
+        ("SELECT lpad(customer, 1100000000, 'x') FROM orders", "more than 1048576"),
         ("SELECT split_part(customer, ',', qty) FROM orders", "constant int"),
         ("SELECT right(customer, qty * 1.5) FROM orders", "right by a"),
     ],
