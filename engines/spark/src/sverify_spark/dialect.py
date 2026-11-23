@@ -85,6 +85,7 @@ from sverify.sql.core import (
     Lst,
     Unsupported,
     _timestamp_text,
+    raised_issue,
 )
 
 #: Session settings the SQL relies on; `SparkSession.builder.config` each.
@@ -215,20 +216,55 @@ class SparkDialect(Dialect):
         reps = f"array_repeat({a}, CAST({n} AS INT))"
         return f"aggregate({reps}, {self.int_lit(1)}, (acc, e) -> acc * e)"
 
+    # The generated, proved lowering (`engines/spark/Sverify/Spark/Lowering.lean`, #271)
+
+    def lowered(
+        self, fn: str, args: list[str], kind: Kind, consts: Sequence[float | int | None] = ()
+    ) -> str | None:
+        from sverify.sql import lowering
+
+        return lowering.render(
+            fn,
+            args,
+            lambda message, dep: self.raise_(message, dep, kind, raised_issue(message)),
+            self.float_lit,
+            self.int_lit,
+            self.guards,
+            consts,
+            engine="spark",
+            call=self._call,
+            date_lit=lambda days: f"date_from_unix_date({days})",
+        )
+
+    def _call(self, name: str, xs: list[str]) -> str | None:
+        """A call of a Spark template, as `Profile.spark` states Spark computes
+        it: `FLOOR` and `CEIL` give a `BIGINT`, which the template applies only
+        below 2⁵², so the cast back is exact."""
+        match name, xs:
+            case ("ffloor" | "Substrait.UnFn.fceil") as f, [x]:
+                return f"CAST({'FLOOR' if f == 'ffloor' else 'CEIL'}({x}) AS DOUBLE)"
+            case "Substrait.BinFn.dateAdd", [d, n]:
+                return f"date_add({d}, CAST({n} AS INT))"
+            case "Substrait.BinFn.dateDiff", [a, b]:
+                return f"CAST(datediff({a}, {b}) AS BIGINT)"
+            case str(b), [x, y] if b.startswith("bit:"):
+                return self.fn(b.removeprefix("bit:"), x, y)
+        return None
+
     # Doubles
 
-    def whole(self, fn: str, x: str) -> str:
-        """`fn` (FLOOR or CEIL, which return BIGINT) on a double. Doubles of
-        magnitude 2⁵² and more are whole already; NaN and ±inf stay."""
-        big = self.float_lit(2.0**52)
-        value = f"CAST({fn}({x}) AS DOUBLE)"
-        return f"(CASE WHEN isnan({x}) OR abs({x}) >= {big} THEN {x} ELSE {value} END)"
+    def _table(self, fn: str, args: list[str], kind: Kind) -> str:
+        """`fn` from Spark's table, which has an entry for it."""
+        low = self.lowered(fn, args, kind)
+        if low is None:
+            raise RuntimeError(f"Spark's lowering table has no entry for {fn}")
+        return low
 
     def float_floor(self, x: str) -> str:
-        return self.whole("FLOOR", x)
+        return self._table("ffloor", [x], "float")
 
     def float_ceil(self, x: str) -> str:
-        return self.whole("CEIL", x)
+        return self._table("Substrait.UnFn.fceil", [x], "float")
 
     def float_round(self, x: str) -> str:
         # Half away from zero on the shortest decimal of the double, which is
@@ -295,7 +331,7 @@ class SparkDialect(Dialect):
         return f"CAST(unix_date({d}) AS BIGINT)"
 
     def date_add_days(self, d: str, n: str) -> str:
-        return f"date_add({d}, CAST({n} AS INT))"
+        return self._table("Substrait.BinFn.dateAdd", [d, n], "date")
 
     def add_months(self, x: str, months: int, kind: Kind) -> str:
         # `add_months` clamps to the end of a shorter month, as

@@ -669,7 +669,7 @@ theorem inv_reachable {s : World} (h : Reachable s) : Inv s := by
 
 /-! ## What a write reads, and the order of the commits
 
-`ReadIsHead`, `Monotone` and `NoRewriteUnchanged` of `models/refresh/Refresh.tla`,
+`ReadIsHead`, `Monotone` and `NoRewriteUnchanged` of the TLA+ model,
 for a source that cannot restore. While the log still has the length a write
 read, it is the log the write read: its change was computed from the newest
 commit of the node, and its state is above that commit's, of other contents. -/
@@ -1342,6 +1342,71 @@ theorem fresh {s : World} (N : Nat) (hq : Quiescent s)
         rcases hq j with h | ⟨h, hp⟩
         · exact Or.inl h
         · exact Or.inr (Or.inl ⟨h, hp⟩)
+
+
+/-! ## Witnesses
+
+The safety theorems hold of every reachable state; these reachable states show
+that the states they are about exist, as in `Refresh.lean`: a change merged on
+the writer's own commit, a crashed process's write landing late, a write that
+raised after its commit landed, and a writer that lost a race and replaces. -/
+
+/-- One writer writes the node, the source changes, and the writer merges the
+change on its own commit: the table holds the second contents. -/
+theorem merge_reachable : ∃ s, Reachable s ∧ s.log.length = 2 ∧ s.tbl = .rows 0 1 := by
+  have r1 : Reachable (({} : World).start 0) := .step .init (.start _ 0 rfl)
+  have r2 := r1.step (.refresh _ 0 rfl)
+  have r3 := r2.step (.prepare _ 0 rfl)
+  have r4 := r3.step (.land _ 0 ⟨⟨0, 1, 0⟩, .replace, .none, 0⟩ rfl rfl)
+  have r5 := r4.step (.sourceChanges _)
+  have r6 := r5.step (.refresh _ 0 rfl)
+  have r7 := r6.step (.prepare _ 0 rfl)
+  have r8 := r7.step (.land _ 0 ⟨⟨0, 2, 1⟩, .merge, .rows 0 0, 1⟩ rfl rfl)
+  exact ⟨_, r8, rfl, rfl⟩
+
+/-- A writer crashes with its write in flight; the write lands afterwards,
+while a new process of the same slot runs. -/
+theorem zombie_reachable : ∃ s, Reachable s ∧ s.log.length = 1 ∧ s.zombies = [] ∧
+    (s.ws 0).phase = .idle := by
+  have r1 : Reachable (({} : World).start 0) := .step .init (.start _ 0 rfl)
+  have r2 := r1.step (.refresh _ 0 rfl)
+  have r3 := r2.step (.prepare _ 0 rfl)
+  have r4 := r3.step (.crash _ 0 (by decide))
+  have r5 := r4.step (.start _ 0 rfl)
+  have r6 := r5.step (.zombieLands _ ⟨⟨0, 1, 0⟩, .replace, .none, 0⟩ (by exact .head _) rfl)
+  exact ⟨_, r6, rfl, rfl, rfl⟩
+
+/-- A writer's write landed and raised before it heard: its `pend` stays, and
+the next refresh starts from it. -/
+theorem lost_ack_reachable : ∃ s, Reachable s ∧ ∃ i, (s.ws i).pend.isSome ∧
+    (s.ws i).phase = .ready := by
+  have r1 : Reachable (({} : World).start 0) := .step .init (.start _ 0 rfl)
+  have r2 := r1.step (.refresh _ 0 rfl)
+  have r3 := r2.step (.prepare _ 0 rfl)
+  have r4 := r3.step (.landLostAck _ 0 ⟨⟨0, 1, 0⟩, .replace, .none, 0⟩ rfl rfl)
+  have r5 := r4.step (.refresh _ 0 rfl)
+  exact ⟨_, r5, 0, rfl, rfl⟩
+
+/-- A writer that lost the race to the node's own commit rewrites the table
+on top of it: two processes of one plan read the empty sink, one commits, the
+other conflicts, and after a source change it replaces the first one's state.
+The state is one step short of the TLA+ model's: the replace is in flight with
+`land` enabled, and the log carries no mode. -/
+theorem conflict_replace_reachable : ∃ s o, Reachable s ∧ (∃ i, (s.ws i).phase = .writing o) ∧
+    o.mode = .replace ∧ s.log.length = o.head ∧
+    ∃ r, record s.log = some r ∧ r.plan = o.key.plan := by
+  have a1 : Reachable (({} : World).start 0) := .step .init (.start _ 0 rfl)
+  have a2 := a1.step (.start _ 1 rfl)
+  have a3 := a2.step (.refresh _ 0 rfl)
+  have a4 := a3.step (.refresh _ 1 rfl)
+  have a5 := a4.step (.prepare _ 0 rfl)
+  have a6 := a5.step (.prepare _ 1 rfl)
+  have a7 := a6.step (.land _ 0 ⟨⟨0, 1, 0⟩, .replace, .none, 0⟩ rfl rfl)
+  have a8 := a7.step (.conflict _ 1 ⟨⟨0, 1, 0⟩, .replace, .none, 0⟩ rfl (by decide))
+  have a9 := a8.step (.sourceChanges _)
+  have a10 := a9.step (.refresh _ 1 rfl)
+  have a11 := a10.step (.prepare _ 1 rfl)
+  exact ⟨_, ⟨⟨0, 2, 1⟩, .replace, .none, 1⟩, a11, ⟨1, rfl⟩, rfl, rfl, ⟨0, 1, 0⟩, rfl, rfl⟩
 
 end RefreshSnap
 

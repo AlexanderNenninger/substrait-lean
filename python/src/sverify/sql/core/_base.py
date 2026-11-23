@@ -78,6 +78,8 @@ _RAISED: dict[str, GuardIssue] = {
     "domain error": "domain",
     "negative exponent": "negExponent",
     "integer overflow": "wraps",
+    # A date past the reference's calendar (`rangeIssue`, Spark's `date_add` template).
+    "overflow": "overflow",
 }
 
 

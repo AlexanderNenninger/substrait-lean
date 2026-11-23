@@ -29,8 +29,8 @@ Where Spark differs, by its facts:
   reference raises outside `[0, 64)`.
 * `power(±1, ±∞)` and `power(1, NaN)` are NaN (`StrictMath.pow`), where C's
   `pow` gives `1` (`pow_one_inf`, D40); `floor` and `ceil` of NaN are `0`, a
-  `BIGINT` (`float_to_int`). The writer refuses double `power` and passes NaN
-  through `floor` and `ceil` (`Profile.sparkWritten`).
+  `BIGINT` (`float_to_int`). The lowering refuses double `power` and passes NaN
+  through `floor` and `ceil` (`Lowering.spark_refuses`, `Spark.ffloorEntry`).
 
 * `atan2` adds `0.0` to its arguments, so `-0.0` is `0.0`: `atan2(-0.0, -1)`
   is `π`, and `atan2(0, 0)` is `0` (`zero_sign`, `on_domain_error`). The
@@ -129,28 +129,6 @@ against the reference (`sparkBin`, `sparkUn`). -/
 def Profile.spark : Profile where
   un f v := (sparkUn f v).getD (Profile.reference.un f v)
   bin f v w := (sparkBin f v w).getD (Profile.reference.bin f v w)
-
-/-- `floor` and `ceil`, which the writer computes as the reference does
-(`sverify_spark.dialect`: NaN, `±∞` and doubles of `2⁵²` and more pass
-through, the rest through `BIGINT` and back). -/
-def UnFn.sparkWritten : UnFn → Bool
-  | .ffloor | .fceil => true
-  | _ => false
-
-/-- `power` and `atan2` of doubles, which the writer refuses (Spark's are
-Java's, within an ulp of C's, spark-elem-rounding): a plan with them does not
-run on Spark. -/
-def BinFn.sparkWritten : BinFn → Bool
-  | .fpow | .fatan2 => true
-  | _ => false
-
-/-- Spark's profile with the functions of `UnFn.sparkWritten` and
-`BinFn.sparkWritten` as the writer writes them: the reference's. What a plan
-written for Spark computes there (`Engine.spark`). -/
-def Profile.sparkWritten : Profile where
-  un f := if f.sparkWritten then Profile.reference.un f else Profile.spark.un f
-  bin f := if f.sparkWritten then Profile.reference.bin f else Profile.spark.bin f
-
 
 -- Spark adds `0.0` to `atan2`'s arguments: `atan2(-0.0, -1)` is `+π` there,
 -- `-π` in the reference (`atan2?`), and `atan2(-0.0, 1)` is `+0.0`.
