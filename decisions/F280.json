@@ -1,0 +1,20 @@
+{
+  "id": "F280",
+  "date": "2026-11-23",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#1484's twelve boxes are rescoped as track B proposed, with their After 1.0 parts in #2527–#2532 and #2539. Box 9, the parser round trip, is a stated limit with no normaliser: `parse (write r) = r` is proved, the parser is trusted for meaning, and `docs/trusted-base.md` lists the rewrites it makes as it reads, each with the golden test that pins it.",
+  "issues": [
+    1484,
+    2527,
+    2528,
+    2529,
+    2530,
+    2531,
+    2532,
+    2539
+  ],
+  "source": "fable-ruling-280-1484-triage.md",
+  "note": "A syntactic normaliser for the parser's rewrites was declined: it would be a second trusted model of them and prove nothing new. The bridge after 1.0 is semantic, differential runs or a validator (boxes 5 and 6), so box 9 opens no issue of its own. Box 1 closes with #271 after Polars's and Spark's step 2, and F278's guard holds: Spark's `ftod` is not shipped native. Box 3's sentence names `epsilon_sound` as the missing theorem. Box 7's line goes in `docs/build-performance.md`. Boxes 2, 4, 5, 6, 8 and 10–12 are sentences and links as proposed. No D-number."
+}
