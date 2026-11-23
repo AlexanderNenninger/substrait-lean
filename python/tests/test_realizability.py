@@ -133,7 +133,7 @@ def test_every_row_names_real_facts(table):
 def test_shim_counts(table):
     """D9's measure: the shims per engine. A new one is a deliberate edit."""
     assert {k: len(e["shims"]) for k, e in table.items()} == {
-        "duckdb": 9,
+        "duckdb": 10,
         "polars": 15,
         "spark": 5,
     }
