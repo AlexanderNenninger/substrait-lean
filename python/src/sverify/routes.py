@@ -884,7 +884,7 @@ def _problem(engine: str, p: Mapping[str, Any], report: Report) -> str:
             "or drop the tolerance"
         )
         return f"{where}: {text}{cited}"
-    bounds = {b["kind"]: (float(b["value"]), bool(b["proved"])) for b in p["bounds"]}
+    bounds = {b["kind"]: (_up(b["value"]), bool(b["proved"])) for b in p["bounds"]}
     if code == "held":
         label = report.ensures[p["condition"]].label
         shown = ", ".join(f"{k}={v:g}" for k, (v, _) in bounds.items())

@@ -502,3 +502,18 @@ def test_a_double_printed_exactly_is_unchanged(x) -> None:
 
     assert routes._up(routes.Printed(str(Decimal(x)))) == x
     assert x <= routes._up(routes.Printed(repr(x))) <= math.nextafter(x, math.inf)
+
+
+def test_a_suggested_tolerance_meets_the_printed_bound(con) -> None:
+    """The tolerance a problem suggests is at or above the bound the checker printed,
+    also where the nearest double of that text lies below it (ruling 274)."""
+    import re
+    from decimal import Decimal
+
+    t = con.table("t")
+    report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-15))])
+    text = str(Decimal(2e-10) + Decimal("1e-30"))  # just above the double 2e-10
+    bound = {"kind": "rel", "value": routes.Printed(text), "proved": True}
+    p = {"code": "not_met", "column": "total", "group": "", "option": "o", "bounds": [bound]}
+    suggested = re.search(r"floats=sv\.within\(rel=([^)]*)\)", routes._problem("polars", p, report))
+    assert suggested and Decimal(float(suggested[1])) >= Decimal(text)
