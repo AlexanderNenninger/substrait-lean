@@ -1,0 +1,20 @@
+{
+  "id": "F279",
+  "date": "2026-11-23",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "A double `SUM` (and `AVG`) of a group with a non-NULL term is non-NULL, with no bound. The lowering's finish never returns NULL there, and the contract analysis lost that through its `CASE`, which is a precision loss, not a model fault. The finish reaches `aeval` by design, so the fix is one fact per guarded `fsum` and `max` pair, proved under `cat.Dbl` (F248, the D31 amendment) with no new validity predicate.",
+  "issues": [
+    2512,
+    2534
+  ],
+  "prs": [
+    2526
+  ],
+  "amended_by": [
+    "U-2026-11-23-dbt-gate-without-range"
+  ],
+  "source": "fable-ruling-279-2526-sum-nonnull.md",
+  "note": "No D-number: no profile or float-sum model changes, and `cat.Dbl` is already decided. A general correlation analysis and a second validity predicate (`DataMeets.valid`) were declined. The jaffle_shop measurement counts what a user declares: the relationship is the 1.0 rule (#2512), and a range on `payments.amount` was only a stopgap for this precision loss. Deriving validity for computed doubles such as `amount/100` (#2534) costs about 300 lines over 15 files, or a change to `AVal.Mem`, so it moved After 1.0, with the schema-carried flag as its shape and one lemma deriving `cat.Dbl`. #2526 landed with the range as a stopgap and both numbers recorded (22 of 38 with it, 17 without)."
+}
