@@ -15,10 +15,10 @@ Layer: the refresh protocol as a transition system. Axioms: `propext`,
 Look at two adjacent commits of the node in a sink's log, of one plan. The
 later one is of a later version of the source (durable source), or of a version
 not below the earlier one and of other contents (a source that cannot restore,
-which numbers its reads per process). A refresh whose source has not changed
-commits nothing, and a restarted process never writes a state the sink already
-holds. A commit right after another application's rows may write the same
-state again: it repairs the table, so only adjacent commits of the node count.
+which numbers its reads per process). So no two adjacent commits of the node
+under one plan are of the same state. A commit right after another
+application's rows may write the same state again: it repairs the table, so
+only adjacent commits of the node count.
 
 ## The statement, line by line
 
@@ -32,13 +32,17 @@ theorem Refresh.monotone {s : World} (h : Reachable s) : AdjOK s.log
 
 ## What it rules out
 
-- A needless write: a refresh that rewrites the state the sink has (#889).
-- A process of an old plan going back is not covered: a plan change starts a
-  new run of commits.
+- The same state committed twice in a row by the node under one plan.
 
 ## What it does not cover
 
-- Liveness. The theorem says commits are ordered, not that a refresh happens.
+- Liveness. A refresh may never happen; the theorem orders the commits that do.
+- A plan change: it starts a new run of commits, and the theorem says nothing
+  across plans.
+- That a refresh whose source has not changed commits nothing
+  (`Refresh.next_unchanged`), and that a restarted process resumes and does not
+  rewrite in full (`Refresh.no_needless_rewrite`, #889): these are lemmas of
+  their own about `next`.
 - Two plans alive at once (a rolling deploy) replace each other's state on
   every refresh until the old one stops; the states are right and the log grows
   by one full copy per refresh meanwhile.
