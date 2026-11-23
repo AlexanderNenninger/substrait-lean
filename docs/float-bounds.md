@@ -230,6 +230,13 @@ bound the checker proves on that column (`ε`, below). Three cases:
   postcondition reads the double. For a constant threshold, state a precondition
   that keeps the values away from it. For a threshold computed from the data,
   compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`.
+  The same holds for a projection that rounds, casts or compares such a double
+  (`floor`, `round`, a cast to an integer, a decimal or text, `=`, ruling 275,
+  [#1849](https://github.com/AlexanderNenninger/substrait-lean/issues/1849)):
+  `floor(x / 49.0)` is `0` on Polars, whose quotient by a constant lands one ulp
+  below `1`, and `CAST(SUM(x) AS BIGINT)` may round to another integer on an
+  engine that sums in another order. An engine where the double is exact runs
+  it, and `route="auto"` picks one.
 
 The notebook
 [05](../notebooks/05_pipelines_and_engines.py) ("Averages round") runs both.
