@@ -181,7 +181,7 @@ def Profile.spark.obs : ObsTable := [
   -- from zero (`SparkDialect.decimal_cast`); a decimal to a smaller scale is
   -- native, `ROUND_HALF_UP` (spark-decimal-arith).
   (some "cast.dec", "decimal_rescale", (ObsRow.shimmed "decimal_cast"
-    ["spark-double-to-decimal", "spark-decimal-arith"]).tracking 185),
+    ["spark-double-to-decimal", "spark-decimal-arith"]).tracking 2544),
   -- `-x` and `abs` round past 34 digits (SP-1); the writer's `0 - x` is exact
   -- where its type keeps the scale, and a type past 38 digits at a scale
   -- above 6, which Spark would round, is refused.
