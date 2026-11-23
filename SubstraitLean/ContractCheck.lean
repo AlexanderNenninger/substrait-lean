@@ -2125,12 +2125,12 @@ JSON (`Request.CheckOk.optimized`). -/
 theorem check_optimized_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
-    (hFK : R.foreignKeysOf.Hold data) {q : Rel} {log : List Rule}
+    {q : Rel} {log : List Rule}
     (hq : R.optimizedIn R.kenv = some (q, log)) : Same data T.root q := by
   have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   simp only [Request.optimizedIn, hT, Option.map_some, Option.some.injEq] at hq
   rw [← Rel.optimize_congr hD.arity] at hq
-  have := Rel.optimize_sound (use := fun _ => true) hD.wf hK.cols hK.facts hK.keys hFK
+  have := Rel.optimize_sound (use := fun _ => true) hD.wf hK.cols hK.facts hK.keys hD.fks
     (check_transform_wf hR hc hD hT)
   rw [hq] at this
   exact this

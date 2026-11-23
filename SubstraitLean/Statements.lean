@@ -165,11 +165,11 @@ meets the request and its declared foreign keys (`references`), which
 `check_inputs` checks with the other preconditions. -/
 theorem verified_holds_run_plan {input : Json} {R : Request} {rep : Report} {T : Plan} {k : Nat}
     {p : Post} (h : Verified input R rep T k p) (hclosed : rep.closed = true) {data : Catalog}
-    (hD : DataMeets R data) (hFK : R.foreignKeysOf.Hold data) {s : Rel}
+    (hD : DataMeets R data) {s : Rel}
     (hs : R.runPlanIn R.kenv = .ok s) {E : Engine} {side : Catalog → Rel → Prop}
     (hE : E.Sound side) {s' : Rel} (hl : E.lower s = some s') (hside : side data s) :
     p.HoldsOn (s'.eval data E.impl) := by
-  obtain ⟨hbag, -⟩ := check_run_plan_sound h.parsed h.checked hD h.transform hFK hs
+  obtain ⟨hbag, -⟩ := check_run_plan_sound h.parsed h.checked hD h.transform hs
   obtain ⟨out, hout, hp⟩ := hE.of_refinesBag hl hside hbag
   rw [check_closed h.parsed h.checked] at hclosed
   simp only [Request.closedIn, h.transform, Option.any_some] at hclosed
@@ -182,11 +182,11 @@ size hypothesis of the plan as written. The gate gives the plan to run what
 DuckDB's side condition needs (`run_plan_noRaise_duckdb`). -/
 theorem verified_holds_run_plan_duckdb {input : Json} {R : Request} {rep : Report} {T : Plan}
     {k : Nat} {p : Post} (h : Verified input R rep T k p) (hE : Verified.DuckDB rep R)
-    {data : Catalog} (hD : DataAssumed R data T) (hFK : R.foreignKeysOf.Hold data) {s : Rel}
+    {data : Catalog} (hD : DataAssumed R data T) {s : Rel}
     (hs : R.runPlanIn R.kenv = .ok s) :
     p.HoldsOn ((Lowering.duckdb.lowerRel s).eval data (Engine.duckdb {} rfl).impl) :=
-  verified_holds_run_plan h hE.1 hD.meets hFK hs Engine.duckdb_sound rfl
-    (run_plan_noRaise_duckdb h.parsed h.checked hD.meets h.transform hFK hs hD.rowsPer hD.small
+  verified_holds_run_plan h hE.1 hD.meets hs Engine.duckdb_sound rfl
+    (run_plan_noRaise_duckdb h.parsed h.checked hD.meets h.transform hs hD.rowsPer hD.small
       hE.2.1 hE.2.2.2)
 
 /-- **Polars's and Spark's side condition for the plan to run, from the
@@ -195,9 +195,9 @@ run (the `guard_free` gate), and it keeps the size hypothesis
 (`Rel.optimize_small`), which is what `Engine.GuardFreeSide` asks. -/
 theorem run_plan_guardFreeSide {input : Json} {R : Request} {rep : Report} {T : Plan}
     (h : Checked input R rep T) {data : Catalog} (hD : DataMeets R data)
-    (hFK : R.foreignKeysOf.Hold data) {s : Rel} (hs : R.runPlanIn R.kenv = .ok s)
+    {s : Rel} (hs : R.runPlanIn R.kenv = .ok s)
     (hsm : T.root.Small data) (hg : rep.guardFree = true) : Engine.GuardFreeSide data s := by
-  obtain ⟨-, -, hss, -, -, -, hgf⟩ := check_run_plan_sound h.parsed h.checked hD h.transform hFK hs
+  obtain ⟨-, -, hss, -, -, -, hgf⟩ := check_run_plan_sound h.parsed h.checked hD h.transform hs
   rw [(Request.check_ok (check_parse h.parsed h.checked)).guardFree] at hg
   exact Request.guardFreeSide (R := R.withRoot s) (T := { T with root := s }) (hD.withRoot s)
     (by simp [Request.withRoot, h.transform]) (hss hsm) (hgf hg)
@@ -208,21 +208,21 @@ declared foreign keys (`references`) and the assumptions of
 `verified_holds_polars`. Polars runs the plan to run guard-free by default. -/
 theorem verified_holds_run_plan_polars {input : Json} {R : Request} {rep : Report} {T : Plan}
     {k : Nat} {p : Post} (h : Verified input R rep T k p) (hE : Verified.GuardFree rep)
-    {data : Catalog} (hD : DataAssumed R data T) (hFK : R.foreignKeysOf.Hold data) {s : Rel}
+    {data : Catalog} (hD : DataAssumed R data T) {s : Rel}
     (hs : R.runPlanIn R.kenv = .ok s) {s' : Rel} (hr : Lowering.polars.lowerRel? s = .ok s') :
     p.HoldsOn (s'.eval data Engine.polars.impl) :=
-  verified_holds_run_plan h hE.1 hD.meets hFK hs Engine.polars_sound
+  verified_holds_run_plan h hE.1 hD.meets hs Engine.polars_sound
     (by simp [Engine.polars, hr, Except.toOption])
-    (run_plan_guardFreeSide h.toChecked hD.meets hFK hs hD.small hE.2)
+    (run_plan_guardFreeSide h.toChecked hD.meets hs hD.small hE.2)
 
 /-- **A verified postcondition holds on Spark's model of the plan to run**
 (#2007), as `verified_holds_run_plan_polars`. -/
 theorem verified_holds_run_plan_spark {input : Json} {R : Request} {rep : Report} {T : Plan}
     {k : Nat} {p : Post} (h : Verified input R rep T k p) (hE : Verified.GuardFree rep)
-    {data : Catalog} (hD : DataAssumed R data T) (hFK : R.foreignKeysOf.Hold data) {s : Rel}
+    {data : Catalog} (hD : DataAssumed R data T) {s : Rel}
     (hs : R.runPlanIn R.kenv = .ok s) : p.HoldsOn (s.eval data Engine.spark.impl) :=
-  verified_holds_run_plan h hE.1 hD.meets hFK hs Engine.spark_sound rfl
-    (run_plan_guardFreeSide h.toChecked hD.meets hFK hs hD.small hE.2)
+  verified_holds_run_plan h hE.1 hD.meets hs Engine.spark_sound rfl
+    (run_plan_guardFreeSide h.toChecked hD.meets hs hD.small hE.2)
 
 /-- **A deterministic report means one result up to row order**
 (`check_deterministic_sound`). -/
