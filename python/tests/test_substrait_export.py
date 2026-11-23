@@ -811,6 +811,11 @@ def test_st8_holds_or_refuses_by_the_decimal_calls() -> None:
     typer, b = _typed(d.select(a=_.d.abs()))
     assert any(c.name == "abs" for c in typer.calls)
     assert st8(typer, b) is None
+    # A cast to a larger scale keeps every digit; to a smaller one it rounds (ruling 273).
+    typer, b = _typed(d.select(u=_.d.cast("decimal(12,4)")))
+    assert st8(typer, b) is not None
+    typer, b = _typed(d.select(r=_.e.cast("decimal(12,1)")))
+    assert st8(typer, b) is None
 
 
 # -- ST-6: a cast of a double to an integer (#2438) ------------------------------------
@@ -936,3 +941,44 @@ def test_max_of_strings_has_no_substrait_impl() -> None:
     reason alone, after #2439."""
     with pytest.raises(ExportError, match=r"no impl of max in Substrait's YAMLs takes \(string\)"):
         _verify(MM.aggregate(m=MM.s.max())).to_substrait()
+
+
+# -- ST-8: a decimal cast to a smaller scale (ruling 273) ---------------------------------
+
+DEC = ibis.table({"a": "decimal(10,4)", "b": "decimal(10,4)"}, name="f")
+
+
+@functools.cache
+def _rescale_report() -> sv.Report:
+    """A cast of a decimal to a smaller scale, which rounds: Substrait leaves how
+    open (ST-8), and the export called it exact in every mode."""
+    return _verify(DEC.select(c=_.a.cast("decimal(10,2)")), {"f": [_.a.notnull()]})
+
+
+def test_st8_apply_refuses_a_cast_to_a_smaller_scale() -> None:
+    """ST-8 rewrites nothing, so `apply` refuses the rounding cast."""
+    with pytest.raises(ExportError, match=r"ST-8, upstream/bugs/ST-8\.json\); no shim writes"):
+        _rescale_report().to_substrait(shims="apply")
+
+
+def test_st8_annotate_ships_the_rounding() -> None:
+    m = read(_rescale_report().to_substrait(shims="annotate")).manifest
+    assert m["class"] == "assumed"
+    [found] = [a for a in m["assumptions"] if a["option"] == "decimal_rescale"]
+    assert (found["gap"], found["assumes"]) == ("ST-8", ["TIE_AWAY_FROM_ZERO"])
+
+
+def test_st8_refuse_names_the_gap() -> None:
+    with pytest.raises(ExportError, match=re.escape("(ST-8, upstream/bugs/ST-8.json)")):
+        _rescale_report().to_substrait(shims="refuse")
+
+
+def test_decimals_that_keep_their_scale_export_in_every_mode() -> None:
+    """A sum and a cast to a larger scale keep every digit: ST-8 holds without a
+    rewrite, and every mode exports with the option unexercised."""
+    report = _verify(DEC.select(s=_.a + _.b, u=_.a.cast("decimal(12,6)")))
+    for mode in se.SHIMS:
+        m = read(report.to_substrait(shims=mode)).manifest
+        [u] = [u for u in m["unexercised"] if u["option"] == "decimal_rescale"]
+        assert u["gap"] == "ST-8", mode
+        assert not m["assumptions"], mode

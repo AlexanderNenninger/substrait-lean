@@ -30,7 +30,8 @@ write the gap away (the export then refuses, or annotates with
   exact.
 - ST-8 (`decimal_rescale`): no rewrite; it holds when no decimal `+`, `-`
   or `*` of the plan reduces its scale (the YAML's result type keeps every
-  digit), and the export says so.
+  digit) and no cast brings a decimal to a smaller scale, and the export
+  says so.
 """
 
 from __future__ import annotations
@@ -356,7 +357,17 @@ def st6(typer: _Typer, b: Builder) -> Json | None:
 
 
 def st8(typer: _Typer, b: Builder) -> Json | None:
-    """No decimal `+`, `-` or `*` of the plan reduces its scale (ST-8)."""
+    """No decimal `+`, `-` or `*` of the plan reduces its scale, and no cast
+    brings a decimal to a smaller one (ST-8, ruling 273)."""
+    for cast, t in typer.casts:
+        target = cast["type"].get("decimal")
+        if (
+            target is not None
+            and t is not None
+            and t.name == "decimal"
+            and int(target.get("scale", 0)) < t.params[1]
+        ):
+            return None
     for c in typer.calls:
         ds = [a for a in c.args if not isinstance(a, str) and a.name == "decimal"]
         if not ds:
