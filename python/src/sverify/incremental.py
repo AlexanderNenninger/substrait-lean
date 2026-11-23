@@ -787,6 +787,10 @@ class StaticSource(Pipeable):
         self.table, self.version, self.digest = table, version, table_digest(table)
         self._log.add(version, change)
 
+    def consumed(self, reader: object, version: int) -> None:
+        """`reader` has committed `version` (`ChangeLog.consumed`)."""
+        self._log.consumed(reader, version)
+
     def schema(self) -> pa.Schema:
         """The current table's schema."""
         return self.table.schema
@@ -842,7 +846,10 @@ class StaticSource(Pipeable):
                 schema=self.table.schema,
             )
         return SourceBatch.from_snapshot(
-            since, self.version, self.table, why="static table replaced"
+            since,
+            self.version,
+            self.table,
+            why="static table replaced, or its changes since are no longer kept",
         )
 
 
@@ -1766,6 +1773,7 @@ class Pipeline:
         register_facts(self.con, name, facts)
         self.sources[name] = source
         self.versions[name] = read
+        _consumed(source, self, read)
         self.on_violation[name] = _quarantine.check_policy(getattr(source, "on_violation", None))
         return self.con.table(name)
 
@@ -2705,6 +2713,17 @@ class Pipeline:
                 v = views[n]
                 v.state, v.serial, v._log, v.groups = state, serial, log, groups
             raise
+        for t in pending.versions:
+            _consumed(self.sources[t], self, self.versions[t])
+
+
+def _consumed(source: object, reader: object, version: int) -> None:
+    """Tell `source` that `reader` has committed `version`, so its change log
+    can drop what every reader has read (`ChangeLog.consumed`), where the
+    source keeps one."""
+    consumed = getattr(source, "consumed", None)
+    if consumed is not None:
+        consumed(reader, version)
 
 
 @dataclass
