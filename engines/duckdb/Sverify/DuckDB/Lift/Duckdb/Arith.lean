@@ -52,10 +52,6 @@ abbrev Substrait.liftDuckDB.divInt : Substrait.LiftEntry Substrait.Semantics.duc
     (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1))),
     Substrait.LiftEntry.of₂ rfl Substrait.liftDuckDB.divInt_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.divInt)
-  ((Lean.Json.parse (Substrait.liftDuckDB.divInt).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftDuckDB.divInt).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.divDouble_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -109,10 +105,6 @@ abbrev Substrait.liftDuckDB.divDouble : Substrait.LiftEntry Substrait.Semantics.
   (Substrait.Expr.bin Substrait.BinFn.fdivIeee (Substrait.Expr.field 0) (Substrait.Expr.field 1)),
     Substrait.LiftEntry.of₂ rfl Substrait.liftDuckDB.divDouble_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.divDouble)
-  ((Lean.Json.parse (Substrait.liftDuckDB.divDouble).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftDuckDB.divDouble).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.modDouble_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -161,10 +153,6 @@ abbrev Substrait.liftDuckDB.modDouble : Substrait.LiftEntry Substrait.Semantics.
     (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
     (Substrait.Expr.bin Substrait.BinFn.fmod (Substrait.Expr.field 0) (Substrait.Expr.field 1))),
     Substrait.LiftEntry.of₂ rfl Substrait.liftDuckDB.modDouble_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.modDouble)
-  ((Lean.Json.parse (Substrait.liftDuckDB.modDouble).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftDuckDB.modDouble).tmpl
 
 set_option maxHeartbeats 3200000 in
 theorem Substrait.liftDuckDB.power_agree : ∀ (x y : Substrait.Value),
@@ -292,6 +280,18 @@ abbrev Substrait.liftDuckDB.power : Substrait.LiftEntry Substrait.Semantics.duck
     (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
     (Substrait.Expr.bin Substrait.BinFn.fpow (Substrait.Expr.field 0) (Substrait.Expr.field 1))),
     Substrait.LiftEntry.of₂ rfl Substrait.liftDuckDB.power_agree⟩
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.divInt)
+  ((Lean.Json.parse (Substrait.liftDuckDB.divInt).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftDuckDB.divInt).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.divDouble)
+  ((Lean.Json.parse (Substrait.liftDuckDB.divDouble).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftDuckDB.divDouble).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.modDouble)
+  ((Lean.Json.parse (Substrait.liftDuckDB.modDouble).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftDuckDB.modDouble).tmpl
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.power)
   ((Lean.Json.parse (Substrait.liftDuckDB.power).json).toOption.getD Lean.Json.null) ==

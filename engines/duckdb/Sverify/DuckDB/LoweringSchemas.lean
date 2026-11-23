@@ -43,6 +43,9 @@ def schema? : UnFn → Option Tm
   -- hand (`Lowering.fround_agree`), as the tactic's proof is slower.
   | .fround => some (.expr Lowering.froundTemplate (Lean.mkConst ``Lowering.froundTemplate)
       "round: 0.0 for a negative value that rounds to zero")
+  | .froundEven => some (.expr Lowering.froundEvenTemplate
+      (Lean.mkConst ``Lowering.froundEvenTemplate)
+      "round_even: 0.0 for a negative value that rounds to zero")
   | .fceil => some (.expr Lowering.fceilTemplate (Lean.mkConst ``Lowering.fceilTemplate)
       "ceil: 0.0 for a negative value that rounds to zero")
   -- A `DECIMAL(p, p)` prints without its integer part (`.500`), so `dtextFull` has no native

@@ -6,6 +6,7 @@ error_on_division_by_zero=on	UnFn.fneg	native
 error_on_division_by_zero=on	UnFn.ffloor	native
 error_on_division_by_zero=on	UnFn.fceil	hand-written schema: ceil: 0.0 for a negative value that rounds to zero
 error_on_division_by_zero=on	UnFn.fround	hand-written schema: round: 0.0 for a negative value that rounds to zero
+error_on_division_by_zero=on	UnFn.froundEven	hand-written schema: round_even: 0.0 for a negative value that rounds to zero
 error_on_division_by_zero=on	UnFn.froundTo	native
 error_on_division_by_zero=on	UnFn.ftoi	native
 error_on_division_by_zero=on	UnFn.narrow	native

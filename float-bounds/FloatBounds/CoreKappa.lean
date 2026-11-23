@@ -373,10 +373,14 @@ noncomputable def covErr (n r1 r2 rs rq : ℝ) : ℝ :=
 noncomputable def varErr (n r Q : ℝ) : ℝ :=
   148 * n * u * r + 3961 * n ^ 2 * u ^ 2 * Q + 793 * n ^ 2 * u * tiny
 
-/-- The tolerance of `COVAR_*`, `C / d`. -/
-noncomputable def covTol (n d r1 r2 rs rq : ℝ) : ℝ :=
-  (71 * n * u * (r1 + r2) + 15 * n * u * rs + 3970 * n ^ 2 * u ^ 2 * rq
+/-- The tolerance of `COVAR_*`, `C / d`, with the leading constant `k`:
+`StatTol.cov` of `core/Sverify/Core/StatProps.lean`. -/
+noncomputable def covTolK (k n d r1 r2 rs rq : ℝ) : ℝ :=
+  (k * n * u * (r1 + r2) + 15 * n * u * rs + 3970 * n ^ 2 * u ^ 2 * rq
     + 800 * n ^ 2 * u * tiny) / d
+
+/-- The tolerance of `COVAR_*`, `C / d`, of Chan's merge (`StatTol.chan`). -/
+noncomputable def covTol (n d r1 r2 rs rq : ℝ) : ℝ := covTolK 71 n d r1 r2 rs rq
 
 /-- The tolerance of `VAR_*`, `S / d`. -/
 noncomputable def varTol (n d r Q : ℝ) : ℝ :=
@@ -424,16 +428,21 @@ theorem SQ_facts {α : Type*} {qs : List α} (y : α → ℝ) (hN : qs.length �
     have h4 : (2 : ℝ) ^ 32 * (2 ^ 398 + 1) ^ 2 ≤ 2 ^ 830 := by norm_num
     linarith
 
-theorem covTol_mono {n d r1 r2 rs rq r1' r2' rs' rq' : ℝ} (hn : 0 ≤ n) (hd : 0 < d)
-    (h1 : r1 ≤ r1') (h2 : r2 ≤ r2') (hs : rs ≤ rs') (hq : rq ≤ rq') :
-    covTol n d r1 r2 rs rq ≤ covTol n d r1' r2' rs' rq' := by
+theorem covTolK_mono {k n d r1 r2 rs rq r1' r2' rs' rq' : ℝ} (hk : 0 ≤ k) (hn : 0 ≤ n)
+    (hd : 0 < d) (h1 : r1 ≤ r1') (h2 : r2 ≤ r2') (hs : rs ≤ rs') (hq : rq ≤ rq') :
+    covTolK k n d r1 r2 rs rq ≤ covTolK k n d r1' r2' rs' rq' := by
   have hu := u_pos
-  unfold covTol
+  unfold covTolK
   apply div_le_div_of_nonneg_right _ hd.le
-  have a := mul_le_mul_of_nonneg_left (add_le_add h1 h2) (by positivity : (0 : ℝ) ≤ 71 * n * u)
+  have a := mul_le_mul_of_nonneg_left (add_le_add h1 h2) (by positivity : (0 : ℝ) ≤ k * n * u)
   have b := mul_le_mul_of_nonneg_left hs (by positivity : (0 : ℝ) ≤ 15 * n * u)
   have c := mul_le_mul_of_nonneg_left hq (by positivity : (0 : ℝ) ≤ 3970 * n ^ 2 * u ^ 2)
   linarith
+
+theorem covTol_mono {n d r1 r2 rs rq r1' r2' rs' rq' : ℝ} (hn : 0 ≤ n) (hd : 0 < d)
+    (h1 : r1 ≤ r1') (h2 : r2 ≤ r2') (hs : rs ≤ rs') (hq : rq ≤ rq') :
+    covTol n d r1 r2 rs rq ≤ covTol n d r1' r2' rs' rq' :=
+  covTolK_mono (by norm_num) hn hd h1 h2 hs hq
 
 set_option maxHeartbeats 1000000 in
 /-- **`COVAR_*` the core trusts** (`covOf_props`): `fl(Ĉ / d)` within
@@ -536,7 +545,7 @@ theorem StdModel.core_cov_k {qs : List ((ℝ × ℝ) × (ℝ × ℝ))} (hne : qs
   refine le_trans hdiv ?_
   -- the arithmetic
   refine le_trans ?_ (covTol_mono (n := n) (by linarith) (by linarith) h1 h2 hs hq)
-  unfold covTol
+  unfold covTol covTolK
   apply div_le_div_of_nonneg_right _ (by linarith)
   have uE : 3 * u * E ≤ 0.001 * E := mul_le_mul_of_nonneg_right (by linarith) hE0
   have a1 : 3 * u * (sx * sy) ≤ 3 * n * u * (sx * sy) := by
@@ -587,7 +596,7 @@ theorem StdModel.core_var_k {ps : List (ℝ × ℝ)} (hne : ps ≠ []) (hN : ps.
   simp only [List.map_map, Function.comp_def, List.length_map] at h
   have hd' : (0 : ℝ) < d := by exact_mod_cast hd1
   refine ⟨M.nonneg _ (div_nonneg (M.twoPass_dup_nonneg ps) hd'.le), le_trans h ?_⟩
-  unfold covTol varTol
+  unfold covTol covTolK varTol
   apply div_le_div_of_nonneg_right _ hd'.le
   have hr0 : 0 ≤ r := le_trans (by positivity) hr
   have : 0 ≤ (ps.length : ℝ) * u * r := by positivity

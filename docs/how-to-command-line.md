@@ -182,6 +182,33 @@ contract added are not compared: the sink's record does not store them.
   `explain`'s text. A transform's first `needs` result carries a fix: the
   edits `check --fix` makes to its `requires=`, as byte ranges of the file.
 
+## In GitHub Actions
+
+`actions/check/` in this repository is a composite action that runs
+`sverify check --format sarif` on each target with the default 30 s timeout,
+merges the logs into one SARIF run and uploads it to code scanning, so the
+findings appear on the pull request's lines. The job's exit code is the greatest
+of the targets': the codes grow with severity.
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+steps:
+  - uses: actions/checkout@v4
+  - uses: AlexanderNenninger/substrait-lean/actions/check@main
+    with:
+      targets: pipelines/orders.py pipelines/revenue.py
+      require-proved: "true"
+```
+
+The inputs are `targets`, `version` (default the latest release), `extras`
+(`delta,iceberg`), `source`, `timeout`, `require-proved` (it needs sverify
+0.9.0 or later), `python-version`, `upload` and `sarif-file`; the outputs are `exit-code` and `sarif-file`. A pull request
+from a fork has no token to upload with: set `upload: "false"`. The action
+imports the targets without running them, so use `pull_request`, not
+`pull_request_target`, for a fork.
+
 The codes are snake case (`may_be_false`), as the report's `reason` and
 issue `kind` write them; `explain` reads kebab case too. The exit codes
 (`sverify.cli.ExitCode`) run from the best to the worst, so the worst of

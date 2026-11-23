@@ -6,7 +6,7 @@ import Sverify.Analysis.MarginSound
 # Kahan's sum and constant runs are the standard model's (#1196, part 3)
 
 The core states an engine's double `SUM` under `COMPENSATED` (Kahan's sum,
-polars-sum-float) and `SCALED_CONSTANT` (a constant run added as one product,
+duckdb-kahan-sum) and `SCALED_CONSTANT` (a constant run added as one product,
 duckdb-sum-double) by `SumOrder`'s bound alone: `SumBound`, and exactness on
 small integers. The core writes the two algorithms on codes (`kahanSum`,
 `FloatSumsK`, `core/Sverify/Core/SumBound.lean`); this module proves that they
@@ -531,9 +531,9 @@ theorem KahanSums.sumBoundRaw {vs : List Value} {c : Int} (h : KahanSums vs c) :
   rw [Rnd.kahan, ← hv] at hnear'
   exact hnear'
 
-/-- **Kahan's sum meets `SumOrder` under `COMPENSATED`** (#1196): Polars'
-grouped double `SUM` (polars-sum-float), Kahan's sum of the doubles in some
-order, is within `SumBound` and exact on small integers. -/
+/-- **Kahan's sum meets `SumOrder` under `COMPENSATED`** (#1196): a double
+`SUM` by Kahan's sum of the doubles in some order (DuckDB's `kahan_sum`,
+duckdb-kahan-sum) is within `SumBound` and exact on small integers. -/
 theorem KahanSums.sumOrder {vs : List Value} {c : Int} (h : KahanSums vs c) :
     SumOrder "COMPENSATED" vs c :=
   sumOrder_of (by decide) (by decide) (by decide)

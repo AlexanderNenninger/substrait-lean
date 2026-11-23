@@ -140,6 +140,7 @@ def core : List FnRow := [
   { name := "round", anchor := 17, group := "fp.round", ctor := some (.un .fround),
     reads := .float, pretty := "ROUND" },
   { name := "round", anchor := 17, group := "fp.round", ctor := some (.un (.froundTo 0)) },
+  { name := "round", anchor := 17, group := "fp.round", ctor := some (.un .froundEven) },
   { name := "modulus", anchor := 18, group := "int.mod", ctor := some (.bin .imod),
     reads := .plain, pretty := "%" },
   { name := "power", anchor := 19, group := "int.pow", ctor := some (.bin .ipow),

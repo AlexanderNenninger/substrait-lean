@@ -122,8 +122,11 @@ def options : List OptionSpec := [
       ("PAIRWISE", "polars-sum-float-streaming"),
       ("COMPENSATED", "duckdb-kahan-sum"), ("SCALED_CONSTANT", "duckdb-sum-double")] },
   -- `EXACT`: the correctly rounded formula over the exact moments, the reference's (D30).
-  { id := "stat_algo", substrait := none, core := ["GENERIC", "WELFORD_CHAN", "EXACT"],
-    extra := [("WELFORD_CHAN", "duckdb-var-stddev")] },
+  -- `SCHUBERT_GERTZ`: two-pass blocks with Schubert and Gertz's merge, Polars's (ruling 271).
+  { id := "stat_algo", substrait := none,
+    core := ["GENERIC", "WELFORD_CHAN", "SCHUBERT_GERTZ", "EXACT"],
+    extra := [("WELFORD_CHAN", "duckdb-var-stddev"),
+      ("SCHUBERT_GERTZ", "polars-var-std-streaming")] },
   -- How an engine sums a window's frame of doubles (#1032): each frame
   -- anew (`RECOMPUTE`, the reference's), a tree of partial sums (`TREE`), an
   -- accumulator the frame only adds to (`RUNNING_ADD`), or one that adds the
@@ -493,7 +496,7 @@ def Profile.reference.table : ProfileTable where
     -- Native doubles round to nearest, ties to even (D5); `ROUND` rounds
     -- halves away from zero (`core/Sverify/Core/Rounding.lean`, #335).
     (none, "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
-    (some "fp.round", "rounding", .asked ["TIE_AWAY_FROM_ZERO"] ["TIE_AWAY_FROM_ZERO"]),
+    (some "fp.round", "rounding", .asked ["TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN"] ["TIE_AWAY_FROM_ZERO"]),
     -- Outside their domains the elementary functions raise (`Numeric.lean`,
     -- #215); no operation creates a NaN (#257). Integers have no domain error.
     (none, "on_domain_error", .asked ["ERROR"] ["ERROR"]),
