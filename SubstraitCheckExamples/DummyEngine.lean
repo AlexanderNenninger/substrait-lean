@@ -50,7 +50,8 @@ def dummy : EngineEntry :=
   { (engine_entry% Engine.dummy_sound) with
     executes := "batch",
     shims := [("int_sum_decimal", .expression), ("int_avg_decimal", .expression),
-      ("null_order", .argument), ("sort on the keys", .sort), ("decimal_negate_sub", .expression)] }
+      ("null_order", .argument), ("sort on the keys", .sort), ("decimal_negate_sub", .expression),
+      ("decimal_cast", .expression)] }
 
 #check_engine_profiles [dummy]
 
