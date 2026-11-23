@@ -54,7 +54,10 @@ def _from_seconds(x: Exprs, op: Any, try_: bool, to: dt.DataType) -> Json | None
     t = op.arg.dtype
     if not (isinstance(to, dt.Timestamp) and (t.is_integer() or t.is_floating())):
         return None
-    if try_ or to.timezone is not None or to.scale not in (None, 6):
+    if to.scale not in (None, 6):
+        # Another precision: the cast's own refusal names it (D61).
+        return None
+    if try_ or to.timezone is not None:
         what, hint = (
             ("an integer", '; write .as_timestamp("s") for seconds since the epoch')
             if t.is_integer()
