@@ -527,6 +527,9 @@ _SETTING = re.compile(
     re.I | re.S,
 )
 
+#: DuckDB's error when `max_execution_time` stops a query.
+_TIME_LIMIT = re.compile(r"maximum execution time", re.I)
+
 #: DuckDB errors from reading the query, not from running it.
 _FRONTEND = tuple(
     f"error: {k} Error"
@@ -773,6 +776,12 @@ class Replay:
         if (dml := _modifies(rec.sql)) is not None:
             # DuckDB ran it above, so the state stays the test's.
             res.reason = f"modifies data ({dml} in a query), outside sverify's scope"
+            return res
+        if ddb_err and _TIME_LIMIT.search(ddb_err):
+            # The test checks DuckDB's interrupt (`SET max_execution_time`): a time limit is
+            # an outcome no model states, and lifting a query built to run long would run Lean
+            # into the checker's watchdog (#2498).
+            res.reason = "DuckDB's time limit interrupted it"
             return res
         if self.settings or _REDEFINES.search(rec.sql):
             res.reason = "setting " + ", ".join(sorted(self.settings or {"collation"}))
