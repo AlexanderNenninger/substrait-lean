@@ -2,42 +2,20 @@
   "above-group-avg": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#1985)",
-          "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: cmp's nan_order (#1985)",
-          "row tested: cmp's zero_sign (#1985)",
-          "row tested: win.agg's window_sum_algo (#900)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.value > _.m) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.value > _.m)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: win.agg's window_sum_algo (#900)"
-        ],
-        "class": "shim",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.value > _.m) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.value > _.m)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#271)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: cmp's zero_sign (#271)",
-          "row tested: win.agg's window_sum_algo (#900)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.value > _.m) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.value > _.m)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       }
     },
     "pattern": "window",
@@ -103,32 +81,20 @@
   "avg-nullable": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#1985)",
-          "row tested: agg.fsum's float_overflow (#1985)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.m.isnull() | _.m.between(0, 500)) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.m.isnull() | _.m.between(0, 500))), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
-        ],
-        "class": "shim",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.m.isnull() | _.m.between(0, 500)) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.m.isnull() | _.m.between(0, 500))), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#271)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.m.isnull() | _.m.between(0, 500)) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.m.isnull() | _.m.between(0, 500))), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       }
     },
     "pattern": "bound",
@@ -137,30 +103,20 @@
   "avg-range": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#1985)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition _.m.between(0, 100) reads m, which has no bound on its distance to the reference: write it as sv.approx(_.m.between(0, 100)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition _.m.between(0, 100) reads m, which has no bound on its distance to the reference: write it as sv.approx(_.m.between(0, 100)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition _.m.between(0, 100) reads m, which has no bound on its distance to the reference: write it as sv.approx(_.m.between(0, 100)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       }
     },
     "pattern": "bound",
@@ -513,37 +469,20 @@
   "having-avg": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: cmp's nan_order (#1985)",
-          "row tested: cmp's zero_sign (#1985)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.m >= 50) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.m >= 50)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.m >= 50) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.m >= 50)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: cmp's zero_sign (#271)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.m >= 50) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.m >= 50)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       }
     },
     "pattern": "having",
@@ -681,37 +620,20 @@
   "having-sum-bound": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: cmp's nan_order (#1985)",
-          "row tested: cmp's zero_sign (#1985)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.total > 1000) reads total, which has no bound on its distance to the reference: write it as sv.approx((_.total > 1000)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.total > 1000) reads total, which has no bound on its distance to the reference: write it as sv.approx((_.total > 1000)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: cmp's zero_sign (#271)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.total > 1000) reads total, which has no bound on its distance to the reference: write it as sv.approx((_.total > 1000)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       }
     },
     "pattern": "having",
@@ -771,35 +693,20 @@
   "moving-avg": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#1985)",
-          "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: win.agg's window_sum_algo (#900)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.ma.isnull() | _.ma.between(0, 100)) reads ma, which has no bound on its distance to the reference: write it as sv.approx((_.ma.isnull() | _.ma.between(0, 100))), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: win.agg's window_sum_algo (#900)"
-        ],
-        "class": "shim",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.ma.isnull() | _.ma.between(0, 100)) reads ma, which has no bound on its distance to the reference: write it as sv.approx((_.ma.isnull() | _.ma.between(0, 100))), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#271)",
-          "row tested: win.agg's window_sum_algo (#900)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.ma.isnull() | _.ma.between(0, 100)) reads ma, which has no bound on its distance to the reference: write it as sv.approx((_.ma.isnull() | _.ma.between(0, 100))), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       }
     },
     "pattern": "window",

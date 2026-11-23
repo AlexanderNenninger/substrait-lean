@@ -13,4 +13,6 @@ the history at commit `4740130`. They are static golden inputs now. They keep
 DataFusion's encodings in the golden tests, which `frontend/Sverify/Frontend/Parse.lean`
 still reads; don't regenerate them.
 
-The other plans are written by hand.
+The other plans are written by hand, but `case_eager.json`, which sverify's
+Ibis producer wrote: it pins the parser's eager reading of a boolean `CASE`
+(`docs/trusted-base.md`, "Stated limits").

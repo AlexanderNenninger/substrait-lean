@@ -214,13 +214,16 @@ bound the checker proves on that column (`ε`, below). Three cases:
   `sv.approx(...)` for the claim, or `sv.equivalent(floats=sv.within(...))`
   for the engines' tolerance.
 - The column has no bound (a double `SUM` without a row cap, a value computed
-  from one, a window aggregate of doubles): the checker knows only its sign,
-  which a sum of values of one sign keeps in every order the engines use, and
-  the route lets the postcondition run. A tolerance stated with
+  from one, a window aggregate of doubles): the checker knows of the engine's
+  value only its sign, which a sum of values of one sign keeps in every order
+  the engines use (`signKeptOn`: DuckDB, Polars and Spark). A postcondition
+  that reads only the sign (`_.total >= 0`) runs. One that reads more
+  (`_.avg <= 100`, proved of the exact mean) is refused as for a column with
+  a bound, naming its exits: `sv.approx(...)` for the claim, or `sv.max_rows(n)`
+  in `requires` and a tolerance in `ensures`. A tolerance stated with
   `sv.within` finds nothing to meet and refuses the whole plan, naming the
   column and its exits: `sv.max_rows(n)` in `requires`, `sv.equivalent(floats="plan")`,
-  or no tolerance. Every engine's `SUM` is a tree sum, so the sign is proved on
-  DuckDB, Polars and Spark (`signKeptOn`).
+  or no tolerance.
 - A filter, grouping key or sort on a double may keep other rows on an engine than
   on the reference where its threshold lies within the bound of the doubles' range
   (#568's threshold rule). The route refuses the whole plan, whether or not a
@@ -228,9 +231,7 @@ bound the checker proves on that column (`ε`, below). Three cases:
   that keeps the values away from it. For a threshold computed from the data,
   compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`.
 
-The first two cases treat a column with a bound more strictly than one without,
-which [#1045](https://github.com/AlexanderNenninger/substrait-lean/issues/1045)
-tracks. The notebook
+The notebook
 [05](../notebooks/05_pipelines_and_engines.py) ("Averages round") runs both.
 
 <a id="the-engines-orders-and-epsilon-444"></a>

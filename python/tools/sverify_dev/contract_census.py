@@ -168,6 +168,10 @@ REFUSED = [
     ),
     ("which the lenses ignore", "refused: postcondition reads doubles a tolerance ignores"),
     (
+        "which has no bound on its distance to the reference",
+        "refused: postcondition reads an unbounded double (#1045)",
+    ),
+    (
         "of the reference: write it as sv.approx",
         "refused: exact bound, the engine adds in another order",
     ),
