@@ -88,53 +88,60 @@ def Profile.spark.obs : ObsTable := [
   (some "agg.isum", "overflow", (ObsRow.shimmed "int_sum_decimal" ["spark-sum-int", "spark-exec-parallel"]).proved
     "Shim.sum_empty_null"),
   (some "int.div", "overflow", (ObsRow.native ["spark-int-divide"]).proved "Rel.spark_sound"),
-  (none, "on_division_by_zero", (ObsRow.native ["spark-int-divide", "spark-int-modulus"]).proved "Rel.spark_sound"),
+  (none, "on_division_by_zero", (ObsRow.native ["spark-int-divide", "spark-int-modulus"]).proved
+    "Rel.spark_sound_or_raises"),
   -- Plain `/` (#1846): a zero divisor of either sign raises `DIVIDE_BY_ZERO`, as
   -- `sparkBin .fdivIeee` says.
-  (some "fp.div", "on_division_by_zero", (ObsRow.native ["spark-double-divide"]).proved "Rel.spark_sound"),
+  (some "fp.div", "on_division_by_zero", (ObsRow.native ["spark-double-divide"]).proved
+    "Rel.spark_sound_or_raises"),
   (none, "on_domain_error", (ObsRow.native ["spark-math-domain"]).proved "Rel.spark_sound"),
-  (none, "division_type", (ObsRow.native ["spark-int-modulus"]).tracking 271),
-  (some "int.div", "division_type", (ObsRow.native ["spark-int-divide"]).tracking 271),
-  (some "int.mod", "division_type", (ObsRow.native ["spark-int-modulus"]).tracking 271),
-  (none, "min_mod_neg_one", (ObsRow.native ["spark-int-modulus"]).tracking 271),
-  (none, "rounding", (ObsRow.native ["spark-double-arith"]).tracking 271),
+  (none, "division_type", (ObsRow.native ["spark-int-modulus"]).proved "Rel.spark_sound"),
+  (some "int.div", "division_type", (ObsRow.native ["spark-int-divide"]).proved "Rel.spark_sound"),
+  (some "int.mod", "division_type", (ObsRow.native ["spark-int-modulus"]).proved "Rel.spark_sound"),
+  (none, "min_mod_neg_one", (ObsRow.native ["spark-int-modulus"]).proved "Rel.spark_sound"),
+  (none, "rounding", (ObsRow.native ["spark-double-arith"]).proved "Rel.spark_sound"),
   (some "fp.round", "rounding", ({ ObsRow.native ["spark-round"] with
-    note := "round(x) rounds halves away from zero; round(x, d) rounds the double's shortest decimal text (round(2.675, 2) is 2.68), so the writer computes ROUND(x · 10ᵈ) / 10ᵈ as the reference does (FloatCode.roundTo) and never calls it." }).tracking 271),
+    note := "round(x) rounds halves away from zero; round(x, d) rounds the double's shortest decimal text (round(2.675, 2) is 2.68), so the writer computes ROUND(x · 10ᵈ) / 10ᵈ as the reference does (FloatCode.roundTo) and never calls it." }).proved "Rel.spark_sound"),
   (none, "nan_creation", (ObsRow.native ["spark-double-arith", "spark-nonfinite-aggregates"]).proved "Rel.spark_sound"),
   (none, "float_overflow", (ObsRow.native ["spark-double-arith"]).proved "Shim.makes_infinite"),
+  -- A variance or covariance whose correctly rounded value overflows is `+inf`
+  -- (spark-nonfinite-aggregates, #1601). `Shim.makes_infinite` is about binary
+  -- operations; no theorem states Spark's aggregate guard yet (#185).
+  (some "agg.var", "float_overflow", (ObsRow.native ["spark-nonfinite-aggregates"]).tracking 2544),
+  (some "agg.stat", "float_overflow", (ObsRow.native ["spark-nonfinite-aggregates"]).tracking 2544),
   -- Values are raw (D31), and the zeros are one at `=`, `<`, keys and
   -- partitions; MIN and MAX keep whichever zero came first, a member of the class.
-  (none, "zero_sign", (ObsRow.native ["spark-zero-sign", "spark-zero-order"]).tracking 271),
+  (none, "zero_sign", (ObsRow.native ["spark-zero-sign", "spark-zero-order"]).tracking 2544),
   -- `atan2` of a zero: `π` where the reference gives `-π`, a difference in value that
-  -- `zeros := .canon` does not describe: refused (the writer refuses it too,
-  -- `BinFn.sparkWritten`). `power` and `atan2` are refused at `rounding` too, so neither
+  -- `zeros := .canon` does not describe: refused (the lowering refuses it too,
+  -- `Lowering.spark_refuses`). `power` and `atan2` are refused at `rounding` too, so neither
   -- inherits the unary functions' row (ruling 163).
   -- The unary functions keep a zero's sign (spark-unary-zero-sign).
-  (some "fp.elem", "zero_sign", (ObsRow.native ["spark-unary-zero-sign"]).tracking 271),
+  (some "fp.elem", "zero_sign", (ObsRow.native ["spark-unary-zero-sign"]).proved "Rel.spark_sound"),
   (some "fp.atan2", "zero_sign", ({ ObsRow.native ["spark-zero-sign", "spark-float-power-atan2"] with
-    cls := .refused }).tracking 271),
+    cls := .refused }).proved "Lowering.spark_refuses"),
   (some "fp.atan2", "rounding", ({ ObsRow.native ["spark-elem-rounding"] with
-    cls := .refused }).tracking 271),
+    cls := .refused }).proved "Lowering.spark_refuses"),
   (some "fp.pow", "rounding", ({ ObsRow.native ["spark-elem-rounding"] with
-    cls := .refused }).tracking 271),
+    cls := .refused }).proved "Lowering.spark_refuses"),
   -- `round` emits `+0.0` through a decimal; `ceil` is a `BIGINT`, which the
-  -- written plan casts back to a double.
-  (none, "round_zero_sign", (ObsRow.native ["spark-round", "spark-floor-ceil-bigint"]).tracking 271),
-  -- `StrictMath.pow(1, ±∞)` is NaN; the writer refuses double `power`
-  -- (spark-elem-rounding).
+  -- lowering's template casts back to a double (`Spark.fceilEntry`).
+  (none, "round_zero_sign", (ObsRow.native ["spark-round", "spark-floor-ceil-bigint"]).proved "Rel.spark_sound"),
+  -- `StrictMath.pow(1, ±∞)` is NaN; the lowering refuses double `power`
+  -- (spark-elem-rounding, `Lowering.spark_refuses`).
   (none, "pow_one_inf", ({ ObsRow.native ["spark-math-domain", "spark-elem-rounding"] with
-    cls := .refused }).tracking 271),
+    cls := .refused }).proved "Lowering.spark_refuses"),
   -- `exp`, `ln`, `log10` and `log(b, x)` are `StrictMath`'s (fdlibm), `log2` is
   -- `ln x / ln 2`, and the trigonometric functions are `java.lang.Math`'s, each
   -- within the ulps of spark-elem-rounding of libm's value, which the reference
   -- takes (tested, not proved, as Polars's `fp.log`).
   (some "fp.elem", "rounding", ({ ObsRow.approxWithin "plan" ["spark-elem-rounding", "spark-ulp-libm"] with
-    note := "StrictMath and java.lang.Math, S + R ulps of libm's value per call (spark-ulp-libm, EngineProfile.elemUlps); sin, cos and tan only up to |x| ≤ 2²⁰." }).tracking 271),
+    note := "StrictMath and java.lang.Math, S + R ulps of libm's value per call (spark-ulp-libm, EngineProfile.elemUlps); sin, cos and tan only up to |x| ≤ 2²⁰." }).tracking 2544),
   (some "fp.log", "rounding", ({ ObsRow.approxWithin "plan" ["spark-elem-rounding", "spark-ulp-libm"] with
-    note := "StrictMath's logarithms, and log2 as ln x / ln 2 (two roundings), S + R ulps of libm's value per call (spark-ulp-libm, EngineProfile.elemUlps)." }).tracking 271),
-  (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["spark-nan-sign"]).tracking 271),
-  (none, "nan_order", (ObsRow.native ["spark-nan-order"]).tracking 271),
-  (none, "nan_equality", (ObsRow.native ["spark-nan-equality"]).tracking 271),
+    note := "StrictMath's logarithms, and log2 as ln x / ln 2 (two roundings), S + R ulps of libm's value per call (spark-ulp-libm, EngineProfile.elemUlps)." }).tracking 2544),
+  (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["spark-nan-sign"]).tracking 2544),
+  (none, "nan_order", (ObsRow.native ["spark-nan-order"]).tracking 2544),
+  (none, "nan_equality", (ObsRow.native ["spark-nan-equality"]).tracking 2544),
   -- Partial sums merged in the order the tasks finish: trees the reference
   -- allows, within #85's bound, varying run to run with the partitioning.
   (none, "sum_order", ObsRow.fsumOrder ["spark-sum-double", "spark-avg-double"]
@@ -143,25 +150,25 @@ def Profile.spark.obs : ObsTable := [
     ["spark-double-arith", "spark-sum-double", "spark-avg-double"]
     "Each addition is the JVM's, rounded to nearest, ties to even (spark-double-arith); the sum is plain additions in an order the partitioning sets (spark-sum-double), a FLOAT column summed in DOUBLE, and AVG divides it once by the count (spark-avg-double): StdModel.TreeSum and fl(s / n), which epsilon_sum_cr and epsilon_avg_cr bound for any rounding to nearest."),
   (none, "avg_int_result", (ObsRow.shimmed "int_avg_decimal" ["spark-avg-int"]).proved "Shim.avg_trunc"),
-  (none, "empty_group_aggregates", (ObsRow.native ["spark-sum-int", "spark-sum-double"]).tracking 271),
+  (none, "empty_group_aggregates", (ObsRow.native ["spark-sum-int", "spark-sum-double"]).tracking 2539),
   -- Unstated, Spark puts NULLs first in an ascending key; the writer states
   -- each key's placement (`Shim.null_order`).
   (none, "null_order", (ObsRow.shimmed "null_order" ["spark-null-order"]).proved "Shim.null_order"),
-  (none, "clustered", (ObsRow.shimmed "sort on the keys" ["spark-clustered"]).tracking 271),
+  (none, "clustered", (ObsRow.shimmed "sort on the keys" ["spark-clustered"]).tracking 2539),
   -- After a shuffle, ties come in the order the partitions' rows arrive.
   (none, "tie_order", ({ ObsRow.native ["spark-sort-stability", "spark-window-values", "spark-rank"] with
     rerun := some { rows := .tiesPermuted, elements := .multiset },
-    rerunEvidence := .probed ["spark-sort-stability", "spark-exec-parallel"] }).tracking 900),
+    rerunEvidence := .probed ["spark-sort-stability", "spark-exec-parallel"] }).tracking 2539),
   (none, "tie_pick", ({ ObsRow.native ["spark-first-last"] with
     rerun := some { rows := .tiesPermuted },
-    rerunEvidence := .probed ["spark-first-last", "spark-exec-parallel"] }).tracking 900),
+    rerunEvidence := .probed ["spark-first-last", "spark-exec-parallel"] }).tracking 2539),
   -- Only starts from 1 reach Spark's `substring`, whose start 0 reads as 1
   -- (`Dialect.substring` of the writer).
-  (none, "negative_start", (ObsRow.native ["spark-substring"]).tracking 271),
-  (none, "case_sensitivity", (ObsRow.native ["spark-match-functions"]).tracking 271),
-  (none, "string_positions", (ObsRow.native ["spark-strpos", "spark-substring"]).tracking 271),
-  (none, "null_join_keys", (ObsRow.native ["spark-null-keys"]).tracking 271),
-  (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["spark-window-agg"]).tracking 900),
+  (none, "negative_start", (ObsRow.native ["spark-substring"]).proved "Rel.spark_sound"),
+  (none, "case_sensitivity", (ObsRow.native ["spark-match-functions"]).proved "Rel.spark_sound"),
+  (none, "string_positions", (ObsRow.native ["spark-strpos", "spark-substring"]).proved "Rel.spark_sound"),
+  (none, "null_join_keys", (ObsRow.native ["spark-null-keys"]).tracking 2539),
+  (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["spark-window-agg"]).tracking 2544),
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["spark-var-stddev", "spark-covar", "spark-corr"] with
     rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),
   -- `var_pop` and `stddev_pop` of one NaN are NaN (spark-var-pop-one-nan): Spark's
@@ -174,8 +181,8 @@ def Profile.spark.obs : ObsTable := [
   -- `lo + (hi - lo) · w`, as Polars's: NaN with a `-∞` lower neighbour, `+∞` where `hi - lo` overflows (spark-quantile).
   (none, "quantile_interp", ({ ObsRow.native ["spark-quantile"] with
     cls := .refused
-    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, spark-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference. The neighbours are those of the engine's double position, `⌊(n − 1)·q⌋` and `⌈(n − 1)·q⌉` in doubles (`contNeighboursD`, spark-quantile)." }).tracking 900),
-  (none, "decimal_rescale", (ObsRow.native ["spark-decimal-arith"]).tracking 739),
+    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, spark-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference. The neighbours are those of the engine's double position, `⌊(n − 1)·q⌋` and `⌈(n − 1)·q⌉` in doubles (`contNeighboursD`, spark-quantile)." }).tracking 2544),
+  (none, "decimal_rescale", (ObsRow.native ["spark-decimal-arith"]).tracking 2544),
   -- A double to a decimal: the native cast rounds the shortest decimal text
   -- (spark-double-to-decimal), so the writer rounds the double product half away
   -- from zero (`SparkDialect.decimal_cast`); a decimal to a smaller scale is

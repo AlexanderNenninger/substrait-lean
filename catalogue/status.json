@@ -73,8 +73,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
-   "snowflake": "refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+   "polars": "refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)",
+   "snowflake": "refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   },
   "contract": {
    "proved": true,
@@ -241,8 +241,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
-   "snowflake": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+   "polars": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)",
+   "snowflake": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   }
  },
  "fin-bollinger": {
@@ -251,8 +251,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issu",
-   "snowflake": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/i"
+   "polars": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/iss",
+   "snowflake": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   }
  },
  "fin-max-drawdown": {
@@ -262,7 +262,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: MAX of doubles is not yet supported on snowflake; run it with engine='duckdb' (see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+   "snowflake": "refused: MAX of doubles is not yet supported on snowflake: run it with engine='duckdb' (Snowflake is out of tree (private profile))"
   }
  },
  "fin-log-returns": {
@@ -345,8 +345,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/2",
-   "snowflake": "refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issue"
+   "polars": "refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/",
+   "snowflake": "refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   }
  },
  "h2o-groupby-q7": {
@@ -390,8 +390,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs (Lean's rows: degenerate_statistic)",
-   "polars": "refused: corr runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
-   "snowflake": "refused: corr runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+   "polars": "refused: corr runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)",
+   "snowflake": "refused: corr runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   },
   "contract": {
    "proved": true,
@@ -535,8 +535,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs (Lean's rows: null_at_extreme)",
-   "polars": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
-   "snowflake": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+   "polars": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)",
+   "snowflake": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   }
  },
  "iot-latest-reading": {
@@ -576,7 +576,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: MAX of doubles is not yet supported on snowflake; run it with engine='duckdb' (see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+   "snowflake": "refused: MAX of doubles is not yet supported on snowflake: run it with engine='duckdb' (Snowflake is out of tree (private profile))"
   }
  },
  "iot-event-correlation": {
@@ -706,8 +706,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
-   "snowflake": "refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+   "polars": "refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)",
+   "snowflake": "refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   }
  },
  "dbt-union-sources": {
@@ -859,8 +859,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/2",
-   "snowflake": "refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issue"
+   "polars": "refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/",
+   "snowflake": "refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   }
  },
  "pa-zscore-outliers": {
@@ -869,8 +869,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issu",
-   "snowflake": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/i"
+   "polars": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/iss",
+   "snowflake": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   }
  },
  "pa-histogram": {
@@ -889,8 +889,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
-   "snowflake": "refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+   "polars": "refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)",
+   "snowflake": "refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   }
  },
  "pa-ntile-free-spenders": {
@@ -1658,8 +1658,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)",
-   "snowflake": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+   "polars": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)",
+   "snowflake": "refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   }
  },
  "win-top-n-per-group": {
@@ -1709,7 +1709,7 @@
   "engines": {
    "duckdb": "runs",
    "polars": "runs",
-   "snowflake": "refused: Snowflake window functions need an ORDER BY: run it with engine='duckdb' (see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+   "snowflake": "refused: Snowflake window functions need an ORDER BY: run it with engine='duckdb' (Snowflake is out of tree (private profile))"
   }
  },
  "win-above-group-average": {

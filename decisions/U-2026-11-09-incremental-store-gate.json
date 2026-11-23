@@ -9,7 +9,8 @@
     1329
   ],
   "amended_by": [
-    "U-2026-11-20-io-source-gate"
+    "U-2026-11-20-io-source-gate",
+    "U-2026-11-23-n6c-engine-scaled-state"
   ],
   "source": "memory:incremental-store-1-0-gate.md"
 }

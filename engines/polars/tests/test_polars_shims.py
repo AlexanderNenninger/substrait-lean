@@ -78,13 +78,16 @@ DIVISIONS = [(-7, 2), (7, -2), (-7, -2), (7, 2), (1, -2), (-1, 2), (1, -7), (-6,
              (MIN, 7), (MAX, -3), (0, -5)]  # fmt: skip
 
 
-def test_polars_floors_and_the_shims_truncate():
+def test_polars_floors_and_the_lowering_truncates():
+    """Polars's own `//` and `%` floor; the generated lowering's templates
+    truncate (`sverify_polars.lowering`, #271)."""
     df = pl.DataFrame({"a": [a for a, _ in DIVISIONS], "b": [b for _, b in DIVISIONS]})
     a, b = pl.col("a"), pl.col("b")
     want = [_tdiv(a, b) for a, b in DIVISIONS]
     assert native(df, a // b, a % b) != want
-    assert native(df, shims.int_div_trunc(a, b), shims.int_mod_trunc(a, b)) == want
-    assert native(df, shims.int_mod_trunc(pl.lit(MIN), pl.lit(-1))) == [(0,)]
+    div, mod = polars_engine.lowered("idiv", a, b), polars_engine.lowered("imod", a, b)
+    assert native(df, div.cast(pl.Int64), mod.cast(pl.Int64)) == want
+    assert native(df, polars_engine.lowered("imod", pl.lit(MIN), pl.lit(-1))) == [(0,)]
 
 
 def _tdiv(a: int, b: int) -> tuple[int, int]:
@@ -407,7 +410,7 @@ def test_md5_is_refused_on_polars_with_the_reason():
     con.create("r", STRINGS, TEXTS)
     t = ibis.table(STRINGS, name="r")
     plan = written_plan(to_substrait_json(t.select(h=t.s.hexdigest("md5"))))
-    with pytest.raises(polars_engine.Unsupported, match="see #271"):
+    with pytest.raises(polars_engine.Unsupported, match="see #2540"):
         run_plan(con, plan, "polars")
 
 

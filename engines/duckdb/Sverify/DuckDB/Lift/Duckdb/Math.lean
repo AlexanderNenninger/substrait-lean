@@ -42,10 +42,6 @@ abbrev Substrait.liftDuckDB.elementary_sqrt : Substrait.LiftEntry Substrait.Sema
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sqrt) (Substrait.Expr.field 0)),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_sqrt_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.sqrt)
-  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_sqrt).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftDuckDB.elementary_sqrt).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_exp_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -59,10 +55,6 @@ theorem Substrait.liftDuckDB.elementary_exp_agree : ∀ (x : Substrait.Value),
 abbrev Substrait.liftDuckDB.elementary_exp : Substrait.LiftEntry Substrait.Semantics.duckdb (Substrait.DuckFn.elementary Substrait.FMath.exp) :=
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":18,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.exp) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_exp_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.exp)
-  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_exp).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftDuckDB.elementary_exp).tmpl
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_ln_agree : ∀ (x : Substrait.Value),
@@ -95,10 +87,6 @@ abbrev Substrait.liftDuckDB.elementary_ln : Substrait.LiftEntry Substrait.Semant
     (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.ln) (Substrait.Expr.field 0))),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_ln_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.ln)
-  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_ln).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftDuckDB.elementary_ln).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_log10_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -129,10 +117,6 @@ abbrev Substrait.liftDuckDB.elementary_log10 : Substrait.LiftEntry Substrait.Sem
     (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.negInf))
     (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log10) (Substrait.Expr.field 0))),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_log10_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.log10)
-  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_log10).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftDuckDB.elementary_log10).tmpl
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_log2_agree : ∀ (x : Substrait.Value),
@@ -165,10 +149,6 @@ abbrev Substrait.liftDuckDB.elementary_log2 : Substrait.LiftEntry Substrait.Sema
     (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log2) (Substrait.Expr.field 0))),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_log2_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.log2)
-  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_log2).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftDuckDB.elementary_log2).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_sin_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -196,10 +176,6 @@ abbrev Substrait.liftDuckDB.elementary_sin : Substrait.LiftEntry Substrait.Seman
   (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sin) (Substrait.Expr.field 0)),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_sin_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.sin)
-  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_sin).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftDuckDB.elementary_sin).tmpl
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_cos_agree : ∀ (x : Substrait.Value),
@@ -229,10 +205,6 @@ abbrev Substrait.liftDuckDB.elementary_cos : Substrait.LiftEntry Substrait.Seman
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.cos) (Substrait.Expr.field 0)),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_cos_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.cos)
-  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_cos).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftDuckDB.elementary_cos).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_tan_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -260,10 +232,6 @@ abbrev Substrait.liftDuckDB.elementary_tan : Substrait.LiftEntry Substrait.Seman
   (Substrait.Expr.lit (Substrait.Value.float Substrait.FloatCode.nan))
   (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.tan) (Substrait.Expr.field 0)),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_tan_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.tan)
-  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_tan).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftDuckDB.elementary_tan).tmpl
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_asin_agree : ∀ (x : Substrait.Value),
@@ -306,10 +274,6 @@ abbrev Substrait.liftDuckDB.elementary_asin : Substrait.LiftEntry Substrait.Sema
     (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.asin) (Substrait.Expr.field 0))),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_asin_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.asin)
-  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_asin).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftDuckDB.elementary_asin).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_acos_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -351,10 +315,6 @@ abbrev Substrait.liftDuckDB.elementary_acos : Substrait.LiftEntry Substrait.Sema
     (Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.acos) (Substrait.Expr.field 0))),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_acos_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.acos)
-  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_acos).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftDuckDB.elementary_acos).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftDuckDB.elementary_atan_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -368,6 +328,46 @@ theorem Substrait.liftDuckDB.elementary_atan_agree : ∀ (x : Substrait.Value),
 abbrev Substrait.liftDuckDB.elementary_atan : Substrait.LiftEntry Substrait.Semantics.duckdb (Substrait.DuckFn.elementary Substrait.FMath.atan) :=
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":27,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.atan) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftDuckDB.elementary_atan_agree⟩
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.sqrt)
+  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_sqrt).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftDuckDB.elementary_sqrt).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.exp)
+  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_exp).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftDuckDB.elementary_exp).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.ln)
+  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_ln).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftDuckDB.elementary_ln).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.log10)
+  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_log10).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftDuckDB.elementary_log10).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.log2)
+  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_log2).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftDuckDB.elementary_log2).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.sin)
+  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_sin).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftDuckDB.elementary_sin).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.cos)
+  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_cos).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftDuckDB.elementary_cos).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.tan)
+  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_tan).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftDuckDB.elementary_tan).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.asin)
+  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_asin).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftDuckDB.elementary_asin).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.acos)
+  ((Lean.Json.parse (Substrait.liftDuckDB.elementary_acos).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftDuckDB.elementary_acos).tmpl
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.atan)
   ((Lean.Json.parse (Substrait.liftDuckDB.elementary_atan).json).toOption.getD Lean.Json.null) ==

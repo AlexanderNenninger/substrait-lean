@@ -143,8 +143,8 @@ def Profile.duckdb.obs : ObsTable := [
   -- `<` of lists is NULL where a NULL element decides it, which DuckDB gives as FALSE or TRUE:
   -- the written `list_lt` finds the first distinct position (`Dialect.list_lt`). MIN and MAX
   -- of lists order a NULL element greatest, as the reference does at `agg.order`.
-  (none, "list_null_order", (ObsRow.shimmed "list_lt" ["duckdb-R11"]).tracking 1484),
-  (some "agg.order", "list_null_order", (ObsRow.native ["duckdb-R11"]).tracking 1484),
+  (none, "list_null_order", (ObsRow.shimmed "list_lt" ["duckdb-R11"]).tracking 1985),
+  (some "agg.order", "list_null_order", (ObsRow.native ["duckdb-R11"]).tracking 1985),
   -- Partials merged in finishing order are trees the reference allows, but a
   -- constant vector's `fl(k · x)` is not known to be one (#633): within #85's
   -- bound of the reference's correctly rounded sum (`StdModel.epsilon_sum_cr`).
@@ -169,12 +169,16 @@ def Profile.duckdb.obs : ObsTable := [
   -- ties, and a list's elements, come in a different order run to run.
   (none, "tie_order", ({ ObsRow.native ["duckdb-sort-ties", "duckdb-mode-ties"] with
     rerun := some { rows := .tiesPermuted, elements := .multiset },
-    rerunEvidence := .probed ["duckdb-sort-ties", "duckdb-mode-ties", "duckdb-exec-row-order"] }).tracking 900),
+    rerunEvidence := .probed ["duckdb-sort-ties", "duckdb-mode-ties", "duckdb-exec-row-order"] }).tracking 1985),
   (none, "tie_pick", ({ ObsRow.native ["duckdb-mode-ties", "duckdb-arg-min-nulls"] with
     rerun := some { rows := .tiesPermuted },
-    rerunEvidence := .probed ["duckdb-mode-ties", "duckdb-exec-row-order"] }).tracking 900),
+    rerunEvidence := .probed ["duckdb-mode-ties", "duckdb-exec-row-order"] }).tracking 1985),
   (some "fp.round", "rounding", (ObsRow.native ["duckdb-R15-round"]).proved "Lowering.duckdb_exact"),
   (none, "float_overflow", (ObsRow.native ["duckdb-R15-double-arith"]).tracking 1985),
+  -- A variance or covariance whose correctly rounded value overflows is `+inf`
+  -- (duckdb-double-overflow, #1601).
+  (some "agg.var", "float_overflow", (ObsRow.native ["duckdb-double-overflow"]).tracking 1985),
+  (some "agg.stat", "float_overflow", (ObsRow.native ["duckdb-double-overflow"]).tracking 1985),
   -- The string functions are the reference's in `Profile.duckdb`, as the facts
   -- find DuckDB's (`substring` wraps from the end, `LIKE` is case-sensitive).
   (none, "negative_start", (ObsRow.native ["duckdb-R13"]).proved "Lowering.duckdb_exact"),
@@ -183,7 +187,7 @@ def Profile.duckdb.obs : ObsTable := [
   (none, "string_positions", (ObsRow.native ["duckdb-string-match-case", "duckdb-R13"]).proved
     "Lowering.duckdb_exact"),
   (none, "null_join_keys", (ObsRow.native ["duckdb-null-keys"]).tracking 1985),
-  (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["duckdb-window-sum-order"]).tracking 900),
+  (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["duckdb-window-sum-order"]).tracking 1985),
   -- Welford with Chan's merge meets the generic properties the reference allows:
   -- `float-bounds` proves `VAR_*`, `COVAR_*` and DuckDB's `CORR` formula within
   -- `StatProps` (`core_var_chan`, `core_cov_chan`, `core_corr_chan`; `STDDEV_*`
@@ -207,7 +211,7 @@ def Profile.duckdb.obs : ObsTable := [
   -- the shim names, and meets `BETWEEN`.
   (none, "quantile_interp", ({ ObsRow.shimmed "quantile_guard" ["duckdb-quantile-cont-interpolation", "tests/test_duckdb_quantile_900.py::test_the_whole_positions_the_double_misses_give_the_model_value", "tests/test_duckdb_quantile_900.py::test_a_random_group_stays_between_the_neighbours"] with
     precondition := "(COUNT(x) − 1)·10^scale < 2^52 for the decimal fraction's scale, checked on the data (the written plan raises past it)",
-    note := "`LINEAR` states DuckDB's own `quantile_cont`, which leaves the model's neighbours at a whole exact position its double misses and where the lower neighbour is first; the written plan takes `quantile_disc` at a whole exact position and bounds the first lower neighbour by the second smallest value (python/tests/test_duckdb_quantile_900.py)." }).tracking 900)]
+    note := "`LINEAR` states DuckDB's own `quantile_cont`, which leaves the model's neighbours at a whole exact position its double misses and where the lower neighbour is first; the written plan takes `quantile_disc` at a whole exact position and bounds the first lower neighbour by the second smallest value (python/tests/test_duckdb_quantile_900.py)." }).tracking 1985)]
 
 -- No decimal row is proved: `Profile.duckdb` states decimals as the printer
 -- writes them, not DuckDB's own functions (ruling 185, #1985).

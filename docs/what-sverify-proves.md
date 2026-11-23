@@ -59,7 +59,7 @@ and Snowflake SQL. [Engines](stability.md#engines)
 says which are in the 1.x promise, with their profiles and translations.
 
 Polars refuses what only DuckDB runs so far, with a message that links
-[the issue that tracks it](https://github.com/AlexanderNenninger/substrait-lean/issues/271): the functions
+[the issue that tracks it](https://github.com/AlexanderNenninger/substrait-lean/issues/2540): the functions
 that [`SUPPORT` and `WINDOW_SUPPORT`](../python/src/sverify/_support.py)
 list without `polars` (`regexp_extract`, `regexp_replace`, `md5`, `sha256`, `first`, `last`,
 `string_agg`, `median`, the quantiles, `mode`, `arg_min`, `arg_max`, the covariances,

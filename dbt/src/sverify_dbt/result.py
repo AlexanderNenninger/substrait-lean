@@ -6,6 +6,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
+from sverify.cli import ExitCode
+
 from sverify_dbt.manifest import Relation, Test
 
 #: A test's or constraint's state: `pending` while the check runs.
@@ -457,14 +459,7 @@ def _test_lines(tests: list[Suggestion], pad: str) -> list[str]:
 
 
 #: `status` of the JSON envelope by exit code, as `sverify check` words them.
-EXIT_STATUS = {
-    0: "proved",
-    1: "not_proved",
-    2: "usage",
-    3: "unsupported",
-    4: "budget_exceeded",
-    6: "error",
-}
+EXIT_STATUS = {c.value: c.status for c in ExitCode}
 
 
 def _item(m: ModelResult) -> dict[str, Any]:
