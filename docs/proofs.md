@@ -449,7 +449,7 @@ build as the guard.
 | `Obligations.lean` | The realizability table: how each engine discharges each option |
 | `Epsilon.lean` | The float tolerance of a plan's double outputs |
 | `EngineRobust.lean` | Postconditions that hold on every engine's doubles: each bounded column widened by its `ε` and kept to its sign (#1045) |
-| `Realize.lean` | Each engine's verdict on a plan for `--contract` (`"engines"`): its class over the options the proof depends on, the evidence and its theorems and facts, the shims, the transfer check per profile (`transferB`), and #568's threshold rule (#1166) |
+| `Realize.lean` | Each engine's verdict on a plan for `--contract` (`"engines"`): its class over the options the proof depends on, the evidence and its theorems and facts, the shims, the transfer check per profile (`transferB`), #568's threshold rule (#1166), and how the rows meet the postcondition's observation: the observation the plan realizes, the doubles held to the reference's value, and the plan's bound against a stated tolerance (#1071) |
 
 ### Reading, writing and the CLI
 
