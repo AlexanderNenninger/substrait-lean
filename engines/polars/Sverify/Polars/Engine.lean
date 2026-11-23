@@ -90,15 +90,15 @@ for a negative value that rounds to zero, in the scope of `round_zero_sign`,
 which Polars's table allows (`IEEE`, D34). -/
 theorem Profile.polars_un_within (f : UnFn) (v w : Value) (h : Profile.polars.un f v = .ok w) :
     w = f.apply v ∨ CallExtra Profile.polars.table (.un f) [v] := by
-  have hx : ∀ g : UnFn, g = .fround ∨ g = .fceil →
+  have hx : ∀ g : UnFn, g = .fround ∨ g = .froundEven ∨ g = .fceil →
       extraAtB Profile.polars.table (.un g) "round_zero_sign" = true := by
-    rintro g (rfl | rfl) <;> decide
+    rintro g (rfl | rfl | rfl) <;> decide
   cases hf : f.polarsTmpl with
   | none => simp only [Profile.polars, hf] at h; exact .inl (raiseIf_ok h)
   | some t =>
-    have hfc : f = .fround ∨ f = .fceil := by
+    have hfc : f = .fround ∨ f = .froundEven ∨ f = .fceil := by
       cases f <;> simp only [UnFn.polarsTmpl, reduceCtorEq] at hf <;> simp
-    rcases hfc with rfl | rfl
+    rcases hfc with rfl | rfl | rfl
     · cases v
       case float c =>
         rw [Profile.polars_un_negZero (f := .fround) rfl (fun _ => rfl) FloatCode.round_negZero
@@ -114,12 +114,25 @@ theorem Profile.polars_un_within (f : UnFn) (v w : Value) (h : Profile.polars.un
       all_goals exact .inl (raiseIf_ok ((Profile.polars_un_not_float _ _ (fun _ h => by cases h)).symm.trans h))
     · cases v
       case float c =>
+        rw [Profile.polars_un_negZero (f := .froundEven) rfl (fun _ => rfl) FloatCode.roundEven_negZero
+          FloatCode.roundEven_negNan (fun _ h => FloatCode.canon_roundEven h)] at h
+        by_cases hc : c < 0 ∧ FloatCode.roundEven c = 0
+        · simp only [hc, and_self, ↓reduceIte, Option.getD_some, Except.ok.injEq] at h
+          subst h
+          exact .inr (callExtra_of_at (hx _ (.inr (.inl rfl))) (by
+            simp [optionScope, Functions.Ctor.result, UnFn.apply, Value.hasZero,
+              FloatCode.isZeroCode, hc.2]))
+        · simp only [hc, ↓reduceIte, Option.getD_none, Except.ok.injEq] at h
+          exact .inl (by rw [← h]; rfl)
+      all_goals exact .inl (raiseIf_ok ((Profile.polars_un_not_float _ _ (fun _ h => by cases h)).symm.trans h))
+    · cases v
+      case float c =>
         rw [Profile.polars_un_negZero (f := .fceil) rfl (fun _ => rfl) FloatCode.ceil_negZero
           FloatCode.ceil_negNan (fun _ h => FloatCode.canon_ceil h)] at h
         by_cases hc : c < 0 ∧ FloatCode.ceil c = 0
         · simp only [hc, and_self, ↓reduceIte, Option.getD_some, Except.ok.injEq] at h
           subst h
-          exact .inr (callExtra_of_at (hx _ (.inr rfl)) (by
+          exact .inr (callExtra_of_at (hx _ (.inr (.inr rfl))) (by
             simp [optionScope, Functions.Ctor.result, UnFn.apply, Value.hasZero,
               FloatCode.isZeroCode, hc.2]))
         · simp only [hc, ↓reduceIte, Option.getD_none, Except.ok.injEq] at h

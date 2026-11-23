@@ -147,12 +147,13 @@ is what the probe gives.
 
 ### Casts
 
-3 of 6 in for 1.0 covered.
+4 of 7 in for 1.0 covered.
 
 | Construct | 1.0 | Today | Used by | Issue |
 |---|---|---|---|---|
 | numeric casts: integer, double, decimal | in | covered | catalogue: cast_numeric 8 |  |
-| CAST(DOUBLE AS INTEGER), which DuckDB rounds | in | — | CAST(amount * 100 AS BIGINT) for cents; catalogue cast_numeric 8; replay 76 | [#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322) |
+| CAST(DOUBLE AS BIGINT), which DuckDB rounds half to even | in | covered | CAST(amount * 100 AS BIGINT) for cents; catalogue cast_numeric 8; replay 76 | [#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322) |
+| CAST(DOUBLE AS INTEGER) and the other narrower integers | in | — | catalogue cast_numeric 8; wait for their probe (#322) | [#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322) |
 | decimal to a smaller scale | in | — | CAST(x AS DECIMAL(10, 2)) after arithmetic; replay 25 | [#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27) |
 | casts to VARCHAR | in | — | dbt surrogate keys and hash diffs (md5 of casts), dbt_utils.unpivot, labels; replay 184 | [#346](https://github.com/AlexanderNenninger/substrait-lean/issues/346) |
 | casts from VARCHAR, and TRY_CAST | in | covered | Eurostat values ([#771](https://github.com/AlexanderNenninger/substrait-lean/issues/771)); CSV sources; Ibis try_cast string | [#806](https://github.com/AlexanderNenninger/substrait-lean/issues/806) |

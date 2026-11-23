@@ -695,7 +695,7 @@ is a choice that accepts every value the plan states.
 | `shift_range` | all others | `ERROR`, `ZERO`, `DROP_BITS` | `DROP_BITS` | raise |
 | `decimal_rescale` | all others | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | `TIE_AWAY_FROM_ZERO` | choose |
 | `rounding` | all others | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR` | `TIE_TO_EVEN` | choose |
-| `rounding` | `fp.round` | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR`, `AWAY_FROM_ZERO`, `TIE_DOWN`, `TIE_UP`, `TIE_TOWARDS_ZERO`, `TIE_TO_ODD` | `TIE_AWAY_FROM_ZERO` | choose |
+| `rounding` | `fp.round` | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR`, `AWAY_FROM_ZERO`, `TIE_DOWN`, `TIE_UP`, `TIE_TOWARDS_ZERO`, `TIE_TO_ODD` | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`; `TIE_AWAY_FROM_ZERO` by default | choose |
 | `on_domain_error` | all others | `NAN`, `ERROR` | `ERROR` | raise |
 | `on_domain_error` | `fp.div` | `NAN`, `NULL`, `ERROR` | `ERROR` | raise |
 | `on_domain_error` | `fp.log` | `NAN`, `NULL`, `ERROR` | `ERROR` | raise |
