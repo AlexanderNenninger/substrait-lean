@@ -152,7 +152,8 @@ def test_sequence_needs_a_total_sort(con) -> None:
     req = {"t": [_.i.between(-100, 100)]}
     seq = sv.equivalent(rows="sequence")
     unsorted = sv.verify(t.select("k", "i"), requires=req, ensures=[seq])
-    assert "not sorted" in routes.choose(unsorted, "duckdb").why
+    why = routes.choose(unsorted, "duckdb").why
+    assert "not sorted" in why and "order_by" in why and 'rows="multiset"' in why
     order = [ibis.asc("k", nulls_first=True), "i"]
     tied = sv.verify(t.select("k", "i").order_by(order), requires=req, ensures=[seq])
     assert not tied._sequence_determined
@@ -382,7 +383,7 @@ def test_unsupported_functions_are_refused(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select(h=t.k.cast("string").hexdigest("md5")))
     r = routes.choose(report, "polars")
-    assert r.refused and r.cls == "refused" and "see #271" in r.why
+    assert r.refused and r.cls == "refused" and "see #2540" in r.why
 
 
 def test_inputs_are_checked_before_the_run(con) -> None:
@@ -459,7 +460,7 @@ def test_rows_that_may_flip_under_the_bound_are_refused(con) -> None:
     plan = [_observed("sum_order", {"floats": {"bound": "plan"}})]
     assert _on_polars(report, cls="observed", observed=plan).cls == "observed"
     r = _on_polars(report, cls="refused", observed=plan, problems=[{"code": "threshold"}])
-    assert r.refused and "may keep other rows on polars" in r.why
+    assert r.refused and "may keep other rows or give other values on polars" in r.why
 
 
 def test_a_threshold_computed_from_the_data_names_exact_columns() -> None:

@@ -125,9 +125,13 @@ Sverify's words claim no more than these theorems give
 
 - The engine models are the reference's relational evaluator with each
   engine's scalar functions. A proof on an engine is a proof on that model:
-  DuckDB's lowering and the shims are proved against it, and the Polars and
-  Spark translations are tested. Engine profiles that evaluate their own
-  relational behaviour are [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271).
+  DuckDB's, Polars's and Spark's lowerings are generated and proved against
+  it (`Lowering.duckdb_exact`, `Lowering.polars_exact`, and Spark's every entry
+  but IEEE division, `Lowering.spark_exact_except`), and the
+  translations' relational operators and remaining shims are tested. Engine
+  profiles that evaluate their own relational operators (joins, sorts, an
+  empty `SUM`, `NULL` order), with no shared `Rel.eval`, are
+  [#2539](https://github.com/AlexanderNenninger/substrait-lean/issues/2539).
 - The report's `ε` (`SubstraitLean/Epsilon.lean`, `robust`, `rows_exact`,
   `margin_checks`) has no theorem that it bounds an engine's doubles. The
   bounds hold over the reals in `float-bounds/`, which `StdModel` links to the

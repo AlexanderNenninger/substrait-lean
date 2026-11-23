@@ -177,9 +177,9 @@ private def nearAll (r : Rel) : Bool :=
 -- comparison transfer at every built-in engine.
 #guard nearAll (.aggregate (.read "t") [.field 0] [{ fn := .count, arg := .field 0 }])
 #guard nearAll (.filter (.read "t") (.bin .lt (.field 0) (.lit (.int 1))))
--- An integer `MAX` transfers at DuckDB only: `MIN` and `MAX` read `list_null_order`, whose
--- scope is every call (`optionScope`, until it narrows to list arguments, ruling 171), and
--- Polars's and Spark's tables leave the reference's `GREATEST` there.
+-- An integer `MAX` transfers at DuckDB only: `MIN` and `MAX` read `list_null_order` by their
+-- group (`Rel.reads` does not see the argument's kind, though the option's scope is a list
+-- argument, #2439), and Polars's and Spark's tables leave the reference's `GREATEST` there.
 #guard (builtinEngines.filter fun e =>
     !transferB (.aggregate (.read "t") [] [{ fn := .max, arg := .field 0 }])
       Profile.reference.table (e.table.refAt floatOnlyOptions)).map (·.name) == ["polars", "spark"]
@@ -542,7 +542,7 @@ engine's run of it is a result the reference allows for the transformation. -/
 theorem check_run_plan_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
-    (hFK : R.foreignKeysOf.Hold data) {s : Rel} (hs : R.runPlanIn R.kenv = .ok s) :
+    {s : Rel} (hs : R.runPlanIn R.kenv = .ok s) :
     s.RefinesBag data T.root ∧ (R.rowsMultiset = false → s.Refines data T.root) ∧
       (T.root.Small data → s.Small data) ∧
       (s.reads.all T.root.reads.contains = true) ∧
@@ -579,12 +579,12 @@ theorem check_run_plan_sound {input : Json} {R : Request} {rep : Report}
       Same data x (x.optimize R.cat R.kenv.cols R.kenv.facts R.kenv.keys R.foreignKeysOf
         R.runRules).1 := fun hx => by
     rw [← Rel.optimize_congr hD.arity]
-    exact Rel.optimize_sound hD.wf hK.cols hK.facts hK.keys hFK hx
+    exact Rel.optimize_sound hD.wf hK.cols hK.facts hK.keys hD.fks hx
   have small : ∀ {x : Rel}, x.WF data → x.Small data →
       (x.optimize R.cat R.kenv.cols R.kenv.facts R.kenv.keys R.foreignKeysOf
         R.runRules).1.Small data := fun hx hs => by
     rw [← Rel.optimize_congr hD.arity]
-    exact Rel.optimize_small hD.wf hK.cols hK.facts hK.keys hFK R.runRules_keepsSmall hx hs
+    exact Rel.optimize_small hD.wf hK.cols hK.facts hK.keys hD.fks R.runRules_keepsSmall hx hs
   have hsmall : T.root.Small data → s'.Small data := fun hs => by
     unfold Request.rewriteOf at hrw
     split at hrw
@@ -663,7 +663,7 @@ theorem Request.issuesIn_sound (R : Request) {data : Catalog} (hD : DataMeets R 
 what `DataMeets` asks. -/
 theorem DataMeets.withRoot {R : Request} {data : Catalog} (hD : DataMeets R data) (s : Rel) :
     DataMeets (R.withRoot s) data :=
-  ⟨hD.wf, hD.arity, hD.schemas, hD.pre, hD.keys, hD.ranges, hD.caps⟩
+  ⟨hD.wf, hD.arity, hD.schemas, hD.pre, hD.keys, hD.ranges, hD.caps, hD.fks⟩
 
 /-- **DuckDB's side condition for the plan to run, from the report**: under
 the reference, where the transformation is guard-free, DuckDB's lowered plan
@@ -674,11 +674,11 @@ guard-freedom (`guard_free`) and the size hypothesis (`Rel.optimize_small`). -/
 theorem run_plan_noRaise_duckdb {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
-    (hFK : R.foreignKeysOf.Hold data) {s : Rel} (hs : R.runPlanIn R.kenv = .ok s)
+    {s : Rel} (hs : R.runPlanIn R.kenv = .ok s)
     (hP : ∀ t, ∀ kn ∈ R.perKeyOf t, RowsPer kn.1 kn.2 (data t).rows)
     (hsm : T.root.Small data) (href : R.underReference = true)
     (hg : rep.guardFree = true) : (Engine.duckdb {} rfl).NoRaiseSide data s := by
-  obtain ⟨-, -, hss, -, -, his, hgf⟩ := check_run_plan_sound hR hc hD hT hFK hs
+  obtain ⟨-, -, hss, -, -, his, hgf⟩ := check_run_plan_sound hR hc hD hT hs
   have hok := Request.check_ok (check_parse hR hc)
   rw [hok.guardFree] at hg
   have hg' := hgf hg
