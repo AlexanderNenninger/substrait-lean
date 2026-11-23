@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sverify._unsupported import ISSUE_271, RANGE_GUARD
+from sverify._unsupported import RANGE_GUARD, SNOWFLAKE_OUT_OF_TREE
 from sverify.profiles import ProfilePlugin
 
 
@@ -26,7 +26,7 @@ PLUGIN = ProfilePlugin(
         "sverify_raise": (
             "Snowflake's SQL of the date guards grows past what it runs: a date from "
             "columns writes 208 MB of nested CASEs",
-            ISSUE_271,
+            SNOWFLAKE_OUT_OF_TREE,
         )
     },
     guards=(RANGE_GUARD,),

@@ -1,0 +1,43 @@
+{
+  "id": "duckdb-to-timestamp-double",
+  "engine": "duckdb",
+  "engine_version": "2.0.1",
+  "title": "`to_timestamp(double)`: the double's microseconds, rounded half to even",
+  "verdict": "epoch_us(to_timestamp(d)) = CAST(d * 1e6 AS BIGINT) on every probed double; both raise together",
+  "area": "casts",
+  "layer": "semantics",
+  "constructs": [
+    "to_timestamp(DOUBLE)",
+    "CAST(DOUBLE AS BIGINT)"
+  ],
+  "settings": {
+    "platform": "macOS arm64",
+    "timezone": "UTC"
+  },
+  "description": [
+    "`to_timestamp(d)` reads a double `d` as seconds since 1970-01-01 UTC. Its microseconds are `d * 1e6` computed as a double and rounded half to even, the same as `CAST(d * 1e6 AS BIGINT)`: so a fractional microsecond rounds on the double product, which is a tie (e.g. 2.5e-6 * 1e6 = 2.5 exactly) where the exact `d * 10^6` is not.",
+    "Where the product is not finite (NaN, ±inf, 1e300) or leaves 64 bits, both raise a Conversion Error (`to_timestamp`: \"Epoch seconds out of range\"). No probed input gave DuckDB's `infinity` timestamp (INT64_MAX µs): the doubles near ±2^63 µs are coarser than a microsecond and either fit or raise.",
+    "Ibis 12 writes `x.cast(float64).cast(timestamp)` on DuckDB as `TO_TIMESTAMP(x)`."
+  ],
+  "reference": "Ruling 266 (F266, #1922): sverify reads Ibis's cast of a double to a timestamp as `cast(cast(round(multiply(x, 1e6), TIE_TO_EVEN) AS i64) AS timestamp)`, the reference's double multiply, D55's round half to even and i64 cast (ruling 239), and #1974's reading of an integer cast as seconds. The reading raises where DuckDB raises.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "issues": [
+    1922
+  ],
+  "provenance": [
+    {
+      "checked_at": "2026-11-22",
+      "method": "probe",
+      "checked_by": "session types-casts (#1922), engines/duckdb/probes/to_timestamp_double.py",
+      "evidence": [
+        {
+          "file": "engines/duckdb/probes/to_timestamp_double.py",
+          "sql": "SELECT epoch_us(to_timestamp($1::DOUBLE)); SELECT CAST($1::DOUBLE * 1e6 AS BIGINT)  -- per double, against Python's round(d * 1e6) raising outside 64 bits",
+          "observed": "29 286 inputs, 0 differences: 19 245 exact ties of the double product (±0.5 … ±3.5 µs, halves between 2^51 and 2^53 µs, random n + 0.5), 8 of -0.0, 0.0, subnormals and 2^-1022, 10 000 random doubles uniform in exponent 2^-30 … 2^44 s (125 raise), 33 edges near ±2^63 µs, INT64_MAX µs, ±inf, NaN and ±1e300 (19 raise)"
+        }
+      ],
+      "notes": "DuckDB 2.0.1 Python wheel, macOS arm64, Python 3.12, seed 1922."
+    }
+  ]
+}

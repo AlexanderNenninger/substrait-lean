@@ -17,6 +17,7 @@ import Sverify.Core.Robust
 import Sverify.Core.AllowedNear
 import Sverify.Analysis.AllowedAnalysis
 import Sverify.Analysis.AnalysisCongr
+import Sverify.Analysis.LeftFk
 
 /-!
 # Checking a contract
@@ -352,6 +353,11 @@ structure Report where
   optimized : Json := .null
   /-- The rewrites `Rel.optimize` applied. -/
   rewrites : List String := []
+  /-- The transformation's left joins that a foreign key would give every left
+  row a match in (table, column, referenced table, column), and whether the
+  request declares it (`references`): the proofs read the declared ones as
+  inner joins (`contract_sound_all_fk`). Untrusted: the account of the step. -/
+  fkJoins : List ((String × Nat × String × Nat) × Bool) := []
   /-- For each issue, what would rule it out (`analysis/Sverify/Analysis/Infer.lean`):
   untrusted candidates, which the caller proves by adding them to the
   preconditions. -/
@@ -488,7 +494,10 @@ def Report.json (r : Report) : Json :=
     ("guard_free", Lean.toJson r.guardFree),
     ("unchecked", r.unchecked),
     ("optimized", r.optimized),
-    ("rewrites", Lean.toJson r.rewrites)]
+    ("rewrites", Lean.toJson r.rewrites),
+    ("fk_joins", Json.arr (r.fkJoins.map fun ((t, c, s, p), used) => Json.mkObj
+      [("table", Lean.toJson t), ("column", Lean.toJson c), ("to_table", Lean.toJson s),
+        ("to_column", Lean.toJson p), ("declared", Lean.toJson used)]).toArray)]
 
 /-- Every postcondition and key proved, and every issue ruled out but the
 assumed ones (`Issue.assumed`), which the data is checked against while the
@@ -1077,11 +1086,16 @@ second argument and evaluates its body at every call: `Request.check` builds
 it once from `knowsTable`, a value, and passes it on (#825). -/
 def kenv : KnowledgeEnv := memoKnowledge R.knowsTable R.know
 
+/-- The input foreign keys (`references`). -/
+def foreignKeysOf : ForeignKeys :=
+  foreignKeys ((R.input.getObjVal? "references").toOption.getD (.obj {}))
+
 /-- A postcondition plan's abstract values under the description `K` of the
 inputs, the rows it reads capped. `Request.check` computes `K` once per
 request (`kenv`) and passes it here and to the other analyses. -/
 def ensureEnvIn (K : KnowledgeEnv) (q : Plan) : List AVal :=
-  (q.root.capReads R.caps).aeval R.cat K.cols K.facts (K.windows R.cat)
+  ((q.root.capReads R.caps).fkLeft R.cat K.cols K.facts (K.windows R.cat) R.foreignKeysOf).aeval
+    R.cat K.cols K.facts (K.windows R.cat)
 
 /-- A postcondition plan's abstract values, the rows it reads capped. -/
 def ensureEnv (q : Plan) : List AVal := R.ensureEnvIn R.kenv q
@@ -1091,7 +1105,7 @@ under `K`, its reads capped. Every postcondition's analysis starts from them
 (`ensureEnvIn_plan`), so `check` computes them once per request rather than
 once per postcondition. -/
 def transformEnvIn (K : KnowledgeEnv) (T : Plan) : List AVal × List Fact :=
-  let r := T.root.capReads R.caps
+  let r := (T.root.capReads R.caps).fkLeft R.cat K.cols K.facts (K.windows R.cat) R.foreignKeysOf
   (r.aeval R.cat K.cols K.facts (K.windows R.cat),
     r.facts R.cat K.facts (K.windows R.cat) ++ r.ratioPart R.cat K.cols K.facts (K.windows R.cat))
 
@@ -1181,10 +1195,6 @@ def guardFreeIn (K : KnowledgeEnv) : Bool := match R.transform with
 
 /-- Is the transformation closed (`Rel.closedB`): the report's `closed`. -/
 def closedIn : Bool := R.transform.any (·.root.closedB)
-
-/-- The input foreign keys (`references`). -/
-def foreignKeysOf : ForeignKeys :=
-  foreignKeys ((R.input.getObjVal? "references").toOption.getD (.obj {}))
 
 /-- The transformation rewritten under `K` with the inputs' facts, keys and
 foreign keys by every rule (`Rel.optimize`, `check_optimized_sound`), and the
@@ -1611,7 +1621,12 @@ def Request.check (R : Request) : Except String Report :=
       let (optimized, rewrites) := R.optimizedJson K
       let sequenceDetermined := R.sequenceDeterminedIn K
       let rep := { rep with classPlaces, classDetermined, sequenceDetermined }
-      .ok { rep with ensures, tiePlaces, deterministic, keys, issues, guardFree, optimized, rewrites }
+      let fkJoins := match R.transform with
+        | some p => (p.root.capReads R.caps).fkJoins R.cat K.cols K.facts (K.windows R.cat)
+            R.foreignKeysOf
+        | none => []
+      let rep := { rep with ensures, tiePlaces, deterministic, keys, issues, guardFree }
+      .ok { rep with optimized, rewrites, fkJoins }
 
 /-- Check a `--contract` request. -/
 def check (input : Json) : Except String Report := do
@@ -1621,7 +1636,7 @@ def check (input : Json) : Except String Report := do
 its plan. -/
 theorem Request.ensureEnvIn_plan (R : Request) (K : KnowledgeEnv) (T : Plan) (p : Post) :
     R.ensureEnvIn K (p.plan T) = p.envFrom (R.transformEnvIn K T) := by
-  simp only [Request.ensureEnvIn, Post.plan, Rel.capReads, Rel.aeval, Request.transformEnvIn,
+  simp only [Request.ensureEnvIn, Post.plan, Rel.capReads, Rel.fkLeft, Rel.aeval, Request.transformEnvIn,
     Post.envFrom]
 
 theorem Request.postEnvs_eq (R : Request) (K : KnowledgeEnv) :
@@ -1784,6 +1799,8 @@ structure DataMeets (R : Request) (data : Catalog) : Prop where
   keys : ∀ t, ∀ k ∈ R.keysOf t, KeyOn k (data t).rows
   ranges : ∀ t, ∀ c ∈ R.rangesOf t, RangeOn c (data t).rows
   caps : ∀ t n, R.caps t = some n → (data t).rows.length ≤ n
+  /-- The declared foreign keys (`sv.references`) hold. -/
+  fks : R.foreignKeysOf.Hold data
 
 /-- **The checker's verdict is the contract theorem** (#1088). When `check`
 reports every column of the request's `k`-th postcondition proved, the
@@ -1796,7 +1813,7 @@ the request (`DataMeets`).
 `check` analyses under the reference whatever profile the request names: a
 request for DuckDB's, Polars's or Spark's profile gets the reference's report,
 labelled `"reference"` and marked `"pending"` by `underProfile`
-(`SubstraitCheck.lean`), until #271 gives those engines reports of their own. A tolerance or an observation on the engine's doubles
+(`SubstraitCheck.lean`), until #2545 gives those engines reports of their own. A tolerance or an observation on the engine's doubles
 belongs to the engine's soundness (`Engine.Sound`), which starts from this
 conclusion.
 
@@ -1825,10 +1842,13 @@ theorem check_proved_sound {input : Json} {R : Request} {rep : Report}
   have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   have hQ : (q.root.capReads R.caps).WF data :=
     Rel.wf_congr hD.arity (Rel.checkWF_iff.mp (check_wf hR hc q (List.mem_of_getElem? hq)))
-  have henv : R.ensureEnv q = ((q.root.capReads R.caps).analyse data R.kenv).cols := by
+  have henv : R.ensureEnv q = (((q.root.capReads R.caps).fkLeft data R.kenv.cols R.kenv.facts
+      (R.kenv.windows data) R.foreignKeysOf).analyse data R.kenv).cols := by
     simp only [Request.ensureEnv, Request.ensureEnvIn, Rel.analyse, KnowledgeEnv.windows,
-      Rel.keyedWindows_congr hD.arity, (Rel.aeval_congr hD.arity _ _ _ false _).1]
-  exact Knowledge.contract_sound_all hD.wf hK hQ (henv ▸ hall) (Rel.orderAllowed_capReads hD.caps ho)
+      Rel.keyedWindows_congr hD.arity, (Rel.aeval_congr hD.arity _ _ _ false _).1,
+      Rel.fkLeft_congr hD.arity]
+  exact Knowledge.contract_sound_all_fk hD.wf hK hD.fks hQ (henv ▸ hall)
+    (Rel.orderAllowed_capReads hD.caps ho)
 
 /-- `p` keeps each of its conditions: over a transformation of arity `n`, the
 column of every expression in `p.exprs` is among those `p.mapping` keeps.
@@ -2105,12 +2125,12 @@ JSON (`Request.CheckOk.optimized`). -/
 theorem check_optimized_sound {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data) {T : Plan} (hT : R.transform = some T)
-    (hFK : R.foreignKeysOf.Hold data) {q : Rel} {log : List Rule}
+    {q : Rel} {log : List Rule}
     (hq : R.optimizedIn R.kenv = some (q, log)) : Same data T.root q := by
   have hK : R.kenv.Sound data := R.kenv_eq ▸ KnowledgeEnv.ofSpec_sound hD.schemas hD.pre hD.keys hD.ranges
   simp only [Request.optimizedIn, hT, Option.map_some, Option.some.injEq] at hq
   rw [← Rel.optimize_congr hD.arity] at hq
-  have := Rel.optimize_sound (use := fun _ => true) hD.wf hK.cols hK.facts hK.keys hFK
+  have := Rel.optimize_sound (use := fun _ => true) hD.wf hK.cols hK.facts hK.keys hD.fks
     (check_transform_wf hR hc hD hT)
   rw [hq] at this
   exact this

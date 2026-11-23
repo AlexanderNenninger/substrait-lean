@@ -319,8 +319,8 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | nested | `list.plain` | `array_length`, `cardinality`, `any_match`, `all_match`, `transform`, `filter` | none |
 | aggregates | `agg.isum` | `sum`, `avg` of integers and decimals | `overflow`, `avg_int_result`, `empty_group_aggregates` |
 | aggregates | `agg.fsum` | `sum`, `avg` of doubles | `sum_order`, `rounding`, `nan_creation`, `empty_group_aggregates`, `float_overflow` |
-| aggregates | `agg.var` | `variance`, `std_dev` | `distribution` (Substrait's: the sample's or the population's), `rounding`, `stat_algo`, `nan_creation`, `stat_degenerate` |
-| aggregates | `agg.stat` | `covar_samp`, `covar_pop`, `corr` | `stat_algo`, `nan_creation`, `stat_degenerate` |
+| aggregates | `agg.var` | `variance`, `std_dev` | `distribution` (Substrait's: the sample's or the population's), `rounding`, `stat_algo`, `nan_creation`, `stat_degenerate`, `float_overflow` |
+| aggregates | `agg.stat` | `covar_samp`, `covar_pop`, `corr` | `stat_algo`, `nan_creation`, `stat_degenerate`, `float_overflow` |
 | aggregates | `agg.order` | `min`, `max`, `quantile_disc`, `median` of non-numbers | `nan_order`, `zero_sign`, `list_null_order` (of lists only, [#2439](https://github.com/AlexanderNenninger/substrait-lean/issues/2439)) |
 | aggregates | `agg.quant` | `quantile_cont`, `median` | `quantile_interp`, `nan_creation`, `nan_order` |
 | aggregates | `agg.pick` | `first`, `last`, `arg_min`, `arg_max`, `mode` | `tie_pick` |
@@ -925,7 +925,7 @@ Two limits of the per-option view:
 - A shim's own calls must be native in `Q`, or be discharged in turn. The
   generator checks this; a shim that needs a refused behaviour makes its row
   refused.
-- Relational options act on operators, not calls: `null_order` is
+- Relational options act on whole operators: `null_order` is
   discharged by writing the sort key's NULL placement, `tie_order` and
   `tie_pick` natively (any engine's pick is one the reference allows), or,
   for a plan that must be determined, by a total order or a refusal

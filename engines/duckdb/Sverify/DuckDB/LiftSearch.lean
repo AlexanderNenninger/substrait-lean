@@ -456,6 +456,11 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
       | (simp_all [Outcome.Agree, Issue.isError] <;> (lift_codes; omega))
       | (simp_all [$fin,*] <;> (lift_codes; omega))))
 
+/-- The sink's key for an area's `#guard`s, which go after all its entries. -/
+def guardsSuffix : String := "/guards"
+
+def guardsOf (area : String) : String := area ++ guardsSuffix
+
 /-- The generated module a function's entry goes to (`writing`): entries of an
 area check in parallel, each in a process of its own. -/
 def areaOf (c : Name) : String :=
@@ -522,9 +527,12 @@ def liftOne (tbl : Name) (s : Semantics) (sE : Lean.Expr) (extra : Array Name)
         s!"theorem {agreeName} : {← LoweringSearch.ppSource ty} := by\n  lift_tac{n}\n\n" ++
         s!"abbrev {tbl ++ short} : {← LoweringSearch.ppSource entryTy} :=\n" ++
         s!"  ⟨{repr j.compress}, {← LoweringSearch.ppSource tmpl},\n" ++
-        s!"    Substrait.LiftEntry.of{if n == 1 then "₁" else "₂"} rfl {agreeName}⟩\n\n" ++
-        -- The parser still reads the JSON as the template the proof is about
-        -- (`sverify.sql_lift` writes the JSON): checked by the build.
+        s!"    Substrait.LiftEntry.of{if n == 1 then "₁" else "₂"} rfl {agreeName}⟩\n\n"))
+      -- The parser still reads the JSON as the template the proof is about
+      -- (`sverify.sql_lift` writes the JSON): checked by the build, at the
+      -- module's end (`guardsOf`), since a `#guard` waits for every proof
+      -- before it and would check the entries one at a time.
+      out.modify (·.push (guardsOf (areaOf k.ctor),
         s!"#guard Substrait.LiftSearch.parse ({← LoweringSearch.ppSource fE})\n" ++
         s!"  ((Lean.Json.parse ({tbl ++ short}).json).toOption.getD Lean.Json.null) ==\n" ++
         s!"    some ({tbl ++ short}).tmpl\n\n"))
@@ -847,10 +855,11 @@ def elabGenerateLift : CommandElab := fun stx => do
     s!"local macro \"lift_tac1\" : tactic => `(tactic| lift_template 1 [{names}])\n" ++
     s!"local macro \"lift_tac2\" : tactic => `(tactic| lift_template 2 [{names}])\n\n"
   let base := ["Sverify.DuckDB.LiftSearch"] ++ deps.map toString
-  let areas := (chunks.toList.map (·.1)).eraseDups
+  let areas := (chunks.toList.map (·.1)).eraseDups.filter (!·.endsWith guardsSuffix)
   IO.FS.createDirAll dir
   for area in areas do
-    let body := String.join ((chunks.toList.filter (·.1 == area)).map (·.2))
+    let of (key : String) := String.join ((chunks.toList.filter (·.1 == key)).map (·.2))
+    let body := of area ++ of (guardsOf area)
     IO.FS.writeFile s!"{dir}/{area}.lean" (header base s!"{tbl}: {area}" ++ body)
   let alts := "\n".intercalate (results.map fun (k, _, r, _) =>
     let pats := " ".intercalate (k.args.toList.map toString)

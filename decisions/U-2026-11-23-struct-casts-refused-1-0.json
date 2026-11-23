@@ -1,0 +1,18 @@
+{
+  "id": "U-2026-11-23-struct-casts-refused-1-0",
+  "date": "2026-11-23",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "1.0 ships with struct casts that reorder or rename fields refused (#2408): a cast to a type that holds a struct is refused. Ruling 269's by-name pairing is After 1.0 (#2503), because it needs a core constructor, `Expr.mkStruct`, that doesn't exist yet.",
+  "issues": [
+    2408,
+    2503,
+    2376
+  ],
+  "amends": [
+    "F269"
+  ],
+  "source": "https://github.com/AlexanderNenninger/substrait-lean/issues/2503",
+  "note": "Relayed by the coordinator. The user had first asked for the proper fix in 1.0; the scoping showed PR A (`Expr.mkStruct` in the core, about 46 Lean files), PR B (the engines' lowerings and writers) and PR C (the resolver with ruling 269's S1–S4)."
+}

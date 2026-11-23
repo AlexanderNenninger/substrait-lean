@@ -40,6 +40,13 @@ the slow declarations and build the one file:
 `Sverify.Engines.*` in the core's build, with two packages under `Sverify/`).
 A generated module's entries are proved only with `check_generated` on.
 
+The generated entries grow with functions × engines × settings: a lowering
+per engine, each proved entry by entry, for one probed minor of each engine at
+1.0 ([D70](decisions.md#d70-engine-versions-probed-in-range-out-of-range)) and
+DuckDB's default settings only. Proving once that a function whose profile
+row is the reference's needs the identity template, and generating entries
+only where a profile differs, is [#2529](https://github.com/AlexanderNenninger/substrait-lean/issues/2529).
+
 ## The budget
 
 [`scripts/lean-budget.json`](../scripts/lean-budget.json) holds a ceiling per
@@ -162,6 +169,13 @@ Spark's table was first balanced from the 25 slowest tests of one run's
   `import Lean` alone makes a module's process about 2 GB.
 - Large generated modules: their proofs are checked only when
   `check_generated` is on.
+- A `#guard` (or `#eval`) between theorems: it waits for every proof before
+  it, so a module's theorems check one at a time where they would check in
+  parallel. The lift's generated modules wrote one after each entry; at the
+  module's end, `Lift.Duckdb.Arith` took 47.9 s on the laptop where it took
+  78.4 s, `Compare` 22.6 s for 49.9 s, `Math` 8.5 s for 26.9 s, at about the
+  same CPU time. A module whose CPU time equals its wall time has its proofs
+  in series.
 
 ## The numbers
 

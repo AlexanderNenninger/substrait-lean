@@ -1,0 +1,10 @@
+Emit [2]
+  Project +[IF (NOT(($1 = 0)) AND (IS_NULL(($1 < $0)) OR true)) THEN ($1 < $0) ELSE false]
+    Read t
+tables: t(2)
+arity: 1
+well-formed: yes
+incremental: yes
+roundtrip: ok
+rows (0):
+[exit 0]

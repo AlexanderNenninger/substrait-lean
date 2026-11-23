@@ -205,9 +205,15 @@ def transpile(project: Path) -> tuple[set[str], set[str]]:
 def apply_overlay(project: Path, overlay: Path) -> None:
     """Add the tests of a dbt properties YAML to the project. Its `seeds` go
     into a file of their own; its `models` are merged into the project's own
-    entry for the model (dbt refuses two entries for one model)."""
+    entry for the model (dbt refuses two entries for one model); its
+    `packages`, for the tests a package provides, become the project's
+    `packages.yml`, which `dbt deps` reads."""
     data = yaml.safe_load(overlay.read_text(encoding="utf-8"))
     models = {m["name"]: m for m in data.pop("models", [])}
+    if packages := data.pop("packages", None):
+        (project / "packages.yml").write_text(
+            yaml.safe_dump({"packages": packages}, sort_keys=False), encoding="utf-8"
+        )
     (project / "models" / "sverify_measure_overlay.yml").write_text(
         yaml.safe_dump(data, sort_keys=False), encoding="utf-8"
     )
@@ -285,10 +291,10 @@ def measure(
     source, build_args = PROJECTS[name]
     with tempfile.TemporaryDirectory() as tmp:
         project = extract(source, Path(tmp) / name)
-        _dbt(project, "deps")
         typed = apply_types(project, types, set(origins)) if types else 0
         if overlay:
             apply_overlay(project, overlay)
+        _dbt(project, "deps")
         started = time.monotonic()
         left_out: list[str] = []
         if build_args is None:

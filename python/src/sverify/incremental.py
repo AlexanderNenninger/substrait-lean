@@ -787,6 +787,10 @@ class StaticSource(Pipeable):
         self.table, self.version, self.digest = table, version, table_digest(table)
         self._log.add(version, change)
 
+    def consumed(self, reader: object, version: int) -> None:
+        """`reader` has committed `version` (`ChangeLog.consumed`)."""
+        self._log.consumed(reader, version)
+
     def schema(self) -> pa.Schema:
         """The current table's schema."""
         return self.table.schema
@@ -842,7 +846,10 @@ class StaticSource(Pipeable):
                 schema=self.table.schema,
             )
         return SourceBatch.from_snapshot(
-            since, self.version, self.table, why="static table replaced"
+            since,
+            self.version,
+            self.table,
+            why="static table replaced, or its changes since are no longer kept",
         )
 
 
@@ -1766,8 +1773,20 @@ class Pipeline:
         register_facts(self.con, name, facts)
         self.sources[name] = source
         self.versions[name] = read
+        _consumed(source, self, read)
         self.on_violation[name] = _quarantine.check_policy(getattr(source, "on_violation", None))
         return self.con.table(name)
+
+    def release(self) -> None:
+        """Tell each source the version this pipeline has durably committed,
+        so its change log can drop what every reader has read
+        (`ChangeLog.consumed`). The caller calls it once nothing can take the
+        pipeline back below these versions: after its sink records them, or
+        after a refresh where nothing is recorded. A rebuild from a sink
+        starts at the versions it recorded, which the log then still
+        keeps."""
+        for t, src in self.sources.items():
+            _consumed(src, self, self.versions[t])
 
     def seal(self) -> None:
         """Move the rows of every Arrow-fed source into the store of the
@@ -2705,6 +2724,15 @@ class Pipeline:
                 v = views[n]
                 v.state, v.serial, v._log, v.groups = state, serial, log, groups
             raise
+
+
+def _consumed(source: object, reader: object, version: int) -> None:
+    """Tell `source` that `reader` has committed `version`, so its change log
+    can drop what every reader has read (`ChangeLog.consumed`), where the
+    source keeps one."""
+    consumed = getattr(source, "consumed", None)
+    if consumed is not None:
+        consumed(reader, version)
 
 
 @dataclass

@@ -2,42 +2,20 @@
   "above-group-avg": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#1985)",
-          "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: cmp's nan_order (#1985)",
-          "row tested: cmp's zero_sign (#1985)",
-          "row tested: win.agg's window_sum_algo (#900)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.value > _.m) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.value > _.m)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: win.agg's window_sum_algo (#900)"
-        ],
-        "class": "shim",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.value > _.m) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.value > _.m)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#271)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: cmp's zero_sign (#271)",
-          "row tested: win.agg's window_sum_algo (#900)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.value > _.m) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.value > _.m)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       }
     },
     "pattern": "window",
@@ -103,33 +81,20 @@
   "avg-nullable": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#1985)",
-          "row tested: agg.fsum's float_overflow (#1985)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.m.isnull() | _.m.between(0, 500)) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.m.isnull() | _.m.between(0, 500))), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
-        ],
-        "class": "shim",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.m.isnull() | _.m.between(0, 500)) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.m.isnull() | _.m.between(0, 500))), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#271)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.m.isnull() | _.m.between(0, 500)) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.m.isnull() | _.m.between(0, 500))), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       }
     },
     "pattern": "bound",
@@ -138,31 +103,20 @@
   "avg-range": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#1985)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition _.m.between(0, 100) reads m, which has no bound on its distance to the reference: write it as sv.approx(_.m.between(0, 100)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition _.m.between(0, 100) reads m, which has no bound on its distance to the reference: write it as sv.approx(_.m.between(0, 100)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition _.m.between(0, 100) reads m, which has no bound on its distance to the reference: write it as sv.approx(_.m.between(0, 100)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       }
     },
     "pattern": "bound",
@@ -237,7 +191,7 @@
       },
       "polars": {
         "causes": [
-          "robust only by the engine's facts (#1045)"
+          "translation tested (no row for the options; #271)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -267,11 +221,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "robust only by the engine's facts (#1045)"
-        ],
         "class": "exact",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -295,11 +246,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "robust only by the engine's facts (#1045)"
-        ],
         "class": "exact",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -323,11 +271,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "robust only by the engine's facts (#1045)"
-        ],
         "class": "exact",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -352,11 +297,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "robust only by the engine's facts (#1045)"
-        ],
         "class": "shim",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -364,8 +306,8 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.order's nan_order (#271)",
-          "row tested: agg.order's zero_sign (#271)"
+          "row tested: agg.order's nan_order (#2544)",
+          "row tested: agg.order's zero_sign (#2544)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -394,8 +336,8 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.order's nan_order (#271)",
-          "row tested: agg.order's zero_sign (#271)"
+          "row tested: agg.order's nan_order (#2544)",
+          "row tested: agg.order's zero_sign (#2544)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -418,9 +360,8 @@
       },
       "polars": {
         "causes": [
-          "robust only by the engine's facts (#1045)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
+          "row tested: cmp's nan_equality (#2544)",
+          "row tested: cmp's nan_order (#2544)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -431,11 +372,11 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.order's nan_order (#271)",
-          "row tested: agg.order's zero_sign (#271)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: cmp's zero_sign (#271)"
+          "row tested: agg.order's nan_order (#2544)",
+          "row tested: agg.order's zero_sign (#2544)",
+          "row tested: cmp's nan_equality (#2544)",
+          "row tested: cmp's nan_order (#2544)",
+          "row tested: cmp's zero_sign (#2544)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -498,11 +439,11 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       },
       "snowflake": {
         "outcome": "refused",
@@ -510,7 +451,7 @@
       },
       "spark": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       }
     },
     "pattern": "expression",
@@ -519,38 +460,20 @@
   "having-avg": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: cmp's nan_order (#1985)",
-          "row tested: cmp's zero_sign (#1985)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.m >= 50) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.m >= 50)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.m >= 50) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.m >= 50)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: cmp's zero_sign (#271)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.m >= 50) reads m, which has no bound on its distance to the reference: write it as sv.approx((_.m >= 50)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       }
     },
     "pattern": "having",
@@ -568,8 +491,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -593,11 +515,11 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       },
       "snowflake": {
         "outcome": "refused",
@@ -605,7 +527,7 @@
       },
       "spark": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       }
     },
     "pattern": "having",
@@ -626,8 +548,8 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
+          "row tested: cmp's nan_equality (#2544)",
+          "row tested: cmp's nan_order (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -639,9 +561,9 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: cmp's zero_sign (#271)"
+          "row tested: cmp's nan_equality (#2544)",
+          "row tested: cmp's nan_order (#2544)",
+          "row tested: cmp's zero_sign (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -663,8 +585,8 @@
       },
       "polars": {
         "causes": [
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
+          "row tested: cmp's nan_equality (#2544)",
+          "row tested: cmp's nan_order (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -675,9 +597,9 @@
       },
       "spark": {
         "causes": [
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: cmp's zero_sign (#271)"
+          "row tested: cmp's nan_equality (#2544)",
+          "row tested: cmp's nan_order (#2544)",
+          "row tested: cmp's zero_sign (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -689,38 +611,20 @@
   "having-sum-bound": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: cmp's nan_order (#1985)",
-          "row tested: cmp's zero_sign (#1985)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.total > 1000) reads total, which has no bound on its distance to the reference: write it as sv.approx((_.total > 1000)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.total > 1000) reads total, which has no bound on its distance to the reference: write it as sv.approx((_.total > 1000)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: cmp's zero_sign (#271)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.total > 1000) reads total, which has no bound on its distance to the reference: write it as sv.approx((_.total > 1000)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       }
     },
     "pattern": "having",
@@ -731,22 +635,22 @@
       "duckdb": {
         "causes": [
           "row tested: agg.quant's nan_order (#1985)",
-          "row tested: agg.quant's quantile_interp (#900)"
+          "row tested: agg.quant's quantile_interp (#1985)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
       },
       "spark": {
         "outcome": "refused",
-        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (spark does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (spark does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)"
       }
     },
     "pattern": "bound",
@@ -780,36 +684,20 @@
   "moving-avg": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#1985)",
-          "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: win.agg's window_sum_algo (#900)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.ma.isnull() | _.ma.between(0, 100)) reads ma, which has no bound on its distance to the reference: write it as sv.approx((_.ma.isnull() | _.ma.between(0, 100))), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
-          "row tested: win.agg's window_sum_algo (#900)"
-        ],
-        "class": "shim",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.ma.isnull() | _.ma.between(0, 100)) reads ma, which has no bound on its distance to the reference: write it as sv.approx((_.ma.isnull() | _.ma.between(0, 100))), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#271)",
-          "row tested: win.agg's window_sum_algo (#900)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "agg.fsum's sum_order: the postcondition (_.ma.isnull() | _.ma.between(0, 100)) reads ma, which has no bound on its distance to the reference: write it as sv.approx((_.ma.isnull() | _.ma.between(0, 100))), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       }
     },
     "pattern": "window",
@@ -819,11 +707,11 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       },
       "snowflake": {
         "outcome": "refused",
@@ -831,7 +719,7 @@
       },
       "spark": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       }
     },
     "pattern": "top_n",
@@ -847,11 +735,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "robust only by the engine's facts (#1045)"
-        ],
         "class": "observed",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -880,8 +765,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -893,8 +777,7 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: fp.arith's rounding (#271)",
-          "row tested: fp.arith's zero_sign (#271)"
+          "row tested: fp.arith's zero_sign (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -910,7 +793,7 @@
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's empty_group_aggregates (#1985)",
           "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: win.agg's window_sum_algo (#900)"
+          "row tested: win.agg's window_sum_algo (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -918,8 +801,7 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
-          "row tested: win.agg's window_sum_algo (#900)"
+          "row tested: win.agg's window_sum_algo (#2544)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -931,8 +813,8 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#271)",
-          "row tested: win.agg's window_sum_algo (#900)"
+          "row tested: agg.fsum's empty_group_aggregates (#2539)",
+          "row tested: win.agg's window_sum_algo (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -946,40 +828,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding (#1985)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
-      },
-      "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
-      },
-      "snowflake": {
-        "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
-      },
-      "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding (#271)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
-      }
-    },
-    "pattern": "bound",
-    "proved": true
-  },
-  "stddev-unique-key": {
-    "engines": {
-      "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#1985)",
           "row tested: agg.var's rounding (#1985)"
         ],
         "class": "observed",
@@ -999,7 +848,41 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding (#271)"
+          "row tested: agg.var's float_overflow (#2544)"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "bound",
+    "proved": true
+  },
+  "stddev-unique-key": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#1985)",
+          "row tested: agg.var's rounding (#1985)"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+      },
+      "spark": {
+        "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1149,8 +1032,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1306,38 +1188,20 @@
   "tier-by-avg": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: cmp's nan_order (#1985)",
-          "row tested: cmp's zero_sign (#1985)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       },
       "snowflake": {
         "outcome": "refused",
         "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: cmp's zero_sign (#271)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       }
     },
     "pattern": "expression",
@@ -1347,11 +1211,11 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       },
       "snowflake": {
         "outcome": "refused",
@@ -1359,7 +1223,7 @@
       },
       "spark": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       }
     },
     "pattern": "top_n",
@@ -1369,11 +1233,11 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       },
       "snowflake": {
         "outcome": "refused",
@@ -1381,7 +1245,7 @@
       },
       "spark": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double may keep other rows on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       }
     },
     "pattern": "top_n",
@@ -1392,6 +1256,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#1985)",
           "row tested: agg.var's rounding (#1985)"
         ],
         "class": "observed",
@@ -1399,8 +1264,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1412,7 +1276,7 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding (#271)"
+          "row tested: agg.var's float_overflow (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
