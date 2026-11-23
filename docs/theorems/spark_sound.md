@@ -1,6 +1,6 @@
 # `Rel.spark_sound`
 
-A plan Sverify has proved returns the reference's rows when it runs on Spark under ANSI as the writer writes it.
+A plan Sverify has proved returns the reference's rows when it runs on Spark under ANSI, lowered by Spark's generated table.
 
 Lean: `Substrait.Rel.spark_sound`, in
 [`engines/spark/Sverify/Spark/Engine.lean`](../../engines/spark/Sverify/Spark/Engine.lean).
@@ -10,25 +10,38 @@ lists as trusted.
 
 ## What it says
 
-Spark under ANSI raises where the reference raises. Sverify writes the plan
-for Spark with the functions of Spark's profile (`Profile.sparkWritten`), and
-this theorem says that, for a proved plan, the result is the reference's rows.
+Spark under ANSI raises where the reference raises. Sverify lowers the plan
+for Spark with a generated table (`Lowering.spark`): each function Spark
+computes its own way gets a template proved to give the reference's value
+under Spark's profile, on doubles (`floor` and `ceil`, which return a
+`BIGINT` on Spark). This theorem says that the lowered plan, run with Spark's
+functions where they do not raise (`Spark.impl`), gives the reference's rows.
 The plan in the example needs no shim, and its route class is `exact`.
+
+It covers a plan whose every function the table lowers exactly, which is every
+plan but one with IEEE division. That one's entry raises at a zero divisor,
+where IEEE gives `±∞`, as Spark does under ANSI. Such a plan keeps every guard,
+and its theorem is `Rel.spark_sound_or_raises`: the reference's rows wherever
+Spark does not raise. `Engine.spark_sound` joins the two (`Engine.SparkSide`,
+ruling 277).
 
 ## The statement, line by line
 
 ```lean
-theorem Rel.spark_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+theorem Rel.spark_sound {cat : Catalog} (hcat : cat.WF) (hdbl : cat.Dbl) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
-    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) :
-    r.eval cat Profile.sparkWritten.okImpl = r.eval cat
+    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) (hc : r.ConstsDbl)
+    (hx : r.ExactOnB Lowering.spark = true) {r' : Rel} (hr : Lowering.spark.lowerRel? r = .ok r') :
+    r'.eval cat Spark.impl = r.eval cat
 ```
 
 - `cat`, `hcat`: the data, a catalog of tables, and the assumption that it
   is well formed.
+- `hdbl`: every double in the data is a double's code (`Catalog.Dbl`): a
+  fact of every Arrow `float64` column (ruling 248).
 - `A`, `hA`: what the checker knows of the values of each table's columns,
   as a set per column, and the assumption that every row of the data lies in
   those sets.
@@ -43,7 +56,12 @@ theorem Rel.spark_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
   loses a filter and no `UNNEST` sits below the guards (`Rel.looseSub`).
 - `hm`: the checker's list of issues the plan may raise (`Rel.mayIssues`)
   holds nothing but issues assumed on the data, which the run checks first.
-- The conclusion: evaluating the plan with Spark's functions where they do not raise (`Profile.sparkWritten.okImpl`) gives the same rows as the reference's `Rel.eval`.
+- `hc`: the plan's constants are doubles' codes (`Rel.ConstsDbl`), which the
+  checker checks on every plan (`Rel.constsDblB`).
+- `hx`: Spark's table lowers every expression of the plan exactly
+  (`Rel.ExactOnB`): the plan calls no IEEE division.
+- `r'`, `hr`: the plan Spark's table lowers it to.
+- The conclusion: evaluating the lowered plan with Spark's functions where they do not raise (`Spark.impl`) gives the same rows as the reference's `Rel.eval`.
 
 ## What it rules out
 
@@ -55,17 +73,19 @@ theorem Rel.spark_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVa
 ## What it does not cover
 
 - What Spark does outside the model of its functions. The theorem is about
-  `Profile.sparkWritten`, built from Spark's facts
+  `Profile.spark`, built from Spark's facts
   ([`engines/spark/facts/`](../../engines/spark/facts/)); that the model
   matches Spark rests on tests ([trusted-base.md](../trusted-base.md)).
+- A plan with IEEE division: `Rel.spark_sound_or_raises`, the reference's
+  rows where Spark does not raise.
 - A plan whose ties stay open or whose doubles Spark adds in another order:
   [`contract_sound_all`](contract_sound_all.md) and
   [`contract_sound_allowed`](contract_sound_allowed.md).
 
 ## Its side conditions
 
-`hcat` is a fact about the data, which the run's schema check covers.
-`hwf`, `hs` and `hm` are the checker's own computations on the plan.
+`hcat` and `hdbl` are facts about the data, which the run's schema check covers.
+`hwf`, `hs`, `hm`, `hc` and `hx` are the checker's own computations on the plan.
 `hsmall` is about the data, the row counts of what windows and aggregates
 read, and it is trusted: an engine's memory guarantees it
 ([trusted-base.md](../trusted-base.md)). `hA` and `hF` are the contract's schemas and preconditions, checked on the
