@@ -9,7 +9,8 @@
     "float_to_int"
   ],
   "rows": [
-    {"option": "float_to_int", "types": ["any"], "evidence": "engine_test"}
+    {"option": "float_to_int", "types": ["any"], "evidence": "engine_test"},
+    {"group": "cast.num", "option": "float_to_int", "types": ["any"], "evidence": "engine_test"}
   ],
   "constructs": [
     "CAST",

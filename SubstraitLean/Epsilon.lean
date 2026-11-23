@@ -1233,6 +1233,8 @@ knows more, the columns' types and what the preconditions rule out, and its
   double side;
 * `min_mod_neg_one`, where every integer `%`'s dividend is bounded above
   `-2⁶³` by the preconditions;
+* `list_null_order`, where no call that reads it takes an argument that may be
+  a list (`listOrders`): its scope is a list argument (#2439);
 * a value-side or open option of an expression whose result reaches neither
   the output nor the rows kept (`liveReads`): a projected column nothing reads.
   An error-side option counts wherever it is met, since an engine may still
@@ -1258,6 +1260,32 @@ def cmpDouble (cols : List Kind) : Expr → Bool
   | .bin f a b => (Functions.rowOf (.bin f)).any (·.group == "cmp") &&
       (a.kind cols == .float || b.kind cols == .float)
   | _ => false
+
+/-- May a value of this kind be a list: a list, a struct (whose fields may be),
+or a kind the analysis does not know. -/
+def mayListKind : Kind → Bool
+  | .list _ | .struct _ | .other => true
+  | _ => false
+
+/-- Does a call that reads `list_null_order` (`ctorReads`: `MIN`, `MAX`, `list_lt`, …)
+take an argument that may be a list? Its scalar calls are found in `exprs` (each with its
+input's kinds), and its measures, a window's among them, in `aggNodes`. Where none does,
+no call meets the option's scope (`optionScope`, #2439). -/
+def listOrders (schemas : Write.Schemas) (cat : Catalog) (exprs : List (Expr × List Kind))
+    (r : Rel) : Bool :=
+  exprs.any (fun (e, cols) => (subExprs e).any (onList cols)) ||
+    (aggNodes r).any fun (a, _, ms) => ms.any fun m =>
+      let cols := (Write.relKinds schemas cat a).map Write.WKind.toKind
+      (reads (.agg m.fn) && mayListKind (m.arg.kind cols)) ||
+        (m.arg :: m.filter.toList).any fun e => (subExprs e).any (onList cols)
+where
+  reads (c : Functions.Ctor) : Bool := (ctorReads c).any (·.2.1 == "list_null_order")
+  onList (cols : List Kind) : Expr → Bool
+    | .un f a => reads (.un f) && mayListKind (a.kind cols)
+    | .bin f a b => reads (.bin f) && (mayListKind (a.kind cols) || mayListKind (b.kind cols))
+    -- A lambda's body sees the elements, whose kinds `cols` does not give.
+    | .hof _ _ b => b.ctors.any reads
+    | _ => false
 
 /-- Does a grouping, `DISTINCT` or join compare doubles as keys? -/
 def doubleKeys (schemas : Write.Schemas) (cat : Catalog) : Rel → Bool
@@ -1363,6 +1391,8 @@ def dependsReads (input : Json) : Except String (Option (List Read)) := do
   let ctx := exprCtx (Write.planSchemas plan) cat A F T plan.root
   let cmp := ctx.any fun (e, cols, _) => (subExprs e).any (cmpDouble cols)
   let minMod := ctx.any fun (e, _, env) => (subExprs e).any (minModPossible env)
+  let lists := listOrders (Write.planSchemas plan) cat (ctx.map fun (e, cols, _) => (e, cols))
+    plan.root
   -- Error-side options count wherever they are met (an engine may evaluate a
   -- column nothing reads, and raise); the others where they reach the output.
   let live := liveReads cat plan.root (List.range (plan.root.arity cat))
@@ -1372,7 +1402,7 @@ def dependsReads (input : Json) : Except String (Option (List Read)) := do
     fun (g, o, _) =>
     !(g == "rel.keys" && !keys) && !(o == "empty_group_aggregates" && !empty) &&
       !(g == "cmp" && !cmp) &&
-      !(o == "min_mod_neg_one" && !minMod)
+      !(o == "min_mod_neg_one" && !minMod) && !(o == "list_null_order" && !lists)
   return some reads
 
 /-- `"depends"` of a `--contract` request. -/
