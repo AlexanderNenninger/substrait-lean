@@ -1,0 +1,21 @@
+{
+  "duckdb": "2.0.1",
+  "source": "duckdb/duckdb@v2.0.1 (8d78114e90a53823803660bf821f6073ac87da8c)",
+  "license": "test/sql \u00a9 Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "function/struct",
+  "summary": {"agree": 0, "disagree": 0, "refused": 5, "skipped": 4},
+  "agree_oracle_a_only": 0,
+  "disagree_sides": {},
+  "skipped_files": {},
+  "results": [
+    {"file": "function/struct/struct_extract_null_struct.test", "line": 5, "sql": "SELECT typeof((NULL::STRUCT(a INT, z INT)).z);", "cls": "refused", "reason": "lift: SqlUnsupported: TYPEOF((CAST(NULL AS STRUCT(a INT, z INT))).z) is not supported yet; write this step in Ibis"},
+    {"file": "function/struct/struct_extract_null_struct.test", "line": 10, "sql": "SELECT typeof(struct_extract_at(NULL::STRUCT(a VARCHAR, b DOUBLE), 2));", "cls": "refused", "reason": "lift: SqlUnsupported: unknown function struct_extract_at(): DuckDB SQL here has no such function; check the name agains…"},
+    {"file": "function/struct/struct_extract_null_struct.test", "line": 15, "sql": "SELECT typeof((NULL::TUPLE(INT, VARCHAR))[2]);", "cls": "refused", "reason": "lift: SqlUnsupported: TYPEOF((CAST(NULL AS TUPLE(INT, VARCHAR)))[2]) is not supported yet; write this step in Ibis"},
+    {"file": "function/struct/struct_extract_null_struct.test", "line": 20, "sql": "SELECT (NULL::STRUCT(a VARCHAR)).a UNION ALL SELECT 'x' ORDER BY 1 NULLS FIRST;", "cls": "refused", "reason": "lift: SqlUnsupported: (CAST(NULL AS STRUCT(a TEXT))).a is not supported yet; write this step in Ibis"},
+    {"file": "function/struct/struct_extract_null_struct.test", "line": 26, "sql": "SELECT (NULL::STRUCT(a INT)).zzz;", "cls": "skipped", "reason": "DuckDB frontend error"},
+    {"file": "function/struct/struct_extract_null_struct.test", "line": 31, "sql": "SELECT struct_extract_at(NULL::STRUCT(a INT), 99);", "cls": "skipped", "reason": "DuckDB frontend error"},
+    {"file": "function/struct/struct_extract_null_struct.test", "line": 36, "sql": "SELECT (NULL::TUPLE(INT))[99];", "cls": "skipped", "reason": "DuckDB frontend error"},
+    {"file": "function/struct/struct_extract_null_struct.test", "line": 42, "sql": "SELECT ({'a': 1, 'z': 2}).z;", "cls": "refused", "reason": "lift: SqlUnsupported: ({'a': 1, 'z': 2}).z is not supported yet; write this step in Ibis"},
+    {"file": "function/struct/struct_extract_null_struct.test", "line": 47, "sql": "SELECT ({'a': 1}).zzz;", "cls": "skipped", "reason": "DuckDB frontend error"}
+  ]
+}

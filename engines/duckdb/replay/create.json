@@ -3,9 +3,11 @@
   "source": "duckdb/duckdb@v2.0.0 (d54cbbe3df17e8e5ce68312f483b4155836112aa)",
   "license": "test/sql \u00a9 Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
   "area": "create",
-  "summary": {"agree": 14, "disagree": 0, "refused": 9, "skipped": 2},
+  "summary": {"agree": 18, "disagree": 0, "refused": 9, "skipped": 2},
+  "agree_oracle_a_only": 0,
   "disagree_sides": {},
   "skipped_files": {"create/create_schema_options.test": "require no_force_storage", "create/create_table_compression.test": "require block_size 262144"},
+  "refreshed": {"create/create_table_as_no_data_limit.test": "2.0.1"},
   "results": [
     {"file": "create/create_as.test", "line": 8, "sql": "SELECT * FROM tbl1;", "expected": "[\"1\"]", "duckdb": "[[\"1\"]]", "lean": "[[\"1\"]]", "engine": "[[\"1\"]]", "cls": "agree"},
     {"file": "create/create_as.test", "line": 16, "sql": "SELECT * FROM tbl2;", "expected": "[\"2\"]", "duckdb": "[[\"2\"]]", "lean": "[[\"2\"]]", "engine": "[[\"2\"]]", "cls": "agree"},
@@ -29,6 +31,10 @@
     {"file": "create/create_table_as_duplicate_names.test", "line": 65, "sql": "SELECT * FROM (SELECT * FROM range(5) tbl1(i) JOIN range(5) tbl2(i) ON tbl1.i=tbl2.i) tbl;", "cls": "refused", "reason": "lift: FROM RANGE(0, 5) AS tbl1(i): only the inputs' tables can be read"},
     {"file": "create/create_table_as_duplicate_names.test", "line": 77, "sql": "SELECT * FROM t3", "expected": "[\"0\", \"0\", \"1\", \"1\", \"2\", \"2\", \"3\", \"3\", \"4\", \"4\"]", "duckdb": "[[\"0\", \"0\"], [\"1\", \"1\"], [\"2\", \"2\"], [\"3\", \"3\"], [\"4\", \"4\"]]", "lean": "[[\"0\", \"0\"], [\"1\", \"1\"], [\"2\", \"2\"], [\"3\", \"3\"], [\"4\", \"4\"]]", "engine": "[[\"0\", \"0\"], [\"1\", \"1\"], [\"2\", \"2\"], [\"3\", \"3\"], [\"4\", \"4\"]]", "cls": "agree"},
     {"file": "create/create_table_as_duplicate_names.test", "line": 89, "sql": "SELECT * FROM t4", "expected": "[\"0\", \"0\", \"1\", \"1\", \"2\", \"2\", \"3\", \"3\", \"4\", \"4\"]", "duckdb": "[[\"0\", \"0\"], [\"1\", \"1\"], [\"2\", \"2\"], [\"3\", \"3\"], [\"4\", \"4\"]]", "lean": "[[\"0\", \"0\"], [\"1\", \"1\"], [\"2\", \"2\"], [\"3\", \"3\"], [\"4\", \"4\"]]", "engine": "[[\"0\", \"0\"], [\"1\", \"1\"], [\"2\", \"2\"], [\"3\", \"3\"], [\"4\", \"4\"]]", "cls": "agree"},
+    {"file": "create/create_table_as_no_data_limit.test", "line": 11, "sql": "SELECT count(*) FROM t1;", "expected": "[\"0\"]", "duckdb": "[[\"0\"]]", "lean": "[[\"0\"]]", "engine": "[[\"0\"]]", "cls": "agree"},
+    {"file": "create/create_table_as_no_data_limit.test", "line": 19, "sql": "SELECT count(*) FROM t2;", "expected": "[\"0\"]", "duckdb": "[[\"0\"]]", "lean": "[[\"0\"]]", "engine": "[[\"0\"]]", "cls": "agree"},
+    {"file": "create/create_table_as_no_data_limit.test", "line": 27, "sql": "SELECT count(*) FROM t3;", "expected": "[\"0\"]", "duckdb": "[[\"0\"]]", "lean": "[[\"0\"]]", "engine": "[[\"0\"]]", "cls": "agree"},
+    {"file": "create/create_table_as_no_data_limit.test", "line": 36, "sql": "SELECT count(*) FROM t4;", "expected": "[\"2\"]", "duckdb": "[[\"2\"]]", "lean": "[[\"2\"]]", "engine": "[[\"2\"]]", "cls": "agree"},
     {"file": "create/create_table_with_arraybounds.test", "line": 10, "sql": "select column_type from (describe T);", "cls": "refused", "reason": "lift: cannot resolve the SQL's names: Column 'column_type' could not be resolved. Line: 1, Col: 18"},
     {"file": "create/create_table_with_arraybounds.test", "line": 38, "sql": "from b;", "cls": "skipped", "reason": "setting collation or macro"},
     {"file": "create/create_table_with_arraybounds.test", "line": 52, "sql": "select typeof(vis) from C;", "cls": "skipped", "reason": "setting collation or macro"}
