@@ -83,8 +83,8 @@ def findFrom (t : List Char) : List Char → Nat → Option Nat
 /-! ### A linear search (#2497)
 
 `findFrom` tests `isPrefixOf` at every position: up to `n · m` comparisons
-for a needle of `m` characters in `n`, which took DuckDB's long
-almost-matching needle test past the replay's watchdog. `findFromFast` keeps a
+for a needle of `m` characters in `n`, which took a long almost-matching
+needle in the SQL replay past its watchdog. `findFromFast` keeps a
 hash of the `m` characters at the current position, rolled forward one
 character at a time, and tests `isPrefixOf` only where it equals the needle's
 hash. A window equal to the needle has the needle's hash, so this skips only
