@@ -8,7 +8,14 @@ Per pipeline, engine and size N: four inserts of N/4 rows through a node
 process of its own, twice:
 
 * timed: the refresh of each insert, and the driver's peak memory
-  (`ru_maxrss`) over the four, with no read of the state;
+  (`ru_maxrss`) over the four, with no read of the state. After the last
+  refresh it also splits the driver's memory: the sources' tables (every
+  source keeps its whole table in the Python process, outside the bar,
+  #1945), the Arrow memory pool's allocation (Arrow tables the driver
+  built, such as a state held as Arrow; a source built from NumPy is
+  outside it), the state location's files (`_parts.state_dir`, where
+  Polars and Spark keep their parts), DuckDB's own memory
+  (`duckdb_memory()`), and the resident set now;
 * sized: after each refresh, the view's state (`arrow_of(view.state)`): its
   rows, and its size as Parquet, against the Parquet size of the rows read
   so far. The worst of the four ratios and the last one are printed.
@@ -25,8 +32,10 @@ The pipelines (#1329, "The bar for 1.0"):
   O(distinct output).
 """
 
+import contextlib
 import io
 import multiprocessing as mp
+import os
 import resource
 import sys
 import time
@@ -38,6 +47,7 @@ import pyarrow.parquet as pq
 from ibis import _
 
 import sverify as sv
+from sverify import _duckdb, _parts
 from sverify._state import arrow_of
 from sverify.io import Changes, StaticSource
 
@@ -114,9 +124,11 @@ def parquet_bytes(t: pa.Table) -> int:
 def case(name: str, engine: str, n: int, sized: bool, out: mp.Queue) -> None:
     k = n // 4
     src = StaticSource(orders(k, 0), name="orders")
+    sources = [src]
     transform = PIPELINES[name]
     if name == "join":
-        node = transform(src, StaticSource(customers(), name="customers"))
+        sources.append(StaticSource(customers(), name="customers"))
+        node = transform(src, sources[1])
     else:
         node = src.pipe(transform)
     data = parquet_bytes(orders(k, 0))
@@ -134,7 +146,46 @@ def case(name: str, engine: str, n: int, sized: bool, out: mp.Queue) -> None:
             assert node._stage is not None
             state = arrow_of(node._stage.view.state)
             sizes.append((state.num_rows, parquet_bytes(state), data))
-    out.put((times, resource.getrusage(resource.RUSAGE_SELF).ru_maxrss, sizes))
+    out.put((times, resource.getrusage(resource.RUSAGE_SELF).ru_maxrss, sizes, memory(sources)))
+
+
+def dir_bytes(path: str) -> int:
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for f in files:
+            with contextlib.suppress(OSError):
+                total += os.path.getsize(os.path.join(root, f))
+    return total
+
+
+def rss_now() -> int:
+    """The resident set now, in bytes (Linux; 0 elsewhere)."""
+    try:
+        with open("/proc/self/statm") as f:
+            return int(f.read().split()[1]) * os.sysconf("SC_PAGE_SIZE")
+    except OSError:
+        return 0
+
+
+def memory(sources: list) -> dict[str, int]:
+    """Where the driver's memory is, after the last refresh."""
+    source = sum(s.table.nbytes for s in sources)
+    try:
+        row = (
+            _duckdb.cursor()
+            .execute("SELECT coalesce(sum(memory_usage_bytes), 0) FROM duckdb_memory()")
+            .fetchone()
+        )
+        duck = row[0] if row else 0
+    except Exception:
+        duck = 0
+    return {
+        "source": source,
+        "arrow": pa.total_allocated_bytes(),
+        "files": dir_bytes(_parts.state_dir()) if "://" not in _parts.state_dir() else -1,
+        "duckdb": int(duck),
+        "rss": rss_now(),
+    }
 
 
 def run(name: str, engine: str, n: int, sized: bool) -> tuple | str:
@@ -161,9 +212,10 @@ def main(argv: list[str]) -> None:
     sizes = [int(float(a)) for a in argv] or [10**6, 4 * 10**6]
     print(
         "| pipeline | engine | N | state rows (last) | state / data: worst, last "
-        "| refresh s (each of 4) | driver peak MB |"
+        "| refresh s (each of 4) | driver peak MB | source MB | Arrow pool MB "
+        "| state files MB | DuckDB MB | RSS now MB |"
     )
-    print("|---|---|---|---|---|---|---|")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|")
     for n in sizes:
         for name in PIPELINES:
             for engine in engines:
@@ -173,13 +225,15 @@ def main(argv: list[str]) -> None:
                     why = timed if isinstance(timed, str) else sized
                     print(f"| {name} | {engine} | {n:,} | {why} |")
                     continue
-                times, rss, _ = timed
+                times, rss, _, mem = timed
+                m = {k: (f"{v / 2**20:.0f}" if v >= 0 else "remote") for k, v in mem.items()}
                 mb = rss / (1024**2 if sys.platform == "darwin" else 1024)  # bytes, or KB
                 ratios = [b / d for _, b, d in sized[2]]
                 rows = sized[2][-1][0]
                 print(
                     f"| {name} | {engine} | {n:,} | {rows:,} | {max(ratios):.4f}, {ratios[-1]:.4f} "
-                    f"| {', '.join(f'{t:.2f}' for t in times)} | {mb:.0f} |",
+                    f"| {', '.join(f'{t:.2f}' for t in times)} | {mb:.0f} | {m['source']} "
+                    f"| {m['arrow']} | {m['files']} | {m['duckdb']} | {m['rss']} |",
                     flush=True,
                 )
 
