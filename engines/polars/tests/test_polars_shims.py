@@ -410,7 +410,7 @@ def test_md5_is_refused_on_polars_with_the_reason():
     con.create("r", STRINGS, TEXTS)
     t = ibis.table(STRINGS, name="r")
     plan = written_plan(to_substrait_json(t.select(h=t.s.hexdigest("md5"))))
-    with pytest.raises(polars_engine.Unsupported, match="see #271"):
+    with pytest.raises(polars_engine.Unsupported, match="see #2540"):
         run_plan(con, plan, "polars")
 
 

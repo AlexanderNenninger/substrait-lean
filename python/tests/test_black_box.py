@@ -9,6 +9,7 @@ Python table against Lean's."""
 
 import base64
 import json
+import re
 import math
 import subprocess
 
@@ -211,7 +212,7 @@ def test_refusals_say_what(query, message):
 @pytest.mark.parametrize("query", [SCALAR, AGGREGATES[0]])
 def test_other_dialects_refuse(query, dialect):
     plan = json.loads(written_plan(json.dumps(lift(query, SCHEMAS).plan)))
-    with pytest.raises(Unsupported, match="see #271"):
+    with pytest.raises(Unsupported, match=re.escape(dialect.not_yet)):
         to_sql(plan, dialect)
 
 
@@ -225,7 +226,7 @@ def test_other_engines_refuse(query, engine):
     con.create("t", schema, [("a", 1), (None, 2)])
     plan = written_plan(json.dumps(lift(query, {"t": schema}).plan))
     # Each engine's own `Unsupported`, a `ValueError`.
-    with pytest.raises(ValueError, match="see #271"):
+    with pytest.raises(ValueError, match="see #2540"):
         run_plan(con, plan, engine)
 
 

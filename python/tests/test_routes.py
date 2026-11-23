@@ -382,7 +382,7 @@ def test_unsupported_functions_are_refused(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select(h=t.k.cast("string").hexdigest("md5")))
     r = routes.choose(report, "polars")
-    assert r.refused and r.cls == "refused" and "see #271" in r.why
+    assert r.refused and r.cls == "refused" and "see #2540" in r.why
 
 
 def test_inputs_are_checked_before_the_run(con) -> None:
