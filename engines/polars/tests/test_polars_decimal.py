@@ -233,3 +233,25 @@ def test_a_double_cast_to_decimal_runs_as_the_reference_on_polars():
     out = report.run(con, "polars")
     assert report.routes["polars"].taken == "translated", report.routes["polars"]
     assert out.column("r").to_pylist() == [D("0.13"), D("-0.13"), D("0.38"), D("1.00")]
+
+
+def test_a_decimal_rescale_runs_as_the_reference_on_polars():
+    """Polars's native cast of a decimal to a smaller scale rounds half to even
+    (0.125 is 0.12, polars-decimal-casts), and the reference half away from zero.
+    Polars's run path writes the reference's (`decimal_round_half_away`), so a
+    proved rescale gives the reference's values at the ties. A switch of
+    `UnFn.dround` to Polars's native cast fails here (ruling 278's addendum,
+    #2566)."""
+    con = sv.connect()
+    con.put(
+        "t",
+        pa.table(
+            {"d": pa.array([D("0.125"), D("-0.125"), D("0.135"), D("0.250")], pa.decimal128(4, 3))}
+        ),
+    )
+    t = con.table("t")
+    report = sv.verify(t.select(r=t.d.cast("decimal(3, 2)")), requires={"t": [ibis._.d.abs() < 9]})
+    assert report.verdict == sv.Verdict.PROVED, str(report)
+    out = report.run(con, "polars")
+    assert report.routes["polars"].taken == "translated", report.routes["polars"]
+    assert out.column("r").to_pylist() == [D("0.13"), D("-0.13"), D("0.14"), D("0.25")]
