@@ -80,6 +80,7 @@ def Ctor.key : Ctor → Ctor
     | .raise _ => .raise ""
     | .approx _ => .approx 0
     | .dtrunc _ => .dtrunc 0
+    | .dround _ => .dround 0
     | f => f
   | .bin f => .bin <| match f with
     | .substr _ _ => .substr none true
@@ -386,13 +387,15 @@ def areas : List (String × List FnRow × Nat) :=
 def all : List FnRow := areas.flatMap (·.2.1)
 
 /-- The casts that read options: a double or a decimal to an integer reads
-`float_to_int` (ST-6, ruling 272). They are written as Substrait's `cast`, so they
-have no anchor and are in no area: the writer, the parser and the Python mirror
-read `all`, and only `rowOf` finds these. -/
+`float_to_int` (ST-6, ruling 272), and a decimal to a smaller scale reads
+`decimal_rescale` (ST-8, ruling 273). They are written as Substrait's `cast`, so
+they have no anchor and are in no area: the writer, the parser and the Python
+mirror read `all`, and only `rowOf` finds these. -/
 def casts : List FnRow := [
   { name := "cast", anchor := 0, group := "cast.num", ctor := some (.un .ftoi) },
   { name := "cast", anchor := 0, group := "cast.num", ctor := some (.un .ftoiOrNull) },
-  { name := "cast", anchor := 0, group := "cast.num", ctor := some (.un (.dtrunc 0)) }]
+  { name := "cast", anchor := 0, group := "cast.num", ctor := some (.un (.dtrunc 0)) },
+  { name := "cast", anchor := 0, group := "cast.dec", ctor := some (.un (.dround 0)) }]
 
 /-- The groups of `docs/core-semantics.md` that have functions here, with
 the options each takes. -/
@@ -418,7 +421,7 @@ def groups : List (String × List String) := [
   -- `float_to_int`, the conversion.
   ("fp.round", ["rounding", "round_zero_sign", "float_to_int"]),
   ("fp.floor", ["round_zero_sign", "float_to_int"]),
-  ("cast.num", ["float_to_int"]),
+  ("cast.num", ["float_to_int"]), ("cast.dec", ["decimal_rescale"]),
   ("cmp", ["nan_equality", "nan_order", "zero_sign"]), ("sverify", []),
   ("str.sub", ["negative_start", "substring_range", "string_positions"]),
   ("str.match", ["case_sensitivity", "string_positions"]),

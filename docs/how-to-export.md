@@ -26,7 +26,7 @@ the export handles it in one of these ways:
 | ST-9 (rounding of doubles) | IEEE 754's default rounding, which `fp64` follows; recorded with evidence `tested` |
 | ST-3, ST-4, ST-6 | a shim, by `shims` |
 | ST-7 | none needed: the writer states every sort key's direction |
-| ST-8 | none needed where no decimal `+`, `-` or `*` reduces its scale; otherwise by `shims` |
+| ST-8 | none needed where no decimal `+`, `-`, `*` or cast reduces its scale; otherwise by `shims` |
 | ST-10 | refused in every mode: `upper` and `lower` of non-ASCII text |
 
 `shims` takes three values, applied to every gap alike:
@@ -38,7 +38,8 @@ the export handles it in one of these ways:
   grouping key is the pair `(is_nan(x), x + 0.0)`, and a double sort key
   sorts by `is_nan(x)` first, so that NaN equals NaN and sorts greatest,
   and the two zeros are one (ST-4). An ordering comparison of doubles
-  (`<`, `<=`, `>`, `>=`, `between`) follows the same order. A cast of a
+  (`<`, `<=`, `>`, `>=`, `between`) follows the same order. A `MIN`, `MAX`
+  or quantile of doubles has no shim, so the export refuses it. A cast of a
   double to an integer truncates first (ST-6). A gap the plan meets where
   no shim applies refuses the export.
 - `"annotate"` keeps the plan as written and records each choice in the

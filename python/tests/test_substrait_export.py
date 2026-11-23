@@ -811,6 +811,15 @@ def test_st8_holds_or_refuses_by_the_decimal_calls() -> None:
     typer, b = _typed(d.select(a=_.d.abs()))
     assert any(c.name == "abs" for c in typer.calls)
     assert st8(typer, b) is None
+    # A cast to a larger scale keeps every digit; to a smaller one it rounds (ruling 273).
+    typer, b = _typed(d.select(u=_.d.cast("decimal(12,4)")))
+    assert st8(typer, b) is not None
+    typer, b = _typed(d.select(r=_.e.cast("decimal(12,1)")))
+    assert st8(typer, b) is None
+    # A cast to a decimal whose input has no known type may reduce its scale: refused.
+    typer, b = _typed(d.select(u=_.d.cast("decimal(12,4)")))
+    typer.casts = [(cast, None) for cast, _t in typer.casts]  # pyrefly: ignore
+    assert st8(typer, b) is None
 
 
 # -- ST-6: a cast of a double to an integer (#2438) ------------------------------------
@@ -882,7 +891,7 @@ def test_st6_apply_plan_truncates_on_duckdb() -> None:
     """The plan `apply` writes, read back and run on DuckDB, whose own cast rounds
     half to even (duckdb-R9), gives the reference's truncation."""
     pytest.importorskip("duckdb")
-    report = _verify(CAST, F_BOUNDED)
+    report = _cast_report()
     back = sv.Report.from_substrait(report.to_substrait(shims="apply"))
     con = connect()
     put_table(con, "f", pa.table({"a": pa.array([x for x, _ in TRUNCATED], pa.float64())}))
@@ -909,6 +918,12 @@ def test_st6_shim_passes_nan_and_infinities_to_the_cast() -> None:
 MM = ibis.table({"i": "int64", "x": "float64", "s": "string"}, name="mm")
 
 
+@functools.cache
+def _mm_report(fn: str, col: str) -> sv.Report:
+    """`fn` of the column `col`, verified once for the tests below."""
+    return _verify(MM.aggregate(m=getattr(MM[col], fn)()))
+
+
 def _reads_list_null_order(report: sv.Report) -> bool:
     return any(d["option"] == "list_null_order" for d in report._depends or [])
 
@@ -919,14 +934,15 @@ def test_min_and_max_of_a_value_that_is_no_list_depend_on_no_list_order(fn: str,
     """#2439: `list_null_order` was met by every `MIN` and `MAX`, whatever the
     argument's type; its scope is a list argument (`optionScope`, whose `#guard`s
     in `Scopes.lean` cover a list's, since the model refuses `MIN` of a list)."""
-    assert not _reads_list_null_order(_verify(MM.aggregate(m=getattr(MM[col], fn)())))
+    assert not _reads_list_null_order(_mm_report(fn, col))
 
 
 @pytest.mark.parametrize("col", ["i", "x"])
 @pytest.mark.parametrize("fn", ["min", "max"])
 def test_min_and_max_of_numbers_export(fn: str, col: str) -> None:
-    """The default export refused every `MIN` and `MAX` at `list_null_order` (#2439)."""
-    m = read(_verify(MM.aggregate(m=getattr(MM[col], fn)())).to_substrait()).manifest
+    """The default export refused every `MIN` and `MAX` at `list_null_order` (#2439).
+    A double's has no ST-4 shim (ruling 273), so it is annotated."""
+    m = read(_mm_report(fn, col).to_substrait(shims="apply" if col == "i" else "annotate")).manifest
     rows = [r for k in ("shims", "assumptions", "unexercised", "up_to") for r in m[k]]
     assert not [r for r in rows if r.get("option") == "list_null_order"], m
 
@@ -935,4 +951,104 @@ def test_max_of_strings_has_no_substrait_impl() -> None:
     """Substrait's YAMLs have no `min` or `max` of strings: the export refuses for that
     reason alone, after #2439."""
     with pytest.raises(ExportError, match=r"no impl of max in Substrait's YAMLs takes \(string\)"):
-        _verify(MM.aggregate(m=MM.s.max())).to_substrait()
+        _mm_report("max", "s").to_substrait()
+
+
+# -- ST-8: a decimal cast to a smaller scale (ruling 273) ---------------------------------
+
+DEC = ibis.table({"a": "decimal(10,4)", "b": "decimal(10,4)"}, name="f")
+
+
+@functools.cache
+def _rescale_report() -> sv.Report:
+    """A cast of a decimal to a smaller scale, which rounds: Substrait leaves how
+    open (ST-8), and the export called it exact in every mode."""
+    return _verify(DEC.select(c=_.a.cast("decimal(10,2)")), {"f": [_.a.notnull()]})
+
+
+def test_st8_apply_refuses_a_cast_to_a_smaller_scale() -> None:
+    """ST-8 rewrites nothing, so `apply` refuses the rounding cast."""
+    with pytest.raises(ExportError, match=r"ST-8, upstream/bugs/ST-8\.json\); no shim writes"):
+        _rescale_report().to_substrait(shims="apply")
+
+
+def test_st8_annotate_ships_the_rounding() -> None:
+    m = read(_rescale_report().to_substrait(shims="annotate")).manifest
+    assert m["class"] == "assumed"
+    [found] = [a for a in m["assumptions"] if a["option"] == "decimal_rescale"]
+    assert (found["gap"], found["assumes"]) == ("ST-8", ["TIE_AWAY_FROM_ZERO"])
+
+
+def test_st8_refuse_names_the_gap() -> None:
+    with pytest.raises(ExportError, match=re.escape("(ST-8, upstream/bugs/ST-8.json)")):
+        _rescale_report().to_substrait(shims="refuse")
+
+
+def test_decimals_that_keep_their_scale_export_in_every_mode() -> None:
+    """A sum and a cast to a larger scale keep every digit: ST-8 holds without a
+    rewrite, and every mode exports with the option unexercised."""
+    report = _verify(DEC.select(s=_.a + _.b, u=_.a.cast("decimal(12,6)")))
+    for mode in se.SHIMS:
+        m = read(report.to_substrait(shims=mode)).manifest
+        [u] = [u for u in m["unexercised"] if u["option"] == "decimal_rescale"]
+        assert u["gap"] == "ST-8", mode
+        assert not m["assumptions"], mode
+
+
+# -- ST-4: a MIN or MAX of doubles (ruling 273) --------------------------------------------
+
+DMAX = ibis.table({"g": "int64", "a": "float64"}, name="f").group_by("g").agg(m=_.a.max())
+
+
+@functools.cache
+def _max_report() -> sv.Report:
+    """A `MAX` of doubles, which reads `nan_order` and `zero_sign`: ST-4 rewrites
+    comparisons, keys and sorts, and no aggregate."""
+    return _verify(DMAX)
+
+
+def test_st4_apply_refuses_a_double_max() -> None:
+    """The export reported the `MAX` as shimmed, though nothing was rewritten, so
+    a consumer whose `MAX` skips NaN gave another value."""
+    with pytest.raises(ExportError, match=r"ST-4, upstream/bugs/ST-4\.json\); no shim writes"):
+        _max_report().to_substrait(shims="apply")
+
+
+def test_st4_annotate_ships_the_order_of_a_double_max() -> None:
+    m = read(_max_report().to_substrait(shims="annotate")).manifest
+    assert m["class"] == "assumed"
+    assert {a["gap"] for a in m["assumptions"] if a["option"] == "nan_order"} == {"ST-4"}
+    assert not [s for s in m["shims"] if s.get("source") != "written plan"]
+
+
+def test_st4_refuse_names_the_gap_of_a_double_max() -> None:
+    with pytest.raises(ExportError, match=re.escape("(ST-4, upstream/bugs/ST-4.json)")):
+        _max_report().to_substrait(shims="refuse")
+
+
+def test_st4_refuses_a_max_whose_argument_type_is_unknown() -> None:
+    """An argument the typer could not type may be a double: st4 refuses
+    rather than report the `MAX` as rewritten (reviewer 2)."""
+    import dataclasses
+
+    from sverify._substrait_shims import st4
+
+    i = ibis.table({"g": "int64", "n": "int64"}, name="i")
+    typer, b = _typed(i.group_by("g").agg(m=_.n.max()))
+    assert st4(typer, b) is not None
+    typer.calls = [
+        dataclasses.replace(c, args=tuple(None for _a in c.args)) if c.name == "max" else c  # pyrefly: ignore
+        for c in typer.calls
+    ]
+    assert st4(typer, b) is None
+
+
+def test_st4_refuses_a_double_max_without_nan() -> None:
+    """Preconditions that exclude NaN do not drop `nan_order` from what the plan
+    depends on, and `zero_sign` stays (the `MAX` of -0.0 and 0.0): the `MAX` still
+    has no shim."""
+    report = _verify(DMAX, {"f": [_.a.notnull(), ~_.a.isnan()]})
+    with pytest.raises(ExportError, match=r"ST-4, upstream/bugs/ST-4\.json\); no shim writes"):
+        report.to_substrait(shims="apply")
+    m = read(report.to_substrait(shims="annotate")).manifest
+    assert {a["option"] for a in m["assumptions"]} >= {"nan_order"}

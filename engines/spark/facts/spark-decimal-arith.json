@@ -24,6 +24,13 @@
       "types": [
         "decimal"
       ]
+    },
+    {
+      "group": "cast.dec",
+      "option": "decimal_rescale",
+      "types": [
+        "decimal"
+      ]
     }
   ],
   "constructs": [
