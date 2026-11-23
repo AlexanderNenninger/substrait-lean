@@ -720,6 +720,9 @@ class Node:
         if sink is not None:
             out.write = sink._commit()
             _log.info("%s: committed %s", self.name, _write_text(out.write))
+        # Durable now: a rebuild starts from these versions, so the sources
+        # can drop the changes before them (`Pipeline.release`).
+        stage.pipe.release()
         # After the write: a sink keeps the buckets the state drops.
         out.retention = self._stage.pipe.retire()
         return out
