@@ -249,10 +249,15 @@ end Example
 -- one), and a pending function stays on the hand-written translation path until
 -- its entry is resolved. Each entry's class is ruling 282's: C1 a scope artefact,
 -- C2 absorbed by an `upTo canon` observation, C3 absorbed by the plan's bound, C4
--- likely real.
+-- likely real; C6 (ruling 284) a compensation in the writer's rendering, outside the
+-- proof, the list's one authorised addition.
 #guard letI := Boxes.Ambient.none
   nativeOffIs (Profile.duckdb.table {}) Lowering.duckdb.nativeUn Lowering.duckdb.nativeBin
     [-- C4: a loose row whose first behaviour is `IGNORE_NULLS`.
-     ("str.concat", "null_handling")]
+     ("str.concat", "null_handling"),
+     -- C6 (ruling 284, F284): DuckDB's `CAST` rounds (duckdb-R9); the dialect renders
+     -- `ftoi` and `ftoiOrNull` as `CAST(trunc(x) AS BIGINT)`, a compensation in the
+     -- writer's text outside the proof. Its fix is ruling 282's follow-up.
+     ("cast.num", "float_to_int")]
 
 end Substrait
