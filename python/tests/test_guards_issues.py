@@ -159,6 +159,10 @@ KNOWN: dict[str, dict[tuple[str, str, str], tuple[str, str]]] = {
             "dead",
             "the lowered division template's infinity check, over the same finite operands",
         ),
+        ("sverify_spark/dialect.py", "domain", "domain error"): (
+            "dead",
+            "Spark's lowered division template's NaN check, over the same finite operands",
+        ),
     },
     "scalar subquery": {
         ("sverify/sql/core/_base.py", "domain", "domain error"): (
