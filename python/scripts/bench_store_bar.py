@@ -2,6 +2,7 @@
 representative pipelines keeps, against the data it has read.
 
     python scripts/bench_store_bar.py [ROWS ...] [--engines duckdb,polars,spark]
+        [--pipelines aggregate,join,windowed,distinct]
 
 Per pipeline, engine and size N: four inserts of N/4 rows through a node
 (`StaticSource.pipe`), each followed by a refresh. Each case runs in a
@@ -16,9 +17,9 @@ process of its own, twice:
   outside it), the state location's files (`_parts.state_dir`, where
   Polars and Spark keep their parts), DuckDB's own memory
   (`duckdb_memory()`), the resident set's growth since before the sources
-  were built (after a garbage collection and `malloc_trim`, so freed heap
-  is not counted), and the residual of that growth the parts above leave
-  unexplained. The timed run builds no Parquet of its own, and drops each
+  were built (after a garbage collection, Arrow's `release_unused` and
+  `malloc_trim`, so freed memory is not counted), and the residual of
+  that growth the parts above leave unexplained. The timed run builds no Parquet of its own, and drops each
   batch once the source has it. The residual includes the engines' own
   libraries, loaded at the first refresh, a constant: compare it across N;
 * sized: after each refresh, the view's state (`arrow_of(view.state)`): its
@@ -172,10 +173,13 @@ def dir_bytes(path: str) -> int:
 
 
 def rss_trimmed() -> int:
-    """The resident set after a garbage collection and, on glibc, after
-    handing freed heap back to the system (`malloc_trim`): what the process
-    still holds, not its allocator's high-water mark."""
+    """The resident set after a garbage collection and after both allocators
+    hand freed memory back to the system: Arrow's pool (`release_unused`;
+    jemalloc on Linux keeps freed pages otherwise) and, on glibc, the C heap
+    (`malloc_trim`). What the process still holds, not an allocator's
+    high-water mark."""
     gc.collect()
+    pa.default_memory_pool().release_unused()
     with contextlib.suppress(OSError, AttributeError):
         ctypes.CDLL("libc.so.6").malloc_trim(0)
     return rss_now()
@@ -239,6 +243,11 @@ def main(argv: list[str]) -> None:
         i = argv.index("--engines")
         engines = argv[i + 1].split(",")
         argv = argv[:i] + argv[i + 2 :]
+    pipelines = list(PIPELINES)
+    if "--pipelines" in argv:
+        i = argv.index("--pipelines")
+        pipelines = argv[i + 1].split(",")
+        argv = argv[:i] + argv[i + 2 :]
     sizes = [int(float(a)) for a in argv] or [10**6, 4 * 10**6]
     print(
         "| pipeline | engine | N | state rows (last) | state / data: worst, last "
@@ -247,7 +256,7 @@ def main(argv: list[str]) -> None:
     )
     print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for n in sizes:
-        for name in PIPELINES:
+        for name in pipelines:
             for engine in engines:
                 timed = run(name, engine, n, False)
                 sized = run(name, engine, n, True)
