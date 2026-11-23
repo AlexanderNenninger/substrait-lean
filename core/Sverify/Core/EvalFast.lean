@@ -578,6 +578,69 @@ theorem aggregateFast_eq (gs : List Expr) (ms : List Measure) (rows : Relation) 
   · simp only [indexBy_getD, Measure.evalFast_eq, groupRows, canonRepsH_eq Row.leRaw_rawOrder,
       distinctRows]
 
+/-! ## Windows -/
+
+/-- A row's partition key: `samePart` compares it (`samePart_eq_partKey`). -/
+def partKey (part : List Nat) (x : Row) : Row := part.map fun c => (x.getD c .null).canonV
+
+omit [Boxes.Ambient] in
+theorem samePart_eq_partKey (part : List Nat) (x y : Row) :
+    samePart part x y = (partKey part y == partKey part x) := by
+  rw [samePart, Bool.eq_iff_iff, decide_eq_true_iff, beq_iff_eq]; exact eq_comm
+
+/-- `windowRows`, with each row's partition read from `idx` (the sorted rows of
+each partition) and its position there from `seen` (the rows of its partition
+already passed): linear in the rows per partition, where `windowRows` filters
+the whole input for every row. -/
+def windowRowsFast (part : List Nat) (fns : List WinFn) (idx : Std.HashMap Row (Array Row)) :
+    Std.HashMap Row Nat → List Row → List Row
+  | _, [] => []
+  | seen, x :: rest =>
+    let k := partKey part x
+    let i := seen.getD k 0
+    let p := (idx.getD k #[]).toList
+    (x ++ fns.map (·.valueIn (p.take i) x (p.drop (i + 1)))) ::
+      windowRowsFast part fns idx (seen.insert k (i + 1)) rest
+
+theorem windowRowsFast_eq (part : List Nat) (fns : List WinFn) (idx : Std.HashMap Row (Array Row)) :
+    ∀ (pre l : List Row) (seen : Std.HashMap Row Nat),
+      (∀ k, (idx.getD k #[]).toList = (pre ++ l).filter (partKey part · == k)) →
+      (∀ k, seen.getD k 0 = (pre.filter (partKey part · == k)).length) →
+      windowRowsFast part fns idx seen l = windowRows part fns pre l
+  | _, [], _, _, _ => by simp [windowRowsFast, windowRows]
+  | pre, x :: rest, seen, hidx, hseen => by
+    simp only [windowRowsFast, windowRows, WinFn.value, List.cons.injEq]
+    have hq : ∀ l : List Row, l.filter (samePart part x) = l.filter (partKey part · == partKey part x) :=
+      fun l => List.filter_congr fun y _ => samePart_eq_partKey part x y
+    have hp : (idx.getD (partKey part x) #[]).toList =
+        pre.filter (partKey part · == partKey part x) ++
+          x :: rest.filter (partKey part · == partKey part x) := by
+      rw [hidx]; simp [List.filter_append]
+    refine ⟨?_, ?_⟩
+    · rw [hseen, hp, hq, hq]
+      congr 1
+      refine List.map_congr_left fun f _ => ?_
+      have hd : ∀ (a b : List Row) (y : Row), (a ++ y :: b).drop (a.length + 1) = b := by
+        intro a b y; induction a <;> simp_all
+      rw [List.take_left' rfl, hd]
+    · apply windowRowsFast_eq part fns idx (pre ++ [x]) rest
+      · intro k; rw [hidx k]; simp
+      · intro k
+        rw [Std.HashMap.getD_insert]
+        by_cases h : partKey part x = k
+        · subst h; simp [List.filter_append, hseen]
+        · simp [h, List.filter_append, hseen]
+
+/-- `windowEval`, with the partitions hashed (`windowRowsFast`). -/
+def windowEvalFast (part : List Nat) (sort : List SortKey) (fns : List WinFn) (rows : Relation) :
+    Relation :=
+  let s := rows.mergeSort (sortLe sort)
+  windowRowsFast part fns (indexBy (partKey part) s) ∅ s
+
+theorem windowEvalFast_eq (part : List Nat) (sort : List SortKey) (fns : List WinFn)
+    (rows : Relation) : windowEvalFast part sort fns rows = windowEval part sort fns rows :=
+  windowRowsFast_eq part fns _ [] _ ∅ (fun k => by simp [indexBy_getD]) (fun k => by simp)
+
 /-! ## The evaluator -/
 
 /-- `Rel.eval`, computed with hash joins and hash aggregation. -/
@@ -597,7 +660,7 @@ def Rel.evalFast (cat : Catalog) : Rel → Relation
       | none => rest
       | some n => rest.take n
   | .unionAll a b => a.evalFast cat ++ b.evalFast cat
-  | .window r part sort fns => windowEval part sort fns (r.evalFast cat)
+  | .window r part sort fns => windowEvalFast part sort fns (r.evalFast cat)
   | .semi a b anti on => semiFast on (a.arity cat) anti (a.evalFast cat) (b.evalFast cat)
   | .orderBy r keys => (r.evalFast cat).mergeSort (sortLe keys)
   | .distinct r => canonRepsH Row.canon Row.leRaw (r.evalFast cat)
@@ -606,8 +669,9 @@ def Rel.evalFast (cat : Catalog) : Rel → Relation
 
 theorem Rel.evalFast_eq (cat : Catalog) : ∀ r : Rel, r.evalFast cat = r.eval cat
   | .read _ | .values _ _ => rfl
-  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .unnest r _ | .window r _ _ _ => by
+  | .filter r _ | .project r _ | .emit r _ | .orderBy r _ | .unnest r _ => by
       simp [evalFast, eval, evalFast_eq cat r]
+  | .window r _ _ _ => by simp [evalFast, eval, evalFast_eq cat r, windowEvalFast_eq]
   | .fetch r _ cnt => by cases cnt <;> simp [evalFast, eval, evalFast_eq cat r]
   | .cross a b | .unionAll a b => by simp [evalFast, eval, evalFast_eq cat a, evalFast_eq cat b]
   | .join a b .inner _ => by

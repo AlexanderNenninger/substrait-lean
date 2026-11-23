@@ -356,7 +356,8 @@ def requires_hold(con: Connection, requires: dict) -> str | None:
     """None if the synthetic tables meet the preconditions, else the first
     that fails."""
     from sverify._weighted import duplicate_keys
-    from sverify.contracts import Unique, discharge
+    from sverify.conditions import Unique
+    from sverify.contracts import discharge
 
     for t, conds in requires.items():
         for c in conds:
@@ -378,7 +379,7 @@ def probe_contract(
     DuckDB's profile), and whether the synthetic tables meet the
     preconditions."""
     import sverify
-    from sverify.contracts import label
+    from sverify.conditions import label
 
     requires, ensures = contract(q, schemas, profile)
     # SQL names its tables: `verify` needs their schemas.

@@ -9,7 +9,10 @@ shim: one small function here per value choice of the reference that Polars
 lacks (`docs/core-semantics.md`, "Obligations, option by option", and its
 Polars example). Each shim is a row of `SHIMS`, named as its Lean lemma
 (`Polars.<name>`), with the option it discharges and the engine fact that
-says what Polars does natively (`engines/polars/facts/`).
+says what Polars does natively (`engines/polars/facts/`). The scalar functions
+`Profile.polars` states are not here: the generated lowering writes them
+(`sverify_polars.lowering`, the truncating `//` and `%`, and `round` and
+`ceil` without `-0.0`), proved by `Lowering.polars_exact` (#271).
 
 Polars's error-side differences (wrapping integers, `NULL` for a zero
 divisor, NaN from `inf - inf`) need no shim: the reference raises there, so a
@@ -24,6 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import polars as pl
+
+from sverify_polars import lowering
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
 
@@ -65,20 +70,16 @@ SHIMS: tuple[Shim, ...] = (
     Shim("null_order", "null_order", "as the key states; NULLS_LAST for UNSPECIFIED",
          "NULLS_FIRST in both directions", "polars-null-order", "argument"),
     Shim("tie_order", "tie_order", "ANY; Rel.eval keeps input order",
-         "undocumented without maintain_order", "polars-sort-stability", "argument"),
+         "undocumented without maintain_order", "polars-sort-stability-streaming", "argument"),
     Shim("round_half_away", "rounding", "TIE_AWAY_FROM_ZERO (fp.round)",
          "TIE_TO_EVEN", "polars-round", "argument"),
-    Shim("int_div_trunc", "division_type", "TRUNCATE", "FLOOR",
-         "polars-int-divide", "expression"),
-    Shim("int_mod_trunc", "division_type", "TRUNCATE (the dividend's sign)",
-         "FLOOR (the divisor's sign)", "polars-int-modulus", "expression"),
     Shim("sum_empty_null", "empty_group_aggregates", "NULL for no values",
          "0 (sum0)", "polars-sum-int", "expression"),
     Shim("avg_int_declared", "avg_int_result", "DECLARED_TYPE: the exact mean, truncated",
          "Float64 mean", "polars-avg-int", "expression"),
     Shim("one_zero", "zero_sign", "ONE_ZERO, also as a group key: on read and after each "
          "operation that can give -0.0", "IEEE: -0.0 kept; a group's key is its first zero",
-         "polars-zero-sign", "expression"),
+         "polars-zero-sign-streaming", "expression"),
     Shim("strpos_chars", "negative_start", "1-based characters, 0 when absent",
          "str.find: 0-based bytes, NULL when absent", "polars-strpos", "expression"),
     Shim("substring_wrap", "negative_start", "WRAP_FROM_END",
@@ -161,7 +162,7 @@ def ieee_zero_sum(r: pl.Expr, x: pl.Expr, y: pl.Expr, subtract: bool) -> pl.Expr
     `-0.0` only for `-0.0 + -0.0` and `-0.0 - 0.0`, else `0.0`. Polars's literal
     kernels return `-0.0 + 0.0` as `-0.0` and `0.0 - 0.0` as `-0.0`, and a
     one-row morsel of the streaming engine gives `0.0` for two columns
-    (polars-zero-sign, polars-zero-sign-streaming)."""
+    (polars-zero-sign-streaming)."""
     neg = is_negative_zero(x) & (
         (y == 0.0) & ~is_negative_zero(y) if subtract else is_negative_zero(y)
     )
@@ -206,22 +207,6 @@ def fractional_power_of_negative(x: pl.Expr, y: pl.Expr) -> pl.Expr:
 
 
 # --- Integers ------------------------------------------------------------------
-
-
-def int_div_trunc(a: pl.Expr, b: pl.Expr) -> pl.Expr:
-    """The quotient truncated toward zero (`Int.tdiv`). Polars's `//` floors
-    (polars-int-divide): one more where the remainder is not zero and the
-    signs differ. Native on `Int64` and `Int128` alike."""
-    q = a // b
-    return pl.when((a % b != 0) & ((a < 0) != (b < 0))).then(q + 1).otherwise(q)
-
-
-def int_mod_trunc(a: pl.Expr, b: pl.Expr) -> pl.Expr:
-    """The remainder with the dividend's sign (`Int.tmod`). Polars's `%` takes
-    the divisor's (polars-int-modulus): take `b` off where they differ.
-    `MIN % -1` is 0 in both."""
-    r = a % b
-    return pl.when((r != 0) & ((r < 0) != (a < 0))).then(r - b).otherwise(r)
 
 
 def int_overflows(a: pl.Expr, b: pl.Expr, op: str) -> pl.Expr:
@@ -315,7 +300,7 @@ def substring_wrap(start: pl.Expr, s: pl.Expr) -> pl.Expr:
 
 def sum_empty_null(total: pl.Expr, values: pl.Expr) -> pl.Expr:
     """`SUM` of no values is NULL; Polars's `sum` is 0 (polars-sum-int,
-    polars-sum-float). `values` is the aggregated column, NULLs not counted."""
+    polars-sum-float-streaming). `values` is the aggregated column, NULLs not counted."""
     return pl.when(values.count() == 0).then(None).otherwise(total)
 
 
@@ -339,19 +324,21 @@ def avg_int_declared(values: pl.Expr) -> pl.Expr:
     values fits 64 bits. NULL for no values."""
     total = values.cast(pl.Int128).sum()
     n = values.count().cast(pl.Int128)
-    q = int_div_trunc(total, pl.when(n == 0).then(1).otherwise(n))
+    # The generated table's truncating `//` (`sverify_polars.lowering`).
+    q = lowering.render("idiv", [total, pl.when(n == 0).then(1).otherwise(n)])
+    assert q is not None
     return pl.when(n == 0).then(None).otherwise(q).cast(pl.Int64)
 
 
 def float_sum(values: pl.Expr) -> pl.Expr:
-    """`SUM` of doubles: Polars's own order (pairwise or Kahan,
-    polars-sum-float), within the plan's bound of the reference's correctly
-    rounded sum (D25); NULL for no values and one zero."""
+    """`SUM` of doubles: Polars's own order (sequential per group, pairwise
+    per morsel, polars-sum-float-streaming), within the plan's bound of the
+    reference's correctly rounded sum (D25); NULL for no values and one zero."""
     return one_zero(sum_empty_null(values.sum(), values))
 
 
 def float_avg(values: pl.Expr) -> pl.Expr:
-    """`AVG` of doubles: Polars's `mean` (polars-mean-float), NULL for no
+    """`AVG` of doubles: Polars's `mean` (polars-mean-float-streaming), NULL for no
     values natively; one zero."""
     return one_zero(values.mean())
 

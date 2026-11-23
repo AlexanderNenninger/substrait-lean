@@ -56,7 +56,7 @@ small native binary, so you need no Lean toolchain; they exist for Linux
 
 Correlated scalar subqueries are not in the model. An `ibis.param` is
 checked with its value bound (`sv.verify(expr, params={threshold: 50})`),
-and an unbound one is refused. [The Ibis coverage table](../README.md#ibis-coverage)
+and an unbound one is refused. [The Ibis coverage table](coverage.md)
 lists what gets through.
 
 ## 1. A contract, proved and run
@@ -208,7 +208,7 @@ con.put("orders", pa.table({"id": [1, 2, 3], "qty": [4, 5, 2], "total": [100, 25
 print(declared.run(con, "polars", route="auto").to_pylist())
 # [{'id': 1, 'unit': 25}, {'id': 2, 'unit': 50}, {'id': 3, 'unit': 15}]
 print(declared.routes["polars"])
-# shim (integer division rewritten to truncate); evidence proved by Rel.polars_sound, Polars.int_div_trunc on polars's model ...
+# shim (integer division rewritten to truncate); evidence proved by Rel.polars_sound, Lowering.polars_exact on polars's model ...
 ```
 
 SQL's `//` truncates under the reference and Polars's integer division floors,
@@ -431,7 +431,7 @@ print(parity.verdict)
 # proved
 print(parity.run(con, "polars", route="auto").column("odd").to_pylist())
 # [1, 0, 1, 0]
-print(parity.routes["polars"].kind)
+print(parity.routes["polars"].taken)
 # translated
 ```
 

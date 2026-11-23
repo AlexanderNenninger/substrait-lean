@@ -1,0 +1,1 @@
+The float bounds page explains what a postcondition on a double asks of a route: a bounded column is refused with the exit `sv.approx`, an unbounded one lets a sign-only claim run and refuses a stated tolerance, and a threshold on a double refuses the plan. Notebook 05 shows the unbounded case.

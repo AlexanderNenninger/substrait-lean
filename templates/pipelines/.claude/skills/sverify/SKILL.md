@@ -14,13 +14,13 @@ description: >
 `sverify` hands a transformation's query plan to a checker written in Lean,
 which proves the postconditions (`ensures`) for every input that meets the
 preconditions (`requires`), or says why it can't. Use it in place of data
-tests on derived data: the checks hold on all inputs, not only on the data
-that happened to be there.
+tests on derived data: the checks hold on every input that meets the
+preconditions, the data that happened to be there among them.
 
 ## Install
 
 ```bash
-pip install sverify                       # core: DuckDB, contracts, views
+pip install 'sverify[duckdb]'             # DuckDB runs plans; contracts, views
 pip install 'sverify[all]'                # Polars, Spark, Delta, Iceberg, Flight and the rest
 ```
 
@@ -63,7 +63,8 @@ big.refresh()
 assert big.to_arrow().to_pylist() == [{"id": 1, "doubled": 60}]
 report = big_orders.report
 assert report.verdict == sv.Verdict.PROVED
-print(report.facts["doubled"])  # what Lean established about the column
+print(report.facts["doubled"])  # what Lean established about the column, in words
+report.facts["doubled"].lower  # the same as data: nullable, lower, upper
 ```
 
 * Conditions are Ibis expressions over the output (`_.doubled >= 22`) or SQL
@@ -76,8 +77,8 @@ print(report.facts["doubled"])  # what Lean established about the column
   (`sverify.errors.PreconditionError`), or proved from table metadata.
 * Transforms compose: `revenue(paid(orders))` proves each link from the
   upstream contract (`sverify.errors.CompositionError` names a broken one).
-* Called on Ibis tables instead of a source, a transform returns an Ibis
-  expression: handy for checking a contract without data.
+* Called on Ibis tables, a transform returns an Ibis expression, and the
+  checker proves its contract without data.
 
 ## Read the report, and fix what isn't proved
 
@@ -98,7 +99,7 @@ print(failed.counterexample)  # an input row with amount = 0 gives total = 1
 ```
 
 Read the counterexample, then either strengthen `requires` (if the input
-really can't look like that), change the transformation, or weaken the
+can't look like that), change the transformation, or weaken the
 postcondition. Here a filter makes it hold:
 
 ```python
@@ -117,7 +118,7 @@ transformation no longer needs it (filter those rows first, or a CASE);
 `on_inferred="warn"` or `"ignore"` assumes it and checks it on the data, and
 `on_inferred="off"` infers and assumes nothing. For the rest, the `hint:` lines of
 `str(report)` name the bound to add, and an unproved comparison with a constant comes with
-the precondition that proves it (`report.suggestions`). An integer `SUM` that
+the precondition that proves it (`needs` of its entry in `report.ensures`). An integer `SUM` that
 may overflow is listed in `report.assumed` and checked at run time (an error
 with `on_inferred="off"`); a row cap (`sv.max_rows(n)`) proves it fits. Guard a divisor with
 `NULLIF`/`ifelse`, or bound it in `requires`.
@@ -192,29 +193,29 @@ test_doubles_are_big()
 
 ## Gotchas
 
-* **Windows need a key for facts about order.** `LAG`, `LEAD` and
+* Windows need a key for facts about order: `LAG`, `LEAD` and
   `ROW_NUMBER` depend on how ties break unless `requires` has a key on the
   partition and order columns (`sv.unique("device_id", "ts")`). Without it
-  `verify` proves only what holds for every order of the ties (D24),
+  `verify` proves only what holds for every order of the ties,
   `report.deterministic` is False and `str(report)` names the window;
   a rerun that must give the same rows refuses the plan.
-* **SQL strings are DuckDB's SQL**, read by sverify's lift, which covers a
+* SQL strings are DuckDB's SQL, read by sverify's lift, which covers a
   subset so far (SELECT, WHERE, joins, subqueries and CTEs, GROUP BY with
   grouping sets, windows, set operations, ORDER BY, LIMIT, CASE, CAST and
   common functions): write the rest in Ibis. In DuckDB's SQL, `/` divides as
   doubles; integer division is `//`. Checks use sverify's reference semantics
   unless you pass `semantics="duckdb"` (to `sv.sql`, `sv.verify` or
   `@sv.transform`), which models DuckDB's NaN and `±inf`.
-* **Counts across rows are not tracked**, so `COUNT(*) >= 1` per group and
+* Counts across rows are not tracked, so `COUNT(*) >= 1` per group and
   relations beyond "column plus constant" (`a < 2 * b`) aren't proved.
-* **Incremental maintenance** covers filters, projections, inner, cross,
+* Incremental maintenance covers filters, projections, inner, cross,
   semi and anti joins, `UNION ALL`, `DISTINCT`, `COUNT`, exact `SUM`/`AVG`
   and `MIN`/`MAX` per group; other aggregates recompute the groups a batch
   touches, windows on one `PARTITION BY` the touched partitions, and bounded
   `RANGE` frames the touched frames; other nodes (left joins, `LIMIT`) are
   recomputed and diffed on each refresh, and `node.status()` says which (see
   the `sverify-pipelines` skill).
-* **Sharded `SUM`/`AVG` of doubles is refused** (`sverify.engines.run_sharded`), since
+* Sharded `SUM`/`AVG` of doubles is refused (`sverify.engines.run_sharded`), since
   the rounding would depend on the split; `reproducible=sv.equivalent(floats="plan")`
   splits them anyway, within a proved tolerance that `tolerance=True` reports per row.
 

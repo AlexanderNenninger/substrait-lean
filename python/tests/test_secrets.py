@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import pickle
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -136,6 +137,7 @@ class _Bao(BaseHTTPRequestHandler):
     """A KV v2 store and a JWT login, as OpenBao answers them."""
 
     calls: list[str] = []
+    namespaces: list[str | None] = []
 
     def log_message(self, format, *args):  # noqa: A002 - the parent's name
         pass
@@ -148,13 +150,22 @@ class _Bao(BaseHTTPRequestHandler):
 
     def do_GET(self):
         _Bao.calls.append(self.path)
+        _Bao.namespaces.append(self.headers.get("X-Vault-Namespace"))
+        if self.path.startswith("/oidc?"):
+            # GitHub's OIDC token endpoint.
+            if self.headers.get("Authorization") != "Bearer sv-test-request-token":
+                return self._send(403, {})
+            return self._send(200, {"value": "sv-test-jwt"})
         if self.headers.get("X-Vault-Token") != "sv-test-bao-token":
             return self._send(403, {"errors": [f"permission denied {VALUE}"]})
         if self.path == "/v1/kv/data/pipelines/lake":
             return self._send(200, {"data": {"data": {"access_key": "id", "secret_key": VALUE}}})
+        if self.path == "/v1/kv1/pipelines/lake":
+            return self._send(200, {"data": {"secret_key": VALUE, "port": 5432, "tls": True}})
         return self._send(404, {"errors": []})
 
     def do_POST(self):
+        _Bao.calls.append("POST " + self.path)
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         if self.path == "/v1/auth/jwt/login" and body == {"role": "ci", "jwt": "sv-test-jwt"}:
             return self._send(
@@ -167,7 +178,7 @@ class _Bao(BaseHTTPRequestHandler):
 def bao():
     server = HTTPServer(("127.0.0.1", 0), _Bao)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    _Bao.calls = []
+    _Bao.calls, _Bao.namespaces = [], []
     yield f"http://127.0.0.1:{server.server_port}"
     server.shutdown()
 
@@ -377,3 +388,403 @@ def test_a_users_scope_includes_its_groups_policies(monkeypatch):
             }
         )
         assert s.reads == ("s3://lake/",) and s.writes == ("s3://lake/marts/",)
+
+
+# -- references, values and fields ---------------------------------------------
+
+
+def test_a_secret_is_an_immutable_reference():
+    s = Secret("env:SV_KEY")
+    assert Secret(s) == s and Secret(s).ref == "env:SV_KEY"
+    assert s.name == str(s) == "env:SV_KEY" and repr(s) == "Secret('env:SV_KEY')"
+    assert hash(s) == hash(Secret("env:SV_KEY")) and s != "env:SV_KEY"
+    assert pickle.loads(pickle.dumps(s)) == s
+    with pytest.raises(AttributeError, match="immutable"):
+        s.ref = "env:OTHER"  # type: ignore[misc]
+
+
+@pytest.mark.parametrize("ref", ["env:#field", "env:A B", "nope:path", "1abc", 42])
+def test_neither_a_name_nor_a_reference_is_refused(ref):
+    with pytest.raises(SecretError, match="neither"):
+        Secret(ref)  # type: ignore[arg-type]
+
+
+def test_a_secret_argument_takes_a_name_or_a_secret():
+    from sverify.io._secrets import as_secret
+
+    assert as_secret(None, "credentials") is None
+    s = Secret("lake")
+    assert as_secret(s, "credentials") is s and as_secret("lake", "credentials") == s
+    with pytest.raises(TypeError, match="credentials takes a secret's name or a Secret, got int"):
+        as_secret(3, "credentials")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("text", "fields"),
+    [
+        ('{"key": "v"}', {"key": "v"}),
+        # #2429: other JSON values are their JSON, not Python's repr.
+        (
+            '{"port": 5432, "tls": true, "proxy": null, "opts": {"a": 1}}',
+            {"port": "5432", "tls": "true", "proxy": "null", "opts": '{"a": 1}'},
+        ),
+        ('{"key": ', None),
+        ('["not", "an", "object"]', None),
+        ("KEY=v\n# a comment\n\nexport ID = x", {"KEY": "v", "ID": "x"}),
+        ("URL=a=b", {"URL": "a=b"}),
+        # #2429: one matching pair of quotes comes off, and no other quote.
+        (
+            "A='v'\nB=\"v\"\nC=v'\nD=\"v'\nE='\nF=''",
+            {
+                "A": "v",
+                "B": "v",
+                "C": "v'",
+                "D": "\"v'",
+                "E": "'",
+                "F": "",
+            },
+        ),
+        ("one value", None),
+        ("KEY=v\nno equals sign", None),
+    ],
+)
+def test_the_fields_a_text_holds(text, fields):
+    from sverify.io._secrets import _parse_fields
+
+    assert _parse_fields(text) == fields
+
+
+def test_a_value_with_fields_needs_one_picked(tmp_path, monkeypatch):
+    (tmp_path / "two.env").write_text(f"KEY={VALUE}\nID=x\n")
+    (tmp_path / "token").write_text(VALUE)
+    monkeypatch.setenv("SV_FIELDS_KEY", VALUE)
+    monkeypatch.setenv("SV_FIELDS_ID", "x")
+    r = Resolver()
+    # Several fields need one picked by '#field'.
+    assert r.value(f"file:{tmp_path}/two.env#ID") == "x"
+    with pytest.raises(SecretError, match=r"it has fields \['ID', 'KEY'\]; pick one") as e:
+        r.value("env:SV_FIELDS_*")
+    assert VALUE not in str(e.value)
+    with pytest.raises(SecretError, match=r"no field 'nope'; it has \['ID', 'KEY'\]") as e:
+        r.value(f"file:{tmp_path}/two.env#nope")
+    assert VALUE not in str(e.value)
+    # A value of one value has no field to pick.
+    with pytest.raises(SecretError, match=r"no field 'key'; it has \[\]"):
+        r.value(f"file:{tmp_path}/token#key")
+    assert r.fields(f"file:{tmp_path}/two.env#KEY") == {"KEY": VALUE}
+    with pytest.raises(SecretError, match="it holds one value, not fields") as e:
+        r.fields(f"file:{tmp_path}/token")
+    assert VALUE not in str(e.value)
+
+
+def test_a_field_of_one_is_the_value(monkeypatch):
+    monkeypatch.setenv("SV_ONE_KEY", VALUE)
+    assert Secret("env:SV_ONE_*").value() == VALUE
+
+
+def test_an_env_prefix_no_variable_has_is_not_found():
+    with pytest.raises(SecretError, match="not found"):
+        Secret("env:SV_NO_SUCH_PREFIX_*").fields()
+
+
+def test_a_directory_is_a_backend_failure_naming_its_type(tmp_path):
+    with pytest.raises(SecretError, match=r"its backend failed \(IsADirectoryError\)"):
+        Secret(f"file:{tmp_path}").value()
+
+
+# -- the resolver's configuration --------------------------------------------
+
+
+def test_names_and_defaults_are_checked_when_the_resolver_is_built():
+    with pytest.raises(ValueError, match="default: no backend 'nope'"):
+        Resolver(default="nope")
+    with pytest.raises(ValueError, match="names.lake: 'lake' is not a reference"):
+        Resolver(names={"lake": "lake"})
+    # #2428: a table without `ref` names what it lacks.
+    with pytest.raises(ValueError, match="names.lake: a table names its reference as `ref`"):
+        Resolver(names={"lake": {"writes": ["s3://lake/"]}})
+    r = Resolver(names={"lake": {"ref": "env:SV_LAKE", "reads": ["s3://a/"]}})
+    assert r.scope("lake") == (("s3://a/",), ())
+    assert r.scope("other") == ((), ())
+    assert repr(r) == "Resolver(names=['lake'], default='env')"
+
+
+@pytest.mark.parametrize(
+    ("options", "error"),
+    [
+        ({"adress": "http://x"}, r"\[secrets.bao\]: .*unexpected keyword argument 'adress'"),
+        ({"auth": "magic"}, "auth is 'token' or 'jwt', got 'magic'"),
+        ({"auth": "jwt"}, "auth='jwt' needs a role"),
+    ],
+)
+def test_a_backends_configuration_error_keeps_its_message(options, error):
+    # #2428: these became "its backend failed (ValueError)".
+    with pytest.raises(SecretError, match=error) as e:
+        Resolver(backends={"bao": options}).value("bao:kv/lake#key")
+    assert e.value.__context__ is None and e.value.__cause__ is None
+
+
+def test_a_bare_name_reads_the_default_backend():
+    class Kv:
+        def get(self, path):
+            return {"key": f"{path}-value"}
+
+    r = Resolver(default="kv", backends={"kv": Kv()})
+    assert r.reference("lake") == "kv:lake"
+    assert r.value("lake") == "lake-value"
+    assert Resolver(default="file").reference("token") == "file:token"
+
+
+def test_the_configuration_file(tmp_path, monkeypatch):
+    (tmp_path / "secrets.toml").write_text(
+        'default = "file"\ncache_seconds = 0\n[names]\nlake = "env:SV_LAKE"\n'
+        '[bao]\naddress = "http://127.0.0.1:1"\n'
+    )
+    r = Resolver.from_config(tmp_path / "secrets.toml")
+    assert (r.default, r.cache_seconds, r.reference("lake")) == ("file", 0, "env:SV_LAKE")
+    # A pyproject.toml's own table, found from the working directory up.
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.sverify.secrets.names]\nlake = "env:SV_PYPROJECT"\n'
+    )
+    (tmp_path / "sub").mkdir()
+    monkeypatch.chdir(tmp_path / "sub")
+    monkeypatch.delenv("SVERIFY_SECRETS", raising=False)
+    assert Resolver.from_config().reference("lake") == "env:SV_PYPROJECT"
+    # SVERIFY_SECRETS names the file.
+    monkeypatch.setenv("SVERIFY_SECRETS", str(tmp_path / "secrets.toml"))
+    assert Resolver.from_config().default == "file"
+    # A pyproject.toml without the table configures nothing.
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n')
+    monkeypatch.delenv("SVERIFY_SECRETS")
+    assert Resolver.from_config().reference("lake") == "env:LAKE"
+
+
+def test_no_configuration_file_is_the_default_resolver(tmp_path, monkeypatch):
+    from sverify.io import _secrets
+
+    monkeypatch.delenv("SVERIFY_SECRETS", raising=False)
+    monkeypatch.setattr(_secrets.Path, "cwd", staticmethod(lambda: tmp_path))
+    monkeypatch.setattr(_secrets.Path, "is_file", lambda self: False)
+    assert _secrets._config_file() is None
+    assert Resolver.from_config().reference("lake") == "env:LAKE"
+
+
+def test_remote_answers_are_kept_until_cleared():
+    calls = []
+
+    class Remote:
+        def get(self, path):
+            calls.append(path)
+            return VALUE
+
+    r = Resolver(backends={"bao": Remote()})
+    assert r.value("bao:kv/lake") == r.value("bao:kv/lake") == VALUE
+    assert calls == ["kv/lake"]
+    r.clear()
+    r.value("bao:kv/lake")
+    assert calls == ["kv/lake", "kv/lake"]
+
+
+def test_resolve_values_replaces_only_secrets(monkeypatch):
+    from sverify.io._secrets import resolve_values
+
+    monkeypatch.setenv("SV_KEY", VALUE)
+    assert resolve_values({"key": Secret("env:SV_KEY"), "region": "eu"}) == {
+        "key": VALUE,
+        "region": "eu",
+    }
+
+
+# -- OpenBao and Vault ------------------------------------------------------------
+
+
+def test_openbao_without_an_address_names_the_setting(monkeypatch):
+    for var in ("BAO_ADDR", "VAULT_ADDR"):
+        monkeypatch.delenv(var, raising=False)
+    # A token, so the read gets as far as the address, with or without a
+    # `~/.vault-token` on this machine.
+    for var in ("BAO_TOKEN", "VAULT_TOKEN"):
+        monkeypatch.setenv(var, "sv-test-bao-token")
+    with pytest.raises(SecretError, match="no address: set `BAO_ADDR`"):
+        Secret("bao:kv/lake#key").value()
+    with pytest.raises(SecretError, match="no address: set `VAULT_ADDR`"):
+        Secret("vault:kv/lake#key").value()
+    assert repr(Bao()) == "Bao($BAO_ADDR, auth='token')"
+
+
+def test_openbao_paths_start_with_the_mount(bao):
+    with pytest.raises(SecretError, match="a path is <mount>/<path>"):
+        Resolver(backends={"bao": {"address": bao}}).value("bao:kv")
+
+
+def test_openbao_kv_version_1_and_a_namespace(bao, monkeypatch):
+    monkeypatch.setenv("BAO_TOKEN", "sv-test-bao-token")
+    r = Resolver(backends={"bao": {"address": bao, "kv_version": 1, "namespace": "team"}})
+    # #2429: KV values that are not strings come back as their JSON.
+    assert r.fields("bao:kv1/pipelines/lake") == {
+        "secret_key": VALUE,
+        "port": "5432",
+        "tls": "true",
+    }
+    assert _Bao.calls == ["/v1/kv1/pipelines/lake"] and _Bao.namespaces == ["team"]
+
+
+def test_openbao_reads_the_token_file(bao, tmp_path, monkeypatch):
+    for var in ("BAO_TOKEN", "VAULT_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    (tmp_path / "token").write_text("sv-test-bao-token\n")
+    r = Resolver(backends={"bao": {"address": bao, "token_file": str(tmp_path / "token")}})
+    assert r.value("bao:kv/pipelines/lake#access_key") == "id"
+    missing = Resolver(backends={"bao": {"address": bao, "token_file": str(tmp_path / "none")}})
+    with pytest.raises(SecretError, match="not found"):
+        missing.value("bao:kv/pipelines/lake#access_key")
+
+
+def test_a_jwt_login_lasts_its_lease(bao, tmp_path, monkeypatch):
+    monkeypatch.delenv("BAO_TOKEN", raising=False)
+    (tmp_path / "jwt").write_text("sv-test-jwt")
+    b = Bao(bao, auth="jwt", role="ci", jwt_file=str(tmp_path / "jwt"))
+    r = Resolver(backends={"bao": b}, cache_seconds=0)
+    r.value("bao:kv/pipelines/lake#secret_key")
+    r.value("bao:kv/pipelines/lake#access_key")
+    assert [c for c in _Bao.calls if c.startswith("POST")] == ["POST /v1/auth/jwt/login"]
+    # A minute before the lease ends, it logs in again.
+    assert b._login is not None
+    b._login = (b._login[0], 0.0)
+    r.value("bao:kv/pipelines/lake#access_key")
+    assert len([c for c in _Bao.calls if c.startswith("POST")]) == 2
+    # A login the server refuses names the status, not what it echoed.
+    (tmp_path / "jwt").write_text("sv-test-wrong-jwt")
+    b._login = None
+    with pytest.raises(SecretError, match="HTTP 400") as e:
+        r.value("bao:kv/pipelines/lake#access_key")
+    assert "sv-test-wrong-jwt" not in str(e.value)
+
+
+def test_a_jwt_login_with_the_github_oidc_token(bao, monkeypatch):
+    monkeypatch.delenv("BAO_TOKEN", raising=False)
+    monkeypatch.setenv("ACTIONS_ID_TOKEN_REQUEST_URL", f"{bao}/oidc?api-version=2.0")
+    monkeypatch.setenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "sv-test-request-token")
+    r = Resolver(backends={"bao": {"address": bao, "auth": "jwt", "role": "ci"}})
+    assert r.value("bao:kv/pipelines/lake#secret_key") == VALUE
+    assert _Bao.calls[0] == "/oidc?api-version=2.0&audience=openbao"
+
+
+# -- the cloud backends, with their clients faked ------------------------------------
+
+
+def _module(monkeypatch, name, **attrs):
+    import types
+
+    mod = types.ModuleType(name)
+    for k, v in attrs.items():
+        setattr(mod, k, v)
+    monkeypatch.setitem(sys.modules, name, mod)
+    parent, _, child = name.rpartition(".")
+    if parent:
+        setattr(sys.modules[parent], child, mod)
+    return mod
+
+
+def test_aws_secrets_manager(monkeypatch):
+    asked = []
+
+    class Client:
+        def get_secret_value(self, SecretId):  # noqa: N803 - boto3's name
+            asked.append(SecretId)
+            return {"SecretString": json.dumps({"secret_key": VALUE})}
+
+    def client(service, region_name=None):
+        asked.append((service, region_name))
+        return Client()
+
+    _module(monkeypatch, "boto3", client=client)
+    r = Resolver(backends={"aws-sm": {"region": "eu-central-1"}})
+    assert r.value("aws-sm:prod/lake#secret_key") == VALUE
+    assert asked == [("secretsmanager", "eu-central-1"), "prod/lake"]
+
+
+def test_gcp_secret_manager_reads_the_latest_version(monkeypatch):
+    asked = []
+
+    class Client:
+        def access_secret_version(self, name):
+            asked.append(name)
+            payload = type("P", (), {"data": VALUE.encode()})
+            return type("V", (), {"payload": payload})
+
+    _module(monkeypatch, "google")
+    _module(monkeypatch, "google.cloud")
+    _module(monkeypatch, "google.cloud.secretmanager", SecretManagerServiceClient=Client)
+    assert Secret("gcp-sm:projects/p/secrets/lake").value() == VALUE
+    assert Secret("gcp-sm:projects/p/secrets/lake/versions/3").value() == VALUE
+    assert asked == [
+        "projects/p/secrets/lake/versions/latest",
+        "projects/p/secrets/lake/versions/3",
+    ]
+
+
+def test_azure_key_vault(monkeypatch):
+    asked = []
+
+    class Client:
+        def __init__(self, url, credential):
+            asked.append(url)
+
+        def get_secret(self, name):
+            asked.append(name)
+            return type("S", (), {"value": VALUE if name == "lake" else None})
+
+    _module(monkeypatch, "azure")
+    _module(monkeypatch, "azure.identity", DefaultAzureCredential=lambda: None)
+    _module(monkeypatch, "azure.keyvault")
+    _module(monkeypatch, "azure.keyvault.secrets", SecretClient=Client)
+    r = Resolver(cache_seconds=0)
+    assert r.value("azure-kv:my-vault/lake") == VALUE
+    assert r.value("azure-kv:https://vault.example/empty") == ""
+    # #2433: a vault's URL, split at the last '/'.
+    assert asked == ["https://my-vault.vault.azure.net", "lake", "https://vault.example", "empty"]
+    for no_secret in ("my-vault", "https://vault.example"):
+        with pytest.raises(SecretError, match="a path is <vault>/<secret>"):
+            r.value(f"azure-kv:{no_secret}")
+
+
+def test_the_os_keychain(monkeypatch):
+    def get_password(service, account):
+        return VALUE if (service, account) == ("sverify/lake", "ci") else None
+
+    _module(monkeypatch, "keyring", get_password=get_password)
+    r = Resolver(cache_seconds=0)
+    assert r.value("keychain:sverify/lake/ci") == VALUE
+    with pytest.raises(SecretError, match="not found"):
+        r.value("keychain:sverify/lake/nobody")
+
+
+def test_a_field_is_read_with_one_lookup():
+    calls = []
+
+    class Counted:
+        def get(self, path):
+            calls.append(path)
+            return {"key": VALUE, "id": "x"}
+
+    r = Resolver(backends={"bao": Counted()}, cache_seconds=0)
+    assert r.fields("bao:kv/lake#key") == {"key": VALUE}
+    assert calls == ["kv/lake"]
+
+
+def test_a_backend_of_your_own_serves_bare_names():
+    """#2430: a backend under a scheme of its own reads bare names, as the
+    `default`. A reference names a built-in scheme only, in a `Secret` and in
+    `names` alike."""
+
+    class Kv:
+        def get(self, path):
+            return {"key": f"{path}-value"}
+
+    r = Resolver(default="kv", backends={"kv": Kv()})
+    assert r.value("lake") == "lake-value" and r.reference("lake") == "kv:lake"
+    with pytest.raises(SecretError, match="neither"):
+        Secret("kv:lake")
+    with pytest.raises(ValueError, match="names.lake: 'kv:lake' is not a reference"):
+        Resolver(default="kv", backends={"kv": Kv()}, names={"lake": "kv:lake"})

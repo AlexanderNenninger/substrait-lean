@@ -44,7 +44,7 @@ release on PyPI.
 
 ## How-to
 
-A page of this kind runs its Python examples in `tests/test_readme.py`, and the test fails a page of more than 600 lines (a tutorial or how-to page) or `python/README.md` of more than 120.
+A page of this kind runs its Python examples in `tests/test_readme.py`, and the test fails a page of more than 600 lines (a tutorial or how-to page) or `python/README.md` of more than 90, two screens.
 
 | Page | Job | Site |
 |---|---|---|
@@ -106,9 +106,12 @@ A page of this kind runs its Python examples in `tests/test_readme.py`, and the 
 | [ledger.md](ledger.md) | Every project decision in one list, by scope, with who decided and what is in force, generated from [`decisions/`](../decisions/) |
 | [proofs.md](proofs.md) | Each guarantee with its theorem, what is trusted, one line per Lean module |
 | [coverage-targets.md](coverage-targets.md) | The constructs 1.0 covers, by area, with where each stands |
+| [coverage.md](coverage.md) | The Ibis operations that reach the checker and the engines that run their plans, generated on `main` |
 | [layers.md](layers.md) | The layers of the Python package |
 | [teaching.md](teaching.md) | How each feature is taught: its sentence, first contact, notebook and theorem; every refusal with its exit |
 | [build-performance.md](build-performance.md) | The Lean build's time and memory per module, how they are measured, and the budget CI checks |
+| [dbt-measurements.md](dbt-measurements.md) | sverify-dbt on jaffle_shop and Cal-ITP's warehouse: models read, tests proved, test queries skipped |
+| [release-notes-1.0.0rc1.md](release-notes-1.0.0rc1.md) | A draft of 1.0.0rc1's notes: what an upgrade from 0.8.0 changes, from the changelog fragments |
 
 ## Where each topic lives
 

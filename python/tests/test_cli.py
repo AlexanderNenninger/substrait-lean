@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 import sverify as sv
-from sverify.cli import discover, main, summary
+from sverify.cli import ExitCode, discover, main, summary
 from sverify.cli._main import split_target
 
 HEAD = """\
@@ -78,7 +78,7 @@ SCHEMAS = Path(sv.__file__).resolve().parent / "schemas"
 def run_json(capsys, *argv: str) -> tuple[int, dict]:
     """The command's JSON document, checked against the CLI's schema, and
     each embedded report against the report's."""
-    code, out = run(capsys, *argv, "--json")
+    code, out = run(capsys, *argv, "--format", "json")
     doc = json.loads(out)
     jsonschema = pytest.importorskip("jsonschema")
     jsonschema.validate(doc, json.loads((SCHEMAS / "cli.schema.json").read_text()))
@@ -116,7 +116,7 @@ def test_the_json_document(tmp_path, capsys):
     path = write(tmp_path, NOT_PROVED)
     code, doc = run_json(capsys, "check", str(path))
     assert code == 1
-    assert doc["format"] == 1
+    assert doc["format"] == 2
     assert doc["command"] == "check"
     assert (doc["exit"], doc["status"]) == (1, "not_proved")
     assert doc["file"] == str(path)
@@ -127,7 +127,7 @@ def test_the_json_document(tmp_path, capsys):
     assert set(item) == {"name", "nodes", "status", "relaxations", "summary", "links", "report"}
     assert (item["name"], item["nodes"], item["status"]) == ("paid", ["p"], "not_proved")
     assert set(item["summary"]) == {"guarantees", "checks", "not_proved"}
-    assert item["report"]["format"] == 4 and item["report"]["proved"] is False
+    assert item["report"]["format"] == 5 and item["report"]["proved"] is False
 
 
 def test_one_node_of_a_file(tmp_path, capsys):
@@ -235,7 +235,7 @@ def test_fix_extends_requires(tmp_path, capsys, decorator):
     code, doc = run_json(capsys, "check", str(path), "--fix")
     [fix] = doc["fixes"]
     if "if False" in decorator:
-        assert not fix["placed"] and "not a literal" in fix["reason"]
+        assert not fix["placed"] and "not a literal" in fix["why"]
         assert code == 1
         return
     assert fix["placed"], fix
@@ -332,12 +332,12 @@ def test_usage_errors_exit_2_and_errors_6(tmp_path, capsys):
     code, doc = run_json(
         capsys, "check", str(write(tmp_path, "raise RuntimeError('boom')\n", "b.py"))
     )
-    assert code == 6 and doc["error"]["message"] == "boom"
+    assert code == 8 and doc["error"]["message"] == "boom"
 
 
 def test_a_refresh_at_import_is_refused_while_checking(tmp_path, capsys):
     code, doc = run_json(capsys, "check", str(write(tmp_path, PROVED + "p.refresh()\n")))
-    assert code == 6
+    assert code == 8
     assert "__name__" in doc["error"]["message"]
 
 
@@ -358,7 +358,7 @@ def test_every_code_check_prints_is_explained():
     from typing import get_args
 
     from sverify.cli import _explain
-    from sverify.contracts import UnprovedReason
+    from sverify.report import UnprovedReason
 
     reasons = get_args(UnprovedReason)
     assert all(_explain.explain(r) for r in reasons)
@@ -384,7 +384,7 @@ s = orders.pipe(slow)
 """
     )
     code, doc = run_json(capsys, "check", str(write(tmp_path, body)), "--timeout", "3")
-    assert code == 4
+    assert code == 5
     assert doc["error"]["code"] == "timeout"
     assert [(i["name"], i["status"]) for i in doc["items"]] == [
         ("paid", "proved"),
@@ -397,7 +397,7 @@ def test_the_time_budget_comes_from_the_environment(tmp_path, capsys, monkeypatc
     path = write(tmp_path, PROVED)
     monkeypatch.setenv("SVERIFY_TIMEOUT", "0.000001")
     code, _ = run(capsys, "check", str(path))
-    assert code == 4
+    assert code == 5
     monkeypatch.setenv("SVERIFY_TIMEOUT", "0")  # off
     code, doc = run_json(capsys, "check", str(path))
     assert code == 0 and doc["budget"]["timeout"] == 0
@@ -411,9 +411,9 @@ def test_refresh_runs_a_node(tmp_path, capsys):
     assert code == 0, doc
     [node] = doc["nodes"]
     assert node["node"] == "paid"
-    assert node["write"]["inserted"] == 2
+    assert node["write"]["inserts"] == 2
     code, out = run(capsys, "refresh", f"{path}:stored", "--timeout", "0.000001")
-    assert code == 4 and "budget exceeded" in out
+    assert code == 5 and "budget exceeded" in out
 
 
 def test_refresh_refuses_an_unproved_node(tmp_path, capsys):
@@ -451,11 +451,11 @@ def test_a_duckdb_memory_breach_exits_4_and_writes_nothing(tmp_path):
     path = tmp_path / "big.py"
     path.write_text(MEMORY.replace("SINK", repr(str(sink))))
     env = {**os.environ, "SVERIFY_TIMEOUT": "0", "SVERIFY_TEMP_DIRECTORY": str(tmp_path / "spill")}
-    argv = [sys.executable, "-m", "sverify.cli", "refresh", f"{path}:stored", "--json"]
+    argv = [sys.executable, "-m", "sverify.cli", "refresh", f"{path}:stored", "--format", "json"]
     done = subprocess.run(
         [*argv, "--memory-limit", "20MB"], capture_output=True, text=True, env=env
     )
-    assert done.returncode == 4, done.stderr
+    assert done.returncode == 5, done.stderr
     doc = json.loads(done.stdout)
     assert doc["error"]["code"] == "memory"
     assert doc["error"]["type"] == "MemoryLimitError"
@@ -475,11 +475,11 @@ def test_a_duckdb_memory_breach_exits_4_and_writes_nothing(tmp_path):
     # bytecode), so the refresh computes again.
     newer = tmp_path / "newer.py"
     newer.write_text(path.read_text().replace('name="orders",', 'name="orders", version=2,'))
-    again = [sys.executable, "-m", "sverify.cli", "refresh", f"{newer}:stored", "--json"]
+    again = [sys.executable, "-m", "sverify.cli", "refresh", f"{newer}:stored", "--format", "json"]
     done = subprocess.run(
         [*again, "--memory-limit", "20MB"], capture_output=True, text=True, env=env
     )
-    assert done.returncode == 4, done.stdout + done.stderr
+    assert done.returncode == 5, done.stdout + done.stderr
     assert json.loads(done.stdout)["error"]["code"] == "memory"
     after = (DeltaTable(str(sink)).version(), DeltaSink(str(sink)).contract())
     assert after == (version, contract)
@@ -653,9 +653,11 @@ def test_sarif_is_valid(tmp_path, capsys):
 def test_help_lists_the_exit_codes(capsys):
     assert main(["--help"]) == 0
     out = capsys.readouterr().out
-    assert "  5  a refresh committed with rows quarantined" in out
-    assert "  7  refused: no route takes the proved node to the engine" in out
-    assert "  8  a refresh held a node" in out
+    assert "exit codes, from the best to the worst:" in out
+    for code in ExitCode:
+        assert f"  {code.value}  {code.meaning}" in out
+    assert "  4  refused: no route takes the proved node to the engine" in out
+    assert "  8  error" in out
 
 
 QUARANTINE = """
@@ -673,7 +675,7 @@ p = orders.pipe(paid)
 
 
 @pytest.mark.parametrize(
-    ("policy", "code", "status"), [("quarantine", 5, "quarantined"), ("hold", 8, "held")]
+    ("policy", "code", "status"), [("quarantine", 6, "quarantined"), ("hold", 7, "held")]
 )
 def test_refresh_exits_apart_when_rows_are_quarantined_or_held(
     tmp_path, capsys, policy, code, status
@@ -720,10 +722,10 @@ def share(orders):
 def test_classifying_an_import_error_in_sverify_errors_does_not_raise(monkeypatch):
     """`sverify.errors` failing to import is the error to classify, not a second
     one raised from the classifier (#1585: a double traceback)."""
-    from sverify.cli._main import ERROR, _classify
+    from sverify.cli._main import _classify
 
     monkeypatch.setitem(sys.modules, "sverify.errors", None)  # `import` then raises
-    assert _classify(TypeError("boom")) == (ERROR, "error")
+    assert _classify(TypeError("boom")) == (ExitCode.ERROR, "error")
 
 
 CHECKED = NOT_PROVED.replace(

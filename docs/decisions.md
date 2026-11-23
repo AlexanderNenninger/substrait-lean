@@ -463,8 +463,8 @@ contract holds on all of them: `contract_sound_all` for postconditions,
 so it runs natively.
 
 `Rel.eval` computes one allowed order: a stable sort (`List.mergeSort`) and
-rows in list order (`Rel.eval_orderAllowed`). Determinism is a property the
-checker proves of a plan, not a profile: a plan is determined when every
+rows in list order (`Rel.eval_orderAllowed`). Determinism is a property of a
+plan, which the checker proves, and no profile states it: a plan is determined when every
 result the reference allows is `Rel.eval`'s up to row order (`Rel.detPlan`). A
 consumer that needs a rerun to give the same rows asks for it, through
 `run(reproducible=sv.equivalent())` or a sink's `reproducible=`
@@ -526,7 +526,7 @@ is one value and order-free (`floatSumCR_perm`).
 
 Engines add in an order of their own: DuckDB in the order values reach each
 thread's state (`duckdb-sum-double`), Polars pairwise in blocks of 128
-(`polars-sum-float`), Spark per partition (`spark-sum-double`). Each refines the reference up to the
+(`polars-sum-float-streaming`), Spark per partition (`spark-sum-double`). Each refines the reference up to the
 plan's bound, the distance of any order of additions from the exact sum
 (`StdModel.epsilon_sum` in [`float-bounds/`](float-bounds.md)) plus half an
 ulp of the final rounding (`epsilon_sum_cr`). Their `sum_order` rows stay
@@ -810,7 +810,7 @@ exact definitions make `Rel.eval` on doubles unfold in proofs, which the
 tolerance fold of #929 needs for its arithmetic rows (`c · x`, `x ± y`,
 `x · y`, `x / y`). The trust moves to each engine's fact.
 
-**Correction, 2026-11-09** (approved by the maintainer, via the theory advisor):
+Correction, 2026-11-09 (approved by the maintainer, via the theory advisor):
 "The reference is IEEE on the full float code set, signed zeros and signed
 NaNs included; `canon` applies only at identity boundaries; the reference
 raises or leaves the result open where engines disagree."
@@ -873,7 +873,7 @@ Note (2026-11-09, theory advisor): a zero in an option's scope is either zero
 a `-0.0` argument or result too, and `fp.elem` takes `zero_sign` for `atan2`
 (Spark's reads `-0.0` as `0.0`). No reference value or allowed set changes.
 
-**Amendment, 2026-11-21** (ruling 248, #271): the reference's doubles are
+Amendment, 2026-11-21 (ruling 248, #271): the reference's doubles are
 values of binary64. Every integer magnitude up to the largest has a code, but
 only those with at most 53 significant bits are doubles (`FloatFormat.Dbl`).
 On a catalog of doubles, with doubles for the plan's constants, every double
@@ -1016,7 +1016,7 @@ Consequences:
 - `Rel.AllowedP` only narrows. `Rel.allowedP_reference`, `Rel.AllowedP_mono`
   and `Rel.AllowedP_transfer` keep their statements.
 - The engines' functions show each of their deviations in an option's scope
-  (`Profile.duckdb_withinOk`, `Polars.written_within`). DuckDB's
+  (`Profile.duckdb_withinOk`, `Polars.impl_within`). DuckDB's
   `fmod(x, 0)` is NaN under `nan_creation`, since its table gives `fp.mod`
   no other `on_division_by_zero`; Polars's NaN for `power` is a domain
   error's (`on_domain_error`), since `power` has no `nan_creation`.
@@ -1120,7 +1120,7 @@ Polars and Spark compare NaN so (`nan_equality` `NAN_IS_NAN` in their
 tables); IEEE's NaN, unequal to itself,
 would split `GROUP BY` and `DISTINCT` and drop rows from joins.
 
-**Correction, 2026-11-15** ([#1446](https://github.com/AlexanderNenninger/substrait-lean/issues/1446)),
+Correction, 2026-11-15 ([#1446](https://github.com/AlexanderNenninger/substrait-lean/issues/1446)),
 by the theory advisor, applying D31's correction:
 as first written, this decision had the reference apply `canon` "to every
 input and output" and give `1.0 / -0.0 = inf`. D31's correction of
@@ -1179,7 +1179,7 @@ divisor's raw sign as a scalar operation does (D31), with no comparison of
 `y` with zero. `0 / 0` and `±∞ / ±∞` create a NaN, so they raise under D37
 (`nanCase`); only a profile with `nan_creation = NAN` gives the NaN, as
 DuckDB's run profile does. An overflow of finite operands to `±∞` raises as
-D38 says; a quotient by zero is the option's value, not an overflow
+D38 says; a quotient by zero takes the option's value and raises no overflow
 (`BinFn.infIssue`). The reference keeps `ERROR` and D37 unchanged: a portable plan raises at
 any zero divisor and creates no NaN. DuckDB's IEEE operations are this
 division, so the lift of DuckDB's `/` with `semantics="duckdb"` writes the
@@ -1538,7 +1538,7 @@ observation reads one zero and one NaN, so no rerun it compares can differ at
 a pick.
 
 An observation that reads the members (`floats` and `zeros` both exact,
-`Observation.reads_members`) asks for the exact level. There each class pick
+`Lenses.reads_members`) asks for the exact level. There each class pick
 is an open place: the refusal names it and the two ways out, a class-blind
 observation or a plan without the pick.
 
@@ -1554,10 +1554,10 @@ Tie order, tie picks and an unordered `FETCH` are open at both levels
 ([D24](#d24-tie-order-is-open-and-determinism-is-proved) unchanged).
 
 `floats="plan"` reads one zero and one NaN whether or not the plan has a
-float bound (`Observation.equal`). The refinement order (`coarser_than`),
+float bound (`Lenses.equal`). The refinement order (`coarser_than`),
 which D18's check and the engines' rerun rows use, still compares `zeros` as
 a component of its own: under `floats="plan"` or a tolerance it asks for more
-than `Observation.equal` can see, which is sound.
+than `Lenses.equal` can see, which is sound.
 
 Amends: D10 (the default requirement is the class level); D20 (the
 consumer's observation `q_det` chooses the level); D24 (determinism is a
@@ -1763,7 +1763,7 @@ preconditions guard it. In three the reference gives another value:
 
 | `Profile` field | reference | DuckDB | where | the lift |
 |---|---|---|---|---|
-| `float_to_int` | truncates | rounds, ties to even | `CAST(double AS integer)` | refuses, with a hint |
+| `float_to_int` | truncates | rounds, ties to even | `CAST(double AS integer)` | reads `BIGINT` as DuckDB's (since #322, below); narrower targets refused, with a hint |
 | `decimal_to_int` | truncates | rounds, ties away from zero | `CAST(decimal AS integer)` | reads it as DuckDB's (since #322, below) |
 | `corr_degenerate` | NULL | NaN | `corr` of one pair or a constant side | lists it |
 | `list_contains` | NULL | FALSE (2.0.1) | `list_contains(l, x)` with `x` NULL and `l` empty | lists it, under every semantics |
@@ -1771,6 +1771,11 @@ preconditions guard it. In three the reference gives another value:
 Amended 2026-11-20 (ruling 106 §2c, #322): the lift reads `CAST(decimal AS integer)` as the
 reference's own rescale to scale 0, which rounds half away from zero, and the exact cast.
 The field `decimal_to_int` left `Profile`: the two semantics read the cast alike.
+
+Amended 2026-11-21 (ruling 239, D55, #322): the lift reads `CAST(double AS BIGINT)`, under both
+semantics, as `ftoi (froundEven x)`, in Substrait `cast(round(x, rounding: TIE_TO_EVEN))`.
+The field `float_to_int` left `Profile` too. Narrower integer targets stay refused until their
+probe.
 
 R9 stays the reference's rule: the model's cast of a double or decimal truncates,
 and the Ibis frontend's cast means that. DuckDB SQL's `CAST` is DuckDB's cast,
@@ -1884,9 +1889,8 @@ Decided 2026-11-19 (theory advisor, ruling 106; [#322](https://github.com/Alexan
 - The value comes from IEEE 754 and Substrait's own option name, from no engine's facts,
   so D49's mark does not apply.
 
-The decimal part is in [#1959](https://github.com/AlexanderNenninger/substrait-lean/pull/1959). The double part is tracked in
-[#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322); until it closes the lift refuses a cast of a double to an integer
-([D54](#d54-the-lift-refines-the-dialect)'s table).
+The decimal part is in [#1959](https://github.com/AlexanderNenninger/substrait-lean/pull/1959). The double part landed with
+[#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322).
 
 Recomputes sinks: no
 

@@ -35,12 +35,18 @@ def test_one_ledger_per_source(ledgers) -> None:
 
 
 def test_no_proved_test_fails_in_dbt(ledgers) -> None:
-    """A test sverify-dbt proves passes in dbt's own run of the project."""
+    """A test sverify-dbt proves passes in dbt's own run of the project, or
+    dbt could not run it (`error`: a macro the suite's project does not
+    install); it never fails or warns there, which would make it `unsound`. A
+    constraint it proves is on a model dbt builds (`success`)."""
     for name, led in ledgers.items():
         assert led["unsound"] == 0, name
         for key, r in led["results"].items():
-            if r["outcome"] == "proved":
-                assert r["dbt"] == "pass", f"{name}: {key}"
+            if r["outcome"] != "proved":
+                continue
+            assert not r.get("unsound"), f"{name}: {key}"
+            ok = ("success",) if r.get("kind") == "constraint" else ("pass", "error")
+            assert r["dbt"] in ok, f"{name}: {key}"
 
 
 def test_summaries_count_the_results(ledgers) -> None:
@@ -73,7 +79,10 @@ def test_records_name_every_test_and_flag_a_proof_dbt_contradicts(shop: Path) ->
     proj = load(shop)
     result = check(proj, counterexamples=0)
     records = replay._records(proj, result, {})
-    assert len(records) == len(proj.tests)
+    tests = {k: r for k, r in records.items() if r.get("kind") != "constraint"}
+    assert len(tests) == len(proj.tests)
+    enforced = [c for m in result.models if m.enforced for c in m.constraints]
+    assert len(records) - len(tests) == len(enforced)
     assert {r["outcome"] for r in records.values()} <= set(replay.OUTCOMES)
     proved = [
         uid
@@ -84,6 +93,18 @@ def test_records_name_every_test_and_flag_a_proof_dbt_contradicts(shop: Path) ->
     failed = replay._records(proj, result, {proved[0]: "fail"})
     assert failed[proved[0].split(".", 2)[-1]].get("unsound") is True
     assert not any(r.get("unsound") for r in records.values())
+    # A constraint it proves on a model whose build dbt fails is unsound too.
+    held = [
+        (m.unique_id, c.label)
+        for m in result.models
+        if m.enforced and not m.refused
+        for c in m.constraints
+        if c.status == "proved"
+    ]
+    assert held, "the shop proves a constraint of an enforced contract"
+    model, label = held[0]
+    broken = replay._records(proj, result, {model: "error"})
+    assert broken[f"{model.split('.', 2)[-1]}::{label}"].get("unsound") is True
 
 
 def test_an_entry_waiting_on_a_closed_issue_is_found() -> None:
@@ -102,3 +123,25 @@ def test_an_entry_waiting_on_a_closed_issue_is_found() -> None:
         "#1 is closed; 2 entries wait on it, such as src: a"
     ]
     assert replay.closed_issues(ledgers, lambda n: None) == []
+
+
+def test_an_unsound_entry_fails_however_the_ledger_reads(monkeypatch, tmp_path) -> None:
+    """#859: a proof dbt's own run contradicts exits 2, which fails CI, and is
+    read from the fresh run: a ledger that records it, or not, changes nothing.
+    A changed outcome alone exits 1, which CI turns into a warning."""
+    source = replay.SOURCES["dbt-utils"]
+    fresh = {
+        "packages": [],
+        "results": {
+            "t": {"test": "unique(id)", "outcome": "proved", "dbt": "fail", "unsound": True}
+        },
+    }
+    monkeypatch.setattr(replay, "run", lambda s: fresh)
+    monkeypatch.setattr(replay, "LEDGERS", tmp_path)
+    monkeypatch.setattr(replay, "closed_issues", lambda *a, **k: [])
+    assert replay.main(["dbt-utils", "--write"]) == 2  # the ledger now records it
+    assert replay.main(["dbt-utils", "--check"]) == 2  # and it still fails
+    fresh["results"]["t"].update(dbt="pass", unsound=False)
+    fresh["results"]["t"].pop("unsound")
+    assert replay.main(["dbt-utils", "--check"]) == 1  # the outcome changed: a warning
+    assert source.name == "dbt-utils"

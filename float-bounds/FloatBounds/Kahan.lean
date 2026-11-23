@@ -5,8 +5,9 @@ public import FloatBounds.Tree
 /-!
 # Kahan's compensated sum (#444, `COMPENSATED`)
 
-Polars's in-memory engine sums a group's doubles with Kahan's compensated sum
-(`KahanSum::add_assign` in `polars-utils`, polars-sum-float): from
+DuckDB's `kahan_sum` (`fsum`, `sumkahan`; duckdb-kahan-sum) sums its doubles
+with Kahan's compensated sum, as does Polars's in-memory engine, which sverify
+does not run (polars-sum-float): from
 `(s, c) = (0, 0)`, each value `x` takes
 
     y = fl(x − c),  t = fl(s + y),  c = fl(fl(t − s) − y),  s = t,

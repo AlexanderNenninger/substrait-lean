@@ -106,7 +106,7 @@ def test_a_setting_the_plan_does_not_rely_on_warns(
     duckdb_global(name, value)
     with pytest.warns(EngineSettingsWarning, match=f"{named}.*this plan does not rely on it"):
         report.run(con, "duckdb")
-    assert report.routes["duckdb"].kind == "translated"
+    assert report.routes["duckdb"].taken == "translated"
 
 
 def test_a_session_set_on_another_cursor_is_not_seen(con) -> None:
@@ -120,7 +120,7 @@ def test_a_session_set_on_another_cursor_is_not_seen(con) -> None:
         t = con.table("t")
         report = sv.verify(t.select("k"))
         report.run(con, "duckdb", route="auto")
-        assert report.routes["duckdb"].kind == "translated"
+        assert report.routes["duckdb"].taken == "translated"
     finally:
         other.execute("RESET integer_division").fetchall()
 
@@ -179,7 +179,7 @@ def test_polars_streaming_variables_are_not_refused(con, monkeypatch) -> None:
     monkeypatch.setenv("POLARS_FORCE_STREAMING", "1")
     monkeypatch.setenv("POLARS_AUTO_STREAMING", "1")
     report.run(con, "polars", route="auto")
-    assert report.routes["polars"].kind == "translated"
+    assert report.routes["polars"].taken == "translated"
 
 
 def test_a_setting_nothing_relies_on_warns(monkeypatch) -> None:
@@ -224,3 +224,26 @@ def test_values_are_compared_normalised() -> None:
         )
         == []
     )
+
+
+def test_a_run_records_the_settings_it_read(con, duckdb_global) -> None:
+    """#1130: the route records every setting the profile assumes, as read
+    from the session the run uses, and the report JSON carries them."""
+    from sverify import report_json
+
+    t = con.table("t")
+    report = sv.verify(
+        t.order_by(t.i).select("k", j=t.i + 1), requires={"t": [_.i.between(-100, 100)]}
+    )
+    report.run(con, "duckdb")
+    read = dict(report.routes["duckdb"].settings)
+    assert set(read) == {s.name for s in _engine_settings.settings_of("duckdb")}
+    assert read["integer_division"] is False
+    duckdb_global("default_order", "'desc'")
+    with pytest.warns(EngineSettingsWarning):
+        report.run(con, "duckdb")
+    route = report.routes["duckdb"]
+    assert dict(route.settings)["default_order"] == "DESC"
+    d = report_json.route_json(route)
+    assert d["settings"]["default_order"] == "DESC"
+    assert report_json.route(d) == route

@@ -113,8 +113,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -147,8 +146,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -237,7 +235,7 @@
       },
       "polars": {
         "causes": [
-          "robust only by the engine's facts (#1045)"
+          "translation tested (no row for the options; #271)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -267,11 +265,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "robust only by the engine's facts (#1045)"
-        ],
         "class": "exact",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -295,11 +290,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "robust only by the engine's facts (#1045)"
-        ],
         "class": "exact",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -323,11 +315,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "robust only by the engine's facts (#1045)"
-        ],
         "class": "exact",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -354,7 +343,7 @@
       },
       "polars": {
         "causes": [
-          "robust only by the engine's facts (#1045)"
+          "translation tested (no row for the options; #271)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -424,7 +413,6 @@
       },
       "polars": {
         "causes": [
-          "robust only by the engine's facts (#1045)",
           "row tested: cmp's nan_equality (#271)",
           "row tested: cmp's nan_order (#271)"
         ],
@@ -537,7 +525,6 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
           "row tested: cmp's nan_equality (#271)",
           "row tested: cmp's nan_order (#271)"
         ],
@@ -574,8 +561,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -707,7 +693,6 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
           "row tested: cmp's nan_equality (#271)",
           "row tested: cmp's nan_order (#271)"
         ],
@@ -798,7 +783,6 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
           "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "shim",
@@ -853,11 +837,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "robust only by the engine's facts (#1045)"
-        ],
         "class": "observed",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -886,8 +867,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -924,7 +904,6 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
           "row tested: win.agg's window_sum_algo (#900)"
         ],
         "class": "shim",
@@ -952,40 +931,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding (#1985)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
-      },
-      "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
-      },
-      "snowflake": {
-        "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
-      },
-      "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding (#271)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
-      }
-    },
-    "pattern": "bound",
-    "proved": true
-  },
-  "stddev-unique-key": {
-    "engines": {
-      "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#1985)",
           "row tested: agg.var's rounding (#1985)"
         ],
         "class": "observed",
@@ -1005,6 +951,42 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#185)",
+          "row tested: agg.var's rounding (#271)"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      }
+    },
+    "pattern": "bound",
+    "proved": true
+  },
+  "stddev-unique-key": {
+    "engines": {
+      "duckdb": {
+        "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#1985)",
+          "row tested: agg.var's rounding (#1985)"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "polars": {
+        "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
+        ],
+        "class": "observed",
+        "outcome": "tested"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+      },
+      "spark": {
+        "causes": [
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#185)",
           "row tested: agg.var's rounding (#271)"
         ],
         "class": "observed",
@@ -1155,8 +1137,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1324,7 +1305,6 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)",
           "row tested: cmp's nan_equality (#271)",
           "row tested: cmp's nan_order (#271)"
         ],
@@ -1398,6 +1378,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#1985)",
           "row tested: agg.var's rounding (#1985)"
         ],
         "class": "observed",
@@ -1405,8 +1386,7 @@
       },
       "polars": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "robust only by the engine's facts (#1045)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1418,6 +1398,7 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#185)",
           "row tested: agg.var's rounding (#271)"
         ],
         "class": "observed",

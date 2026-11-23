@@ -41,7 +41,7 @@ The report's parts come as data and as the lines `str(report)` prints:
 
 - `Report.inputs` and `Report.output` give the schemas of the input tables
   and of the result, the columns `requires` and `ensures` may name.
-- `CheckedCondition.message`, `Issue.message`, `Issue.assumption` and
+- `Postcondition.message`, `Issue.message`, `Issue.assumption` and
   `Report.notes` are the report's lines for each postcondition, possible
   runtime error, assumption and note.
 - `Report.needs` gives the preconditions the proof needs, one `Needed` each:
@@ -73,7 +73,7 @@ that only needs the verdicts
 ([test_check_api.py](../python/tests/test_check_api.py)). It skips a
 postcondition that only the order of ties leaves open: the checker proves
 it where every window orders its rows totally, so its reason is `"ties"`
-(`CheckedCondition.ties`), and a key that breaks the ties proves it
+(`Postcondition.ties`), and a key that breaks the ties proves it
 ([test_checker_speed.py](../python/tests/test_checker_speed.py)).
 
 Sverify keeps the checker's answers on disk, so the next `verify`, `check`
@@ -169,7 +169,7 @@ contract added are not compared: the sink's record does not store them.
 `--format` chooses the output:
 
 - `text`, the default, as above;
-- `json` (`--json` for short), one document for tools in the format of
+- `json`, one document for tools in the format of
   [`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json): the
   exit code and its `status`, for each node its `status`, the plain words
   (`summary`) and its report as `Report.to_json()` writes it, and the
@@ -182,8 +182,37 @@ contract added are not compared: the sink's record does not store them.
   `explain`'s text. A transform's first `needs` result carries a fix: the
   edits `check --fix` makes to its `requires=`, as byte ranges of the file.
 
+## In GitHub Actions
+
+`actions/check/` in this repository is a composite action that runs
+`sverify check --format sarif` on each target with the default 30 s timeout,
+merges the logs into one SARIF run and uploads it to code scanning, so the
+findings appear on the pull request's lines. The job's exit code is the greatest
+of the targets': the codes grow with severity.
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+steps:
+  - uses: actions/checkout@v4
+  - uses: AlexanderNenninger/substrait-lean/actions/check@main
+    with:
+      targets: pipelines/orders.py pipelines/revenue.py
+      require-proved: "true"
+```
+
+The inputs are `targets`, `version` (default the latest release), `extras`
+(`delta,iceberg`), `source`, `timeout`, `require-proved` (it needs sverify
+0.9.0 or later), `python-version`, `upload` and `sarif-file`; the outputs are `exit-code` and `sarif-file`. A pull request
+from a fork has no token to upload with: set `upload: "false"`. The action
+imports the targets without running them, so use `pull_request`, not
+`pull_request_target`, for a fork.
+
 The codes are snake case (`may_be_false`), as the report's `reason` and
-issue `kind` write them; `explain` reads kebab case too. The exit codes are:
+issue `kind` write them; `explain` reads kebab case too. The exit codes
+(`sverify.cli.ExitCode`) run from the best to the worst, so the worst of
+several runs is their maximum:
 
 | Code | Meaning |
 |------|---------|
@@ -191,13 +220,13 @@ issue `kind` write them; `explain` reads kebab case too. The exit codes are:
 | 1 | not proved |
 | 2 | usage error: a flag, a missing file, a node the file lacks |
 | 3 | unsupported: a construct outside sverify's model (`sverify.errors.UnsupportedError`) |
-| 4 | time or memory budget exceeded |
-| 5 | a refresh committed with rows quarantined |
-| 6 | error: the file raised outside a run-time check, I/O, a crash |
-| 7 | refused: no route takes a proved node to the engine |
-| 8 | a refresh held a node: a condition failed on the batch, or a run-time check fired, and the node committed nothing |
+| 4 | refused: no route takes a proved node to the engine |
+| 5 | time or memory budget exceeded |
+| 6 | a refresh committed with rows quarantined |
+| 7 | a refresh held a node: a condition failed on the batch, or a run-time check fired, and the node committed nothing |
+| 8 | error: the file raised outside a run-time check, I/O, a crash |
 
-With 5 or 8, `refresh` prints `Refresh.alert()` after the summary, and its
+With 6 or 7, `refresh` prints `Refresh.alert()` after the summary, and its
 JSON has `"outcome"` and `"alert"` ([bad rows](how-to-quarantine.md#bad-rows-quarantine-and-hold)).
 `--examples` adds the rows that broke a condition to both, rows of your
 data that otherwise stay out of CI artifacts and issues.
@@ -216,8 +245,8 @@ The limit does not reach Polars, which has no memory cap to set; with
 `SVERIFY_CHECKER_MEMORY_MB` (below), since its memory does not grow with
 the data. Past any of these budgets the call raises
 `sverify.errors.MemoryLimitError` (its `.stage`, `.limit` and `.setting`
-say which), a refresh commits nothing, and the command stops with code 4
-and reports what was proved before it
+say which), a refresh commits nothing, and the command stops with the budget's exit
+code (5) and reports what was proved before it
 ([test_memory_limits.py](../python/tests/test_memory_limits.py)).
 `sverify.cli.discover(path)` does what `check` does from Python.
 

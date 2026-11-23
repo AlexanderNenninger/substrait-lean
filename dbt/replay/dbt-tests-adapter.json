@@ -7,9 +7,9 @@
   "project": "dbt.tests.adapter",
   "license": "Apache-2.0",
   "summary": {
-    "proved": 8,
+    "proved": 37,
     "not proved": 11,
-    "not checked": 86,
+    "not checked": 98,
     "refused": 10,
     "input": 13
   },
@@ -180,6 +180,29 @@
       "outcome": "proved",
       "dbt": "pass"
     },
+    "constraints.test_constraints.BaseConstraintQuotedColumn::my_model::not_null(id)": {
+      "test": "not_null(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseConstraintQuotedColumn::my_model::not_null(from)": {
+      "test": "not_null(from)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseConstraintQuotedColumn::my_model::check(\"from\")": {
+      "test": "check(\"from\")",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "not checked",
+      "why": "the model has no column …",
+      "dbt": "success",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
     "constraints.test_constraints.BaseConstraintsRollback::unique_my_model_error_id.8d2ff7a7b1": {
       "test": "unique(id)",
       "outcome": "not checked",
@@ -207,6 +230,27 @@
       "dbt": "not run",
       "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
     },
+    "constraints.test_constraints.BaseConstraintsRollback::my_model::not_null(id)": {
+      "test": "not_null(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseConstraintsRollback::my_model::primary_key(id)": {
+      "test": "primary_key(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseConstraintsRollback::my_model::check(id)": {
+      "test": "check(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
     "constraints.test_constraints.BaseConstraintsRuntimeDdlEnforcement::unique_my_model_error_id.8d2ff7a7b1": {
       "test": "unique(id)",
       "outcome": "not checked",
@@ -233,6 +277,57 @@
       "why": "not on a model sverify-dbt reports",
       "dbt": "not run",
       "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseConstraintsRuntimeDdlEnforcement::foreign_key_model::unique(id)": {
+      "test": "unique(id)",
+      "model": "foreign_key_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseConstraintsRuntimeDdlEnforcement::foreign_key_model::primary_key(id)": {
+      "test": "primary_key(id)",
+      "model": "foreign_key_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseConstraintsRuntimeDdlEnforcement::my_model::not_null(id)": {
+      "test": "not_null(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseConstraintsRuntimeDdlEnforcement::my_model::primary_key(id)": {
+      "test": "primary_key(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseConstraintsRuntimeDdlEnforcement::my_model::check(id)": {
+      "test": "check(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseConstraintsRuntimeDdlEnforcement::my_model::foreign_key(id)": {
+      "test": "foreign_key(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "not checked",
+      "why": "sverify proves no foreign keys of a model's result; dbt still runs it, and the same test on a model that reads this one is a precondition sverify checks",
+      "dbt": "success",
+      "design": "a foreign key relates two relations, and sverify-dbt proves conditions on one model's result; dbt still runs it"
+    },
+    "constraints.test_constraints.BaseConstraintsRuntimeDdlEnforcement::my_model::unique(id)": {
+      "test": "unique(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
     },
     "constraints.test_constraints.BaseIncrementalConstraintsColumnsEqual::unique_my_model_error_id.8d2ff7a7b1": {
       "test": "unique(id)",
@@ -262,6 +357,54 @@
       "outcome": "proved",
       "dbt": "pass"
     },
+    "constraints.test_constraints.BaseIncrementalConstraintsColumnsEqual::my_model_wrong_name::not_null(id)": {
+      "test": "not_null(id)",
+      "model": "my_model_wrong_name",
+      "kind": "constraint",
+      "outcome": "not checked",
+      "why": "the model has no column id",
+      "dbt": "error",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsColumnsEqual::my_model_wrong_name::primary_key(id)": {
+      "test": "primary_key(id)",
+      "model": "my_model_wrong_name",
+      "kind": "constraint",
+      "outcome": "not checked",
+      "why": "the model has no column id",
+      "dbt": "error",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsColumnsEqual::my_model_wrong_name::check(id)": {
+      "test": "check(id)",
+      "model": "my_model_wrong_name",
+      "kind": "constraint",
+      "outcome": "not checked",
+      "why": "the model has no column id",
+      "dbt": "error",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsColumnsEqual::my_model_wrong_order::not_null(id)": {
+      "test": "not_null(id)",
+      "model": "my_model_wrong_order",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsColumnsEqual::my_model_wrong_order::primary_key(id)": {
+      "test": "primary_key(id)",
+      "model": "my_model_wrong_order",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsColumnsEqual::my_model_wrong_order::check(id)": {
+      "test": "check(id)",
+      "model": "my_model_wrong_order",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
     "constraints.test_constraints.BaseIncrementalConstraintsRollback::unique_my_model_error_id.8d2ff7a7b1": {
       "test": "unique(id)",
       "outcome": "not checked",
@@ -289,6 +432,27 @@
       "dbt": "not run",
       "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
     },
+    "constraints.test_constraints.BaseIncrementalConstraintsRollback::my_model::not_null(id)": {
+      "test": "not_null(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRollback::my_model::primary_key(id)": {
+      "test": "primary_key(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRollback::my_model::check(id)": {
+      "test": "check(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
     "constraints.test_constraints.BaseIncrementalConstraintsRuntimeDdlEnforcement::unique_my_model_error_id.8d2ff7a7b1": {
       "test": "unique(id)",
       "outcome": "not checked",
@@ -315,6 +479,57 @@
       "why": "not on a model sverify-dbt reports",
       "dbt": "not run",
       "design": "sverify-dbt reports the tests of models; a test on a snapshot, a seed's own column or another node is dbt's"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRuntimeDdlEnforcement::foreign_key_model::unique(id)": {
+      "test": "unique(id)",
+      "model": "foreign_key_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRuntimeDdlEnforcement::foreign_key_model::primary_key(id)": {
+      "test": "primary_key(id)",
+      "model": "foreign_key_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRuntimeDdlEnforcement::my_model::not_null(id)": {
+      "test": "not_null(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRuntimeDdlEnforcement::my_model::primary_key(id)": {
+      "test": "primary_key(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRuntimeDdlEnforcement::my_model::check(id)": {
+      "test": "check(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRuntimeDdlEnforcement::my_model::foreign_key(id)": {
+      "test": "foreign_key(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "not checked",
+      "why": "sverify proves no foreign keys of a model's result; dbt still runs it, and the same test on a model that reads this one is a precondition sverify checks",
+      "dbt": "success",
+      "design": "a foreign key relates two relations, and sverify-dbt proves conditions on one model's result; dbt still runs it"
+    },
+    "constraints.test_constraints.BaseIncrementalConstraintsRuntimeDdlEnforcement::my_model::unique(id)": {
+      "test": "unique(id)",
+      "model": "my_model",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
     },
     "constraints.test_constraints.BaseTableConstraintsColumnsEqual::unique_my_model_error_id.8d2ff7a7b1": {
       "test": "unique(id)",
@@ -344,6 +559,54 @@
       "outcome": "proved",
       "dbt": "pass"
     },
+    "constraints.test_constraints.BaseTableConstraintsColumnsEqual::my_model_wrong_name::not_null(id)": {
+      "test": "not_null(id)",
+      "model": "my_model_wrong_name",
+      "kind": "constraint",
+      "outcome": "not checked",
+      "why": "the model has no column id",
+      "dbt": "error",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "constraints.test_constraints.BaseTableConstraintsColumnsEqual::my_model_wrong_name::primary_key(id)": {
+      "test": "primary_key(id)",
+      "model": "my_model_wrong_name",
+      "kind": "constraint",
+      "outcome": "not checked",
+      "why": "the model has no column id",
+      "dbt": "error",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "constraints.test_constraints.BaseTableConstraintsColumnsEqual::my_model_wrong_name::check(id)": {
+      "test": "check(id)",
+      "model": "my_model_wrong_name",
+      "kind": "constraint",
+      "outcome": "not checked",
+      "why": "the model has no column id",
+      "dbt": "error",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "constraints.test_constraints.BaseTableConstraintsColumnsEqual::my_model_wrong_order::not_null(id)": {
+      "test": "not_null(id)",
+      "model": "my_model_wrong_order",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseTableConstraintsColumnsEqual::my_model_wrong_order::primary_key(id)": {
+      "test": "primary_key(id)",
+      "model": "my_model_wrong_order",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseTableConstraintsColumnsEqual::my_model_wrong_order::check(id)": {
+      "test": "check(id)",
+      "model": "my_model_wrong_order",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
     "constraints.test_constraints.BaseViewConstraintsColumnsEqual::unique_my_model_error_id.8d2ff7a7b1": {
       "test": "unique(id)",
       "outcome": "not checked",
@@ -371,6 +634,54 @@
       "model": "my_model_wrong_order",
       "outcome": "proved",
       "dbt": "pass"
+    },
+    "constraints.test_constraints.BaseViewConstraintsColumnsEqual::my_model_wrong_name::not_null(id)": {
+      "test": "not_null(id)",
+      "model": "my_model_wrong_name",
+      "kind": "constraint",
+      "outcome": "not checked",
+      "why": "the model has no column id",
+      "dbt": "error",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "constraints.test_constraints.BaseViewConstraintsColumnsEqual::my_model_wrong_name::primary_key(id)": {
+      "test": "primary_key(id)",
+      "model": "my_model_wrong_name",
+      "kind": "constraint",
+      "outcome": "not checked",
+      "why": "the model has no column id",
+      "dbt": "error",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "constraints.test_constraints.BaseViewConstraintsColumnsEqual::my_model_wrong_name::check(id)": {
+      "test": "check(id)",
+      "model": "my_model_wrong_name",
+      "kind": "constraint",
+      "outcome": "not checked",
+      "why": "the model has no column id",
+      "dbt": "error",
+      "design": "the test names a column the model does not have, which dbt itself reports"
+    },
+    "constraints.test_constraints.BaseViewConstraintsColumnsEqual::my_model_wrong_order::not_null(id)": {
+      "test": "not_null(id)",
+      "model": "my_model_wrong_order",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseViewConstraintsColumnsEqual::my_model_wrong_order::primary_key(id)": {
+      "test": "primary_key(id)",
+      "model": "my_model_wrong_order",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
+    },
+    "constraints.test_constraints.BaseViewConstraintsColumnsEqual::my_model_wrong_order::check(id)": {
+      "test": "check(id)",
+      "model": "my_model_wrong_order",
+      "kind": "constraint",
+      "outcome": "proved",
+      "dbt": "success"
     },
     "dbt_clone.test_dbt_clone.BaseClone::not_null_view_model_id.c9346154f2": {
       "test": "not_null(id)",
@@ -952,43 +1263,21 @@
     }
   },
   "unextracted": {
-    "dbt.tests.adapter.constraints.test_constraints.BaseModelConstraintsRuntimeEnforcement": "not replayed: no /tmp/tmpogwwb_nv/dbt_tests_adapter_constraints_test_constraints_BaseModelConstraintsRuntimeEnforcement/target/manifest.json: run … in /tmp/tmpogwwb_nv/dbt_te",
-    "dbt.tests.adapter.functions.test_js_udfs.BasicJSAggregateUDF": "NotImplementedError: Subclass must provide functions fixture",
-    "dbt.tests.adapter.functions.test_js_udfs.BasicJSUDF": "NotImplementedError: Subclass must provide functions fixture",
-    "dbt.tests.adapter.functions.test_js_udfs.JSAggregateUDFBase": "NotImplementedError: Subclass must provide functions fixture",
-    "dbt.tests.adapter.functions.test_js_udfs.JSAggregateUDFVolatilityIgnored": "NotImplementedError: Subclass must provide functions fixture",
-    "dbt.tests.adapter.functions.test_js_udfs.JSUDFBase": "NotImplementedError: Subclass must provide functions fixture",
-    "dbt.tests.adapter.functions.test_js_udfs.JSUDFDefaultArgSupport": "NotImplementedError: Subclass must provide functions fixture",
-    "dbt.tests.adapter.functions.test_js_udfs.JSUDFDeterministicVolatility": "NotImplementedError: Subclass must provide functions fixture",
-    "dbt.tests.adapter.functions.test_js_udfs.JSUDFMultiLineBody": "NotImplementedError: Subclass must provide functions fixture",
-    "dbt.tests.adapter.functions.test_js_udfs.JSUDFNonDeterministicVolatility": "NotImplementedError: Subclass must provide functions fixture",
-    "dbt.tests.adapter.functions.test_js_udfs.JSUDFStableVolatilityWarns": "NotImplementedError: Subclass must provide functions fixture",
-    "dbt.tests.adapter.functions.test_udafs.UDAFBase": "NotImplementedError: Test subclass must implement functions",
-    "dbt.tests.adapter.hooks.test_model_hooks.BaseHooksRefsOnSeeds": "not replayed: no /tmp/tmpogwwb_nv/dbt_tests_adapter_hooks_test_model_hooks_BaseHooksRefsOnSeeds/target/manifest.json: run … in /tmp/tmpogwwb_nv/dbt_tests_adapter_hooks_test_m",
-    "dbt.tests.adapter.incremental.test_incremental_microbatch.BaseMicrobatch": "LookupError: models needs the pytest fixture microbatch_model_sql, input_model_sql",
-    "dbt.tests.adapter.python_model.test_python_model.BasePythonEmptyTests": "LookupError: models needs the pytest fixture model_that_refs_input_py, input_model_sql",
-    "dbt.tests.adapter.python_model.test_python_model.BasePythonSampleTests": "LookupError: models needs the pytest fixture model_that_refs_input_py, input_model_sql",
-    "dbt.tests.adapter.python_model.test_python_model._BaseSkipRefFiltering": "LookupError: models needs the pytest fixture model_that_refs_input_py, input_model_sql",
-    "dbt.tests.adapter.sample_mode.test_sample_mode.BaseSampleModeTest": "LookupError: models needs the pytest fixture model_that_samples_input_sql, input_model_sql",
-    "dbt.tests.adapter.simple_seed.test_seed.BaseBasicSeedTests": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.BaseSeedConfigFullRefreshOff": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.BaseSeedConfigFullRefreshOn": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.BaseSeedCustomSchema": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.BaseSeedSpecificFormats": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.BaseSeedWithEmptyDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.BaseSeedWithUniqueDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.BaseSeedWithWrongDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.SeedTestBase": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.SeedUniqueDelimiterTestBase": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.TestBasicSeedTests": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.TestSeedConfigFullRefreshOff": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.TestSeedConfigFullRefreshOn": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.TestSeedCustomSchema": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.TestSeedSpecificFormats": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.TestSeedWithEmptyDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.TestSeedWithUniqueDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.simple_seed.test_seed.TestSeedWithWrongDelimiter": "LookupError: seeds needs the pytest fixture test_data_dir",
-    "dbt.tests.adapter.unit_testing.test_quoted_reserved_word_column_names.BaseUnitTestQuotedReservedWordColumnNames": "not replayed: no /tmp/tmpogwwb_nv/dbt_tests_adapter_unit_testing_test_quoted_reserved_word_column_names_BaseUnitTestQuotedReservedWordColumnNames/target/manifest.json: run … ",
-    "dbt.tests.adapter.unit_testing.test_types.BaseUnitTestingTypes": "not replayed: no /tmp/tmpogwwb_nv/dbt_tests_adapter_unit_testing_test_types_BaseUnitTestingTypes/target/manifest.json: run … in /tmp/tmpogwwb_nv/dbt_tests_adapter_unit_testin"
+    "dbt.tests.adapter.constraints.test_constraints.BaseIncrementalForeignKeyConstraint": "not replayed: no /tmp/tmpj7vjyq0_/dbt_tests_adapter_constraints_test_constraints_BaseIncrementalForeignKeyConstraint/target/manifest.json: run … in /tmp/tmpj7vjyq0_/dbt_tests",
+    "dbt.tests.adapter.constraints.test_constraints.BaseModelConstraintsRuntimeEnforcement": "not replayed: no /tmp/tmpj7vjyq0_/dbt_tests_adapter_constraints_test_constraints_BaseModelConstraintsRuntimeEnforcement/target/manifest.json: run … in /tmp/tmpj7vjyq0_/dbt_te",
+    "dbt.tests.adapter.functions.test_js_udfs.BasicJSAggregateUDF": "abstract: a subclass provides the project",
+    "dbt.tests.adapter.functions.test_js_udfs.BasicJSUDF": "abstract: a subclass provides the project",
+    "dbt.tests.adapter.functions.test_js_udfs.JSAggregateUDFBase": "abstract: a subclass provides the project",
+    "dbt.tests.adapter.functions.test_js_udfs.JSAggregateUDFVolatilityIgnored": "abstract: a subclass provides the project",
+    "dbt.tests.adapter.functions.test_js_udfs.JSUDFBase": "abstract: a subclass provides the project",
+    "dbt.tests.adapter.functions.test_js_udfs.JSUDFDefaultArgSupport": "abstract: a subclass provides the project",
+    "dbt.tests.adapter.functions.test_js_udfs.JSUDFDeterministicVolatility": "abstract: a subclass provides the project",
+    "dbt.tests.adapter.functions.test_js_udfs.JSUDFMultiLineBody": "abstract: a subclass provides the project",
+    "dbt.tests.adapter.functions.test_js_udfs.JSUDFNonDeterministicVolatility": "abstract: a subclass provides the project",
+    "dbt.tests.adapter.functions.test_js_udfs.JSUDFStableVolatilityWarns": "abstract: a subclass provides the project",
+    "dbt.tests.adapter.functions.test_udafs.UDAFBase": "abstract: a subclass provides the project",
+    "dbt.tests.adapter.hooks.test_model_hooks.BaseHooksRefsOnSeeds": "not replayed: no /tmp/tmpj7vjyq0_/dbt_tests_adapter_hooks_test_model_hooks_BaseHooksRefsOnSeeds/target/manifest.json: run … in /tmp/tmpj7vjyq0_/dbt_tests_adapter_hooks_test_m",
+    "dbt.tests.adapter.unit_testing.test_quoted_reserved_word_column_names.BaseUnitTestQuotedReservedWordColumnNames": "not replayed: no /tmp/tmpj7vjyq0_/dbt_tests_adapter_unit_testing_test_quoted_reserved_word_column_names_BaseUnitTestQuotedReservedWordColumnNames/target/manifest.json: run … ",
+    "dbt.tests.adapter.unit_testing.test_types.BaseUnitTestingTypes": "not replayed: no /tmp/tmpj7vjyq0_/dbt_tests_adapter_unit_testing_test_types_BaseUnitTestingTypes/target/manifest.json: run … in /tmp/tmpj7vjyq0_/dbt_tests_adapter_unit_testin"
   }
 }

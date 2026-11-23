@@ -13,7 +13,7 @@ from ibis import _
 
 import sverify as sv
 from _pipelines import discharged
-from sverify.contracts import ON_DATA, label
+from sverify.conditions import ON_DATA, label
 from sverify.errors import PreconditionError
 from sverify.io import StaticSource
 

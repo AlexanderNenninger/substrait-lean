@@ -10,10 +10,6 @@
       "design": "a lower bound on distinct values is not a condition sverify proves; dbt still runs it"
     },
     {
-      "match": "unsupported cast from Substrait.Kind.bool",
-      "issue": 2180
-    },
-    {
       "match": "% of decimal",
       "issue": 1941
     },
@@ -84,6 +80,18 @@
     {
       "match": "the compiled SQL does not parse: Error tokenizing",
       "design": "another adapter's SQL (a backslash-escaped quote) that DuckDB does not read either"
+    },
+    {
+      "match": "which is no ref or source of the model",
+      "design": "a table no ref() or source() names (dbt-core's suite creates it outside dbt): sverify-dbt reads a model's inputs through ref() and source(), whose tests it assumes; dbt still runs the test"
+    },
+    {
+      "match": "sverify proves no foreign keys of a model's result",
+      "design": "a foreign key relates two relations, and sverify-dbt proves conditions on one model's result; dbt still runs it"
+    },
+    {
+      "match": "its columns are no list of column names",
+      "design": "a column list with a null or a bare string names no columns to check; dbt itself fails such a test, so sverify-dbt does not read it"
     }
   ]
 }

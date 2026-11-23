@@ -26,9 +26,11 @@ from sverify import profiles
 from sverify._cursor import _TAG, UNRECORDED, cursor_json, cursor_value  # noqa: F401  (re-exported)
 from sverify._pipe import Pipeable
 from sverify._unsupported import MemoryLimitError, SverifyError
-from sverify.contracts import Condition, Fact, TableCondition, Unique, _prove_from, resolve
+from sverify.conditions import TableCondition, Unique, resolve
+from sverify.contracts import Fact, _prove_from
 from sverify.incremental import IncrementalView, Snapshot, SourceBatch, plan_digest
 from sverify.plan_json import is_utc
+from sverify.report import Condition
 
 if TYPE_CHECKING:
     import duckdb
@@ -351,8 +353,9 @@ def not_null_column(sql: str) -> str | None:
 
 
 #: The version of the sink's contract record's format (`Contract.format`).
-#: Format 2 (1.0) names the node `node`; format 1 called it `view`.
-CONTRACT_FORMAT = 2
+#: Format 3 (1.0) names the semantics `semantics`, which format 2 called
+#: `profile`; format 2 named the node `node`, which format 1 called `view`.
+CONTRACT_FORMAT = 3
 
 
 @dataclass(kw_only=True)
@@ -377,6 +380,8 @@ class Contract:
             one (`Source.restore`), at its version in `sources`.
         table_ids: The id of every source table that has one (a Delta
             table's `metaData.id`), at its version in `sources`.
+        fingerprints: What identifies every source that names its place
+            where it has no table id (a Flight server and table), by name.
     """
 
     node: str
@@ -404,6 +409,11 @@ class Contract:
     `metaData.id`), at its version in `sources`. A table dropped and created
     again at the same location has a new id, and versions that start over:
     a state recorded from the old table is not one of the new table's."""
+    fingerprints: dict[str, str] = field(default_factory=dict)
+    """What identifies each source that names its place and has no table id
+    (`Source._fingerprint`: a Flight server and table). Two writers of one
+    sink that read different sources under one name show it here; a record
+    without it (written before it) names none."""
     engine: str | None = None
     """The engine that computed the state (`sverify.engines`), None where the
     record does not say: one written before these fields."""
@@ -412,9 +422,9 @@ class Contract:
     sverify: str | None = None
     """The version of sverify that wrote the record. Its facts and checker are
     those of the release."""
-    profile: str | None = None
-    """The profile the plan was verified under (`verify(semantics=...)`); the
-    plan's digest includes it unless it is `"portable"`."""
+    semantics: str | None = None
+    """The semantics the plan was verified under (`verify(semantics=...)`);
+    the plan's digest includes it unless it is `"portable"`."""
     package: str | None = None
     """For an engine that comes from another package than sverify, that package
     as `name==version`: its facts ship with it."""
@@ -423,7 +433,8 @@ class Contract:
     `sverify/schemas/sink-contract.schema.json`). It changes only with a
     record a reader of the previous format cannot read, which 1.x never
     writes (`docs/stability.md`). A record without it was written before
-    0.5 and reads as format 1; format 1 named the node `view`."""
+    0.5 and reads as format 1; format 1 named the node `view`, and formats
+    1 and 2 named the semantics `profile`."""
 
     def to_json(self) -> str:
         """The contract as JSON, as sinks store it.
@@ -459,6 +470,8 @@ class Contract:
             )
         if fmt < 2 and "view" in data:
             data = {**data, "node": data["view"]}
+        if fmt < 3 and "profile" in data:
+            data = {**data, "semantics": data["profile"]}
         known = Contract.__dataclass_fields__
         return Contract(**{k: v for k, v in data.items() if k in known and k != "format"})
 
@@ -499,8 +512,8 @@ class SinkWrite:
         version: The table's version afterwards (Delta), its snapshot
             sequence number (Iceberg), or None if the sink has no versions.
         contract: What the commit recorded.
-        inserted: Rows written.
-        deleted: Rows deleted.
+        inserts: Rows written.
+        deletes: Rows deleted.
         constraints: The table's CHECK constraints from the node's
             guarantees, by name (Delta; empty for Iceberg).
     """
@@ -508,8 +521,8 @@ class SinkWrite:
     mode: Literal["created", "overwrite", "merge", "append", "row_level", "update", "skipped"]
     version: int | None
     contract: Contract
-    inserted: int = 0
-    deleted: int = 0
+    inserts: int = 0
+    deletes: int = 0
     constraints: dict[str, str] = field(default_factory=dict)
 
     def __str__(self) -> str:
@@ -520,7 +533,7 @@ class SinkWrite:
         at = "" if self.version is None else f" v{self.version}"
         return (
             f"{self.contract.node} from {src}: {self.mode.replace('_', ' ')}{at}, "
-            f"{self.inserted} row(s) written, {self.deleted} deleted"
+            f"{self.inserts} row(s) written, {self.deletes} deleted"
         )
 
 
@@ -590,7 +603,7 @@ def drift(committed: Contract, node: Any) -> Drift:
         try:
             got = verify(expr, requires=vc.requires, ensures=[text], semantics=vc.profile)
         except MemoryLimitError:
-            raise  # a budget, which the CLI reports as one (exit 4)
+            raise  # a budget, which the CLI reports as one (exit 5)
         except Exception as e:  # noqa: BLE001 - unreadable now: weakened, with why
             why[text] = f"not proved: sverify cannot read it against the node ({e})"
             continue
@@ -608,7 +621,7 @@ def drift(committed: Contract, node: Any) -> Drift:
         "unique": [u for u in unique if u not in committed.unique],
     }
     plan = plan_digest(node.internal_plan, profile=vc.profile)
-    return Drift(weakened, added, plan != committed.plan, (committed.profile, vc.profile), why)
+    return Drift(weakened, added, plan != committed.plan, (committed.semantics, vc.profile), why)
 
 
 def view_contract_record(view: IncrementalView) -> Contract:
@@ -635,7 +648,8 @@ def view_contract_record(view: IncrementalView) -> Contract:
         digests=view.pipeline.digests(view.name),
         cursors=_cursors(view, versions),
         table_ids=_table_ids(view, versions),
-        profile=view.profile,
+        fingerprints=_fingerprints(view, versions),
+        semantics=view.profile,
         engine=(rt := profiles.runtime(view.engine))["engine"],
         engine_version=rt["engine_version"],
         sverify=rt["sverify"],
@@ -665,6 +679,18 @@ def _table_ids(view: IncrementalView, versions: Mapping[str, int]) -> dict[str, 
         src = view.pipeline.sources.get(t)
         if isinstance(src, _TableSource) and (table_id := src._table_id(n)) is not None:
             out[t] = table_id
+    return out
+
+
+def _fingerprints(view: IncrementalView, versions: Mapping[str, int]) -> dict[str, str]:
+    """What identifies every source of `view` without a table id that names
+    its place (`Source._fingerprint`)."""
+    out: dict[str, str] = {}
+    for t in versions:
+        src = view.pipeline.sources.get(t)
+        fp = None if isinstance(src, _TableSource) else getattr(src, "_fingerprint", None)
+        if fp is not None and (value := fp()) is not None:
+            out[t] = value
     return out
 
 
@@ -717,7 +743,9 @@ def other_tables(committed: Contract, contract: Contract) -> list[str]:
     Then the sink's rows are not a state of these inputs, whatever the
     epochs say. With the same id on both sides, a lower version is
     the same table: this refresh is behind the record, and the sink holds a
-    later state, which is not written over."""
+    later state, which is not written over. A source that cannot restore
+    numbers its reads per process, so a lower version says nothing there: the
+    digest of the contents does, and the same digest is the same rows."""
     out = []
     for t, n in contract.sources.items():
         was, now = committed.table_ids.get(t), contract.table_ids.get(t)
@@ -725,8 +753,47 @@ def other_tables(committed: Contract, contract: Contract) -> list[str]:
             if was != now:
                 out.append(t)
         elif n < committed.sources.get(t, n):
-            out.append(t)
+            digest = contract.digests.get(t)
+            if digest is None or digest != committed.digests.get(t):
+                out.append(t)
     return sorted(out)
+
+
+def check_same_sources(uri: str, committed: Contract, contract: Contract) -> None:
+    """Refuse a commit over a state computed from another source. Under one
+    source name, the two records read different sources where
+
+    * both fingerprint it and the fingerprints differ, or
+    * one records a table id and the other none: a table is not a source
+      that has no id, and versions say nothing about which is ahead.
+
+    A record written before `sverify` was recorded may predate table ids, so
+    its missing id does not tell; the versions decide there, as `other_tables`
+    has them. Where neither side has an id or a fingerprint, they decide too.
+    """
+
+    def named(c: Contract, t: str) -> str | None:
+        if (table_id := c.table_ids.get(t)) is not None:
+            return f"the table with id {table_id}"
+        return c.fingerprints.get(t)
+
+    for t in sorted(contract.sources.keys() & committed.sources.keys()):
+        was, now = named(committed, t), named(contract, t)
+        was_id, now_id = committed.table_ids.get(t), contract.table_ids.get(t)
+        fingerprints = committed.fingerprints.get(t), contract.fingerprints.get(t)
+        by_fingerprint = None not in fingerprints and fingerprints[0] != fingerprints[1]
+        by_id = (was_id is None) != (now_id is None) and (
+            was_id is not None or committed.sverify is not None
+        )
+        if by_fingerprint or by_id:
+            raise ValueError(
+                f"{uri} holds a state of `{committed.node}` computed from the source "
+                f"`{t}` as {was or 'a source with no table id'} (plan {committed.plan[:8]}), "
+                f"and this node reads `{t}` as {now or 'a source with no table id'}. "
+                "Two writers with one app_id read different sources under one name; "
+                "versions cannot tell which is ahead, so nothing is written. Write to a "
+                "sink of its own, or give the writers different app_ids and names."
+            )
 
 
 def check_same_state(uri: str, committed: Contract | None, contract: Contract) -> None:
@@ -921,5 +988,5 @@ class _TableSource(Pipeable, ABC):
         """The snapshot `rows` at `end`, where no change from `since` is
         available (`reason`)."""
         return SourceBatch.from_snapshot(
-            since, end, rows, reason=reason, snapshot_facts=facts, schema=schema
+            since, end, rows, why=reason, snapshot_facts=facts, schema=schema
         )

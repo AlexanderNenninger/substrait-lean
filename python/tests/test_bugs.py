@@ -129,3 +129,24 @@ def test_stale_threads_finds_an_old_check():
     fresh["checked"] = [{"checked_at": "2026-11-01", "against": {"duckdb": "1"}}]
     docs = {Path("a"): old, Path("b"): fresh}
     assert bugs.stale_threads(docs, date(2026, 11, 20)) == [old["id"]]
+
+
+def test_dbt_ledgers_name_what_each_refusal_waits_on(tmp_path):
+    """#859: every refusal in `dbt/replay/` names an issue or a design reason."""
+    assert bugs.validate_dbt_ledgers() == []
+    (tmp_path / "constructs.json").write_text('{"constructs": []}')
+    (tmp_path / "src.json").write_text(
+        json.dumps(
+            {
+                "results": {
+                    "a": {"outcome": "refused", "issue": 1},
+                    "b": {"outcome": "refused", "design": "by design"},
+                    "c": {"outcome": "refused"},
+                    "d": {"outcome": "proved"},
+                }
+            }
+        )
+    )
+    assert bugs.validate_dbt_ledgers(tmp_path) == [
+        "src.json: c: a refusal with no issue or design reason"
+    ]

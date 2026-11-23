@@ -9,8 +9,8 @@
   "summary": {
     "proved": 3,
     "not proved": 13,
-    "not checked": 45,
-    "refused": 15,
+    "not checked": 46,
+    "refused": 14,
     "input": 37
   },
   "unsound": 0,
@@ -501,10 +501,10 @@
     "dbt_utils_equality_test_unpivot_bool_ref_data_unpivot_bool_expected_.552f6376ee": {
       "test": "dbt_utils.equality",
       "model": "test_unpivot_bool",
-      "outcome": "refused",
-      "construct": "sverify cannot check it: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.bool to Substrait.Kind.str. Lean's model does not cov",
+      "outcome": "not checked",
+      "why": "dbt_utils.equality: it compares the rows of two relations; dbt still runs it",
       "dbt": "pass",
-      "issue": 2180
+      "design": "a test of two relations is not a condition on one model's output; sverify-dbt checks one model at a time, and dbt still runs it"
     },
     "dbt_utils_equality_test_unpivot_original_api_ref_data_unpivot_original_api_expected_.ded9a98c93": {
       "test": "dbt_utils.equality",

@@ -303,25 +303,33 @@ theorem sqrt_mul_le_pow {a b : ℝ} (ha' : a ≤ 2 ^ 830) (hb' : b ≤ 2 ^ 830) 
   linarith
 
 set_option maxHeartbeats 2000000 in
-/-- **DuckDB's `COVAR_*`** (`covOf_props` of the reference, for DuckDB's
-algorithm, `chanCov_rel`): `fl(C / d)` is within `covTol` of `C / d` for
-witnesses `r₁ ≥ √(Q'_x S_yy)`, `r₂ ≥ √(Q'_y S_xx)`, `r_s ≥ √(S_xx S_yy)`,
+/-- **`COVAR_*` from a co-moment bound** with the leading constant `k`
+(`chanCov_rel`'s form): `fl(Ĉ / d)` is within `covTolK (k + 1)` of `C / d`
+for witnesses `r₁ ≥ √(Q'_x S_yy)`, `r₂ ≥ √(Q'_y S_xx)`, `r_s ≥ √(S_xx S_yy)`,
 `r_q ≥ √(Q'_x Q'_y)`. -/
-theorem StdModel.core_cov_chan (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.length ≤ 2 ^ 32)
-    (hB : Bounded (2 ^ 398) P.pairs) (hrep : ∀ p ∈ P.pairs, M.fl p.1 = p.1 ∧ M.fl p.2 = p.2)
-    {d : ℕ} (hd1 : 1 ≤ d) (hdn : d ≤ P.pairs.length) {r1 r2 rs rq : ℝ}
-    (h1 : √((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum)
-      * √(comoment (P.pairs.map fun p => (p.2, p.2))) ≤ r1)
-    (h2 : √((P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum)
-      * √(comoment (P.pairs.map fun p => (p.1, p.1))) ≤ r2)
-    (hs : √(comoment (P.pairs.map fun p => (p.1, p.1)))
-      * √(comoment (P.pairs.map fun p => (p.2, p.2))) ≤ rs)
-    (hq : √((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum)
-      * √((P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum) ≤ rq) :
-    |M.fl ((M.run P).c / d) - comoment P.pairs / d| ≤ covTol P.pairs.length d r1 r2 rs rq := by
+theorem StdModel.core_cov_of {ps : List (ℝ × ℝ)} {c k : ℝ} (hk0 : 0 ≤ k) (hk : k ≤ 1000)
+    (hne : ps ≠ []) (hN : ps.length ≤ 2 ^ 32) (hB : Bounded (2 ^ 398) ps)
+    (hE : |c - comoment ps|
+      ≤ k * ps.length * u
+          * (√((ps.map fun p => (|p.1| + tiny) ^ 2).sum * comoment (dupL (ps.map Prod.snd)))
+            + √((ps.map fun p => (|p.2| + tiny) ^ 2).sum * comoment (dupL (ps.map Prod.fst))))
+        + 11 * ps.length * u
+          * √(comoment (dupL (ps.map Prod.fst)) * comoment (dupL (ps.map Prod.snd)))
+        + 3961 * ps.length ^ 2 * u ^ 2
+          * √((ps.map fun p => (|p.1| + tiny) ^ 2).sum * (ps.map fun p => (|p.2| + tiny) ^ 2).sum)
+        + 793 * ps.length * u * tiny)
+    {d : ℕ} (hd1 : 1 ≤ d) (hdn : d ≤ ps.length) {r1 r2 rs rq : ℝ}
+    (h1 : √((ps.map fun p => (|p.1| + tiny) ^ 2).sum)
+      * √(comoment (ps.map fun p => (p.2, p.2))) ≤ r1)
+    (h2 : √((ps.map fun p => (|p.2| + tiny) ^ 2).sum)
+      * √(comoment (ps.map fun p => (p.1, p.1))) ≤ r2)
+    (hs : √(comoment (ps.map fun p => (p.1, p.1)))
+      * √(comoment (ps.map fun p => (p.2, p.2))) ≤ rs)
+    (hq : √((ps.map fun p => (|p.1| + tiny) ^ 2).sum)
+      * √((ps.map fun p => (|p.2| + tiny) ^ 2).sum) ≤ rq) :
+    |M.fl (c / d) - comoment ps / d| ≤ covTolK (k + 1) ps.length d r1 r2 rs rq := by
   obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
   have hu1 : u ≤ 1 / 2 ^ 53 := hu'
-  set ps := P.pairs with hps
   set n : ℕ := ps.length with hn_def
   set Qx := (ps.map fun p => (|p.1| + tiny) ^ 2).sum
   set Qy := (ps.map fun p => (|p.2| + tiny) ^ 2).sum
@@ -335,9 +343,7 @@ theorem StdModel.core_cov_chan (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.l
     simp [dupL, List.map_map, Function.comp_def]
   have hdy : dupL (ps.map Prod.snd) = ps.map fun p => (p.2, p.2) := by
     simp [dupL, List.map_map, Function.comp_def]
-  have hE := M.chanCov_rel P hne hN (fun p h => ⟨le_trans (hB p h).1 (by norm_num),
-    le_trans (hB p h).2 (by norm_num)⟩) hrep
-  rw [hdx, hdy, ← hps, Real.sqrt_mul hQx0, Real.sqrt_mul hQy0, Real.sqrt_mul hSx0,
+  rw [hdx, hdy, Real.sqrt_mul hQx0, Real.sqrt_mul hQy0, Real.sqrt_mul hSx0,
     Real.sqrt_mul hQx0] at hE
   set R1 := √Qx * √Syy
   set R2 := √Qy * √Sxx
@@ -351,7 +357,7 @@ theorem StdModel.core_cov_chan (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.l
   have hR20 : 0 ≤ R2 := by positivity
   have hRS0 : 0 ≤ RS := by positivity
   have hRQ0 : 0 ≤ RQ := by positivity
-  set E := 70 * n * u * (R1 + R2) + 11 * n * u * RS + 3961 * n ^ 2 * u ^ 2 * RQ
+  set E := k * n * u * (R1 + R2) + 11 * n * u * RS + 3961 * n ^ 2 * u ^ 2 * RQ
     + 793 * n * u * tiny with hE_def
   have hE0 : 0 ≤ E := by positivity
   -- `|C| ≤ √(S_xx S_yy)`
@@ -371,7 +377,13 @@ theorem StdModel.core_cov_chan (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.l
   have hnu0 : 0 ≤ (n : ℝ) * u := by positivity
   have hbig : RS + E + n * tiny ≤ 2 ^ 999 := by
     have htiny : tiny ≤ 1 := by unfold tiny; exact pow_le_one₀ (by norm_num) (by norm_num)
-    have a1 : 70 * n * u * (R1 + R2) ≤ R1 + R2 := by nlinarith
+    have hknu : k * n * u ≤ 1 := by
+      have := mul_le_mul hk hnu hnu0 (by norm_num)
+      have e : k * (n * u) = k * n * u := by ring
+      have : (1000 : ℝ) * (1 / 2 ^ 21) ≤ 1 := by norm_num
+      linarith
+    have a1 : k * n * u * (R1 + R2) ≤ R1 + R2 :=
+      mul_le_of_le_one_left (by positivity) hknu
     have a2 : 11 * n * u * RS ≤ RS := by nlinarith
     have hsq : ((n : ℝ) * u) * ((n : ℝ) * u) ≤ (1 / 2 ^ 21) * (1 / 2 ^ 21) :=
       mul_le_mul hnu hnu hnu0 (by norm_num)
@@ -383,16 +395,17 @@ theorem StdModel.core_cov_chan (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.l
     have a5 : (n : ℝ) * tiny ≤ 2 ^ 32 := by nlinarith
     have : (2 : ℝ) ^ 830 * 5 + 1 + 2 ^ 32 ≤ 2 ^ 999 := by norm_num
     linarith
-  have hdiv := M.div_kappa (C := comoment ps) (Ch := (M.run P).c) (E := E) (rs := RS) (n := n)
+  have hdiv := M.div_kappa (C := comoment ps) (Ch := c) (E := E) (rs := RS) (n := n)
     (d := d) hE hC hE0 hRS0 hn1 hd' hdn' hbig
   refine le_trans hdiv ?_
-  unfold covTol
+  unfold covTolK
   apply div_le_div_of_nonneg_right _ (by linarith)
   have hu3 : 3 * u ≤ 1 / 2 ^ 50 := by
     calc 3 * u ≤ 3 * (1 / 2 ^ 53) := by linarith
       _ ≤ 1 / 2 ^ 50 := by norm_num
   have hEu : 3 * u * E ≤ 1 / 2 ^ 50 * E := mul_le_mul_of_nonneg_right hu3 hE0
-  have b1 : 70 * n * u * (R1 + R2) ≤ 70 * n * u * (r1 + r2) := by gcongr
+  have b1 : k * n * u * (R1 + R2) ≤ k * n * u * (r1 + r2) :=
+    mul_le_mul_of_nonneg_left (add_le_add h1 h2) (by positivity)
   have b2 : 11 * n * u * RS ≤ 11 * n * u * rs := by gcongr
   have b3 : 3961 * n ^ 2 * u ^ 2 * RQ ≤ 3961 * n ^ 2 * u ^ 2 * rq := by gcongr
   have hrs0 : 0 ≤ rs := le_trans hRS0 hs
@@ -405,8 +418,12 @@ theorem StdModel.core_cov_chan (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.l
   have hr20 : 0 ≤ r2 := le_trans hR20 h2
   have hrq0 : 0 ≤ rq := le_trans hRQ0 hq
   -- `E (1 + 3u) + 3u r_s + 3 n u tiny` within the tolerance's numerator
-  have c1 : 1 / 2 ^ 50 * (70 * n * u * (r1 + r2)) ≤ n * u * (r1 + r2) := by
+  have c1 : 1 / 2 ^ 50 * (k * n * u * (r1 + r2)) ≤ n * u * (r1 + r2) := by
     have : 0 ≤ (n : ℝ) * u * (r1 + r2) := by positivity
+    have := mul_le_mul_of_nonneg_right hk this
+    have e : k * n * u * (r1 + r2) = k * ((n : ℝ) * u * (r1 + r2)) := by ring
+    rw [e]
+    have : (1 : ℝ) / 2 ^ 50 * 1000 ≤ 1 := by norm_num
     nlinarith
   have c2 : 1 / 2 ^ 50 * (11 * n * u * rs) ≤ n * u * rs := by
     have : 0 ≤ (n : ℝ) * u * rs := by positivity
@@ -415,13 +432,36 @@ theorem StdModel.core_cov_chan (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.l
     have : 0 ≤ (n : ℝ) ^ 2 * u ^ 2 * rq := by positivity
     nlinarith
   have c4 : 1 / 2 ^ 50 * (793 * n * u * tiny) ≤ n * u * tiny := by nlinarith
-  have hEle : E ≤ 70 * n * u * (r1 + r2) + 11 * n * u * rs + 3961 * n ^ 2 * u ^ 2 * rq
+  have hEle : E ≤ k * n * u * (r1 + r2) + 11 * n * u * rs + 3961 * n ^ 2 * u ^ 2 * rq
       + 793 * n * u * tiny := by linarith
   have hEu' : 1 / 2 ^ 50 * E ≤ n * u * (r1 + r2) + n * u * rs + 9 * n ^ 2 * u ^ 2 * rq
       + n * u * tiny := by
     have := mul_le_mul_of_nonneg_left hEle (by norm_num : (0 : ℝ) ≤ 1 / 2 ^ 50)
     linarith
   nlinarith
+
+/-- **DuckDB's `COVAR_*`** (`covOf_props` of the reference, for DuckDB's
+algorithm, `chanCov_rel`): `fl(C / d)` is within `covTol` of `C / d` for
+witnesses `r₁ ≥ √(Q'_x S_yy)`, `r₂ ≥ √(Q'_y S_xx)`, `r_s ≥ √(S_xx S_yy)`,
+`r_q ≥ √(Q'_x Q'_y)`. -/
+theorem StdModel.core_cov_chan (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.length ≤ 2 ^ 32)
+    (hB : Bounded (2 ^ 398) P.pairs) (hrep : ∀ p ∈ P.pairs, M.fl p.1 = p.1 ∧ M.fl p.2 = p.2)
+    {d : ℕ} (hd1 : 1 ≤ d) (hdn : d ≤ P.pairs.length) {r1 r2 rs rq : ℝ}
+    (h1 : √((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum)
+      * √(comoment (P.pairs.map fun p => (p.2, p.2))) ≤ r1)
+    (h2 : √((P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum)
+      * √(comoment (P.pairs.map fun p => (p.1, p.1))) ≤ r2)
+    (hs : √(comoment (P.pairs.map fun p => (p.1, p.1)))
+      * √(comoment (P.pairs.map fun p => (p.2, p.2))) ≤ rs)
+    (hq : √((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum)
+      * √((P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum) ≤ rq) :
+    |M.fl ((M.run P).c / d) - comoment P.pairs / d| ≤ covTol P.pairs.length d r1 r2 rs rq := by
+  have h := M.core_cov_of (k := 70) (by norm_num) (by norm_num) hne hN hB
+    (M.chanCov_rel P hne hN (fun p h => ⟨le_trans (hB p h).1 (by norm_num),
+      le_trans (hB p h).2 (by norm_num)⟩) hrep) hd1 hdn h1 h2 hs hq
+  have e : covTol P.pairs.length d r1 r2 rs rq = covTolK (70 + 1) P.pairs.length d r1 r2 rs rq := by
+    unfold covTol; norm_num
+  rw [e]; exact h
 
 end FloatBounds
 

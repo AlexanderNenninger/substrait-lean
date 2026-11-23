@@ -5,6 +5,7 @@ import Sverify.Polars.Shims
 import Sverify.Spark.Engine
 import Sverify.Core.Allowed
 import Sverify.DuckDB.Lowering
+import Sverify.Engines.LoweringRaises
 
 /-!
 # The realizability table: `obligations reference E` (#444, step 3b)
@@ -115,7 +116,7 @@ def behaviourRefines : List (String × Behaviour × Behaviour × String) := [
   ("round_zero_sign", "IEEE", "ANY", "-0.0 is one of the zeros the reference leaves open (duckdb-R15-round, polars-round)"),
   ("round_zero_sign", "POSITIVE", "ANY", "+0.0 is one of the zeros the reference leaves open (spark-round)"),
   ("avg_int_result", "EXACT_TRUNCATE", "DECLARED_TYPE", "AggFn.iavg: the exact mean, truncated (duckdb-R6)"),
-  ("stat_algo", "WELFORD_CHAN", "GENERIC", "Welford with Chan's merge meets the generic properties (duckdb-var-stddev, polars-var-std)")]
+  ("stat_algo", "WELFORD_CHAN", "GENERIC", "Welford with Chan's merge meets the generic properties (duckdb-var-stddev, polars-var-std-streaming)")]
 
 /-- Each behaviour of `a` is one of `b`'s, or refines one of them. -/
 private def sub (o : String) (a b : List Behaviour) : Bool :=
@@ -245,226 +246,13 @@ theorem builtinEngines_leCore : builtinEngines.all (·.leCore) := by
   rw [Profile.duckdb_leB, Profile.polars_leB, Profile.spark_leB]
   rfl
 
-/-! ## Raise sets under a lowering -/
+/-! ## Raise sets under a lowering
 
-theorem Measure.mapExpr_id (m : Measure) : m.mapExpr id = m := by
-  cases m; simp [Measure.mapExpr]
-
-theorem Rel.mapExprs_id : ∀ r : Rel, r.mapExprs id = r
-  | .read _ | .values _ _ => rfl
-  | .filter r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _ | .distinct r
-  | .unnest r _ => by simp [mapExprs, Rel.mapExprs_id r]
-  | .project r _ => by simp [mapExprs, Rel.mapExprs_id r]
-  | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ => by
-    simp [mapExprs, Rel.mapExprs_id a, Rel.mapExprs_id b]
-  | .aggregate r _ ms => by
-    simp only [mapExprs, Rel.mapExprs_id r, List.map_id_fun, id_eq]
-    congr 1
-    exact (List.map_congr_left fun m _ => Measure.mapExpr_id m).trans (List.map_id ms)
+`Rel.raises_mapExprs`, `Lowering.lowerRel_raises` and `Lowering.lowerRel?_raises`
+are in `engines/Sverify/Engines/LoweringRaises.lean`, and `Rel.hasIssue_of_raises`
+in `analysis/Sverify/Analysis/ProfileImpl.lean`. -/
 
 variable [Boxes.Ambient]
-/-- Where the reference does not raise, its functions give `Rel.eval`'s rows. -/
-theorem Rel.evalI_reference {cat : Catalog} {r : Rel} (h : ¬r.Raises Profile.reference cat) :
-    r.eval cat Profile.reference.impl = r.eval cat := by
-  have := Rel.evalI_mapExprs (f := id) Expr.reference_exact (fun _ => rfl) (cat := cat) (r := r)
-  rw [Rel.mapExprs_id] at this
-  exact this h
-
-omit [Boxes.Ambient] in
-theorem Measure.mem_mapExpr_exprs {f : Expr → Expr} (hf : ∀ i, f (.field i) = .field i)
-    {m : Measure} {e' : Expr} (h : e' ∈ (m.mapExpr f).exprs) : ∃ e ∈ m.exprs, f e = e' := by
-  rw [Measure.mapExpr_exprs] at h
-  simp only [List.mem_cons, List.mem_append, List.mem_map] at h
-  rcases h with (rfl | ⟨e, he, rfl⟩) | ⟨k, hk, rfl⟩
-  · exact ⟨m.arg, List.mem_cons_self .., rfl⟩
-  · exact ⟨e, List.mem_cons_of_mem _ (List.mem_append_left _ he), rfl⟩
-  · exact ⟨.field k.col, List.mem_cons_of_mem _ (List.mem_append_right _ (List.mem_map_of_mem hk)), hf _⟩
-
-/-- **A plan whose expressions raise only where the originals do raises only
-where the original does.** With `q`'s functions giving `Rel.eval`'s rows
-where `q` does not raise, the rows each translated expression is evaluated on
-are rows the original one is evaluated on. -/
-theorem Rel.raises_mapExprs {p q : Profile} {f : Expr → Expr} (hx : ∀ e, Expr.Exact p (f e) e)
-    (hf : ∀ i, f (.field i) = .field i)
-    (hr : ∀ e row, (f e).RaisesOn p row → e.RaisesOn q row) {cat : Catalog}
-    (hq : ∀ r : Rel, ¬r.Raises q cat → r.eval cat q.impl = r.eval cat) :
-    ∀ {r : Rel}, (r.mapExprs f).Raises p cat → r.Raises q cat
-  | .read _, h | .values _ _, h => h.elim
-  | .filter r c, h => by
-    simp only [mapExprs, Raises] at h ⊢
-    have ih := raises_mapExprs hx hf hr hq (r := r)
-    by_cases h0 : r.Raises q cat
-    · exact .inl h0
-    · refine .inr ?_
-      rcases h with h | ⟨row, hrow, hc⟩
-      · exact absurd (ih h) h0
-      · rw [evalI_mapExprs hx hf (fun h' => h0 (ih h'))] at hrow
-        exact ⟨row, by rw [hq r h0]; exact hrow, hr c row hc⟩
-  | .project r es, h => by
-    simp only [mapExprs, Raises] at h ⊢
-    have ih := raises_mapExprs hx hf hr hq (r := r)
-    by_cases h0 : r.Raises q cat
-    · exact .inl h0
-    · refine .inr ?_
-      rcases h with h | ⟨row, hrow, e', he', hc⟩
-      · exact absurd (ih h) h0
-      · rw [evalI_mapExprs hx hf (fun h' => h0 (ih h'))] at hrow
-        obtain ⟨e, he, rfl⟩ := List.mem_map.mp he'
-        exact ⟨row, by rw [hq r h0]; exact hrow, e, he, hr e row hc⟩
-  | .emit r _, h | .orderBy r _, h | .distinct r, h | .unnest r _, h | .window r _ _ _, h
-  | .fetch r _ _, h => by
-    simp only [mapExprs, Raises] at h ⊢
-    exact raises_mapExprs hx hf hr hq h
-  | .cross a b, h | .unionAll a b, h => by
-    simp only [mapExprs, Raises] at h ⊢
-    exact h.imp (raises_mapExprs hx hf hr hq) (raises_mapExprs hx hf hr hq)
-  | .join a b _ on, h | .semi a b _ on, h => by
-    simp only [mapExprs, Raises] at h ⊢
-    have iha := raises_mapExprs hx hf hr hq (r := a)
-    have ihb := raises_mapExprs hx hf hr hq (r := b)
-    by_cases ha : a.Raises q cat
-    · exact .inl ha
-    · by_cases hb : b.Raises q cat
-      · exact .inr (.inl hb)
-      · refine .inr (.inr ?_)
-        rcases h with h | h | ⟨x, hx', y, hy, hc⟩
-        · exact absurd (iha h) ha
-        · exact absurd (ihb h) hb
-        · rw [evalI_mapExprs hx hf (fun h' => ha (iha h'))] at hx'
-          rw [evalI_mapExprs hx hf (fun h' => hb (ihb h'))] at hy
-          exact ⟨x, by rw [hq a ha]; exact hx', y, by rw [hq b hb]; exact hy, hr on _ hc⟩
-  | .aggregate r gs ms, h => by
-    simp only [mapExprs, Raises] at h ⊢
-    have ih := raises_mapExprs hx hf hr hq (r := r)
-    by_cases h0 : r.Raises q cat
-    · exact .inl h0
-    · refine .inr ?_
-      rcases h with h | ⟨row, hrow, e', he', hc⟩
-      · exact absurd (ih h) h0
-      · rw [evalI_mapExprs hx hf (fun h' => h0 (ih h'))] at hrow
-        refine ⟨row, by rw [hq r h0]; exact hrow, ?_⟩
-        simp only [List.mem_append, List.mem_flatMap, List.mem_map] at he'
-        rcases he' with ⟨e, he, rfl⟩ | ⟨m', hm', he'⟩
-        · exact ⟨e, List.mem_append_left _ he, hr e row hc⟩
-        · obtain ⟨m, hm, rfl⟩ := hm'
-          obtain ⟨e, he, rfl⟩ := Measure.mem_mapExpr_exprs hf he'
-          exact ⟨e, List.mem_append_right _ (List.mem_flatMap.mpr ⟨m, hm, he⟩), hr e row hc⟩
-
-/-- A lowered expression raises only where the reference does (`agree`), for a
-table whose entries are exact (ruling 252). -/
-theorem Lowering.lowerE_raises {p : Profile} {L : Lowering p} (hL : L.Total) (hX : L.AllExact)
-    (hN : L.NoneOnDbl) (e : Expr) (row : Row)
-    (h : (L.lowerE e).RaisesOn p row) : e.RaisesOn Profile.reference row := by
-  obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp (lower_isSome hL e)
-  have hc := L.lower_correct e t ht row (exactOn_of_allExact hX e) (.inl (dblFree_of_noneOnDbl hN e))
-  simp only [lowerE, ht, Option.getD_some, Expr.RaisesOn] at h ⊢
-  revert h hc
-  cases t.evalP p row <;> cases e.evalP Profile.reference row <;>
-    simp [Outcome.Agree, Outcome.err?]
-
-/-- **A lowered plan raises only where the reference may.** -/
-theorem Lowering.lowerRel_raises {p : Profile} {L : Lowering p} (hL : L.Total) (hX : L.AllExact)
-    (hN : L.NoneOnDbl) {cat : Catalog} {r : Rel} (h : (L.lowerRel r).Raises p cat) :
-    r.Raises Profile.reference cat :=
-  Rel.raises_mapExprs (lowerE_exact hL hN) (fun _ => rfl) (lowerE_raises hL hX hN)
-    (fun _ h => Rel.evalI_reference h) h
-
-/-! ## A reference raise is an issue (FM round 9)
-
-`Rel.mayIssues_sound` covers `Rel.HasIssue`; these link it to `Rel.Raises`, so
-a report without issues discharges an engine's no-raise side condition. -/
-
-/-- An expression that raises under the reference has an issue on that row:
-the reference raises the first error `Expr.issues` reports. -/
-theorem Expr.issue_of_raises {e : Expr} {row : Row} (h : e.RaisesOn Profile.reference row) :
-    ∃ p, p ∈ e.issues row := by
-  simp only [Expr.RaisesOn, Expr.evalP_reference, Expr.refOutcome_err] at h
-  cases hi : e.issues row with
-  | nil => simp [hi, firstError] at h
-  | cons p _ => exact ⟨p, List.mem_cons_self ..⟩
-
-/-- **A reference raise is an issue.** Where the reference raises in `r`, some
-issue of `r` happens (`Rel.HasIssue`), read at either level `u`.
-
-`Rel.HasIssue` reads filter and join conditions over the loose input
-(`Rel.loose`), and `Rel.Raises` over the strict one, so the statement needs
-the strict rows among the loose rows: `Rel.looseSub` (`Rel.mem_loose`). Without
-it the statement is false. Take `a = {(1)}`, `b = {(1, -1)}` and
-
-  `filter (join a (filter b (v > 0)) .left (a.k = b.k)) (1 / coalesce(b.v, 0) > 0)`.
-
-The strict join pads `(1)` with NULLs, and the condition divides by zero on
-`(1, NULL, NULL)`. The loose join drops `b`'s filter and gives `(1, 1, -1)`
-alone, where nothing raises. The report still lists that zero divisor:
-`Rel.mayIssues` reads the left join's right columns as nullable. -/
-theorem Rel.hasIssue_of_raises {cat : Catalog} :
-    ∀ {r : Rel} (u : Bool), r.looseSub = true → r.Raises Profile.reference cat →
-      ∃ p, r.HasIssue cat u p
-  | .read _, _, _, h | .values _ _, _, _, h => h.elim
-  | .filter r c, _, hs, h => by
-    simp only [Rel.looseSub] at hs
-    by_cases hr : r.Raises Profile.reference cat
-    · obtain ⟨p, hp⟩ := hasIssue_of_raises true hs hr; exact ⟨p, .inl hp⟩
-    rcases h with h | ⟨row, hrow, hc⟩
-    · exact absurd h hr
-    rw [Rel.evalI_reference hr] at hrow
-    obtain ⟨p, hp⟩ := Expr.issue_of_raises hc
-    exact ⟨p, .inr ⟨row, Rel.mem_loose hs row hrow, hp⟩⟩
-  | .project r es, u, hs, h => by
-    simp only [Rel.looseSub] at hs
-    by_cases hr : r.Raises Profile.reference cat
-    · obtain ⟨p, hp⟩ := hasIssue_of_raises u hs hr; exact ⟨p, .inl hp⟩
-    rcases h with h | ⟨row, hrow, e, he, hc⟩
-    · exact absurd h hr
-    rw [Rel.evalI_reference hr] at hrow
-    obtain ⟨p, hp⟩ := Expr.issue_of_raises hc
-    refine ⟨p, .inr ⟨row, ?_, e, he, hp⟩⟩
-    cases u
-    · exact hrow
-    · exact Rel.mem_loose hs row hrow
-  | .emit r _, u, hs, h | .fetch r _ _, u, hs, h | .orderBy r _, u, hs, h
-  | .distinct r, u, hs, h => by
-    simp only [Rel.looseSub] at hs
-    exact hasIssue_of_raises (r := r) u hs h
-  | .window r _ _ _, u, hs, h => by
-    simp only [Rel.looseSub] at hs
-    obtain ⟨p, hp⟩ := hasIssue_of_raises (r := r) u hs h
-    exact ⟨p, .inl hp⟩
-  | .unnest _ _, _, hs, _ => by simp [Rel.looseSub] at hs
-  | .cross a b, u, hs, h | .unionAll a b, u, hs, h => by
-    simp only [Rel.looseSub, Bool.and_eq_true] at hs
-    rcases h with h | h
-    · obtain ⟨p, hp⟩ := hasIssue_of_raises u hs.1 h; exact ⟨p, .inl hp⟩
-    · obtain ⟨p, hp⟩ := hasIssue_of_raises u hs.2 h; exact ⟨p, .inr hp⟩
-  | .join a b ty on, _, hs, h | .semi a b _ on, _, hs, h => by
-    have hab : a.looseSub = true ∧ b.looseSub = true := by
-      first
-        | (cases ty <;> simp only [Rel.looseSub, Bool.and_eq_true] at hs <;>
-            exact ⟨hs.1, by first | exact hs.2 | exact Rel.looseExact_sub hs.2⟩)
-        | (simp only [Rel.looseSub, Bool.and_eq_true] at hs; exact hs)
-    by_cases ha : a.Raises Profile.reference cat
-    · obtain ⟨p, hp⟩ := hasIssue_of_raises true hab.1 ha; exact ⟨p, .inl hp⟩
-    by_cases hb : b.Raises Profile.reference cat
-    · obtain ⟨p, hp⟩ := hasIssue_of_raises true hab.2 hb; exact ⟨p, .inr (.inl hp)⟩
-    rcases h with h | h | ⟨x, hx, y, hy, hc⟩
-    · exact absurd h ha
-    · exact absurd h hb
-    rw [Rel.evalI_reference ha] at hx
-    rw [Rel.evalI_reference hb] at hy
-    obtain ⟨p, hp⟩ := Expr.issue_of_raises hc
-    exact ⟨p, .inr (.inr ⟨x, Rel.mem_loose hab.1 x hx, y, Rel.mem_loose hab.2 y hy, hp⟩)⟩
-  | .aggregate r gs ms, u, hs, h => by
-    simp only [Rel.looseSub] at hs
-    by_cases hr : r.Raises Profile.reference cat
-    · obtain ⟨p, hp⟩ := hasIssue_of_raises u hs hr; exact ⟨p, .inl hp⟩
-    rcases h with h | ⟨row, hrow, e, he, hc⟩
-    · exact absurd h hr
-    rw [Rel.evalI_reference hr] at hrow
-    obtain ⟨p, hp⟩ := Expr.issue_of_raises hc
-    refine ⟨p, .inr (.inl ⟨row, ?_, e, he, hp⟩)⟩
-    cases u
-    · exact hrow
-    · exact Rel.mem_loose hs row hrow
 
 section LooseGap
 -- No black boxes: the counterexample calls none.

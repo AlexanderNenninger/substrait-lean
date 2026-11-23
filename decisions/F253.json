@@ -1,0 +1,13 @@
+{
+  "id": "F253",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#1484's \"integer widths live in the parser\" is a stated limit for 1.0 (`docs/trusted-base.md`). One width per `Expr` from its Substrait type is After 1.0. Folding `Expr.bits`, `Expr.colBits` and `Expr.outBits` into one is declined, because they are three widths: the arithmetic width, a column's width with the declared type overlaid, and the written plan's 64-bit width.",
+  "issues": [
+    1484
+  ],
+  "source": "fable-ruling-253-1484-integer-widths.md",
+  "note": "The two soundness faults the box named are fixed (#1564 for a cast's target width, #1643 under D46 for a narrow column's range). A concrete plan where the parser picks a width the engine does not use stays a 1.0 soundness bug, fixed where the width is read, with a regression test, and needs no ruling."
+}

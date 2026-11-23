@@ -103,14 +103,14 @@ The other options of `check`:
 |---|---|
 | `--select MODEL ...` | Report on these models (their upstream models are checked too); not with `--selectors`, which needs the whole project |
 | `--format text\|json\|github\|sarif\|junit` | How to print the result (default `text`): `github` is one annotation per finding on the model's file, `sarif` a code-scanning log, `junit` a suite per model; `sverify check` forwards its own |
-| `--timeout SECONDS` | Seconds for the whole project check (default `$SVERIFY_TIMEOUT`, else no limit); exit 4 past it |
-| `--memory-limit SIZE` | DuckDB's memory limit, such as `2GB` (default `$SVERIFY_MEMORY_LIMIT`); exit 4 past it |
+| `--timeout SECONDS` | Seconds for the whole project check (default `$SVERIFY_TIMEOUT`, else no limit); exit 5 past it |
+| `--memory-limit SIZE` | DuckDB's memory limit, such as `2GB` (default `$SVERIFY_MEMORY_LIMIT`); exit 5 past it |
 | `--json` | Print the result as JSON (`--format json`): the document of `sverify check --format json` ([`cli.schema.json`](../python/src/sverify/schemas/cli.schema.json)), with each model as an item and `findings`, `exit`, `status`, `adapter` and `dbt_version` beside the project's own keys |
 | `--counterexamples N` | Small inputs to try per unproved test (default 200; 0 skips the search) |
 | `--fail-on` | Exit 1 on a contract mismatch, an unproved constraint, or a refused model with an enforced contract, whose contract sverify could not check (`contract`, the default; stderr names the refusal); `unproved`: also on any unproved test; `refused`: all of that, and exit 3 when a model was refused (sverify cannot read it); `never` |
 | `--target-path` | The target directory, if not `target` |
 
-Exit codes, as in `sverify check`: 0 holds, 1 something is not proved, 2 usage (no manifest, an unknown model, another adapter), 3 a model is refused under `--fail-on refused` or the check is unsupported, 4 past `--timeout` or `--memory-limit`, 6 an error (the checker is missing, an I/O failure) with its message on stderr.
+Exit codes, as in `sverify check`: 0 holds, 1 something is not proved, 2 usage (no manifest, an unknown model, another adapter), 3 a model is refused under `--fail-on refused` or the check is unsupported, 5 past `--timeout` or `--memory-limit`, 8 an error (the checker is missing, an I/O failure) with its message on stderr. The codes run from the best to the worst (`sverify.cli.ExitCode`).
 
 The same from Python:
 
@@ -123,6 +123,8 @@ print(result)
 result["stg_orders"].by_status("proved")
 result.write_selectors("path/to/project/selectors.yml")
 ```
+
+The agent skill `sverify-patterns` (in `sverify/skills/`) has the SQL form of common patterns with the contract each proves: deduplicating, sessionizing, reconciling, funnels, slowly changing dimensions, running balances and gap filling. Each SQL form runs through `sv.sql` as a dbt model's body does.
 
 ## How a project becomes contracts
 
@@ -209,16 +211,20 @@ the test to add under `needs`, as YAML for the input's column (sverify's
 ## Evidence
 
 `python -m sverify_dbt.replay` builds the integration projects of
-dbt-utils 1.4.1 and dbt-expectations 0.10.10, and the 175 distinct projects
-of the pytest classes in dbt-tests-adapter 1.20.0, with dbt on DuckDB, checks
-them with sverify-dbt and records every test beside dbt's own result, in
+dbt-utils 1.4.1 and dbt-expectations 0.10.10, the projects of the pytest
+classes in dbt-tests-adapter 1.20.0, and those of dbt-core v1.12.6's
+functional tests with tests or contracts (constraints, contracts, data tests,
+incremental schema tests, primary keys, schema tests, sources), with dbt on
+DuckDB. It checks them with sverify-dbt and records every test, and every
+constraint of an enforced contract, beside dbt's own result, in
 [`replay/`](replay/) (#859). No test sverify-dbt proves fails in dbt's run.
 
 | Source | Proved | Not proved | Not checked | Refused | Inputs |
 |---|---|---|---|---|---|
-| dbt-utils 1.4.1 | 3 | 13 | 45 | 15 | 37 |
+| dbt-utils 1.4.1 | 3 | 13 | 46 | 14 | 37 |
 | dbt-expectations 0.10.10 | 0 | 33 | 9 | 115 | 0 |
-| dbt-tests-adapter 1.20.0 | 8 | 11 | 86 | 10 | 13 |
+| dbt-tests-adapter 1.20.0 | 37 | 11 | 98 | 10 | 13 |
+| dbt-core v1.12.6 | 22 | 12 | 38 | 35 | 3 |
 
 These projects test macros more than they model data: most of their tests
 compare two relations or match patterns with flags, which sverify-dbt leaves
@@ -227,9 +233,12 @@ which Lean's model does not cover
 ([#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417)),
 or use `random()`. Every refusal and test not checked names its issue or the
 reason it is by design ([`replay/constructs.json`](replay/constructs.json)).
-The adapter suite's classes whose fixtures need a running warehouse, and the
-projects dbt cannot build, are listed under `unextracted` in its ledger.
-CI's `dbt` job replays them and warns when an outcome changes.
+dbt-core's refusals are mostly tables its suite creates outside dbt, which no
+`ref()` or `source()` names. The suites' classes whose fixtures need a running
+warehouse, abstract bases a subclass fills in, and the projects dbt cannot
+build are listed under `unextracted` in each ledger. CI's `dbt` job replays
+them: a changed outcome warns, and a test sverify-dbt proves that fails in
+dbt's own run fails the job.
 
 ## Development
 

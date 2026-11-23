@@ -95,43 +95,27 @@ from sverify._unsupported import ConditionError, SverifyWarning
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify._user_text import did_you_mean
 from sverify._verdict import split_assumed, verdict
-from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
-    _DATA_ONLY,
-    DATA_CHECK,
+from sverify.conditions import (
     ON_DATA,
-    ROWS_SHOWN,
     Approx,
     ArrivesWithin,
-    CheckedCondition,
     Discharged,
     Inferred,
     Key,
     MaxRows,
     NonOverlapping,
+    Postcondition,
     PreconditionError,
     References,
-    RelationRows,
     RowsPer,
     TableCondition,
     TextFact,
     Unique,
-    _check_approx,
-    _count,
-    _duplicate_rows,
-    _KeyResult,
     _positions,
-    _relax,
-    _Rows,
-    approx,
-    arrives_within,
     expand_keys,
     label,
-    max_rows,
     q,
-    references,
     resolve,
-    rows_per,
-    show_duration,
     unique,
 )
 from sverify.counterexample import Counterexample
@@ -142,7 +126,7 @@ from sverify.engine import (
     plan_and_differences,
     run_checker,
 )
-from sverify.observation import Observation
+from sverify.observation import Lenses
 from sverify.proposers import (
     _EPOCH,
     INFER,
@@ -150,22 +134,12 @@ from sverify.proposers import (
     Obligation,
     _text_condition,
 )
-from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
-    _DECIMAL_ARG,
-    _EPOCH_DAY,
-    _MICROSECOND,
-    _ORDERED,
+from sverify.report import (
     CONSTANT_HINT,
-    FINITE_ASSUMED,
     INFINITE,
     INFINITE_HINT,
-    OVERFLOW_HINT,
-    PARAMS_NOTE,
-    RUNTIME_CHECK,
     SOURCE_THRESHOLD,
     SOURCE_THRESHOLD_HINT,
-    SUM_ASSUMED,
-    TIES_HINT,
     TRUNC_HINT,
     ColumnFacts,
     Condition,
@@ -176,30 +150,16 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     PostconditionError,
     Report,
     Semantics,
-    TiePlace,
     Transform,
-    UnprovedReason,
-    UnverifiedRunError,
     VerificationError,
-    _assumption,
     _by_table,
-    _cause,
-    _labels_by_table,
     _needed,
-    _needed_deferred,
-    _sql_value,
     _sum,
-    _sum_assumed,
-    _transfer_failure,
     _truncates,
-    _unparen,
-    _would_hold,
     column_facts,
     condition_query,
-    error_text,
     proved_not_null,
     render_fact,
-    tie_places,
     violating_rows,
     violation_counts,
     violations,
@@ -722,7 +682,7 @@ def infer_bounds(
 
     An observation in `ensures` (`sv.equivalent`) is no condition to prove:
     it goes to `Report.lenses`, and each other postcondition that
-    depends on what it ignores says so (`CheckedCondition.ignores`)."""
+    depends on what it ignores says so (`Postcondition.ignores`)."""
     observed, ensures = _observation.split(ensures)
     report = _infer_bounds(
         transform,
@@ -816,7 +776,7 @@ def _typed(dtypes: Mapping[str, Any], facts: Mapping[str, ColumnFacts]) -> dict[
     }
 
 
-def _needing(c: CheckedCondition, needs: Sequence[Needed]) -> CheckedCondition:
+def _needing(c: Postcondition, needs: Sequence[Needed]) -> Postcondition:
     """`c` not proved where its proof used inferred preconditions (#701),
     with those it may have used as its `needs`: the bounds, and the `IS NOT
     NULL`s inferred for this postcondition; every inferred one where those
@@ -842,7 +802,7 @@ def _checked_on_unproved(v: str) -> OnUnproved:
     return v  # type: ignore[return-value]
 
 
-def _observed(report: Report, observed: Observation, ensures: Sequence[Condition]) -> Report:
+def _observed(report: Report, observed: Lenses, ensures: Sequence[Condition]) -> Report:
     """`report` with the observation, and each postcondition marked with the
     components it depends on that the observation ignores, or that the plan
     leaves open (D1, D12): the checker's (`ContractCheck`'s `Report.ignores`
@@ -859,8 +819,8 @@ def _observed(report: Report, observed: Observation, ensures: Sequence[Condition
             ignores = (
                 tuple(ignored) if c.proved else (*opened, *(x for x in ignored if x not in opened))
             )
-        elif not isinstance(cond, TableCondition) and c.checker_ignores is not None:
-            ignores = c.checker_ignores
+        elif not isinstance(cond, TableCondition) and c._checker_ignores is not None:
+            ignores = c._checker_ignores
         else:
             # The checker did not read the condition (a plan that is not a selection of
             # conditions, or no answer): it may depend on everything the observation ignores.
@@ -921,7 +881,7 @@ def _infer_bounds(
     infer: bool,
     inputs: Collection[str] | None,
     semantics: Semantics,
-    observed: _observation.Observation | None = None,
+    observed: _observation.Lenses | None = None,
 ) -> Report:
     def once(reqs: Mapping[str, Sequence[Condition]], n: int):
         return _verify_once(
@@ -1057,16 +1017,20 @@ def _confirm_hints(report: Report, requires, once) -> Report:
     tried: dict[str, set[tuple[str, str]]] = {}
     issues = []
     for i in report.issues:
-        if i.hint_needs:
-            key = repr(sorted((t, sorted(label(c) for c in cs)) for t, cs in i.hint_needs.items()))
+        if i.suggested_requires:
+            key = repr(
+                sorted((t, sorted(label(c) for c in cs)) for t, cs in i.suggested_requires.items())
+            )
             if key not in tried:
                 widened = {t: list(cs) for t, cs in requires.items()}
                 _merge(widened, report._inferred)
-                _merge(widened, i.hint_needs)
+                _merge(widened, i.suggested_requires)
                 again = once(widened, 0)[0]
                 tried[key] = {(j.kind, j.expr) for j in again.issues if j.error}
             if (i.kind, i.expr) in tried[key]:
-                i = replace(i, hint=i.unconfirmed, hint_needs={}, unconfirmed=None, needs=[])
+                i = replace(
+                    i, hint=i.unconfirmed, suggested_requires={}, unconfirmed=None, needs=[]
+                )
         issues.append(i)
     return replace(report, issues=issues)
 
@@ -1299,7 +1263,7 @@ def _prove_once(
     bound: list[str],
     inputs: Collection[str] | None,
     semantics: Semantics = "portable",
-    observed: _observation.Observation | None = None,
+    observed: _observation.Lenses | None = None,
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
     schemas."""
@@ -1568,7 +1532,7 @@ def _prove_once(
             )
             depends = e.get("depends")
             checked.append(
-                CheckedCondition(
+                Postcondition(
                     e["name"],
                     e["proved"],
                     e["value"],
@@ -1579,7 +1543,7 @@ def _prove_once(
                     allowed=bool(e.get("allowed")),
                     robust=holds_on_engines,
                     robust_on=proved_on,
-                    checker_ignores=None if (ig := e.get("ignores")) is None else tuple(ig),
+                    _checker_ignores=None if (ig := e.get("ignores")) is None else tuple(ig),
                 )
             )
         checked[-1].condition = c
@@ -1850,7 +1814,7 @@ def _issues(
                 [_needed(t, c, dialect) for t, cs in code.items() for c in cs]
                 if error and not fallback
                 else [],
-                hint_needs={t: list(cs) for t, cs in code.items()} if error else {},
+                suggested_requires={t: list(cs) for t, cs in code.items()} if error else {},
                 unconfirmed=fallback,
                 assumed=assumed,
             )
@@ -1899,7 +1863,7 @@ def _ibis_text(node: Any) -> str:
 def rounding_hints(
     transform: ir.Table,
     ensures: Sequence[Condition],
-    checked: Sequence[CheckedCondition],
+    checked: Sequence[Postcondition],
     facts: Sequence[dict],
     dtypes: Mapping[str, Any],
 ) -> list[str]:
@@ -1966,8 +1930,9 @@ def _checker_decimals(dtypes: dict[str, Any], kinds: Sequence[dict] | None) -> d
     """`dtypes` as the run returns them (`outputKinds`, from `Write.relKinds`
     and `Rel.outBits`): a decimal `AVG` or `SUM` and an integer's width differ
     from Ibis's (a computed integer is 64 bits, a passed-through column keeps its
-    declared width), and a timestamp has microseconds. A checker without the
-    field, or with another number of columns, leaves Ibis's types as they are."""
+    declared width, a cast has the width it names), and a timestamp has
+    microseconds. A checker without the field, or with another number of
+    columns, leaves Ibis's types as they are."""
     if kinds is None or len(kinds) != len(dtypes):
         return dtypes
     return {name: _checker_type(ty, k) for (name, ty), k in zip(dtypes.items(), kinds, strict=True)}

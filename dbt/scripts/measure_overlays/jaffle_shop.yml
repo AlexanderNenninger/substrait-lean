@@ -1,0 +1,52 @@
+# What a user of jaffle_shop would declare, so that the tests on
+# the staging models follow from them (measure.py --overlay). Copied into the
+# project's models/ at the pinned commit; dbt runs every test below, so a false
+# assumption shows up as a dbt failure in the record.
+version: 2
+
+seeds:
+  - name: raw_customers
+    columns:
+      - name: id
+        tests: [unique, not_null]
+
+  - name: raw_orders
+    columns:
+      - name: id
+        tests: [unique, not_null]
+      - name: user_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('raw_customers')
+              field: id
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['placed', 'shipped', 'completed', 'return_pending', 'returned']
+
+  - name: raw_payments
+    columns:
+      - name: id
+        tests: [unique, not_null]
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('raw_orders')
+              field: id
+      - name: amount
+        tests: [not_null]
+      - name: payment_method
+        tests:
+          - accepted_values:
+              values: ['credit_card', 'coupon', 'bank_transfer', 'gift_card']
+
+# What sverify-dbt suggests for orders.not_null(customer_id): a model's
+# preconditions are the tests its direct inputs declare, so the test goes on
+# stg_orders, where the seed's not_null(user_id) proves it.
+models:
+  - name: stg_orders
+    columns:
+      - name: customer_id
+        tests: [not_null]

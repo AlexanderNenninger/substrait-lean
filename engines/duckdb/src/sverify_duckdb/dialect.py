@@ -65,6 +65,8 @@ class DuckDBDialect(Dialect):
     decimals: bool = True
     # DuckDB keeps the zero it read last (duckdb-minmax-zero-sign), also in a key.
     canonical_zero_reps: ClassVar[frozenset[str]] = frozenset({"extreme", "keys"})
+    # NaN equals NaN and sorts above `+inf` (duckdb-nan-order).
+    nan_orders: ClassVar[bool] = True
     orders_text: bool = True
     # Measured on homelab (ruling 212 C6, #1608 item 7): 10M rows, 4 threads,
     # 3.5× on a table, 2.0× behind a join, 1.9× with many groups, and 0.98× where
@@ -102,12 +104,6 @@ class DuckDBDialect(Dialect):
 
     def is_nan(self, x: str) -> str:
         return f"isnan({x})"
-
-    def float_eq(self, a: str, b: str) -> str:
-        return f"({a} = {b})"
-
-    def float_lt(self, a: str, b: str) -> str:
-        return f"({a} < {b})"
 
     def raise_(self, message: str, dep: str, kind: Kind, issue: GuardIssue) -> str:
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS VARCHAR))"
@@ -163,6 +159,11 @@ class DuckDBDialect(Dialect):
         # reference's `0.0`: the proved template (`round_zero_sign`).
         low = self.lowered("Substrait.UnFn.fround", [x], "float")
         return low if low is not None else super().float_round(x)
+
+    def float_round_even(self, x: str) -> str:
+        # `round_even(x, 0)`, with the same zero-sign template (`round_zero_sign`, D55).
+        low = self.lowered("Substrait.UnFn.froundEven", [x], "float")
+        return low if low is not None else super().float_round_even(x)
 
     def float_ceil(self, x: str) -> str:
         low = self.lowered("Substrait.UnFn.fceil", [x], "float")

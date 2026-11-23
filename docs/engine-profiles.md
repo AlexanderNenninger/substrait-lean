@@ -271,7 +271,7 @@ the quantile's `method`. The others are shims with a cost:
 
 - truncating division and modulus of negative integers (`//` floors,
   int-divide, int-modulus), and the sign of a double modulus (double-modulus);
-- an empty `SUM` (0, [sum-float](../engines/polars/facts/polars-sum-float.json)),
+- an empty `SUM` (0, [sum-float-streaming](../engines/polars/facts/polars-sum-float-streaming.json)),
   `avg` of integers ([avg-int](../engines/polars/facts/polars-avg-int.json)),
   `CORR` of one pair ([corr](../engines/polars/facts/polars-corr.json)),
   `mode`'s list ([mode](../engines/polars/facts/polars-mode.json)),
@@ -308,8 +308,7 @@ shim of `engines/polars/src/sverify_polars/shims.py` once, as `Polars.<name>`,
 against a model of Polars's own functions taken from its facts (the trusted
 part, as `Profile.duckdb` is for DuckDB):
 
-- the value shims: `int_div_trunc` and `int_mod_trunc` give `Int.tdiv` and
-  `Int.tmod`, `sum_empty_null` NULL for no values, `avg_int_declared` the
+- the value shims: `sum_empty_null` NULL for no values, `avg_int_declared` the
   reference's truncated mean (which its clamp leaves), `round_half_away`
   `roundMag`, `one_zero` `canon` on the float codes, `strpos_chars`
   and `substring_wrap` `Text.strpos` and `Text.substrWrap`, `null_order` the
@@ -322,12 +321,17 @@ part, as `Profile.duckdb` is for DuckDB):
   precondition rules out. On Polars a double `SUM` is summed in Polars's own
   order (`sum_order`), so `agg_makes_infinite` flags the groups whose own sum
   overflows, which differ from the sequential sum's only at the edge;
-- the error side: `Polars.written_faithful` (Polars, with the value shims,
-  agrees with the reference wherever the reference reports no issue) and
-  `Rel.polars_sound` (a plan `verify` proves free of issues, up to the
-  assumed ones whose guards stay, runs on Polars as `Rel.eval`).
+- the error side: `Polars.impl` is Polars's functions, `Profile.polars`'s
+  values and Polars's own where the profile raises (a wrapped integer, `NULL`
+  for a zero divisor, NaN), and `Rel.polars_sound` (a plan `verify` proves
+  free of issues, up to the assumed ones whose guards stay, lowered by
+  Polars's table, runs on Polars as `Rel.eval`).
 
-The Polars rows of `--options` name these theorems as their evidence. The
+Integer `//` and `%`, and `round` and `ceil`, are no shims of their own: the
+translation writes them from the generated lowering table
+(`sverify_polars/lowering.py`), whose templates `Lowering.polars_exact` proves
+exact under `Profile.polars` (#271). The Polars rows of `--options` name these
+theorems as their evidence. The
 `clustered` row stays tested, and so do the rows these theorems do not cover.
 
 ### Polars as a profile
@@ -521,7 +525,7 @@ Every field but `engine` is optional:
 | `title` | the engine's name as prose and generated tables write it (`DuckDB`) |
 | `run_tables` | runs a written plan over Arrow tables by name: `run_tables(plan_json, tables, *, guard_free=False, finite=True)`; `sverify.engines.run_sharded` runs its shards with it |
 | `guard_free_theorem` | the theorem that covers `run_tables(..., guard_free=True)`, the run without the checks a `guard_free` contract report discharged |
-| `sql` | `SqlFrontEnd(read, lift)`: the dialect's SQLGlot name and `lift(query, schemas, semantics)`, the plan of its SQL; `sverify.sql(dialect=read)` and `sverify check --dialect` read it. The dialect's own semantics is the engine's name, accepted where the plugin brings the checker's profile; the lift offers or refuses any other by name, and never reads a query as another dialect |
+| `sql` | `SQLFrontEnd(read, lift)`: the dialect's SQLGlot name and `lift(query, schemas, semantics)`, the plan of its SQL; `sverify.sql(dialect=read)` and `sverify check --dialect` read it. The dialect's own semantics is the engine's name, accepted where the plugin brings the checker's profile; the lift offers or refuses any other by name, and never reads a query as another dialect |
 | `fallbacks` | the nodes of a written plan the engine runs outside its chosen executor (Polars's in-memory nodes of a streaming plan), which a route records and `streaming="require"` refuses |
 
 Entries for one engine are merged field by field, so one package can add a

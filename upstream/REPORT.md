@@ -2,7 +2,7 @@
 
 <!-- Generated from `bugs/*.json` by `python -m sverify_dev.bugs --write`. -->
 
-Sverify's upstream ledger holds 95 entries ([README](README.md)). 34 are bugs to report: each reproduces on the version named, and no upstream issue reports it. Each entry has the repro, what was searched and how sverify handles it. The `upstream-report` skill drafts the issue.
+Sverify's upstream ledger holds 96 entries ([README](README.md)). 35 are bugs to report: each reproduces on the version named, and no upstream issue reports it. Each entry has the repro, what was searched and how sverify handles it. The `upstream-report` skill drafts the issue.
 
 ## To report
 
@@ -11,6 +11,7 @@ Sverify's upstream ledger holds 95 entries ([README](README.md)). 34 are bugs to
 | [DD-6](bugs/DD-6.json) | DuckDB | `least` and `greatest` on `FLOAT` turn `-0.0` into `+0.0` and drop a NaN's sign | duckdb 2.0.0, duckdb main d4eea3f208 (2026-11-07) |
 | [DD-8](bugs/DD-8.json) | DuckDB | Docs: `%` on `FLOAT` and `DOUBLE` by zero gives NaN, where the page says it raises | duckdb 2.0.0, duckdb-web main cab31bd0 (2026-11-07) |
 | [DD-9](bugs/DD-9.json) | DuckDB | Docs: the `pow` and `**` examples show integers, and the result is always `DOUBLE` | duckdb 2.0.0, duckdb-web main cab31bd0 (2026-11-07) |
+| [DD-12](bugs/DD-12.json) | DuckDB | iceberg_scan fails with "Invalid Avro file block count or size" on a table whose snapshot has no manifests | duckdb 2.0.1 (2026-11-22) |
 | [PL-5](bugs/PL-5.json) | Polars | Streaming `cov` and `corr` of `Decimal` columns raise; the in-memory engine computes them | polars 2.1.0 (2026-11-07) |
 | [PL-6](bugs/PL-6.json) | Polars | CSE hoists a strict cast that two `when/then` branches share onto every row | polars 2.1.0 (2026-11-07) |
 | [PL-7](bugs/PL-7.json) | Polars | Predicate pushdown merges a filter on `str.to_integer` into the one before, which then raises | polars 2.1.0 (2026-11-07) |
@@ -92,7 +93,7 @@ What was reported upstream and where it stands, with how sverify handles each.
 
 | Project | report | filed | fixed | duplicate | not-a-bug | spec-gap | unverified | total |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| DuckDB | 3 | 3 | 2 | 0 | 1 | 0 | 2 | 11 |
+| DuckDB | 4 | 3 | 2 | 0 | 1 | 0 | 2 | 12 |
 | Polars | 9 | 0 | 0 | 2 | 3 | 0 | 0 | 14 |
 | Spark | 6 | 2 | 0 | 0 | 0 | 0 | 1 | 9 |
 | SQLGlot | 2 | 0 | 7 | 0 | 1 | 0 | 0 | 10 |
@@ -100,7 +101,7 @@ What was reported upstream and where it stands, with how sverify handles each.
 | delta-rs | 2 | 1 | 0 | 0 | 0 | 0 | 0 | 3 |
 | DataFusion | 5 | 5 | 6 | 3 | 5 | 0 | 1 | 25 |
 | Substrait | 3 | 0 | 0 | 1 | 0 | 15 | 0 | 19 |
-| total | 34 | 11 | 15 | 6 | 10 | 15 | 4 | 95 |
+| total | 35 | 11 | 15 | 6 | 10 | 15 | 4 | 96 |
 
 The classes:
 

@@ -36,7 +36,7 @@ def _tables(
         "choice": {"kind": "oneOf", "behaviours": ["ANY"]},
         "class": "refines",
         "evidence": "proved",
-        "facts": ["polars-sum-float"],
+        "facts": ["polars-sum-float-streaming"],
     }
     if rerun is not None:
         row["rerun"] = rerun
@@ -73,7 +73,7 @@ def test_a_float_sum_on_polars_streaming(monkeypatch, con) -> None:
         }
     }
     ok = routes.choose(report, "polars", reproducible=sv.equivalent(floats=sv.within(abs=1e-2)))
-    assert ok.kind == "translated" and ok.rerun_evidence == "proved"
+    assert ok.taken == "translated" and ok.rerun_evidence == "proved"
     assert (
         routes.choose(
             report, "polars", reproducible=sv.equivalent(floats=sv.within(rel=1e-9))
@@ -82,13 +82,13 @@ def test_a_float_sum_on_polars_streaming(monkeypatch, con) -> None:
     ), "the relative bound is not proved"
     exact = routes.choose(report, "polars", reproducible=sv.equivalent())
     assert exact.refused
-    assert "a rerun must give the same result" in exact.reason
-    assert "total is within abs=0.001, rel=1e-10 (tested) between runs" in exact.reason
+    assert "a rerun must give the same result" in exact.why
+    assert "total is within abs=0.001, rel=1e-10 (tested) between runs" in exact.why
     assert exact.reproducible == sv.equivalent()
     # `sv.equivalent()` asks for exact values too.
     assert routes.choose(report, "polars", reproducible=sv.equivalent()).refused
     # Without a requirement, the route only reports.
-    assert routes.choose(report, "polars").kind == "translated"
+    assert routes.choose(report, "polars").taken == "translated"
     with pytest.raises(RouteError, match="rerun must give the same result"):
         report.run(con, "polars", route="auto", reproducible=sv.equivalent())
 
@@ -103,14 +103,14 @@ def test_a_fixed_variation(monkeypatch, con) -> None:
         == "proved"
     )
     r = routes.choose(report, "polars", reproducible=sv.equivalent(rows="sequence"))
-    assert r.refused and "must reproduce its rows, floats" in r.reason
+    assert r.refused and "must reproduce its rows, floats" in r.why
 
 
 def test_a_missing_variation_reads_as_exact_on_a_test(monkeypatch, con) -> None:
     _tables(monkeypatch, None)
     report = _float_sum(con)
     r = routes.choose(report, "polars", reproducible=sv.equivalent())
-    assert r.kind == "translated" and r.rerun_evidence == "tested"
+    assert r.taken == "translated" and r.rerun_evidence == "tested"
 
 
 @pytest.mark.parametrize(
@@ -122,7 +122,7 @@ def test_an_exact_variation_with_its_evidence(monkeypatch, con, evidence, expect
     _tables(monkeypatch, {}, evidence)
     report = _float_sum(con)
     r = routes.choose(report, "polars", reproducible=sv.equivalent())
-    assert r.kind == "translated" and r.rerun_evidence == expected
+    assert r.taken == "translated" and r.rerun_evidence == expected
 
 
 def test_an_open_choice_fails_every_requirement(con) -> None:
@@ -133,7 +133,7 @@ def test_an_open_choice_fails_every_requirement(con) -> None:
     coarse = sv.equivalent(floats=sv.within(abs=1e9), zeros="canon", elements="multiset")
     for q in (sv.equivalent(), coarse):
         r = routes.choose(report, "duckdb", reproducible=q)
-        assert r.refused and "not determined up to row order" in r.reason
+        assert r.refused and "not determined up to row order" in r.why
 
 
 def test_a_limit_without_order_by_is_refused(con) -> None:
@@ -192,9 +192,9 @@ def test_a_float_sum_on_polars_against_the_checkers_tables(con) -> None:
     )
     assert report._epsilon, "the plan's bound on the sum"
     loose = sv.equivalent(floats=sv.within(abs=1.0, rel=1e-6))
-    assert routes.choose(report, "polars", reproducible=loose).kind == "translated"
+    assert routes.choose(report, "polars", reproducible=loose).taken == "translated"
     exact = routes.choose(report, "polars", reproducible=sv.equivalent())
-    assert exact.refused and "sum_order" in exact.reason
+    assert exact.refused and "sum_order" in exact.why
 
 
 def test_ties_permuted_sits_between_sequence_and_multiset(monkeypatch, con) -> None:
@@ -205,9 +205,9 @@ def test_ties_permuted_sits_between_sequence_and_multiset(monkeypatch, con) -> N
     assert not ties.refines(sv.equivalent(rows="sequence"))
     _tables(monkeypatch, {"rows": "ties permuted"})
     report = _float_sum(con)
-    assert routes.choose(report, "polars", reproducible=sv.equivalent()).kind == "translated"
+    assert routes.choose(report, "polars", reproducible=sv.equivalent()).taken == "translated"
     r = routes.choose(report, "polars", reproducible=sv.equivalent(rows="sequence"))
-    assert r.refused and "rows" in r.reason
+    assert r.refused and "rows" in r.why
 
 
 def test_deterministic_is_gone():

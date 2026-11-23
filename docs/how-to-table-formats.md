@@ -204,19 +204,24 @@ numbered batch log on an Arrow Flight server (`pip install
 `do_put`, one counter across tables, and keeps them in order. `do_get` with
 the ticket `{"table": t, "after": n}` streams the batches numbered above
 `n`, each with `{"seq": s}` as app metadata, and names in the stream's schema
-metadata the `floor`, the lowest number it still holds; an optional
-`"until": m` stops at `m`. The source's cursor is `{"seq": n, "floor": f}`,
-the number of the last batch read and the floor at that read. A refresh
+metadata the `floor`, the lowest number it still holds, and optionally the
+`log`, an identity it chose when it started; an optional `"until": m` stops
+at `m`. The source's cursor is `{"seq": n, "floor": f}` with `"log": id` where
+the server names one: the number of the last batch read, the floor at that
+read and the log it was read from. A server that restarts and numbers its
+batches from 1 again names a new log, and a source whose cursor names another
+log raises, since the batch numbers mean other batches; reading the log again
+is a choice, made by starting the node on a new sink. A refresh
 appends the new batches, as they arrived and without a copy, and the batches
 below the floor, which the server dropped past its retention, come back as
 deletes, so the source holds the server's window of rows. A restarted job
 resumes at the cursor its sink recorded, unless the server dropped batches
 since; then it reads the whole log again. The report states what this assumes: the server numbers batches in
-order of arrival, never changes one, and drops only whole batches below its
-floor. `sverify.testing.FlightLog()` is a small in-memory server that keeps such a log
+order of arrival, never changes one, drops only whole batches below its
+floor, and names a new log when it numbers batches from 1 again. `sverify.testing.FlightLog()` is a small in-memory server that keeps such a log
 (`keep=` batches per table, or `drop(table, below=n)`), the one
 [the tests](../python/tests/test_io_flight.py) run against. With `schema=`, a
-`FlightSource` proves contracts without asking the server, and `secret=`
+`FlightSource` proves contracts without asking the server, and `credentials=`
 names a bearer token ([Credentials](how-to-credentials.md#credentials)):
 
 ```python

@@ -319,8 +319,8 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | nested | `list.plain` | `array_length`, `cardinality`, `any_match`, `all_match`, `transform`, `filter` | none |
 | aggregates | `agg.isum` | `sum`, `avg` of integers and decimals | `overflow`, `avg_int_result` |
 | aggregates | `agg.fsum` | `sum`, `avg` of doubles | `sum_order`, `rounding`, `nan_creation` |
-| aggregates | `agg.var` | `variance`, `std_dev` | `distribution` (Substrait's: the sample's or the population's), `rounding`, `stat_algo`, `nan_creation`, `stat_degenerate` |
-| aggregates | `agg.stat` | `covar_samp`, `covar_pop`, `corr` | `stat_algo`, `nan_creation`, `stat_degenerate` |
+| aggregates | `agg.var` | `variance`, `std_dev` | `distribution` (Substrait's: the sample's or the population's), `rounding`, `stat_algo`, `nan_creation`, `stat_degenerate`, `float_overflow` |
+| aggregates | `agg.stat` | `covar_samp`, `covar_pop`, `corr` | `stat_algo`, `nan_creation`, `stat_degenerate`, `float_overflow` |
 | aggregates | `agg.order` | `min`, `max`, `quantile_disc`, `median` of non-numbers | `nan_order`, `zero_sign`, `list_null_order` |
 | aggregates | `agg.quant` | `quantile_cont`, `median` | `quantile_interp`, `nan_creation`, `nan_order` |
 | aggregates | `agg.pick` | `first`, `last`, `arg_min`, `arg_max`, `mode` | `tie_pick` |
@@ -371,7 +371,7 @@ def options : List OptionSpec := [
     core := ["ERROR", "SILENT", "SATURATE"], yaml := ["ERROR", "SILENT", "SATURATE"],
     extra := [] },
   { id := "zero_sign", substrait := none, core := ["IEEE", "ONE_ZERO"], yaml := [],
-    extra := [("IEEE", "polars-zero-sign")] },
+    extra := [("IEEE", "polars-zero-sign-streaming")] },
   … ]
 ```
 
@@ -695,7 +695,7 @@ is a choice that accepts every value the plan states.
 | `shift_range` | all others | `ERROR`, `ZERO`, `DROP_BITS` | `DROP_BITS` | raise |
 | `decimal_rescale` | all others | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | `TIE_AWAY_FROM_ZERO` | choose |
 | `rounding` | all others | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR` | `TIE_TO_EVEN` | choose |
-| `rounding` | `fp.round` | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR`, `AWAY_FROM_ZERO`, `TIE_DOWN`, `TIE_UP`, `TIE_TOWARDS_ZERO`, `TIE_TO_ODD` | `TIE_AWAY_FROM_ZERO` | choose |
+| `rounding` | `fp.round` | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR`, `AWAY_FROM_ZERO`, `TIE_DOWN`, `TIE_UP`, `TIE_TOWARDS_ZERO`, `TIE_TO_ODD` | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`; `TIE_AWAY_FROM_ZERO` by default | choose |
 | `on_domain_error` | all others | `NAN`, `ERROR` | `ERROR` | raise |
 | `on_domain_error` | `fp.div` | `NAN`, `NULL`, `ERROR` | `ERROR` | raise |
 | `on_domain_error` | `fp.log` | `NAN`, `NULL`, `ERROR` | `ERROR` | raise |
@@ -722,7 +722,7 @@ is a choice that accepts every value the plan states.
 | `list_null_order` | all others | `NULL`, `GREATEST`, `LEAST` | `NULL` | choose |
 | `list_null_order` | `agg.order` | `NULL`, `GREATEST`, `LEAST` | `GREATEST` | choose |
 | `sum_order` | all others | `ANY`, `SEQUENTIAL`, `PAIRWISE`, `COMPENSATED`, `SCALED_CONSTANT`, `EXACT` | `EXACT` | choose |
-| `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN`, `EXACT` | `EXACT` | choose |
+| `stat_algo` | all others | `GENERIC`, `WELFORD_CHAN`, `SCHUBERT_GERTZ`, `EXACT` | `EXACT` | choose |
 | `window_sum_algo` | all others | `RECOMPUTE`, `TREE`, `RUNNING_ADD`, `SLIDING` | `RECOMPUTE` | choose |
 | `stat_degenerate` | all others | `NULL`, `NAN`, `ERROR` | `NULL` | choose |
 | `quantile_interp` | all others | `BETWEEN`, `LINEAR`, `LINEAR_DIFF` | `BETWEEN` | leave open |
@@ -912,7 +912,7 @@ Two limits of the per-option view:
 - A shim's own calls must be native in `Q`, or be discharged in turn. The
   generator checks this; a shim that needs a refused behaviour makes its row
   refused.
-- Relational options act on operators, not calls: `null_order` is
+- Relational options act on whole operators: `null_order` is
   discharged by writing the sort key's NULL placement, `tie_order` and
   `tie_pick` natively (any engine's pick is one the reference allows), or,
   for a plan that must be determined, by a total order or a refusal
@@ -1062,8 +1062,8 @@ each level coarsens the one before (`StringObs`, `ObsCtx.WF.str_mono`):
 |---|---|---|
 | `exact` | the strings | nothing |
 | `nfc` | `NFC(s)` | canonically equivalent spellings (`é` as one code point or two) |
-| `casefold` | `NFD(casefold(NFD(s)))`, Unicode's canonical caseless match (D145) | case, including `ß` and `SS` |
-| `ascii` | the code points below U+0080 of `NFKD(casefold(NFKD(casefold(NFD(s)))))`, the compatibility caseless match (D146) | case, width and ligature variants, and every code point without an ASCII decomposition |
+| `casefold` | `NFD(casefold(NFD(s)))`, Unicode's canonical caseless match (Unicode D145) | case, including `ß` and `SS` |
+| `ascii` | the code points below U+0080 of `NFKD(casefold(NFKD(casefold(NFD(s)))))`, the compatibility caseless match (Unicode D146) | case, width and ligature variants, and every code point without an ASCII decomposition |
 
 The last level drops what it cannot decompose: `søren` equals `sren`, and two strings in a
 non-Latin script equal each other. A contract names it for what it is, an opt-in lens for plans whose

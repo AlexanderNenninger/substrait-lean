@@ -367,7 +367,7 @@ class Source(Pipeable, ABC):
         entries = st.log.since(since)
         if entries is None:
             return SourceBatch.from_snapshot(
-                since, st.version, st.table, reason=f"{self.name}'s batches since v{since} are gone"
+                since, st.version, st.table, why=f"{self.name}'s batches since v{since} are gone"
             )
         kinds = {e.kind for e in entries if e.kind is not None}
         span = f"{self.name} v{since}→v{st.version}"
@@ -387,8 +387,8 @@ class Source(Pipeable, ABC):
             st.version,
             inserts=pa.concat_tables([e.inserts for e in entries] or [schema.empty_table()]),
             deletes=pa.concat_tables([e.deletes for e in entries] or [schema.empty_table()]),
-            trusted=trusted,
-            kind="snapshot_diff" if kinds == {"snapshot"} else "change_feed",
+            assumes=trusted,
+            mode="snapshot_diff" if kinds == {"snapshot"} else "change_feed",
             schema=schema,
         )
 
@@ -458,6 +458,13 @@ class Source(Pipeable, ABC):
         without the work, such as `FlightSource`, overrides it."""
         change = pa.concat_tables([weighted(inserts, 1), weighted(deletes, -1)])
         return _apply_change(table, change, self.name)
+
+    def _fingerprint(self) -> str | None:
+        """What identifies the source where it has no table id, for a sink
+        to record (`Contract.fingerprints`): such as a server's location and
+        a table's name on it. None (the default) where the source names no
+        place, and a sink cannot tell it from another."""
+        return None
 
     def _durable(self) -> bool:
         """Whether the source's cursors last across processes (`restore`)."""

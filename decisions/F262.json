@@ -1,0 +1,15 @@
+{
+  "id": "F262",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "#1288's last four rows. Row 14 (`sv.equivalent`) is done as the lens the verdict is read under, as U-2026-11-09-lenses-in-contract puts it. Row 21 is done: an optional state store, refused by name at refresh. Row 29's counts are dropped, and ruling 261's naming sweep checks each name. Row 33 is no 1.0 item: the base's branches on an engine name become optional `ProfilePlugin` fields after 1.0.",
+  "issues": [
+    1288,
+    2345,
+    2354
+  ],
+  "source": "fable-ruling-262-1288-last-four-rows.md",
+  "note": "Follow-up to F261; it confirms U-2026-11-09-lenses-in-contract and supersedes nothing. A required state-store field would break third-party plugins later. The two engine branches found (Polars has no memory limit in the CLI, and the source reader's Polars module check) give a built-in engine nothing a plugin couldn't state once the field exists, and the field is additive. The other engine-name literals in the base move to the engine packages through continuous tidying (#886). #1288 closes once #2344 (PR #2352) and #2345 hold its 1.0 work and #2354 is filed."
+}

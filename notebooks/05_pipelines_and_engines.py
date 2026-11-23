@@ -1422,8 +1422,7 @@ def _(mo):
     * `TIMESTAMP` is the session time zone's, and so is what `date_trunc`
       returns, so the SQL stays in `TIMESTAMP_NTZ`.
     * `POWER` of doubles is Java's `Math.pow` (within 1 ulp of C's) and is
-      refused, as are sorts and windows of a plan whose report is not
-      `deterministic`.
+      refused.
 
     Spark runs locally, unlike Snowflake. The tests run every coverage case
     and every query of the Snowflake suite on a local Spark session
@@ -1610,6 +1609,51 @@ def _(mo):
 @app.cell
 def _(approx_claim):
     print(approx_claim.lenses)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Drop the row cap and the sum has no bound at all: with the number of rows
+    open, Lean cannot say how far an engine's sum is from the reference's. A
+    claim that reads only the sign of the total still goes through, since
+    adding values of one sign keeps the sign in every order. A tolerance you
+    state is another matter. There is nothing to meet it with, so the route
+    refuses and names the exits, a row cap or `floats="plan"`:
+    """)
+    return
+
+
+@app.cell
+def _(ibis, sv):
+    from ibis import _
+    from sverify.routes import choose as _choose
+
+    _readings = ibis.table({"sensor": "int64", "temp": "float64"}, name="readings")
+    _sums = _readings.group_by("sensor").aggregate(total=_readings.temp.sum())
+    _requires = {"readings": [_.temp >= 0.0, _.temp <= 60.0]}
+    sign_claim = sv.verify(_sums, requires=_requires, ensures=[_.total >= 0.0])
+    tolerant = sv.verify(
+        _sums,
+        requires=_requires,
+        ensures=[_.total >= 0.0, sv.equivalent(floats=sv.within(rel=1e-6))],
+    )
+    assert sign_claim.verdict == sv.Verdict.PROVED and tolerant.verdict != sv.Verdict.PROVED
+    print(_choose(sign_claim, "duckdb").why)
+    print(_choose(tolerant, "duckdb").why)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    With `sv.max_rows(1_000_000)` in `requires` the sum has a bound
+    (`abs=0.0067, rel=2.2e-10`). Now a claim about the value of the total,
+    such as `total <= 6e7`, is refused with the exit `sv.approx`, as the
+    average above was: the reference's total may sit at the limit where an
+    engine's lands a hair beyond it.
+    """)
     return
 
 

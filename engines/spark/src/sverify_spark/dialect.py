@@ -128,6 +128,8 @@ class SparkDialect(Dialect):
     # A `MIN` or `MAX` of mixed zeros depends on order and partitioning
     # (spark-zero-order); its keys are canonical already.
     canonical_zero_reps: ClassVar[frozenset[str]] = frozenset({"extreme"})
+    # NaN equals NaN and sorts above `+inf` (spark-nan-order, spark-nan-equality).
+    nan_orders: ClassVar[bool] = True
 
     def quote(self, ident: str) -> str:
         return "`" + ident.replace("`", "``") + "`"
@@ -233,6 +235,11 @@ class SparkDialect(Dialect):
         # the double's own rounding (a halfway double prints as one).
         return f"ROUND({x})"
 
+    def float_round_even(self, x: str) -> str:
+        # `BROUND` is HALF_EVEN on the double's shortest decimal, which at zero digits is
+        # IEEE's half-to-even: a double prints as `k.5` only when it is `k + 0.5` (D55).
+        return f"BROUND({x})"
+
     def float_pow(self, a: str, b: str) -> str:
         raise self.to_duckdb(
             "Spark's POWER is Java's Math.pow, within 1 ulp of the C pow the Lean model uses "
@@ -247,12 +254,6 @@ class SparkDialect(Dialect):
 
     def is_nan(self, x: str) -> str:
         return f"isnan({x})"
-
-    def float_eq(self, a: str, b: str) -> str:
-        return f"({a} = {b})"
-
-    def float_lt(self, a: str, b: str) -> str:
-        return f"({a} < {b})"
 
     # Temporal
 
