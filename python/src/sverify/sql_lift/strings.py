@@ -433,7 +433,7 @@ def _pad(lf: _Lift, node: sge.Pad, sub: Sub, scope: list[Column]) -> E:
             f"{what} to more than {PAD_MAX} characters: the lift writes the fill as a "
             "constant of that many characters",
             construct=f"function {what}",
-            hint=f"pad to at most {PAD_MAX} characters, or pad in the engine's SQL after the "
+            hint=f"write a width of at most {PAD_MAX}, or pad in the engine's SQL after the "
             "checked plan",
         )
     size = call("character_length", [s_])
