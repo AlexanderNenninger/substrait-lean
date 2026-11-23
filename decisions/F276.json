@@ -1,0 +1,13 @@
+{
+  "id": "F276",
+  "date": "2026-11-23",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#2512: a contract may be proved on the plan with the LEFT JOIN read as an INNER JOIN (`.leftForeignKey`) and carried back to the plan as written, under a `references` precondition the contract states. The step is a theorem at the level of `contract_sound_all`: under the relationship, every result the LEFT join may give (every tie order, `FETCH` and window order) is one the inner join may give. The plan written and run stays the user's LEFT JOIN.",
+  "issues": [
+    2512
+  ],
+  "source": "fable-ruling-276-2512-left-join-fk.md",
+  "note": "Applies the maintainer's ruling U-2026-11-23-left-join-relationship-1-0. No D-number: the reference is unchanged, and the analysis gains a proved step under a stated precondition. Threading the relationship through `aeval`'s call sites was declined. Conditions: B1, a lemma that the LEFT join's ordered results are among the INNER join's, congruence under the plan around it, and a contract theorem with the relationship as hypothesis, leaving `contract_sound` and `contract_sound_all` unchanged. B2, `cover`'s aggregate case and `fkMatch_sound` are stated for every allowed result. B3, the relationship comes only from stated preconditions (`sv.references`, or a dbt relationships test sverify-dbt reads), is listed in `Report.requires` and `Report.preconditions`, and is assumed or checked on the data. B4, the double bounds stay computed on the plan as written. B5, the rewrite is the analysis's view only, and `optimize` keeps `.leftForeignKey` off by default. B6, the report names the step, and without the relationship the column's suggestion proposes `sv.references`. B7, tests, and `#print axioms` matches `contract_sound_all`'s. Fixes #2512 once jaffle_shop's measurement is in `docs/dbt-measurements.md`."
+}

@@ -272,6 +272,152 @@ def test_a_drop_while_down_recomputes(server, tmp_path):
     assert stored_ts(path) == [2]
 
 
+# -- the protocol's edges -----------------------------------------------------
+
+
+def get(server, ticket):
+    """The server's answer to a raw ticket, called in this process."""
+    return server.do_get(None, fl.Ticket(ticket))
+
+
+@pytest.mark.parametrize(
+    "ticket",
+    [
+        b"not json",
+        b"[1]",
+        b"5",
+        b'{"after": 1}',
+        b'{"table": ["samples"]}',
+        b'{"table": "samples", "after": "2"}',
+        b'{"table": "samples", "until": 2.5}',
+        b'{"table": "samples", "after": true}',
+    ],
+)
+def test_a_malformed_ticket_is_refused_with_the_ticket_shape(server, ticket):
+    # #2427: a wrongly typed value got a Python traceback, not this message.
+    with pytest.raises(fl.FlightServerError, match="the ticket is"):
+        get(server, ticket)
+
+
+def test_a_malformed_ticket_reaches_the_client_as_the_ticket_shape(server):
+    client = fl.connect(location(server))
+    with pytest.raises(fl.FlightServerError, match="the ticket is") as e:
+        client.do_get(fl.Ticket(b'{"table": "samples", "after": "2"}')).read_all()
+    assert "Traceback" not in str(e.value)
+    client.close()
+
+
+def test_a_ticket_picks_the_batches_in_its_range(server):
+    put(server, "samples", *[[sample("a", t, 0.5)] for t in (1, 2, 3, 4)])
+    put(server, "other", [sample("x", 9, 0.9)])
+
+    def seqs(ticket):
+        reader = fl.connect(location(server)).do_get(fl.Ticket(json.dumps(ticket).encode()))
+        meta = reader.schema.metadata
+        got = [json.loads(c.app_metadata.to_pybytes())["seq"] for c in reader]
+        return got, int(meta[b"floor"])
+
+    assert seqs({"table": "samples"}) == ([1, 2, 3, 4], 1)
+    assert seqs({"table": "samples", "after": 1, "until": 3}) == ([2, 3], 1)
+    assert seqs({"table": "samples", "after": None, "until": None}) == ([1, 2, 3, 4], 1)
+    # A table nothing was sent to: no batches, and the floor is the next number.
+    assert seqs({"table": "nothing"}) == ([], 6)
+
+
+@pytest.mark.parametrize(
+    ("descriptor", "schema", "error"),
+    [
+        (fl.FlightDescriptor.for_path("a", "b"), SAMPLES, "a path of one table name"),
+        (fl.FlightDescriptor.for_command(b"samples"), SAMPLES, "a path of one table name"),
+        (
+            fl.FlightDescriptor.for_path("samples"),
+            pa.schema([("host", pa.string())]),
+            "samples: the batches' schema is not the table's",
+        ),
+    ],
+)
+def test_a_put_the_log_cannot_take_is_refused(server, descriptor, schema, error):
+    put(server, "samples", [sample("a", 1, 0.5)])
+    client = fl.connect(location(server))
+    with pytest.raises(fl.FlightServerError, match=error):
+        writer, _ = client.do_put(descriptor, schema)
+        writer.write_batch(pa.RecordBatch.from_pylist([{"host": "a"}], schema=pa.schema(schema)))
+        writer.close()
+    client.close()
+    # Nothing was stored.
+    assert [s for s, _ in server.tables["samples"][1]] == [1]
+
+
+def test_an_empty_batch_takes_no_number(server):
+    client = fl.connect(location(server))
+    writer, _ = client.do_put(fl.FlightDescriptor.for_path("samples"), SAMPLES)
+    writer.write_batch(pa.RecordBatch.from_pylist([], schema=SAMPLES))
+    writer.close()
+    client.close()
+    assert server.tables["samples"][1] == [] and server.seq == 0
+
+
+def test_dropping_from_a_table_the_log_lacks_does_nothing(server):
+    server.drop("nothing", below=5)
+    assert server.tables == {}
+
+
+class _NoFloor(fl.FlightServerBase):
+    """A Flight server that streams a batch with no floor in its schema."""
+
+    def do_get(self, context, ticket):
+        return fl.RecordBatchStream(pa.table({"host": ["a"], "ts": [1], "cpu": [0.5]}))
+
+
+def test_a_stream_without_a_floor_is_refused():
+    s = _NoFloor("grpc://127.0.0.1:0")
+    try:
+        src = FlightSource(location(s), "samples", name="busy_samples", schema=SAMPLES)
+        with pytest.raises(ValueError, match="busy_samples: the Flight stream names no floor"):
+            src.read(None)
+    finally:
+        s.shutdown()
+
+
+def test_an_unreachable_server_connects_again_on_the_next_read():
+    s = FlightLog()
+    port = s.port
+    s.shutdown()
+    src = FlightSource(f"grpc://127.0.0.1:{port}", "samples", schema=SAMPLES, timeout=2)
+    with pytest.raises(fl.FlightUnavailableError):
+        src.read(None)
+    assert src._client is None
+
+
+def test_a_source_pickles_without_its_connection(server):
+    import pickle
+
+    put(server, "samples", [sample("a", 1, 0.5)])
+    src = FlightSource(location(server), "samples")
+    first = read(src, None).cursor
+    assert src._client is not None
+    copy = pickle.loads(pickle.dumps(src))
+    assert copy._client is None and src._client is not None
+    assert list(copy._held) == [1] and repr(copy) == repr(src)
+    # The copy connects again when it reads, from the cursor the first read gave.
+    put(server, "samples", [sample("a", 2, 0.6)])
+    after = read(copy, first).cursor
+    assert (after["seq"], after["floor"]) == (2, 1)
+
+
+def test_an_audit_before_any_read_compares_no_rows(server):
+    src = FlightSource(location(server), "samples", schema=SAMPLES)
+    busy(src).refresh()
+    assert src.reread(None).num_rows == 0
+    assert src.reread(None).schema == src.snapshot().table.schema
+
+
+def test_a_cursor_of_another_shape_does_not_restore(server):
+    src = FlightSource(location(server), "samples", schema=SAMPLES)
+    for bad in (None, 3, {"seq": 3}, {"floor": 1}, "seq"):
+        assert src.restore(bad) is None
+
+
 # -- a server that restarted numbers its batches from 1 again ----------------------
 
 

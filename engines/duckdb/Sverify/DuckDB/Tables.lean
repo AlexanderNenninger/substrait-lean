@@ -175,6 +175,10 @@ def Profile.duckdb.obs : ObsTable := [
     rerunEvidence := .probed ["duckdb-mode-ties", "duckdb-exec-row-order"] }).tracking 900),
   (some "fp.round", "rounding", (ObsRow.native ["duckdb-R15-round"]).proved "Lowering.duckdb_exact"),
   (none, "float_overflow", (ObsRow.native ["duckdb-R15-double-arith"]).tracking 1985),
+  -- A variance or covariance whose correctly rounded value overflows is `+inf`
+  -- (duckdb-double-overflow, #1601).
+  (some "agg.var", "float_overflow", (ObsRow.native ["duckdb-double-overflow"]).tracking 1985),
+  (some "agg.stat", "float_overflow", (ObsRow.native ["duckdb-double-overflow"]).tracking 1985),
   -- The string functions are the reference's in `Profile.duckdb`, as the facts
   -- find DuckDB's (`substring` wraps from the end, `LIKE` is case-sensitive).
   (none, "negative_start", (ObsRow.native ["duckdb-R13"]).proved "Lowering.duckdb_exact"),

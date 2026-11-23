@@ -1,0 +1,17 @@
+{
+  "id": "F269",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "A struct cast pairs fields by position in the core, because Substrait's struct types carry no names. A frontend that pairs by name resolves the names when it reads the plan: the DuckDB SQL lift and the Ibis producer turn `CAST(s AS STRUCT(...))` into an explicit positional construction, as D54 promises (lifted DuckDB SQL means DuckDB's value). The writer emits a struct cast only when the target keeps the source's names and order. No core option, and the reference makes no pairing choice.",
+  "issues": [
+    2376,
+    2503
+  ],
+  "amended_by": [
+    "U-2026-11-23-struct-casts-refused-1-0"
+  ],
+  "source": "fable-ruling-269-2376-struct-cast-pairing.md",
+  "note": "Follows DuckDB's fact for the rest: an extra target field becomes a typed NULL, an extra source field is left out, a rename with no name in common is refused (a Binder Error on DuckDB), and nested structs resolve by name at each level. Conditions: S1, one recursive resolver, with structs in lists or maps refused unless the core has an element-wise map there. S2, DuckDB's partial-overlap and case behaviour is probed first. S3, a NULL struct stays NULL. S4, reorder, nested-reorder and NULL tests on DuckDB, Polars and Spark. S5, the refusal stopgap (#2408) lands first. S6, no D-number, and `docs/core-semantics.md` says struct casts pair by position. S7, Improvement lines. The maintainer moved the fix to After 1.0 (#2503), since it needs `Expr.mkStruct` in the core; the design stands for when it is picked up. Ruling 269 names the scope \"frontend\", which the schema lacks, so the entry is filed under reference-semantics."
+}

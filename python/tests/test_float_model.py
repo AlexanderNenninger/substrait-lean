@@ -89,12 +89,12 @@ def test_a_postcondition_that_holds_on_every_engine_is_not_held(con) -> None:
     refused before."""
     report = verify(con, [_.mean_x >= -2000])
     [c] = report.ensures
-    assert c.proved and c.robust and c.robust_on == ("duckdb", "spark")
+    assert c.proved and c.robust and c.robust_on == ("duckdb", "polars", "spark")
     route = report.route("duckdb")
     assert not route.refused, route.why
-    # On Polars, whose sums are Kahan's, the sign rests on a fact: tested.
+    # Polars's streaming sums are trees, which keep the sign (#2411).
     polars = report.route("polars")
-    assert not polars.refused and polars.evidence == "tested"
+    assert not polars.refused and polars.evidence == "proved", polars
 
 
 def test_a_sign_postcondition_runs_with_or_without_a_bound(con) -> None:

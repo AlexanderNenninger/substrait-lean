@@ -160,6 +160,11 @@ class DuckDBDialect(Dialect):
         low = self.lowered("Substrait.UnFn.fround", [x], "float")
         return low if low is not None else super().float_round(x)
 
+    def float_round_even(self, x: str) -> str:
+        # `round_even(x, 0)`, with the same zero-sign template (`round_zero_sign`, D55).
+        low = self.lowered("Substrait.UnFn.froundEven", [x], "float")
+        return low if low is not None else super().float_round_even(x)
+
     def float_ceil(self, x: str) -> str:
         low = self.lowered("Substrait.UnFn.fceil", [x], "float")
         return low if low is not None else super().float_ceil(x)

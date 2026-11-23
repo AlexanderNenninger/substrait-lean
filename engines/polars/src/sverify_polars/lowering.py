@@ -8,11 +8,10 @@ negative value that rounds to zero, and the truncating `//` and `%` from
 Polars's floored ones. `substrait-check --lowering-table` exports them under
 its `"polars"` key, and this module writes one as a Polars expression: its
 fields are the arguments' expressions, its calls Polars's own operators, its
-conditions `pl.when`, as `sverify.sql.lowering` writes DuckDB's as SQL. Until
-the translation asks it for those functions (#271, step 2), it still writes
-them by hand (`shims.int_div_trunc`, `shims.int_mod_trunc`,
-`shims.round_half_away`), and `engines/polars/tests/test_lowering_agrees.py`
-checks that the two agree.
+conditions `pl.when`, as `sverify.sql.lowering` writes DuckDB's as SQL. The
+translation (`sverify_polars.engine`) asks it for those functions, and
+`engines/polars/tests/test_lowering_agrees.py` checks its values against the
+reference's.
 
 Each call is written as `Profile.polars` states Polars computes it: `//` and
 `%` floor, `round` rounds halves away from zero (the `rounding` shim's

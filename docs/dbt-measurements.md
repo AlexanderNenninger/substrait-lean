@@ -84,37 +84,39 @@ The full list is in each run's JSON record (`top_root_causes`).
 
 ### jaffle_shop with source assumptions
 
-The tests of jaffle_shop sit on its staging models, and none sits on a seed, so sverify-dbt finds no key and no non-null column under them. [`dbt/scripts/measure_overlays/jaffle_shop.yml`](../dbt/scripts/measure_overlays/jaffle_shop.yml) adds what a user would declare on the seeds, applied on top of the pinned commit with `--overlay`:
+The tests of jaffle_shop sit on its staging models, and none sits on a seed, so sverify-dbt finds no key and no non-null column under them. [`dbt/scripts/measure_overlays/jaffle_shop.yml`](../dbt/scripts/measure_overlays/jaffle_shop.yml) adds what a user would declare, applied on top of the pinned commit with `--overlay`:
 
 - `unique` and `not_null` on `raw_customers.id`, `raw_orders.id` and `raw_payments.id`.
 - `not_null` on `raw_orders.user_id`, `raw_payments.order_id` and `raw_payments.amount`.
 - `accepted_values` on `raw_orders.status` and `raw_payments.payment_method`, with the values of the project's own staging tests.
 - `relationships` from `raw_orders.user_id` to `raw_customers.id` and from `raw_payments.order_id` to `raw_orders.id`.
+- `not_null` on `stg_orders.customer_id`, the test sverify-dbt suggests for `orders`.
 
-dbt still runs these 13 tests, and all of them pass, so each assumption holds on the data.
+A model's preconditions are the tests its direct inputs declare, so a fact about a seed reaches `orders` through a test on `stg_orders`, and sverify-dbt's suggestions say which tests to declare.
+
+dbt still runs these 14 tests, and all of them pass, so each assumption holds on the data.
 
 | | As published | With source assumptions |
 |---|---|---|
-| Declared tests | 20 | 33 |
-| Proved | 5 | 13 |
-| The project's own 20 tests, proved | 5 (25%) | 13 (65%) |
-| All declared tests, proved | 5 of 20 (25%) | 13 of 33 (39%) |
-| Test queries skipped | 5 of 20 | 13 of 33 |
-| Test time skipped on DuckDB | 0.29 of 1.45 s | 0.80 of 2.42 s |
+| Declared tests | 20 | 34 |
+| Proved | 5 | 15 |
+| The project's own 20 tests, proved | 5 (25%) | 14 (70%) |
+| All declared tests, proved | 5 of 20 (25%) | 15 of 34 (44%) |
+| Test queries skipped | 5 of 20 | 15 of 34 |
+| Test time skipped on DuckDB | 0.29 of 1.45 s | 0.76 of 2.15 s |
 
-The 8 staging tests (`unique` and `not_null` on each key, `accepted_values` on `status` and `payment_method`) turn proved: each is a rename of the seed column that carries the same test. The 13 tests on seeds are dbt's to run, and `sverify_proved` never skips them.
+The 8 staging tests (`unique` and `not_null` on each key, `accepted_values` on `status` and `payment_method`) turn proved: each is a rename of the seed column that carries the same test. So does `orders.not_null(customer_id)`, through the test on `stg_orders`. The 13 tests on seeds are dbt's to run, and `sverify_proved` never skips them.
 
-The 7 tests that stay open, in both readings:
+The 6 tests that stay open:
 
 | Test | Status | Why |
 |---|---|---|
-| `orders.not_null(customer_id)` | not proved | sverify-dbt reads the tests on the models `orders` reads, so it needs `not_null(customer_id)` on `stg_orders`. The seed's `not_null(user_id)` then proves that test, but the suggestion is a test on the staging model, not a seed assumption. |
 | `orders.relationships(customer_id)` | not checked | sverify-dbt proves no foreign key of a model's result. dbt runs it. |
 | `orders.not_null(amount)` and the four `*_amount` columns | not proved | `orders` left-joins the per-order payment sums, so each amount is NULL for an order without payments. The data has none, and the plan does not say so. A proof needs an assumption that every order has a payment and a join analysis that uses it, which sverify does not have. |
 
 ### Cal-ITP transpiled to DuckDB
 
-`--transpile` rewrites each model's compiled SQL in the manifest from BigQuery to DuckDB with [SQLGlot](https://github.com/tobymao/sqlglot) (`read="bigquery"`, `write="duckdb"`), mechanically and with no hand edits. A model SQLGlot fails on keeps its BigQuery SQL. The run also uses the 5,379 catalog types.
+`--transpile` rewrites each model's compiled SQL in the manifest from BigQuery to DuckDB with [SQLGlot](https://github.com/tobymao/sqlglot) (`read="bigquery"`, `write="duckdb"`), mechanically and with no hand edits. A model SQLGlot fails on keeps its BigQuery SQL. Four models have no compiled SQL in the manifest and are not transpiled (`payments_tests_weekly_date_spine`, `payments_tests_weekly_date_spine_enghouse`, `v2_payments_reliability_weekly_unlabeled_routes` and `v2_payments_reliability_weekly_unlabeled_routes_enghouse`), so 583 transpile, 41 fail and 4 have no SQL to rewrite. The run also uses the 5,379 catalog types.
 
 | | Count | Share |
 |---|---|---|
@@ -146,7 +148,7 @@ SQLGlot can change what a query means. A translation is correct when BigQuery an
 - On a DuckDB project (jaffle_shop), sverify-dbt reads every model and proves a quarter of the declared tests.
 - Source column types decide the second run. Typing 5,379 columns lifted Cal-ITP's reading from 6 models to 13 and cut the refusals that need column types from 617 to 9 and raised the dialect refusals from 3 to 598. A project on DuckDB gets them from `dbt docs generate`.
 - Dialect decides the first. A BigQuery project reads at 2.1% raw and 46% with the dialect set apart. The 598 dialect models are not in it, so the BigQuery lift decides how far the rate moves.
-- jaffle_shop's rate depends on what the seeds declare: 25% as published, 65% of the project's own tests with the seeds' keys and values declared. The 7 tests left need sverify's own work.
+- jaffle_shop's rate depends on what the seeds declare: 25% as published, 70% of the project's own tests with the seeds' keys and values declared and the suggested test on `stg_orders`. The 6 tests left need sverify's own work.
 - Transpiling with SQLGlot lifts Cal-ITP's reading from 2.1% to 10.5%. It proved no test, because 346 of the 351 sit on models still refused.
 - No test was proved on Cal-ITP, so nothing was skipped there. The proof rate waits on a project that sverify-dbt can read, and on the lift.
 

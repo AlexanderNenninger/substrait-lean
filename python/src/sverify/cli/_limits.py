@@ -21,6 +21,8 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
 
+from sverify.cli._common import ExitCode
+
 #: The default time budget of every command, in seconds (#744).
 DEFAULT_TIMEOUT = 30.0
 #: How long the main thread may take to stop after the alarm before the
@@ -155,4 +157,4 @@ class Budget:
         finally:
             sys.stdout.flush()
             sys.stderr.flush()
-            os._exit(4)  # the budget's exit code (`_main.BUDGET`)
+            os._exit(ExitCode.BUDGET)
