@@ -62,7 +62,7 @@ def Profile.polars.table : ProfileTable where
     -- (polars-rolling-sum-float). A row is scoped by function group, not by
     -- frame kind, so both values stand for every frame: sound, as both sum
     -- the frame's own values. Evidence: the differential test
-    -- (`test_polars_windows.py`); the lowering lemma under #271 later.
+    -- (`test_polars_windows.py`); a proof under #2544 later.
     (none, "window_sum_algo", .oneOf ["RUNNING_ADD", "TREE"]),
     -- Two-pass blocks of at most 128 values with Schubert and Gertz's merge
     -- (polars-var-std-streaming), for `VAR_*` and `COVAR_*` alike (ruling 271).
@@ -115,9 +115,9 @@ def Profile.polars.obs : ObsTable := [
     "polars-round-digits"] with shim := some "round: 0.0 for a negative value that rounds to zero" }).proved
     "Lowering.polars_exact"),
   (none, "pow_one_inf", (ObsRow.native ["polars-pow-one-inf"]).proved "Lowering.polars_exact"),
-  (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["polars-nan-sign"]).tracking 271),
-  (none, "nan_order", (ObsRow.native ["polars-nan-order"]).tracking 271),
-  (none, "nan_equality", (ObsRow.native ["polars-nan-equality"]).tracking 271),
+  (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["polars-nan-sign"]).tracking 2544),
+  (none, "nan_order", (ObsRow.native ["polars-nan-order"]).tracking 2544),
+  (none, "nan_equality", (ObsRow.native ["polars-nan-equality"]).tracking 2544),
   -- Streaming sums are trees: sequential per group, pairwise per morsel, of
   -- any shape overall, within #85's bound (`StdModel.epsilon_sum_cr`).
   -- Run to run the order varies (morsels, pipelines), within the plan's bound,
@@ -130,7 +130,7 @@ def Profile.polars.obs : ObsTable := [
     ["polars-fp-ieee", "polars-sum-float-streaming", "polars-mean-float-streaming"]
     "Each Float64 addition rounds to nearest, ties to even (polars-fp-ieee); streaming sums are sequential or pairwise trees of any shape, and mean divides the f64 sum once: StdModel.Summed and fl(s / n), which epsilon_sum_cr and epsilon_avg_cr bound for any rounding to nearest. Float32 sums run in single precision, which no bound covers: the checker marks their bound unproved (Epsilon.hasFp32)."),
   (none, "window_sum_algo", (ObsRow.approxWithin "plan"
-    ["polars-window-agg", "polars-cum-sum-float", "polars-fp-ieee"]).tracking 900),
+    ["polars-window-agg", "polars-cum-sum-float", "polars-fp-ieee"]).tracking 2544),
   -- This row holds for `COVAR_*` and `CORR` (`agg.stat`): `float-bounds` proves
   -- `COVAR_*` within `StatTol.sg` (`core_cov_polars`) and `PearsonState`'s `CORR`,
   -- `dp_xy / √(dp_xx · dp_yy)`, within `corrErr` (`core_corr_polars`), for two-pass
@@ -157,7 +157,7 @@ def Profile.polars.obs : ObsTable := [
   (none, "quantile_interp", ({ ObsRow.native ["polars-quantile"] with
     engine := some "in-memory"
     cls := .refused
-    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, polars-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference. The neighbours are those of the engine's double position, `⌊(n − 1)·q⌋` and `⌈(n − 1)·q⌉` in doubles (`contNeighboursD`, polars-quantile)." }).tracking 900),
+    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, polars-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference. The neighbours are those of the engine's double position, `⌊(n − 1)·q⌋` and `⌈(n − 1)·q⌉` in doubles (`contNeighboursD`, polars-quantile)." }).tracking 2544),
   -- `max` is NaN where the group holds one; `min`, which skips NaN, agrees
   -- with NaN as the greatest double (`Polars.min_ignore_nan`).
   (some "agg.order", "nan_order", ({ ObsRow.shimmed "max_nan_greatest" ["polars-min-max-nan"] with
@@ -175,22 +175,22 @@ def Profile.polars.obs : ObsTable := [
   -- key, a written argument. `Shim.null_order`: with it, Polars orders as
   -- `sortLe`.
   (none, "null_order", (ObsRow.shimmed "null_order" ["polars-null-order"]).proved "Shim.null_order"),
-  (none, "clustered", (ObsRow.shimmed "sort on the keys" ["polars-clustered"]).tracking 271),
+  (none, "clustered", (ObsRow.shimmed "sort on the keys" ["polars-clustered"]).tracking 2539),
   -- A streaming sort of a large input does not keep ties in input order.
   (none, "tie_order", ({ ObsRow.native ["polars-sort-stability-streaming", "polars-first-last"] with
     rerun := some { rows := .tiesPermuted } }).proved "Polars.tie_order"),
   -- `first` and `last` follow input order on streaming, run after run.
-  (none, "tie_pick", ({ ObsRow.native ["polars-first-last"] with rerun := some Obs.exact }).tracking 271),
+  (none, "tie_pick", ({ ObsRow.native ["polars-first-last"] with rerun := some Obs.exact }).tracking 2539),
   (some "fp.round", "rounding", (ObsRow.shimmed "round_half_away" ["polars-round"]).proved "Polars.round_half_away"),
   (some "fp.div", "rounding", ({ ObsRow.approxWithin "plan" ["polars-scalar-divisor"] with
     precondition := "every divisor of a double division with no column reference (a literal, a constant expression) is not subnormal: |y| ≥ 2⁻¹⁰²² (fp64), 2⁻¹²⁶ (fp32); the plan has no bound below it (`Epsilon.exprEps`)",
-    note := "By a scalar divisor Polars computes fl(x · fl(1 / y)): two roundings, a relative error of 2u per division where IEEE has u. Below the smallest normal, 1 / y overflows (0.0 / 1e-310 is NaN, 1e-300 / 1e-310 is inf), hence the precondition. Decided on #444: no exact-IEEE shim for `/`. The plan's bound is the reciprocal's, `rule_div_recip`, for every divisor without a column reference; it is at least the exact quotient's (`rule_div_le_recip`)." }).tracking 271),
+    note := "By a scalar divisor Polars computes fl(x · fl(1 / y)): two roundings, a relative error of 2u per division where IEEE has u. Below the smallest normal, 1 / y overflows (0.0 / 1e-310 is NaN, 1e-300 / 1e-310 is inf), hence the precondition. Decided on #444: no exact-IEEE shim for `/`. The plan's bound is the reciprocal's, `rule_div_recip`, for every divisor without a column reference; it is at least the exact quotient's (`rule_div_le_recip`)." }).tracking 2544),
   -- `log10` and `log2` are `ln x / ln b` (polars-log-base), where the
   -- reference takes the platform's `libm`: within 2.1 ulp (polars-ulp-libm),
   -- which the plan's bound adds per call (`Epsilon.opExtra`). Tested, not
   -- proved (#1270).
   (some "fp.log", "rounding", ({ ObsRow.approxWithin "plan" ["polars-log-base", "polars-ulp-libm"] with
-    note := "Polars has no libm log10 or log2: both divide natural logarithms, log10 as x.log(10), log2 as x.log(2), within 2.1 ulp of libm's (polars-ulp-libm, measured). The translation runs them natively (#1270); the plan's bound adds 2.1 ulp per call (Epsilon.opExtra). A bound tested, not proved." }).tracking 1270),
+    note := "Polars has no libm log10 or log2: both divide natural logarithms, log10 as x.log(10), log2 as x.log(2), within 2.1 ulp of libm's (polars-ulp-libm, measured). The translation runs them natively (#1270); the plan's bound adds 2.1 ulp per call (Epsilon.opExtra). A bound tested, not proved." }).tracking 2544),
   -- Polars floors `%` of doubles (`x - y * floor(x / y)`, D41), where the
   -- reference truncates, and no shim gives the truncating `fmod` exactly
   -- (polars-double-modulus, #1270): the reference route refuses it. A plan
@@ -200,7 +200,7 @@ def Profile.polars.obs : ObsTable := [
   -- (polars-scalar-divisor).
   (some "fp.mod", "division_type", ({ ObsRow.native ["polars-double-modulus", "polars-scalar-divisor"] with
     cls := .refused
-    note := "`%` of doubles floors the quotient, so the reference's truncating `fmod` has no exact form on Polars: refused under the reference, and Polars's lowering refuses it (`Lowering.polars_no_fmod`: no lowered plan calls it). Under `semantics=\"polars\"` (`division_type: FLOOR`, D41) it runs as `x - y * floor(x / y)` over the calls of the written plan (`Profile.polars_fmod`), on the translated route." }).tracking 271),
+    note := "`%` of doubles floors the quotient, so the reference's truncating `fmod` has no exact form on Polars: refused under the reference, and Polars's lowering refuses it (`Lowering.polars_no_fmod`: no lowered plan calls it). Under `semantics=\"polars\"` (`division_type: FLOOR`, D41) it runs as `x - y * floor(x / y)` over the calls of the written plan (`Profile.polars_fmod`), on the translated route." }).tracking 2544),
   (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
     ["polars-zero-sign-streaming", "polars-zero-add"] with shim := some "one_zero" }).proved "Shim.one_zero"),
   (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Shim.makes_infinite"),
@@ -214,10 +214,10 @@ def Profile.polars.obs : ObsTable := [
   (none, "case_sensitivity", (ObsRow.native ["polars-match-functions"]).proved "Lowering.polars_exact"),
   (some "str.sub", "string_positions", (ObsRow.shimmed "substring_wrap" ["polars-substring"]).proved "Polars.substring_wrap"),
   (some "str.match", "string_positions", (ObsRow.shimmed "strpos_chars" ["polars-strpos"]).proved "Polars.strpos_chars"),
-  (none, "null_join_keys", (ObsRow.native ["polars-null-keys"]).tracking 271),
+  (none, "null_join_keys", (ObsRow.native ["polars-null-keys"]).tracking 2539),
   -- Past 38 digits, where the reference raises past the result's precision,
   -- which the translation checks (`fit_decimal`).
-  (some "dec.arith", "overflow", (ObsRow.native ["polars-decimal-arith"]).tracking 271),
+  (some "dec.arith", "overflow", (ObsRow.native ["polars-decimal-arith"]).tracking 2544),
   -- A product's scale is the sum of the operands' there, computed on the
   -- unscaled values; a cast to a smaller scale rounds half away from zero.
   (none, "decimal_rescale", (ObsRow.shimmed "decimal_round_half_away"

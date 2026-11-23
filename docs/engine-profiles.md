@@ -340,7 +340,7 @@ theorems as their evidence. The
 is the profile `--contract` takes with `"profile": "polars"`. It is an
 evaluable `Profile`, as `Profile.duckdb` is, and it takes Polars's choice
 option by option. `verify(semantics="polars")` does not check under it yet:
-the report is the reference's, marked pending (`ProfilePendingWarning`, [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)),
+the report is the reference's, marked pending (`ProfilePendingWarning`, [#2545](https://github.com/AlexanderNenninger/substrait-lean/issues/2545)),
 and the plan runs on Polars by the translated route until then.
 
 | Option | `Profile.polars` | Polars 2.1.0 | Why |
@@ -548,7 +548,14 @@ Each engine reaches the reference through a translation, a function from
 a plan to something the engine runs. Lean proves the shims a translation
 applies and that the shimmed plan refines the reference under the engine's
 profile (the theorems in [Engines](#engines)); the code below that writes the
-shimmed plan for the engine is trusted, and tested against `Rel.eval`:
+shimmed plan for the engine is trusted, and tested against `Rel.eval`.
+Each engine's scalar functions come from its generated lowering table, whose
+templates Lean proves against the engine's profile (`Lowering.duckdb_exact`,
+`Lowering.polars_exact`, and `Lowering.spark_exact_except`, every entry but
+IEEE division; #2422, #2520). What stays trusted is the code that writes a
+template (`sverify/sql/lowering.py`, `sverify_polars/lowering.py`) and the
+relational operators, whose own profiles are
+[#2539](https://github.com/AlexanderNenninger/substrait-lean/issues/2539):
 
 | engine | translation | where |
 |---|---|---|
