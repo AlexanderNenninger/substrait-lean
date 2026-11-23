@@ -1,0 +1,14 @@
+{
+  "id": "U-2026-11-23-left-join-relationship-1-0",
+  "date": "2026-11-23",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "In 1.0: sverify proves that a LEFT JOIN keeps no NULLs in its right-side columns where a declared relationship gives every left row a match. The relationship comes from a dbt relationships test or `sv.references`, and a join analysis with its Lean lemma uses it.",
+  "issues": [
+    2512,
+    2418
+  ],
+  "source": "https://github.com/AlexanderNenninger/substrait-lean/issues/2512",
+  "note": "A common dbt pattern: jaffle_shop's `orders` left-joins `stg_orders` to a per-order sum over `stg_payments`, and 5 of the 7 tests sverify can't prove there rest on it (#2418). Measure: jaffle_shop's own tests proved, 14 of 20 before."
+}

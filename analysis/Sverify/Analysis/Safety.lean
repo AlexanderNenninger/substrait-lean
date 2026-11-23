@@ -505,10 +505,30 @@ def BinFn.fBound : BinFn → Bound → Bound → Bound
   | .fdiv, x, y => fdivBound x y
   | _, _, _ => Bound.top
 
-/-- Do the arguments' bounds show the result finite (#582)? -/
+/-- Does a bound show its doubles at least `1` in magnitude? -/
+def Bound.atLeastOne (y : Bound) : Bool :=
+  y.allGe (FloatCode.exactCode 1) || y.allLe (FloatCode.exactCode (-1))
+
+/-- Does a bound show its doubles at most `1` in magnitude? -/
+def Bound.atMostOne (y : Bound) : Bool := y.within (FloatCode.exactCode (-1)) (FloatCode.exactCode 1)
+
+/-- Does a bound show its doubles zero? -/
+def Bound.isZero (y : Bound) : Bool := y.within 0 0
+
+/-- Is the result at most an argument in magnitude: a quotient by a double of
+at least `1`, a product with one of at most `1`, or a sum or difference with a
+zero, such as the `+ 0.0` that canonicalises a zero's sign (#1787)? -/
+def BinFn.shrinks : BinFn → Bound → Bound → Bool
+  | .fdiv, _, y | .fdivIeee, _, y => y.atLeastOne
+  | .fmul, x, y => x.atMostOne || y.atMostOne
+  | .fadd, x, y | .fsub, x, y => x.isZero || y.isZero
+  | _, _, _ => false
+
+/-- Do the arguments' bounds show the result finite (#582)? Their bounds
+bound the result's, or the call shrinks its first argument (#1787). -/
 def BinFn.finiteResult (f : BinFn) (aa ab : AVal) : Bool :=
   match aa.int, ab.int with
-  | some x, some y => match f.fBound x y with
+  | some x, some y => f.shrinks x y || match f.fBound x y with
     | ⟨some l, some h⟩ => decide (FloatCode.negInf < l) && decide (h < FloatCode.posInf)
     | _ => false
   | _, _ => false
@@ -530,8 +550,81 @@ theorem BinFn.fBound_mem (f : BinFn) {x y : Bound} {a b r : Int} (hx : x.Mem (Fl
   · rw [← FloatCode.fmul_canon]; exact fmulBound_mem hx hy
   · rw [← FloatCode.fdiv_canon_left]; exact fdivBound_mem hx hy
 
+omit [Boxes.Ambient] in
+theorem Bound.atLeastOne_scaled {y : Bound} {c : Int} (hy : y.Mem c) (h : y.atLeastOne = true) :
+    FloatCode.unitK ≤ (FloatCode.scaled c).natAbs := by
+  have e1 := FloatCode.scaled_exactCode 1
+  have e2 := FloatCode.scaled_exactCode (-1)
+  simp only [Bound.atLeastOne, Bool.or_eq_true] at h
+  rcases h with h | h
+  · have := FloatCode.scaled_mono (Bound.allGe_le h hy); omega
+  · have := FloatCode.scaled_mono (Bound.le_allLe h hy); omega
+
+omit [Boxes.Ambient] in
+theorem Bound.isZero_scaled {y : Bound} {c : Int} (hy : y.Mem c) (h : y.isZero = true) :
+    FloatCode.scaled c = 0 := by
+  simp only [Bound.isZero, Bound.within, Bool.and_eq_true] at h
+  have h1 := Bound.allGe_le h.1 hy
+  have h2 := Bound.le_allLe h.2 hy
+  rw [show c = 0 by omega]; rfl
+
+omit [Boxes.Ambient] in
+theorem Bound.atMostOne_scaled {y : Bound} {c : Int} (hy : y.Mem c) (h : y.atMostOne = true) :
+    (FloatCode.scaled c).natAbs ≤ FloatCode.unitK := by
+  have e1 := FloatCode.scaled_exactCode 1
+  have e2 := FloatCode.scaled_exactCode (-1)
+  simp only [Bound.atMostOne, Bound.within, Bool.and_eq_true] at h
+  have := FloatCode.scaled_mono (Bound.allGe_le h.1 hy)
+  have := FloatCode.scaled_mono (Bound.le_allLe h.2 hy)
+  omega
+
+/-- A call that shrinks its first argument (`BinFn.shrinks`) has a finite
+result on finite arguments (`FloatCode.fdiv_fin_of_one_le`,
+`FloatCode.fmul_fin_of_le_one`). -/
+theorem BinFn.shrinks_fin {f : BinFn} {x y : Bound} {a b r : Int} (hx : x.Mem (FloatCode.canon a))
+    (hy : y.Mem (FloatCode.canon b)) (hfa : isFiniteCode (FloatCode.canon a) = true)
+    (hfb : isFiniteCode (FloatCode.canon b) = true) (hr : f.apply (.float a) (.float b) = .float r)
+    (hs : f.shrinks x y = true) : FloatCode.IsFin (FloatCode.canon r) := by
+  have fa : FloatCode.IsFin (FloatCode.canon a) := by
+    simpa [isFiniteCode, FloatCode.IsFin] using hfa
+  have fb : FloatCode.IsFin (FloatCode.canon b) := by
+    simpa [isFiniteCode, FloatCode.IsFin] using hfb
+  cases f <;> simp only [BinFn.shrinks, Bool.false_eq_true] at hs
+  case fmul =>
+    simp only [BinFn.apply, Value.float.injEq] at hr; subst hr
+    rw [← FloatCode.fmul_canon]
+    simp only [Bool.or_eq_true] at hs
+    exact FloatCode.fmul_fin_of_le_one fa fb
+      (hs.imp (Bound.atMostOne_scaled hx) (Bound.atMostOne_scaled hy))
+  case fadd =>
+    simp only [BinFn.apply, Value.float.injEq] at hr; subst hr
+    rw [← FloatCode.fadd_canon]
+    simp only [Bool.or_eq_true] at hs
+    exact FloatCode.fadd_fin_of_zero fa fb (hs.imp (Bound.isZero_scaled hx) (Bound.isZero_scaled hy))
+  case fsub =>
+    simp only [BinFn.apply, Value.float.injEq] at hr; subst hr
+    rw [← FloatCode.fsub_canon]
+    simp only [Bool.or_eq_true] at hs
+    exact FloatCode.fsub_fin_of_zero fa fb (hs.imp (Bound.isZero_scaled hx) (Bound.isZero_scaled hy))
+  case fdiv =>
+    simp only [BinFn.apply, Value.float.injEq] at hr; subst hr
+    rw [← FloatCode.fdiv_canon_left]
+    exact FloatCode.fdiv_fin_of_one_le fa fb (Bound.atLeastOne_scaled hy hs)
+  case fdivIeee =>
+    simp only [BinFn.apply, Value.float.injEq] at hr; subst hr
+    have h1 := Bound.atLeastOne_scaled hy hs
+    -- `|b| ≥ 1`: `b` is neither `-0.0` nor the negative NaN, so `canon` keeps it.
+    have hb : FloatCode.canon b = b := by
+      rcases FloatCode.canon_cases b with ⟨-, h0⟩ | ⟨-, hn⟩ | h
+      · rw [h0, show FloatCode.scaled 0 = 0 from rfl] at h1; have := FloatCode.unitK_pos; omega
+      · rw [hn] at fb; have := fb.not_nan; simp [FloatCode.isNanCode] at this
+      · exact h
+    rw [← FloatCode.fdiv_canon_left, ← hb]
+    exact FloatCode.fdiv_fin_of_one_le fa fb h1
+
 theorem BinFn.finiteResult_false (f : BinFn) {aa ab : AVal} {a b r : Int}
-    (ha : aa.Mem (.float a)) (hb : ab.Mem (.float b)) (hr : f.apply (.float a) (.float b) = .float r)
+    (ha : aa.Mem (.float a)) (hb : ab.Mem (.float b)) (hfa : isFiniteCode (FloatCode.canon a) = true)
+    (hfb : isFiniteCode (FloatCode.canon b) = true) (hr : f.apply (.float a) (.float b) = .float r)
     (hinf : isInfCode r = true) : f.finiteResult aa ab = false := by
   obtain ⟨x, hx, hxm, -⟩ := ha
   obtain ⟨y, hy, hym, -⟩ := hb
@@ -541,10 +634,17 @@ theorem BinFn.finiteResult_false (f : BinFn) {aa ab : AVal} {a b r : Int}
     rcases hinf with rfl | rfl
     · exact FloatCode.canon_posInf
     · exact FloatCode.canon_negInf
+  have hs : f.shrinks x y = false := by
+    rw [← Bool.not_eq_true]; intro hsh
+    have hfin := BinFn.shrinks_fin hxm hym hfa hfb hr hsh
+    rw [hcr] at hfin
+    obtain ⟨h1, h2⟩ := hfin
+    rcases hinf with rfl | rfl <;> omega
   rw [hcr] at hm
   unfold BinFn.finiteResult
   rw [hx, hy]
   dsimp only
+  rw [hs, Bool.false_or]
   split
   · rename_i l h heq
     rw [heq] at hm
@@ -602,23 +702,149 @@ theorem BinFn.mayInf_sound (f : BinFn) {aa ab : AVal} {v w : Value} {k : Issue} 
     · rename_i hc
       simp only [Bool.and_eq_true] at hc
       simp [BinFn.mayInf, hc.1.1.1.1, AVal.mayFinite_of_mem ha hc.1.1.1.2, AVal.mayFinite_of_mem hb hc.1.1.2,
-        BinFn.finiteResult_false f ha hb heq hc.1.2]
+        BinFn.finiteResult_false f ha hb hc.1.1.1.2 hc.1.1.2 heq hc.1.2]
     · simp at hk
+  · simp at hk
+
+/-- May the bound hold a value: no lower end above its upper end? -/
+def Bound.nonempty : Bound → Bool
+  | ⟨some l, some h⟩ => decide (l ≤ h)
+  | _ => true
+
+omit [Boxes.Ambient] in
+theorem Bound.nonempty_of_mem {p : Bound} {c : Int} (h : p.Mem c) : p.nonempty = true := by
+  obtain ⟨lo, hi⟩ := p
+  cases lo <;> cases hi <;> simp only [Bound.nonempty]
+  rename_i l u
+  have := h.1 l rfl; have := h.2 u rfl
+  simp only [decide_eq_true_eq]; omega
+
+/-- The parts of a divisor's bound that a nonzero decimal at scale `s`, as a
+double, can be in: at least `ofDecimal 1 s`, or at most `ofDecimal (-1) s`.
+Its ends are finite, as every decimal's double is (`ofDecimal_bounds`). -/
+def Bound.decParts (s : Nat) (y : Bound) : List Bound :=
+  let d1 := FloatCode.ofDecimal 1 s
+  let m1 := FloatCode.ofDecimal (-1) s
+  let top := FloatCode.posInf - 1
+  let bot := FloatCode.negInf + 1
+  [⟨some (y.lo.elim d1 (max d1)), some (y.hi.elim top (min top))⟩,
+    ⟨some (y.lo.elim bot (max bot)), some (y.hi.elim m1 (min m1))⟩].filter Bound.nonempty
+
+/-- Does a double divided by a nonzero decimal at scale `s`, as a double, stay
+finite by the bounds: the dividend's over each part of the divisor's? -/
+def decQuotFinite (s : Nat) (aa ab : AVal) : Bool :=
+  match aa.int, ab.int with
+  | some x, some y => (y.decParts s).all fun p => match fdivBound x p with
+    | ⟨some l, some h⟩ => decide (FloatCode.negInf < l) && decide (h < FloatCode.posInf)
+    | _ => false
+  | _, _ => false
+
+omit [Boxes.Ambient] in
+/-- A nonzero decimal's double is in one of the parts `Bound.decParts` keeps. -/
+theorem Bound.decParts_mem {s : Nat} {y : Bound} {i : Int} (hi0 : i ≠ 0)
+    (hy : y.Mem (FloatCode.ofDecimal i s)) : ∃ p ∈ y.decParts s, p.Mem (FloatCode.ofDecimal i s) := by
+  obtain ⟨lo, hi⟩ := y
+  have hf := FloatCode.ofDecimal_bounds i s
+  -- Each end of a part is an end of `y` or a bound every nonzero decimal of its sign meets.
+  have hl : ∀ d, d ≤ FloatCode.ofDecimal i s → ∀ l, some (lo.elim d (max d)) = some l →
+      l ≤ FloatCode.ofDecimal i s := fun d hd l hl => by
+    cases lo with
+    | none => simp only [Option.elim, Option.some.injEq] at hl; omega
+    | some l' => simp only [Option.elim, Option.some.injEq] at hl; have := hy.1 l' rfl; omega
+  have hh : ∀ d, FloatCode.ofDecimal i s ≤ d → ∀ u, some (hi.elim d (min d)) = some u →
+      FloatCode.ofDecimal i s ≤ u := fun d hd u hu => by
+    cases hi with
+    | none => simp only [Option.elim, Option.some.injEq] at hu; omega
+    | some h => simp only [Option.elim, Option.some.injEq] at hu; have := hy.2 h rfl; omega
+  have hp : ∀ p, p.Mem (FloatCode.ofDecimal i s) → p ∈ [
+      (⟨some (lo.elim (FloatCode.ofDecimal 1 s) (max (FloatCode.ofDecimal 1 s))),
+        some (hi.elim (FloatCode.posInf - 1) (min (FloatCode.posInf - 1)))⟩ : Bound),
+      ⟨some (lo.elim (FloatCode.negInf + 1) (max (FloatCode.negInf + 1))),
+        some (hi.elim (FloatCode.ofDecimal (-1) s) (min (FloatCode.ofDecimal (-1) s)))⟩] →
+      ∃ p ∈ Bound.decParts s ⟨lo, hi⟩, p.Mem (FloatCode.ofDecimal i s) :=
+    fun p hm hor => ⟨p, by
+      simp only [Bound.decParts, List.mem_filter]
+      exact ⟨hor, Bound.nonempty_of_mem hm⟩, hm⟩
+  rcases Int.lt_or_gt_of_ne hi0 with hneg | hpos
+  · have hm := FloatCode.ofDecimal_mono s (show i ≤ -1 by omega)
+    exact hp ⟨some (lo.elim (FloatCode.negInf + 1) (max (FloatCode.negInf + 1))),
+      some (hi.elim (FloatCode.ofDecimal (-1) s) (min (FloatCode.ofDecimal (-1) s)))⟩
+      ⟨hl _ (by omega), hh _ hm⟩ (by simp)
+  · have hm := FloatCode.ofDecimal_mono s (show 1 ≤ i by omega)
+    exact hp ⟨some (lo.elim (FloatCode.ofDecimal 1 s) (max (FloatCode.ofDecimal 1 s))),
+      some (hi.elim (FloatCode.posInf - 1) (min (FloatCode.posInf - 1)))⟩
+      ⟨hl _ hm, hh _ (by omega)⟩ (by simp)
+
+/-- A double divided by a nonzero decimal as a double does not overflow where
+`decQuotFinite` holds: the divisor is in a part of its bound away from zero,
+over which `fdivBound` bounds the quotient (#1787). -/
+theorem decQuotFinite_sound {s : Nat} {aa ab : AVal} {a i : Int} {k : Issue}
+    (hq : decQuotFinite s aa ab = true) (ha : aa.Mem (.float a))
+    (hb : ab.Mem (.float (FloatCode.ofDecimal i s))) (hi0 : i ≠ 0)
+    (hk : BinFn.fdiv.infIssue (.float a) (.float (FloatCode.ofDecimal i s)) = some k) : False := by
+  obtain ⟨x, hx, hxm, -⟩ := ha
+  obtain ⟨y, hy, hym, -⟩ := hb
+  rw [NumKind.norm_float] at hxm hym
+  have hfin := FloatCode.ofDecimal_bounds i s
+  have hcc : FloatCode.canon (FloatCode.ofDecimal i s) = FloatCode.ofDecimal i s := by
+    have := FloatCode.negZero_eq'; have := FloatCode.negNan_eq'; have := FloatCode.negInf_eq
+    rcases FloatCode.canon_cases (FloatCode.ofDecimal i s) with ⟨h, -⟩ | ⟨h, -⟩ | h
+    · omega
+    · omega
+    · exact h
+  rw [hcc] at hym
+  obtain ⟨p, hp, hpm⟩ := Bound.decParts_mem hi0 hym
+  unfold decQuotFinite at hq
+  rw [hx, hy] at hq
+  have hP := List.all_eq_true.mp hq p hp
+  have hm := fdivBound_mem hxm hpm
+  rw [FloatCode.fdiv_canon_left] at hm
+  unfold BinFn.infIssue at hk
+  simp only [BinFn.apply, hcc] at hk
+  split at hk
+  · rename_i hc
+    simp only [Bool.and_eq_true] at hc
+    have hinf := hc.1.2
+    simp only [isInfCode, Bool.or_eq_true, beq_iff_eq] at hinf
+    have hcr : FloatCode.canon (FloatCode.fdiv a (FloatCode.ofDecimal i s)) =
+        FloatCode.fdiv a (FloatCode.ofDecimal i s) := by
+      rcases hinf with h | h <;> rw [h]
+      · exact FloatCode.canon_posInf
+      · exact FloatCode.canon_negInf
+    rw [hcr] at hm
+    generalize fdivBound x p = B at hP hm
+    obtain ⟨lo, hi⟩ := B
+    cases lo with
+    | none => simp at hP
+    | some l => cases hi with
+      | none => simp at hP
+      | some u =>
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at hP
+        have := hm.1 l rfl; have := hm.2 u rfl
+        rcases hinf with h | h <;> omega
   · simp at hk
 
 /-- `BinFn.mayInf` of a call `f a b`, read with its divisor's shape: a double
 divided by an integer cast to a double (`x / DOUBLE(n)`) does not overflow.
 Its divisor is zero, which raises first (`BinFn.issue`), or at least `1` in
-magnitude, so the quotient is at most `x` (`FloatCode.fdiv_ofInt_fin`, #1787). -/
+magnitude, so the quotient is at most `x` (`FloatCode.fdiv_ofInt_fin`, #1787).
+Nor does a double divided by a decimal as a double, where `decQuotFinite`
+bounds the quotient over the divisor's nonzero values (`decQuotFinite_sound`). -/
 def Expr.mayInfBin (f : BinFn) (b : Expr) (aa ab : AVal) : List Issue :=
   match f, b with
   | .fdiv, .un .itof _ => []
+  | .fdiv, .un (.dtof s) _ => if decQuotFinite s aa ab then [] else f.mayInf aa ab
   | _, _ => f.mayInf aa ab
 
 theorem UnFn.itof_float {x : Value} {c : Int} (h : UnFn.itof.apply x = .float c) :
     ∃ i, c = FloatCode.ofInt i := by
   cases x <;> simp [UnFn.apply] at h
   exact ⟨_, h.symm⟩
+
+theorem UnFn.dtof_float {s : Nat} {x : Value} {c : Int} (h : (UnFn.dtof s).apply x = .float c) :
+    ∃ i, c = FloatCode.ofDecimal i s := by
+  cases x <;> simp [UnFn.apply] at h
+  all_goals exact ⟨_, h.symm⟩
 
 /-- A double divided by a nonzero integer, as a double, does not overflow:
 where `BinFn.issue` gives nothing, the divisor is not zero. -/
@@ -661,6 +887,24 @@ theorem Expr.mayInfBin_sound {row : Row} (f : BinFn) (a b : Expr) {aa ab : AVal}
       rw [BinFn.fdiv_ofInt_infIssue hj] at hi
       cases hi
     | _ => rw [hw] at hi; simp [BinFn.infIssue] at hi
+  · rename_i s e
+    split
+    · rename_i hq
+      exfalso
+      cases hw : (Expr.un (.dtof s) e).eval row with
+      | float c =>
+        obtain ⟨i, rfl⟩ := UnFn.dtof_float hw
+        rw [hw] at hj hi hb
+        cases hv : a.eval row with
+        | float x =>
+          rw [hv] at hj hi ha
+          have hi0 : i ≠ 0 := by
+            rintro rfl
+            simp [BinFn.issue, FloatCode.ofDecimal_zero, FloatCode.canon_zero] at hj
+          exact decQuotFinite_sound hq ha hb hi0 hi
+        | _ => rw [hv] at hi; simp [BinFn.infIssue] at hi
+      | _ => rw [hw] at hi; simp [BinFn.infIssue] at hi
+    · exact BinFn.mayInf_sound _ ha hb hi
   · exact BinFn.mayInf_sound f ha hb hi
 
 /-! ## Guards on the NaN of a double operation (#702)

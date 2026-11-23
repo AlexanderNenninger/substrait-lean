@@ -47,6 +47,7 @@ def floatBoundsTheorems : List String :=
    "FloatBounds.StdModel.epsilon_stddev_cr",
    "FloatBounds.StdModel.epsilon_cov_cr", "FloatBounds.StdModel.core_var_polars",
    "FloatBounds.StdModel.epsilon_var_polars", "FloatBounds.StdModel.epsilon_stddev_polars",
+   "FloatBounds.StdModel.core_cov_polars", "FloatBounds.StdModel.core_corr_polars",
    "FloatBounds.StdModel.TreeSum.sign",
    "FloatBounds.StdModel.TreeSum.avg_sign"]
 

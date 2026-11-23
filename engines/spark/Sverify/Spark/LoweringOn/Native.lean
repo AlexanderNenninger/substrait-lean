@@ -81,6 +81,15 @@ abbrev Substrait.sparkOn.fround : Substrait.UnEntry Substrait.Profile.spark Subs
   Substrait.UnEntry.native Substrait.UnFn.fround
   (Substrait.Lowering.un_agree_of_eq Substrait.sparkOn.fround_native)
 
+theorem Substrait.sparkOn.froundEven_native : ∀ (x : Substrait.Value),
+  Substrait.Profile.un Substrait.Profile.spark Substrait.UnFn.froundEven x =
+    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.froundEven x := by
+  native_tac
+
+abbrev Substrait.sparkOn.froundEven : Substrait.UnEntry Substrait.Profile.spark Substrait.UnFn.froundEven :=
+  Substrait.UnEntry.native Substrait.UnFn.froundEven
+  (Substrait.Lowering.un_agree_of_eq Substrait.sparkOn.froundEven_native)
+
 theorem Substrait.sparkOn.froundTo_native : ∀ (d : Int) (x : Substrait.Value),
   Substrait.Profile.un Substrait.Profile.spark (Substrait.UnFn.froundTo d) x =
     Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.froundTo d) x := by

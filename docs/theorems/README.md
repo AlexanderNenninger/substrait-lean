@@ -22,3 +22,8 @@ over (`eval`, `OrderAllowed`, `Allowed`, `AllowedP`, `Near`) and its axioms.
 | [`floatSumCR_mem`](floatsumcr_mem.md) | The `SUM` of bounded doubles, with a row cap, lies within the checker's bounds |
 | [`floatAvgCR_mem`](floatavgcr_mem.md) | The `AVG` of bounded doubles lies within their range, widened by the tolerance |
 | [`comomentNum_nonneg`](comomentnum_nonneg.md) | A variance's numerator is never negative |
+| [`Refresh.no_corruption`](refresh_no_corruption.md) | A sink's table never holds a change applied to a table it was not computed from |
+| [`Refresh.record_describes_table`](refresh_record_describes_table.md) | When the node's commit is the newest, the table is the state its record names |
+| [`Refresh.read_is_head`](refresh_read_is_head.md) | A change that lands applies to the newest commit of the node, computed against its table |
+| [`Refresh.monotone`](refresh_monotone.md) | Adjacent commits of one plan are of later versions: no state is committed twice in a row |
+| [`Refresh.quiet`](refresh_quiet.md) | Once the environment is quiet, the processes' steps reach the deployed plan's state of the source and keep it |

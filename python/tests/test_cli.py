@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 import sverify as sv
-from sverify.cli import discover, main, summary
+from sverify.cli import ExitCode, discover, main, summary
 from sverify.cli._main import split_target
 
 HEAD = """\
@@ -332,12 +332,12 @@ def test_usage_errors_exit_2_and_errors_6(tmp_path, capsys):
     code, doc = run_json(
         capsys, "check", str(write(tmp_path, "raise RuntimeError('boom')\n", "b.py"))
     )
-    assert code == 6 and doc["error"]["message"] == "boom"
+    assert code == 8 and doc["error"]["message"] == "boom"
 
 
 def test_a_refresh_at_import_is_refused_while_checking(tmp_path, capsys):
     code, doc = run_json(capsys, "check", str(write(tmp_path, PROVED + "p.refresh()\n")))
-    assert code == 6
+    assert code == 8
     assert "__name__" in doc["error"]["message"]
 
 
@@ -384,7 +384,7 @@ s = orders.pipe(slow)
 """
     )
     code, doc = run_json(capsys, "check", str(write(tmp_path, body)), "--timeout", "3")
-    assert code == 4
+    assert code == 5
     assert doc["error"]["code"] == "timeout"
     assert [(i["name"], i["status"]) for i in doc["items"]] == [
         ("paid", "proved"),
@@ -397,7 +397,7 @@ def test_the_time_budget_comes_from_the_environment(tmp_path, capsys, monkeypatc
     path = write(tmp_path, PROVED)
     monkeypatch.setenv("SVERIFY_TIMEOUT", "0.000001")
     code, _ = run(capsys, "check", str(path))
-    assert code == 4
+    assert code == 5
     monkeypatch.setenv("SVERIFY_TIMEOUT", "0")  # off
     code, doc = run_json(capsys, "check", str(path))
     assert code == 0 and doc["budget"]["timeout"] == 0
@@ -413,7 +413,7 @@ def test_refresh_runs_a_node(tmp_path, capsys):
     assert node["node"] == "paid"
     assert node["write"]["inserts"] == 2
     code, out = run(capsys, "refresh", f"{path}:stored", "--timeout", "0.000001")
-    assert code == 4 and "budget exceeded" in out
+    assert code == 5 and "budget exceeded" in out
 
 
 def test_refresh_refuses_an_unproved_node(tmp_path, capsys):
@@ -455,7 +455,7 @@ def test_a_duckdb_memory_breach_exits_4_and_writes_nothing(tmp_path):
     done = subprocess.run(
         [*argv, "--memory-limit", "20MB"], capture_output=True, text=True, env=env
     )
-    assert done.returncode == 4, done.stderr
+    assert done.returncode == 5, done.stderr
     doc = json.loads(done.stdout)
     assert doc["error"]["code"] == "memory"
     assert doc["error"]["type"] == "MemoryLimitError"
@@ -479,7 +479,7 @@ def test_a_duckdb_memory_breach_exits_4_and_writes_nothing(tmp_path):
     done = subprocess.run(
         [*again, "--memory-limit", "20MB"], capture_output=True, text=True, env=env
     )
-    assert done.returncode == 4, done.stdout + done.stderr
+    assert done.returncode == 5, done.stdout + done.stderr
     assert json.loads(done.stdout)["error"]["code"] == "memory"
     after = (DeltaTable(str(sink)).version(), DeltaSink(str(sink)).contract())
     assert after == (version, contract)
@@ -653,9 +653,11 @@ def test_sarif_is_valid(tmp_path, capsys):
 def test_help_lists_the_exit_codes(capsys):
     assert main(["--help"]) == 0
     out = capsys.readouterr().out
-    assert "  5  a refresh committed with rows quarantined" in out
-    assert "  7  refused: no route takes the proved node to the engine" in out
-    assert "  8  a refresh held a node" in out
+    assert "exit codes, from the best to the worst:" in out
+    for code in ExitCode:
+        assert f"  {code.value}  {code.meaning}" in out
+    assert "  4  refused: no route takes the proved node to the engine" in out
+    assert "  8  error" in out
 
 
 QUARANTINE = """
@@ -673,7 +675,7 @@ p = orders.pipe(paid)
 
 
 @pytest.mark.parametrize(
-    ("policy", "code", "status"), [("quarantine", 5, "quarantined"), ("hold", 8, "held")]
+    ("policy", "code", "status"), [("quarantine", 6, "quarantined"), ("hold", 7, "held")]
 )
 def test_refresh_exits_apart_when_rows_are_quarantined_or_held(
     tmp_path, capsys, policy, code, status
@@ -720,10 +722,10 @@ def share(orders):
 def test_classifying_an_import_error_in_sverify_errors_does_not_raise(monkeypatch):
     """`sverify.errors` failing to import is the error to classify, not a second
     one raised from the classifier (#1585: a double traceback)."""
-    from sverify.cli._main import ERROR, _classify
+    from sverify.cli._main import _classify
 
     monkeypatch.setitem(sys.modules, "sverify.errors", None)  # `import` then raises
-    assert _classify(TypeError("boom")) == (ERROR, "error")
+    assert _classify(TypeError("boom")) == (ExitCode.ERROR, "error")
 
 
 CHECKED = NOT_PROVED.replace(

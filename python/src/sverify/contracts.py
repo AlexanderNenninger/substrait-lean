@@ -1930,8 +1930,9 @@ def _checker_decimals(dtypes: dict[str, Any], kinds: Sequence[dict] | None) -> d
     """`dtypes` as the run returns them (`outputKinds`, from `Write.relKinds`
     and `Rel.outBits`): a decimal `AVG` or `SUM` and an integer's width differ
     from Ibis's (a computed integer is 64 bits, a passed-through column keeps its
-    declared width), and a timestamp has microseconds. A checker without the
-    field, or with another number of columns, leaves Ibis's types as they are."""
+    declared width, a cast has the width it names), and a timestamp has
+    microseconds. A checker without the field, or with another number of
+    columns, leaves Ibis's types as they are."""
     if kinds is None or len(kinds) != len(dtypes):
         return dtypes
     return {name: _checker_type(ty, k) for (name, ty), k in zip(dtypes.items(), kinds, strict=True)}

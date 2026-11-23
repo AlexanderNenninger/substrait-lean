@@ -2172,32 +2172,13 @@
    "option": "rounding",
    "fixed": {},
    "rows": 12,
-   "matching": [],
+   "matching": [
+    "TIE_TO_EVEN"
+   ],
    "candidates": {
     "TIE_TO_EVEN": {
-     "differ": 12,
-     "examples": [
-      {
-       "row": "[0.0]",
-       "polars": "ok 0.0",
-       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
-      },
-      {
-       "row": "[0.5]",
-       "polars": "ok 0.0",
-       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
-      },
-      {
-       "row": "[1.0]",
-       "polars": "ok 1.0",
-       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
-      },
-      {
-       "row": "[-1.0]",
-       "polars": "ok -1.0",
-       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
-      }
-     ]
+     "differ": 0,
+     "examples": []
     },
     "TIE_AWAY_FROM_ZERO": {
      "differ": 3,
@@ -2232,27 +2213,22 @@
    ],
    "candidates": {
     "TIE_TO_EVEN": {
-     "differ": 12,
+     "differ": 3,
      "examples": [
-      {
-       "row": "[0.0]",
-       "polars": "ok 0.0",
-       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
-      },
       {
        "row": "[0.5]",
        "polars": "ok 1.0",
-       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
+       "lean": "ok 0.0"
       },
       {
-       "row": "[1.0]",
-       "polars": "ok 1.0",
-       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
+       "row": "[2.5]",
+       "polars": "ok 3.0",
+       "lean": "ok 2.0"
       },
       {
-       "row": "[-1.0]",
-       "polars": "ok -1.0",
-       "lean": "refused error: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])"
+       "row": "[-2.5]",
+       "polars": "ok -3.0",
+       "lean": "ok -2.0"
       }
      ]
     },

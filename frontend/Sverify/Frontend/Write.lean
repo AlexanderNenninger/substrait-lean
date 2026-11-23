@@ -613,6 +613,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .ffloor a => call (fn "floor") [writeExpr cols .float a]
   | .un .fceil a => call (fn "ceil") [writeExpr cols .float a]
   | .un .fround a => call (fn "round") [writeExpr cols .float a]
+  | .un .froundEven a => callOpt (fn "round") [writeExpr cols .float a] "rounding" "TIE_TO_EVEN"
   | .un (.fmath f) a => call (UnFn.anchor (.fmath f)) [writeExpr cols .float a]
   | .un .neg a => call (fn "negate") [writeExpr cols ctx a]
   | .un (.regexMatch p) a =>

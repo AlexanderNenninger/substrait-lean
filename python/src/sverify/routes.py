@@ -304,7 +304,7 @@ class Route:
     """The issues that track the tested choices (`"issue"` of a tested row)."""
     theorem_facts: tuple[str, ...] = ()
     """The facts the theorems rest on, where they prove the engine's model
-    (`Rel.polars_sound` of `Polars.written`): those facts say the engine is it."""
+    (`Rel.polars_sound` of `Polars.impl`): those facts say the engine is it."""
     settings: tuple[tuple[str, Any], ...] = ()
     """The engine settings the route was checked under, by name, as read
     from the session the run uses (`check_settings`): the settings its

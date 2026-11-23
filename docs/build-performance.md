@@ -162,6 +162,13 @@ Spark's table was first balanced from the 25 slowest tests of one run's
   `import Lean` alone makes a module's process about 2 GB.
 - Large generated modules: their proofs are checked only when
   `check_generated` is on.
+- A `#guard` (or `#eval`) between theorems: it waits for every proof before
+  it, so a module's theorems check one at a time where they would check in
+  parallel. The lift's generated modules wrote one after each entry; at the
+  module's end, `Lift.Duckdb.Arith` took 47.9 s on the laptop where it took
+  78.4 s, `Compare` 22.6 s for 49.9 s, `Math` 8.5 s for 26.9 s, at about the
+  same CPU time. A module whose CPU time equals its wall time has its proofs
+  in series.
 
 ## The numbers
 
