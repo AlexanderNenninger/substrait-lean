@@ -110,14 +110,14 @@ on 2026-11-07.
 | `EngineVersionError` | Engine versions | Install the named release |
 | `EngineSettingsError` | Engine settings | `SET ...` as named |
 | `RouteError`, "N node(s) of the streaming plan run on the in-memory engine" | Polars | `streaming=` other than `"require"` |
-| "X runs on duckdb only (see #271)" | Engines | `engine="duckdb"`; lifted by [#271] |
-| Spark and Snowflake date guards | Engines | `engine="duckdb"`; lifted by [#271] |
+| "X runs on duckdb only (see #2540)" | Engines | `engine="duckdb"`; lifted by [#2540] |
+| Spark and Snowflake date guards | Engines | `engine="duckdb"`; lifted by [#2540] |
 | "run on polars only; E truncates" | Profiles | `semantics="portable"` |
-| A DuckDB-only construct on another writer (TRY_CAST, lists, black boxes, ...) | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
-| "the E writer does not write integer division yet" and other writer hooks | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
+| A DuckDB-only construct on another writer (TRY_CAST, lists, black boxes, ...) | SQL for an engine | `engine="duckdb"`; lifted by [#2540] |
+| "the E writer does not write integer division yet" and other writer hooks | SQL for an engine | `engine="duckdb"`; lifted by [#2540] |
 | "the E writer does not write overflow = X yet" | SQL for an engine | `engine="duckdb"`; lifted by [#241] |
 | "tables have no row order" on Spark | SQL for an engine with `rows="sequence"` | the default `rows="multiset"`, or `deterministic=True` |
-| "window functions need an ORDER BY" on Spark and Snowflake | SQL for an engine | `engine="duckdb"`; lifted by [#271] |
+| "window functions need an ORDER BY" on Spark and Snowflake | SQL for an engine | `engine="duckdb"`; lifted by [#2540] |
 | Spark's POWER, ATAN2 | Engines | `engine="duckdb"` (spark-elem-rounding) |
 | Spark decimals past 38 digits | Engines | Cast an operand to fewer digits |
 | Spark decimal negation, an AVG past 12 decimal places or 32 integer digits, double to DECIMAL | Engines | A cast to fewer digits, or `engine="duckdb"`; lifted by [#27] |
@@ -159,6 +159,7 @@ on 2026-11-07.
 [#219]: https://github.com/AlexanderNenninger/substrait-lean/issues/219
 [#241]: https://github.com/AlexanderNenninger/substrait-lean/issues/241
 [#271]: https://github.com/AlexanderNenninger/substrait-lean/issues/271
+[#2540]: https://github.com/AlexanderNenninger/substrait-lean/issues/2540
 [#319]: https://github.com/AlexanderNenninger/substrait-lean/issues/319
 [#320]: https://github.com/AlexanderNenninger/substrait-lean/issues/320
 [#323]: https://github.com/AlexanderNenninger/substrait-lean/issues/323

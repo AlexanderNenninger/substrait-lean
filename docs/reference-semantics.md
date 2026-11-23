@@ -15,7 +15,7 @@ contributors.
 
 Status marks: ✓ holds on `main`. A row that holds "on DuckDB" runs there
 only: the other engines refuse it until their lowerings exist, tracked in
-[an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/271).
+[an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/2540).
 
 Where this page and the code disagree, the code is what `verify` proves, and
 this page has a bug.
