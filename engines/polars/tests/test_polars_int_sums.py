@@ -24,7 +24,8 @@ def test_sum_and_mean_are_exact_when_streaming(name, values):
 
 @pytest.mark.parametrize(("name", "values"), CASES, ids=[n for n, _ in CASES])
 def test_grouped_sum_and_mean_are_exact_in_memory(name, values):
-    # Polars's grouped sum in memory is Kahan's (`COMPENSATED`, polars-sum-float; #2411).
+    # The in-memory engine, which sverify does not run, sums a group by Kahan's sum
+    # (polars-sum-float): exact here too.
     df = pl.DataFrame(
         {"g": [1] * len(values), "x": [float(v) for v in values]},
         schema={"g": pl.Int64, "x": pl.Float64},

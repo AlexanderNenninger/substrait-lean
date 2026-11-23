@@ -335,14 +335,14 @@ def test_epsilon_through_scalar_rules_and_thresholds(monkeypatch):
 
 def test_transfer_up_to_the_behaviour_order():
     """`SEQUENTIAL ⊑ ANY`: a proof that holds for any order of a double SUM
-    holds where the engine adds them in one; Kahan's (`COMPENSATED`) is not
-    below `ANY` (#633)."""
+    holds where the engine adds them in one, as Polars's streaming sums do
+    (#2411); DuckDB's constant run (`SCALED_CONSTANT`) is not below `ANY`."""
     depends = [{"group": "agg.fsum", "option": "sum_order", "behaviours": ["ANY"]}]
     polars = transfer({"from": "reference", "to": "polars", "depends": depends})
-    [failure] = polars["failures"]
-    assert failure["option"] == "sum_order" and "COMPENSATED" in failure["to"]
+    assert polars["ok"] is True, polars
     duck = transfer({"from": "reference", "to": "duckdb", "depends": depends})
-    assert duck["ok"] is False  # SCALED_CONSTANT
+    [failure] = duck["failures"]
+    assert failure["option"] == "sum_order" and "SCALED_CONSTANT" in failure["to"]
 
 
 def test_epsilon_per_engine(monkeypatch):

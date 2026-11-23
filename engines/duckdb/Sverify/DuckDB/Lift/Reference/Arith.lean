@@ -38,10 +38,6 @@ abbrev Substrait.liftReference.divInt : Substrait.LiftEntry Substrait.Semantics.
   (Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 1)),
     Substrait.LiftEntry.of₂ rfl Substrait.liftReference.divInt_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.divInt)
-  ((Lean.Json.parse (Substrait.liftReference.divInt).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.divInt).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.divDouble_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -56,10 +52,6 @@ theorem Substrait.liftReference.divDouble_agree : ∀ (x y : Substrait.Value),
 abbrev Substrait.liftReference.divDouble : Substrait.LiftEntry Substrait.Semantics.reference Substrait.DuckFn.divDouble :=
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":2,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.bin Substrait.BinFn.fdiv (Substrait.Expr.field 0) (Substrait.Expr.field 1),
     Substrait.LiftEntry.of₂ rfl Substrait.liftReference.divDouble_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.divDouble)
-  ((Lean.Json.parse (Substrait.liftReference.divDouble).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.divDouble).tmpl
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.modDouble_agree : ∀ (x y : Substrait.Value),
@@ -76,10 +68,6 @@ abbrev Substrait.liftReference.modDouble : Substrait.LiftEntry Substrait.Semanti
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":6,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.bin Substrait.BinFn.fmod (Substrait.Expr.field 0) (Substrait.Expr.field 1),
     Substrait.LiftEntry.of₂ rfl Substrait.liftReference.modDouble_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.modDouble)
-  ((Lean.Json.parse (Substrait.liftReference.modDouble).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.modDouble).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.power_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -94,6 +82,18 @@ theorem Substrait.liftReference.power_agree : ∀ (x y : Substrait.Value),
 abbrev Substrait.liftReference.power : Substrait.LiftEntry Substrait.Semantics.reference Substrait.DuckFn.power :=
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":8,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.bin Substrait.BinFn.fpow (Substrait.Expr.field 0) (Substrait.Expr.field 1),
     Substrait.LiftEntry.of₂ rfl Substrait.liftReference.power_agree⟩
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.divInt)
+  ((Lean.Json.parse (Substrait.liftReference.divInt).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.divInt).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.divDouble)
+  ((Lean.Json.parse (Substrait.liftReference.divDouble).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.divDouble).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.modDouble)
+  ((Lean.Json.parse (Substrait.liftReference.modDouble).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.modDouble).tmpl
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.power)
   ((Lean.Json.parse (Substrait.liftReference.power).json).toOption.getD Lean.Json.null) ==

@@ -36,8 +36,8 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   the integer `AVG`, one zero, each sort key's NULL placement and stable
   ties. `SUM` and `AVG` of a group run as Polars's own aggregations, with
   those shims; Polars adds doubles in its own order (`sum_order`:
-  `SEQUENTIAL`, `ANY` or `COMPENSATED`), within the plan's bound of the
-  reference's correctly rounded sum (D25).
+  `SEQUENTIAL` or `ANY`, polars-sum-float-streaming), within the plan's bound
+  of the reference's correctly rounded sum (D25).
 * Runtime errors are the `Issue`s of `analysis/Sverify/Analysis/Safety.lean`, which a
   checked plan is proved free of. Each expression carries a per-row flag for
   each issue, masked by `CASE` as `Expr.issues` masks it (both sides of
@@ -2908,6 +2908,14 @@ class Translator:
                 key = _float_key(v) if m.arg.dtype == pl.Float64 else v
                 v = key.unique(maintain_order=True)
             values.append(v)
+        if groups and values and any(m.fn in ("fsum", "avg") for m in ms):
+            # A list per group puts the whole grouping on the in-memory engine
+            # (`ALLOWED_FALLBACKS`), whose double sums are Kahan's
+            # (polars-sum-float), which `sum_order` does not allow (#2411).
+            raise Unsupported(
+                "a double SUM or AVG beside a list in one Polars grouping, which "
+                "Polars runs on the in-memory engine (polars-exec-streaming-fallback)"
+            )
         if groups and multiset:
             # A bag: the groups in any order, each key the class's canonical
             # value (`ordered`), with no row index and no `first()` per group.

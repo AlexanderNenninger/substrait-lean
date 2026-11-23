@@ -473,6 +473,25 @@ def test_unwritten_plans_are_refused():
         polars_engine.to_lazy(raw, {"r": pa.table({"a": [1], "b": [1], "c": [1]})})
 
 
+def test_a_double_sum_beside_a_list_is_refused():
+    """A list per group puts the whole grouping on Polars's in-memory engine,
+    whose double sums are Kahan's, outside Polars's `sum_order` (#2411). A
+    grouped sum alone streams, and so does an ungrouped list's neighbour."""
+    con = connect()
+    con.create("t", ibis.schema({"k": "int64", "x": "float64"}), [(1, 1.0), (1, 2.0)])
+    t = con.table("t")
+    for agg in (t.x.sum(), t.x.mean()):
+        expr = t.group_by("k").aggregate(l=t.x.collect(), s=agg)
+        with pytest.raises(polars_engine.Unsupported, match="in-memory engine"):
+            run_plan(con, written_plan(to_substrait_json(expr)), "polars")
+    alone = t.group_by("k").aggregate(s=t.x.sum())
+    assert rows_of(run_plan(con, written_plan(to_substrait_json(alone)), "polars")) == [(1, 3.0)]
+    ungrouped = t.aggregate(l=t.x.collect(), s=t.x.sum())
+    assert rows_of(run_plan(con, written_plan(to_substrait_json(ungrouped)), "polars")) == [
+        ([1.0, 2.0], 3.0)
+    ]
+
+
 def test_strings_order_by_code_point():
     """`BinFn.lt` orders strings by code point, as SQL does (#1492)."""
     con = connect()

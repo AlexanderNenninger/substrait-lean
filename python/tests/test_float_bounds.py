@@ -130,8 +130,8 @@ def test_duckdb_is_within_the_bound_of_the_correctly_rounded_sum(xs: list[float]
 
 
 def kahan(xs: list[float]) -> float:
-    """Polars's `KahanSum` (polars-sum-float): the running sum, without the
-    compensation."""
+    """Kahan's sum (`COMPENSATED`), as DuckDB's `kahan_sum` computes it
+    (duckdb-kahan-sum): the running sum, without the compensation."""
     s = c = 0.0
     for x in xs:
         y = x - c
