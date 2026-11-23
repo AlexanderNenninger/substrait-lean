@@ -48,7 +48,10 @@ _SCHEME = re.compile(r"([a-z][a-z0-9\-]*):(.+)", re.S)
 
 class Backend(Protocol):
     """Where secrets live: `get(path)` returns the value at `path`, a string
-    or a mapping of fields. Register one with `Resolver(backends=...)`."""
+    or a mapping of fields. Register one with `Resolver(backends=...)` and
+    make it the `default`: a backend of your own reads bare names (`lake`
+    reads its path `lake`). A reference names a built-in scheme only, so
+    `Secret("mine:path")` is refused (#2430)."""
 
     def get(self, path: str) -> Value: ...
 
@@ -514,7 +517,9 @@ class Resolver:
         default: The scheme that reads bare names not in `names`. Default
             "env".
         backends: Backends by scheme: options for a built-in one, or an
-            object with `get(path)`.
+            object with `get(path)`. An object under a scheme of its own
+            serves the bare names, as the `default`; references name the
+            built-in schemes only.
         cache_seconds: How long remote answers are kept. 0 keeps none.
     """
 
@@ -615,7 +620,7 @@ class Resolver:
         name = Secret(secret).ref
         ref = self.reference(name)
         parsed = _reference(ref)
-        if parsed is None:  # a scheme of a backend given in `backends`
+        if parsed is None:  # a bare name the `default` backend of your own reads
             scheme, _, rest = ref.partition(":")
             path, _, field = rest.partition("#")
             parsed = (scheme, path, field or None)
