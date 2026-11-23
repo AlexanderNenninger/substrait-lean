@@ -9,7 +9,7 @@
   "summary": {
     "proved": 22,
     "not proved": 12,
-    "not checked": 38,
+    "not checked": 40,
     "refused": 35,
     "input": 3
   },
@@ -87,6 +87,22 @@
       "why": "a singular test: sverify-dbt reads generic tests only",
       "dbt": "pass",
       "design": "sverify-dbt reads generic tests (dbt/README.md, Limits)"
+    },
+    "primary_keys.test_primary_keys.TestInvalidModelCombinationOfColumns::dbt_utils_unique_combination_of_columns_simple_model_None.b6508eccc1": {
+      "test": "dbt_utils.unique_combination_of_columns",
+      "model": "simple_model",
+      "outcome": "not checked",
+      "why": "its columns are no list of column names",
+      "dbt": "error",
+      "design": "a column list with a null or a bare string names no columns to check; dbt itself fails such a test, so sverify-dbt does not read it"
+    },
+    "primary_keys.test_primary_keys.TestInvalidModelCombinationOfColumns::dbt_utils_unique_combination_of_columns_simple_model_test.96a6502b8a": {
+      "test": "dbt_utils.unique_combination_of_columns",
+      "model": "simple_model",
+      "outcome": "not checked",
+      "why": "its columns are no list of column names",
+      "dbt": "error",
+      "design": "a column list with a null or a bare string names no columns to check; dbt itself fails such a test, so sverify-dbt does not read it"
     },
     "primary_keys.test_primary_keys.TestInvalidModelUniqueTest::unique_simple_model_None.722a6632f8": {
       "test": "unique",
@@ -832,22 +848,21 @@
     }
   },
   "unextracted": {
-    "tests.functional.primary_keys.test_primary_keys.TestInvalidModelCombinationOfColumns": "crashed: TypeError: sequence item N: expected str instance, NoneType found",
-    "tests.functional.schema_tests.test_custom_test_config.TestConfigNotDictError": "not replayed: no /tmp/tmps6fmnowk/tests_functional_schema_tests_test_custom_test_config_TestConfigNotDictError/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functiona",
-    "tests.functional.schema_tests.test_custom_test_config.TestSameKeyErrorDataTestConfig": "not replayed: no /tmp/tmps6fmnowk/tests_functional_schema_tests_test_custom_test_config_TestSameKeyErrorDataTestConfig/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_f",
-    "tests.functional.schema_tests.test_schema_v2_tests.TestGenericTestsCollide": "not replayed: no /tmp/tmps6fmnowk/tests_functional_schema_tests_test_schema_v2_tests_TestGenericTestsCollide/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_",
-    "tests.functional.schema_tests.test_schema_v2_tests.TestGenericTestsConfigCustomMacros": "not replayed: no /tmp/tmps6fmnowk/tests_functional_schema_tests_test_schema_v2_tests_TestGenericTestsConfigCustomMacros/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_",
-    "tests.functional.schema_tests.test_schema_v2_tests.TestInvalidSchema": "not replayed: no /tmp/tmps6fmnowk/tests_functional_schema_tests_test_schema_v2_tests_TestInvalidSchema/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_schema",
-    "tests.functional.schema_tests.test_schema_v2_tests.TestMalformedSchemaTests": "not replayed: no /tmp/tmps6fmnowk/tests_functional_schema_tests_test_schema_v2_tests_TestMalformedSchemaTests/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional",
-    "tests.functional.sources.common_source_setup.BaseSourcesTest": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_common_source_setup_BaseSourcesTest/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_sources_common",
-    "tests.functional.sources.test_name_chars.TestNameChars": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_name_chars_TestNameChars/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_sources_test_name_ch",
-    "tests.functional.sources.test_simple_source.SuccessfulSourcesTest": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_simple_source_SuccessfulSourcesTest/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_sources_t",
-    "tests.functional.sources.test_simple_source.TestMalformedSources": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_simple_source_TestMalformedSources/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_sources_te",
-    "tests.functional.sources.test_simple_source.TestRenderingInSourceTests": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_simple_source_TestRenderingInSourceTests/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_sour",
-    "tests.functional.sources.test_source_freshness.TestHooksInSourceFreshness": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_source_freshness_TestHooksInSourceFreshness/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functional_s",
-    "tests.functional.sources.test_source_freshness.TestHooksInSourceFreshnessDefault": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_source_freshness_TestHooksInSourceFreshnessDefault/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_funct",
-    "tests.functional.sources.test_source_freshness.TestHooksInSourceFreshnessDisabled": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_source_freshness_TestHooksInSourceFreshnessDisabled/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_func",
-    "tests.functional.sources.test_source_freshness.TestSourceFreshnessMacroOverride": "not replayed: no /tmp/tmps6fmnowk/tests_functional_sources_test_source_freshness_TestSourceFreshnessMacroOverride/target/manifest.json: run … in /tmp/tmps6fmnowk/tests_functi",
+    "tests.functional.schema_tests.test_custom_test_config.TestConfigNotDictError": "not replayed: no /tmp/tmpsexexmsc/tests_functional_schema_tests_test_custom_test_config_TestConfigNotDictError/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_functiona",
+    "tests.functional.schema_tests.test_custom_test_config.TestSameKeyErrorDataTestConfig": "not replayed: no /tmp/tmpsexexmsc/tests_functional_schema_tests_test_custom_test_config_TestSameKeyErrorDataTestConfig/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_f",
+    "tests.functional.schema_tests.test_schema_v2_tests.TestGenericTestsCollide": "not replayed: no /tmp/tmpsexexmsc/tests_functional_schema_tests_test_schema_v2_tests_TestGenericTestsCollide/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_functional_",
+    "tests.functional.schema_tests.test_schema_v2_tests.TestGenericTestsConfigCustomMacros": "not replayed: no /tmp/tmpsexexmsc/tests_functional_schema_tests_test_schema_v2_tests_TestGenericTestsConfigCustomMacros/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_",
+    "tests.functional.schema_tests.test_schema_v2_tests.TestInvalidSchema": "not replayed: no /tmp/tmpsexexmsc/tests_functional_schema_tests_test_schema_v2_tests_TestInvalidSchema/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_functional_schema",
+    "tests.functional.schema_tests.test_schema_v2_tests.TestMalformedSchemaTests": "not replayed: no /tmp/tmpsexexmsc/tests_functional_schema_tests_test_schema_v2_tests_TestMalformedSchemaTests/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_functional",
+    "tests.functional.sources.common_source_setup.BaseSourcesTest": "not replayed: no /tmp/tmpsexexmsc/tests_functional_sources_common_source_setup_BaseSourcesTest/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_functional_sources_common",
+    "tests.functional.sources.test_name_chars.TestNameChars": "not replayed: no /tmp/tmpsexexmsc/tests_functional_sources_test_name_chars_TestNameChars/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_functional_sources_test_name_ch",
+    "tests.functional.sources.test_simple_source.SuccessfulSourcesTest": "not replayed: no /tmp/tmpsexexmsc/tests_functional_sources_test_simple_source_SuccessfulSourcesTest/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_functional_sources_t",
+    "tests.functional.sources.test_simple_source.TestMalformedSources": "not replayed: no /tmp/tmpsexexmsc/tests_functional_sources_test_simple_source_TestMalformedSources/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_functional_sources_te",
+    "tests.functional.sources.test_simple_source.TestRenderingInSourceTests": "not replayed: no /tmp/tmpsexexmsc/tests_functional_sources_test_simple_source_TestRenderingInSourceTests/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_functional_sour",
+    "tests.functional.sources.test_source_freshness.TestHooksInSourceFreshness": "not replayed: no /tmp/tmpsexexmsc/tests_functional_sources_test_source_freshness_TestHooksInSourceFreshness/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_functional_s",
+    "tests.functional.sources.test_source_freshness.TestHooksInSourceFreshnessDefault": "not replayed: no /tmp/tmpsexexmsc/tests_functional_sources_test_source_freshness_TestHooksInSourceFreshnessDefault/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_funct",
+    "tests.functional.sources.test_source_freshness.TestHooksInSourceFreshnessDisabled": "not replayed: no /tmp/tmpsexexmsc/tests_functional_sources_test_source_freshness_TestHooksInSourceFreshnessDisabled/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_func",
+    "tests.functional.sources.test_source_freshness.TestSourceFreshnessMacroOverride": "not replayed: no /tmp/tmpsexexmsc/tests_functional_sources_test_source_freshness_TestSourceFreshnessMacroOverride/target/manifest.json: run … in /tmp/tmpsexexmsc/tests_functi",
     "tests.functional.sources.test_source_freshness.TestSourceFreshnessSelection": "LookupError: project_config_update needs the pytest fixture logs_dir"
   }
 }

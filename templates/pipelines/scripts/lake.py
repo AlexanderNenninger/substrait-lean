@@ -595,7 +595,7 @@ def cmd_catalog(args: argparse.Namespace) -> int:
         dt = DeltaTable(uri)
         contract = DeltaSource(uri).contract()
         arrow = dt.to_pyarrow_table()
-        last = dt.history(1)[0] if dt.version() >= 0 else {}
+        last = next(iter(dt.history(1)), {}) if dt.version() >= 0 else {}
         meta = cfg.get(name, {})
         files: list[str] = []
         if args.data == "snapshot":
