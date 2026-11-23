@@ -1,6 +1,6 @@
 ---
 name: upstream-report
-description: Draft or revise an upstream bug report for an upstream bug in `upstream/bugs/<ID>.json` (SQLGlot, DuckDB, DataFusion, Spark, Polars, Ibis, delta-rs, Substrait: its tooling and spec gaps), ready for the author to file. Use when asked to write, polish, check or prepare a report or issue for a bug ID (e.g. "write up SG-5", "draft the DuckDB issue for DD-3", "is DF-4 ready to file?"), or to check a report against a project's contributing guide. Covers provenance, duplicate and main-branch checks, the repro script, each project's issue form, and the voice the reports are written in.
+description: Draft or revise an upstream bug report for an upstream bug in `upstream/bugs/<ID>.json` (SQLGlot, DuckDB, DataFusion, Spark, Polars, Ibis, delta-rs, Substrait: its tooling and spec gaps), as bullet points the author writes up in their own words, or as full text when asked. Also for community posts about a bug or proposal (forums, Discord, Reddit). Use when asked to write, polish, check or prepare a report or issue for a bug ID (e.g. "write up SG-5", "draft the DuckDB issue for DD-3", "is DF-4 ready to file?"), or to check a report against a project's contributing guide. Covers provenance, duplicate and main-branch checks, the repro script, each project's issue form, and the voice the reports are written in.
 argument-hint: "Bug ID(s), e.g. SG-5 or DF-4 DF-10"
 ---
 
@@ -52,6 +52,12 @@ Fill the form's log and version fields with real output, captured in the same en
 
   For example: "I found this inconsistency while replaying DuckDB's sqllogictest suite through SQLGlot's `qualify` and comparing the results against a [formalization](https://github.com/AlexanderNenninger/substrait-lean) of parts of DuckDB's SQL semantics."
 
+### Bullets, not prose
+
+The author writes the words. By default a draft is a list of bullet points in the order the text will run (thanks, how it was found, the case, expected and actual, the cause in the code, the proposal or question), each one fact with its link, version or snippet. The author turns them into sentences in their own voice. The parts that must be exact stay complete: the title suggestion, the repro script, code blocks, tables, versions and conformance cases.
+
+The same holds for anything the author posts in a community (a forum or Discord thread, a mailing list, Reddit, a talk abstract) about a bug or a proposal: give the points and the links, not a finished post. Write full prose only when the author asks for it. The voice rules above apply to the bullets' content: facts stated plainly, nothing asked for, no hedges.
+
 ## 5. Each project's rules
 
 Each project's code of conduct, contributing guide, issue form, AI policy and triage habits are summarised in `../sverify-upstream-reports/guidelines/<project>.md` (`sqlglot`, `duckdb`, `datafusion`, `spark`, `polars`, `ibis`, `delta-rs`, `substrait`), with sources pinned to the commits read and a drafting checklist at the end; `guidelines/README.md` compares them. Read the project's note before drafting. If it is more than a few months old, or the project's template has changed (`gh api repos/<repo>/contents/.github/ISSUE_TEMPLATE`), recheck the files it cites and update the note.
@@ -67,9 +73,9 @@ What changes the draft itself, as of 2026-11-04:
 
 ### Spec-gap proposals (#1093)
 
-A spec gap goes upstream as a proposal with the formal reading attached, so the discussion starts from a definition. The draft (`ST-<n>-substrait.md`) has five parts, in this order:
+A spec gap goes upstream as a proposal with the formal reading attached, so the discussion starts from a definition. [`upstream/substrait-proposals.md`](../../../upstream/substrait-proposals.md) lists the drafted proposals, what each engine does and what Sverify does, and whether each is posted. The draft (`ST-<n>-substrait.md`) has five parts, in this order, each as bullets ("Bullets, not prose" above) except the tables, diffs and cases:
 
-1. **The gap**: the YAML or spec file and lines at the commit checked (re-check `main` and the latest release the day of drafting), and the question in one paragraph, with the calls and types (`subtract(inf::fp64, inf::fp64)`) or the plan (a `SortRel` field with `SORT_DIRECTION_UNSPECIFIED`) that exposes it.
+1. **The gap**: the YAML or spec file and lines at the commit checked (re-check `main` and the latest release the day of drafting), and the question in a few bullets, with the calls and types (`subtract(inf::fp64, inf::fp64)`) or the plan (a `SortRel` field with `SORT_DIRECTION_UNSPECIFIED`) that exposes it.
 2. **What engines do**: a table from the entry's `facts` ids, DuckDB, Spark and Polars with their versions, plus engines another thread already cites. Leave out Snowflake. Leave out DataFusion, except as a recorded engine. Where an engine's docs are silent, say each cell comes from running the engine. A cell derived from a fact that did not run the exact case goes in the author's notes as such.
 3. **The readings**: the formalization's, in its words (the core's open option, and the reference's choice), with the alternatives. The draft names no D-number or Lean name; the author's notes give the D-number and the `docs/core-semantics.md` option for checking.
 4. **The proposed text as a diff**: reuse an existing option name and its values (`on_domain_error`, `overflow`, `rounding`) before inventing one, and say whether the change is breaking under Substrait's policy.

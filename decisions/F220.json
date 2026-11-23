@@ -3,11 +3,14 @@
   "date": "2026-11-21",
   "decided_by": "fable",
   "scope": "engines",
-  "status": "in-force",
+  "status": "superseded",
   "summary": "`statsProvedOn` is per group and reads the row the plan reads; Polars's `agg.var` `stat_algo` row is proved by `core_var_polars` over every partition and merge tree; Polars's COVAR row stays tested at 1.0.",
   "issues": [
     1808
   ],
+  "superseded_by": [
+    "F271"
+  ],
   "source": "fable-ruling-220-1808-polars-var-proved-per-group.md",
-  "note": "COVAR's proof is After 1.0. No D-number."
+  "note": "COVAR's proof is After 1.0. No D-number. Superseded 2026-11-22 by ruling 271, which proves COVAR before 1.0 and carries the other two clauses forward."
 }

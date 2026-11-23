@@ -20,10 +20,9 @@ Its correctness (`Lowering.polars_exact`, `Rel.polars_lowered_sound`) follows
 from the generic theorems of `engines/Sverify/Engines/Lowering.lean`.
 `polarsOn.coverage` lists how each construct is lowered; the golden test
 `tests/lowering/polars.expected` records them (`substrait-check
---lowering-coverage-polars`). Nothing runs the table yet: the translation to
-Polars still writes each function by hand (`Polars.written`), and
-`engines/polars/tests/test_lowering_agrees.py` checks that the two agree, until
-the table's interpreter replaces the hand-written hooks (#271, step 2).
+--lowering-coverage-polars`). The translation runs the table through its
+interpreter (`sverify_polars/lowering.py`), and `Engine.polars` lowers a plan
+with it (`engines/polars/Sverify/Polars/Engine.lean`).
 -/
 
 namespace Substrait

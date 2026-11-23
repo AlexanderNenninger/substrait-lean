@@ -1,0 +1,1 @@
+The sverify-dbt measurement page declares the suggested `not_null` on `stg_orders.customer_id` (jaffle_shop: 14 of the project's 20 tests proved) and names the four Cal-ITP models with no compiled SQL.

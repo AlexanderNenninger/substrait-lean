@@ -100,21 +100,19 @@ from sverify._unsupported import (
     SverifyWarning,
     UnsupportedError,
 )
-from sverify.contracts import (
-    CompositionError,
-    InferredWarning,
-    PostconditionError,
-    PreconditionError,
-    ProfilePendingWarning,
-    UnprovedWarning,
-    UnverifiedRunError,
-    VerificationError,
-)
+from sverify.conditions import PreconditionError
+from sverify.contracts import CompositionError, ProfilePendingWarning, UnprovedWarning
 from sverify.engine import CheckerVersionError, SQLError
 from sverify.incremental import AuditError, NotIncrementalError, SchemaError
 from sverify.io._common import ConcurrentWriteError
 from sverify.io._secrets import SecretError
 from sverify.profiles import ProfilePluginWarning
+from sverify.report import (
+    InferredWarning,
+    PostconditionError,
+    UnverifiedRunError,
+    VerificationError,
+)
 from sverify.routes import (
     EngineSettingsError,
     EngineSettingsWarning,

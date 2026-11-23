@@ -14,7 +14,7 @@ from ibis import _
 import sverify as sv
 import sverify.proposers as proposers
 from _pipelines import discharged, make_orders, orders_table, paid
-from sverify.contracts import ON_DATA, Inferred, label
+from sverify.conditions import ON_DATA, Inferred, label
 from sverify.errors import PreconditionError, VerificationError
 from sverify.io import StaticSource
 

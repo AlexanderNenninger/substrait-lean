@@ -1,0 +1,3 @@
+### A run records the engine settings it was checked under
+
+Each route now carries the engine settings its profile assumes, as read from the session the run uses (`Route.settings`, and `settings` in the report JSON), so a run's record says what it ran under. The Spark session sverify starts is read back against `SPARK_CONF` before it runs anything, and refused with `EngineSettingsError` where a setting did not take, as when Spark hands back a session the process already had. A test now holds that an engine that raises commits nothing to a Delta, Iceberg or custom sink ([#1130](https://github.com/AlexanderNenninger/substrait-lean/issues/1130)).

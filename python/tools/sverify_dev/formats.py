@@ -103,7 +103,7 @@ def _write_sink(out: Path) -> None:
     (sink / "contract.json").write_text(_pretty(text))
     # The Delta log's commits must hold the record: under `sverify.contract`
     # from 1.0 on, under `sverify` before.
-    history = DeltaTable(str(sink / "delta" / "doubled")).history()
+    history = list(DeltaTable(str(sink / "delta" / "doubled")).history())
     assert any("sverify.contract" in c or "sverify" in c for c in history), history
 
 

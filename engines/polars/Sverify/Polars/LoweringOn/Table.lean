@@ -3,6 +3,7 @@ import Sverify.Polars.Profile
 import Sverify.Polars.LoweringLemmas
 import Sverify.Polars.LoweringOn.Native
 import Sverify.Polars.LoweringOn.Math
+import Sverify.Polars.LoweringOn.Other
 import Sverify.Polars.LoweringOn.Integers
 
 /-!
@@ -37,6 +38,7 @@ def Substrait.polarsOn : Substrait.Lowering (Substrait.Profile.polars) :=
     | Substrait.UnFn.ffloor  => some (Substrait.polarsOn.ffloor )
     | Substrait.UnFn.fceil  => some (Substrait.polarsOn.fceil )
     | Substrait.UnFn.fround  => some (Substrait.polarsOn.fround )
+    | Substrait.UnFn.froundEven  => some (Substrait.polarsOn.froundEven )
     | Substrait.UnFn.froundTo a0 => some (Substrait.polarsOn.froundTo a0)
     | Substrait.UnFn.ftoi  => some (Substrait.polarsOn.ftoi )
     | Substrait.UnFn.narrow a0 => some (Substrait.polarsOn.narrow a0)
@@ -141,6 +143,7 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("UnFn.ffloor", "native", 0),
   ("UnFn.fceil", "hand-written schema: ceil: 0.0 for a negative value that rounds to zero", 0),
   ("UnFn.fround", "hand-written schema: round: 0.0 for a negative value that rounds to zero", 0),
+  ("UnFn.froundEven", "hand-written schema: round(mode='half_to_even'): 0.0 for a negative value that rounds to zero", 0),
   ("UnFn.froundTo", "native", 0),
   ("UnFn.ftoi", "native", 0),
   ("UnFn.narrow", "native", 0),

@@ -14,7 +14,7 @@ bounds, for every summation order the engine profiles allow (`sum_order`):
 |---|---|---|
 | `SEQUENTIAL`, `ANY`, `PAIRWISE` | a tree of additions in any order (`FloatSums`) | `TreeSum.seq`, `TreeSum.split` |
 | `SCALED_CONSTANT` | DuckDB's constant run, one `fl(k · x)` | `TreeSum.const` |
-| `COMPENSATED` | Kahan's sum (Polars, in memory, by groups) | `Rnd.kahan` |
+| `COMPENSATED` | Kahan's sum (DuckDB's `kahan_sum`) | `Rnd.kahan` |
 
 `StdModel.Summed` is all of them. Its results meet the sequential sum's
 bound (`Summed.near`), so:

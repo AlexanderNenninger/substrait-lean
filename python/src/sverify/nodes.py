@@ -48,10 +48,11 @@ from sverify import _duckdb, _engines, _hooks, _quarantine, _stages
 from sverify._fired import fired_check
 from sverify._quarantine import Held, Quarantined, QuarantineReport
 from sverify._retention import RetentionReport
-from sverify.contracts import ON_DATA, Discharged, _lookup, _register, label
+from sverify.conditions import ON_DATA, Discharged, label
+from sverify.contracts import _lookup, _register
 from sverify.engine import ENGINES, connect, plain_schema, written_plan
 from sverify.ibis_substrait import to_substrait_json
-from sverify.incremental import BatchRefresh, IncrementalView, Pipeline, Source, Stored
+from sverify.incremental import BatchRefresh, IncrementalView, Pipeline, Stored, VersionedSource
 from sverify.io._credentials import CredentialUse
 from sverify.io._credentials import uses as credential_uses
 from sverify.observation import PLAN_BOUND, Lenses
@@ -61,9 +62,10 @@ if TYPE_CHECKING:
     import pandas
     import polars
 
-    from sverify.contracts import ContractedTransform, Report
+    from sverify.contracts import ContractedTransform
     from sverify.io._common import SinkWrite
     from sverify.io._sink import Sink
+    from sverify.report import Report
     from sverify.routes import Route, RouteKind
 
 #: One INFO line per node and per commit of a refresh, for a job's task log.
@@ -726,7 +728,7 @@ class Node:
 class _Source(Node):
     """A source as a node: the leaf of a stage."""
 
-    def __init__(self, source: Source):
+    def __init__(self, source: VersionedSource):
         schema = ibis.Schema.from_pyarrow(plain_schema(source.schema()))
         super().__init__(source.name, ibis.table(schema, name=source.name), [])
         self.source = source
@@ -757,7 +759,7 @@ class _Stored(Node):
         super().__init__(sink.name, expr, [upstream])
         sink._node = self  # type: ignore[attr-defined]
         self.upstream, self.sink = upstream, sink
-        self._reader: Source = sink._source()
+        self._reader: VersionedSource = sink._source()
         if quarantine is True:
             raise TypeError(
                 "quarantine= takes a sink, None (a table next to the sink's) or False "
@@ -915,7 +917,8 @@ def _implied(pipe: Pipeline, query: ir.Table) -> dict[str, str]:
     `Rel.need_eval`): the view's result is the same on the rows that pass
     it. Derived from the preconditions, which every refresh establishes,
     and the facts that hold at every version (`_STABLE_FACTS`)."""
-    from sverify.contracts import TableCondition, table_facts, verify
+    from sverify.conditions import TableCondition
+    from sverify.contracts import table_facts, verify
 
     requires: dict[str, list[Any]] = {}
     for t in pipe.sources:
@@ -1642,7 +1645,7 @@ def _routes(
     refresh states one; another node needs `reproducible`, or nothing. The
     engine's run-to-run variation must refine it, on every route."""
     from sverify import routes
-    from sverify.contracts import UnverifiedRunError
+    from sverify.report import UnverifiedRunError
 
     out: dict[int, Route] = {}
     e = routes.engine_name(engine)
@@ -1780,7 +1783,7 @@ def wants_node(args: Sequence[Any], kwargs: dict[str, Any]) -> bool:
     return any(isinstance(v, Node) or is_source(v) for v in [*args, *kwargs.values()])
 
 
-def _source_node(source: Source) -> _Source:
+def _source_node(source: VersionedSource) -> _Source:
     """The node of a source: one per source, so that every transform reading
     it reads the same table."""
     node = getattr(source, "_sverify_node", None)

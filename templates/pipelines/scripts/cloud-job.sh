@@ -27,9 +27,9 @@ import json, sys
 from datetime import UTC, datetime
 out, message = sys.argv[1], sys.argv[2]
 error = {"code": "error", "type": "CloudJob", "message": message}
-json.dump({"exit": 6, "at": datetime.now(UTC).isoformat(timespec="seconds"),
-           "runs": [{"target": "cloud-job", "exit": 6, "result": {"status": "error", "error": error}}]},
+json.dump({"exit": 8, "at": datetime.now(UTC).isoformat(timespec="seconds"),
+           "runs": [{"target": "cloud-job", "exit": 8, "result": {"status": "error", "error": error}}]},
           open(out, "w"), indent=2)
 PY
 printf '<!-- sverify-alert -->\nThe refresh failed: %s.\n' "$message" > "$alert"
-exit 6
+exit 8

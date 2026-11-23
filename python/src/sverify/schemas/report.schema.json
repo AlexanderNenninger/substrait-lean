@@ -741,6 +741,13 @@
           "description": "The engine version the run is on where it is in the profile's range but not probed (D70); absent on a probed version.",
           "type": "string"
         },
+        "settings": {
+          "description": "The engine settings the route was checked under, by name, as read from the session the run uses: those its profile's facts assume (#1130). Absent where the engine has none to read.",
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "boolean", "number", "null"]
+          }
+        },
         "warnings": {
           "type": "array",
           "items": {

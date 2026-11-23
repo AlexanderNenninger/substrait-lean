@@ -28,7 +28,7 @@ from sverify_dbt.result import (
     CheckResult,
     ContractIssue,
     ModelResult,
-    Needed,
+    NeededTest,
     TestResult,
 )
 
@@ -97,9 +97,9 @@ class _Checker:
             project=self.p.name,
             root=str(self.p.root),
             models=shown,
-            tests={t.unique_id: t for t in self.p.tests.values()},
+            _tests={t.unique_id: t for t in self.p.tests.values()},
             unit_tests=self.p.unit_tests,
-            relations=self.p.relations,
+            _relations=self.p.relations,
             selected=bool(select),
             adapter=self.p.adapter,
             dbt_version=self.p.dbt_version,
@@ -325,7 +325,7 @@ class _Checker:
         budget = [_BLAME_CALLS]
         for tr, cs in ensures:
             if (
-                tr.status != "not proved"
+                tr.status != "not_proved"
                 or tr.would_hold
                 or tr.reason not in ("may_be_false", "may_be_null")
             ):
@@ -383,7 +383,7 @@ class _Checker:
             missing = [c for c in got.columns if c not in cols]
             if got.schema:
                 bad = got.schema(list(res.duckdb_types))
-                tr.status, tr.why = ("proved", None) if bad is None else ("not proved", bad)
+                tr.status, tr.why = ("proved", None) if bad is None else ("not_proved", bad)
                 if bad is None:
                     self.proved.add(t.unique_id)
             elif missing:
@@ -451,7 +451,7 @@ class _Checker:
             res.refuse(_refusal(first))
             return None
         for tr, cs in ensures:
-            if tr.status == "not checked":
+            if tr.status == "not_checked":
                 continue
             try:
                 go(none, cs)
@@ -478,7 +478,7 @@ class _Checker:
                     )
                     dropped = True
             for tr, cs in ensures:
-                if tr.status != "not checked" and any(_label(c) == name for c in cs):
+                if tr.status != "not_checked" and any(_label(c) == name for c in cs):
                     tr.skip(f"sverify cannot read its condition: {_first_line(err)}")
                     dropped = True
         return dropped
@@ -498,7 +498,7 @@ class _Checker:
             )
         res.assumed = [i.shown or i.expr for i in report.assumed]
         for tr, cs in ensures:
-            if tr.status == "not checked":
+            if tr.status == "not_checked":
                 continue
             checked = [next(results) for _ in cs]
             if any(r.condition is not c for r, c in zip(checked, cs, strict=True)):
@@ -511,14 +511,14 @@ class _Checker:
             if not bad and not needed:
                 tr.status = "proved"
             elif not bad:
-                tr.status = "not proved"
+                tr.status = "not_proved"
                 tr.why = "it holds, but the model may fail without the source tests under 'needs'"
             elif bad[0].reason == "needs":
-                tr.status = "not proved"
+                tr.status = "not_proved"
                 tr.why = "proved only with the source tests listed under 'needs'"
             else:
                 c = bad[0]
-                tr.status = "not proved"
+                tr.status = "not_proved"
                 tr.why = _why(c)
                 tr.reason = c.reason
                 tr.counterexample = str(c.counterexample) if c.counterexample else None
@@ -590,19 +590,25 @@ class _Checker:
         declared = {c.name: c.data_type for c in m.columns.values()}
         for c in declared:
             if c not in actual:
-                issues.append(ContractIssue(c, "declared, but the model has no such column"))
+                issues.append(
+                    ContractIssue(column=c, problem="declared, but the model has no such column")
+                )
         for c in actual:
             if c not in declared:
-                issues.append(ContractIssue(c, "in the model's result, but not declared"))
+                issues.append(
+                    ContractIssue(column=c, problem="in the model's result, but not declared")
+                )
         for c, t in declared.items():
             if c not in actual:
                 continue
             if t is None:
-                issues.append(ContractIssue(c, "declared without a data_type"))
+                issues.append(ContractIssue(column=c, problem="declared without a data_type"))
                 continue
             want = _duck_name(self.con, t)
             if want != actual[c]:
-                issues.append(ContractIssue(c, f"declared {t}, but DuckDB gives {actual[c]}"))
+                issues.append(
+                    ContractIssue(column=c, problem=f"declared {t}, but DuckDB gives {actual[c]}")
+                )
             if proved.get(c) and proved[c] != actual[c]:
                 res.notes.append(
                     f"column {c}: sverify's plan has type {proved[c]}, and DuckDB's SQL gives "
@@ -707,7 +713,7 @@ def _q(name: str) -> str:
 
 def _checked(ensures: list) -> list:
     """The conditions of the tests still to check, in order."""
-    return [c for tr, cs in ensures if tr.status != "not checked" for c in cs]
+    return [c for tr, cs in ensures if tr.status != "not_checked" for c in cs]
 
 
 def _first_line(e: BaseException) -> str:
@@ -804,23 +810,21 @@ def _unique_on(t: Any) -> set[str] | None:
     if base == "unique" and t.column:
         return {t.column}
     if base == "unique_combination_of_columns":
-        return set(t.kwargs.get("combination_of_columns") or []) or None
+        return set(t.columns or ()) or None
     return None
 
 
-def _needed(report: Any, checker: _Checker, m: Relation) -> list[Needed]:
+def _needed(report: Any, checker: _Checker, m: Relation) -> list[NeededTest]:
     """`Report.needs` as tests to add to the inputs."""
     out = []
     for n in report.needs:
         issue = n.issue
         out.append(
-            Needed(
+            NeededTest(
                 on=_user_table(n.table, checker),
                 column=n.column,
                 test=mapping.dbt_test(n.column, n.op, n.value, n.sql),
-                because=(
-                    f"{issue.kind} in `{issue.shown or issue.expr}` otherwise" if issue else None
-                ),
+                why=(f"{issue.kind} in `{issue.shown or issue.expr}` otherwise" if issue else None),
                 condition=n.sql,
             )
         )

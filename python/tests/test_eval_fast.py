@@ -152,3 +152,22 @@ def test_a_window_over_hundreds_of_rows_is_not_slower_to_check_than_to_evaluate(
     lean_values(text)
     checked = time.perf_counter() - start
     assert checked < max(4 * spec, 4), f"rows only {spec:.1f} s, with --raises {checked:.1f} s"
+
+
+@pytest.mark.slow
+def test_a_window_over_many_small_partitions_is_linear():
+    """A window's partitions are hashed (`windowEvalFast`, `windowRaised`): each
+    row reads its own partition, where `windowEval` filters the whole input for
+    every row. An as-of join is a window partitioned by the left row (#2443),
+    so thousands of small partitions are its common shape."""
+    con = connect()
+    con.create("w", pa.schema([("k", pa.int64()), ("o", pa.int64()), ("x", pa.int64())]))
+    rows = [(i % 2000, i, i % 7) for i in range(20000)]
+    sql = "SELECT k, sum(x) OVER (PARTITION BY k ORDER BY o) AS s FROM w"
+    plan = inline_tables(json.loads(substrait_json(con, sql, semantics="duckdb")), {"w": rows})
+    start = time.perf_counter()
+    out = lean_values(json.dumps(plan))
+    took = time.perf_counter() - start
+    assert len(out) == 20000
+    # About a second; filtering the input for each row took minutes.
+    assert took < 8, f"{took:.1f} s"

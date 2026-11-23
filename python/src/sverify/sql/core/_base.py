@@ -484,6 +484,11 @@ class Dialect:
         """To an integer, halves away from zero; NaN/±inf stay."""
         return f"ROUND({x})"
 
+    def float_round_even(self, x: str) -> str:
+        """`UnFn.froundEven` (D55): to an integer, halves to the even one;
+        NaN/±inf stay. A dialect writes it once its engine's facts say how."""
+        raise self.not_written("ROUND with rounding TIE_TO_EVEN")
+
     def float_round_to(self, x: str, digits: int) -> str:
         """`ROUND(x, d)` as `FloatCode.roundTo` (DuckDB 2.0's, #335): with
         `m = 10^|d|`, `round(x · m) / m` for `d ≥ 0` and `round(x / m) · m`
@@ -1249,9 +1254,9 @@ class Field:
 
 # The operations of `Un` and `Bin`, by area: a new one goes into its area's.
 CoreUnOp = Literal[
-    "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo", "ftoi",
-    "narrow", "itos", "dtext", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
-    "black_box", "raise",
+    "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundEven", "froundTo",
+    "ftoi", "narrow", "itos", "dtext", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null",
+    "narrow_or_null", "black_box", "raise",
 ]  # fmt: skip
 CoreBinOp = Literal[
     "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fdivIeee",
@@ -1752,8 +1757,8 @@ def _lean_lit_kind(v: Any) -> LeanKind:
 #: it (`register`).
 UN_KINDS: dict[str, FixedKind] = {
     "itof": "float", "fneg": "float", "ffloor": "float", "fceil": "float", "fround": "float",
-    "froundTo": "float", "ftoi": "int", "ftoi_or_null": "int", "narrow_or_null": "int",
-    "narrow": "int", "fit": "int", "itos": "str", "dtext": "str",
+    "froundEven": "float", "froundTo": "float", "ftoi": "int", "ftoi_or_null": "int",
+    "narrow_or_null": "int", "narrow": "int", "fit": "int", "itos": "str", "dtext": "str",
     **_functions.kinds("core", un=True),
 }  # fmt: skip
 BIN_KINDS: dict[str, FixedKind] = {
@@ -2005,7 +2010,7 @@ def _decided(c: Expr) -> Expr:
             a = _decided(a)
             return (
                 Lit(not a.value, "bool")
-                if isinstance(a, Lit) and a.kind == "bool"
+                if isinstance(a, Lit) and a.kind == "bool" and a.value is not None
                 else Un("not", a)
             )
     return c
@@ -2800,9 +2805,8 @@ class _Parser:
                 # A double literal is its code in Lean, which `lean_expr_kind`
                 # calls an integer; its declared kind says double (`doubleJ`).
                 has_float = any(
-                    lean_expr_kind(e, cols.lean) == "float"
-                    or (isinstance(e, Lit) and e.kind == "float")
-                    for e in parsed
+                    lean_expr_kind(e, cols.lean) == "float" or _declared_double(self.fns, a)
+                    for a, e in zip(arg_js, parsed, strict=True)
                 )
                 float_call = name in floats and (out == "float" or has_float or name in DOUBLE_FNS)
                 if fmod_ext and not float_call:
@@ -2836,6 +2840,7 @@ class _Parser:
                         if lean_expr_kind(e, cols.lean) == "int"
                         and not keep_int(k)
                         and not isinstance(e, Lit)
+                        and not _declared_double(self.fns, arg_js[k])
                         else e
                         for k, e in enumerate(parsed)
                     ]
@@ -2853,6 +2858,18 @@ class _Parser:
                     if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
                         op: Literal["fdiv", "fmod"] = "fdiv" if name == "divide" else "fmod"
                         return _div_by_zero(mode, True, lambda a, b: Bin(op, a, b), *parsed)
+                    if (
+                        name == "round"
+                        and _option(v, "rounding", "TIE_AWAY_FROM_ZERO") == "TIE_TO_EVEN"
+                    ):
+                        # D55: half to even, at zero digits only (`Parse`'s `round` arm).
+                        match parsed:
+                            case [a] | [a, Lit(value=0, kind="int")]:
+                                return Un("froundEven", a)
+                        raise Unsupported(
+                            "round: rounding TIE_TO_EVEN is only modelled at zero digits; "
+                            "round to 0 digits and scale, or use TIE_AWAY_FROM_ZERO"
+                        )
                     return _float_call(name, parsed)
                 mode = _div_by_zero_mode(v)
                 if name in ("divide", "modulus") and len(parsed) == 2:
@@ -4080,10 +4097,6 @@ def _coalesce(a: Expr, rest: list[Expr]) -> Expr:
     if not rest:
         return a
     return If(Un("not", Un("is_null", a)), a, _coalesce(rest[0], rest[1:]))
-
-
-def _pick(better: Callable[[Expr, Expr], Expr], a: Expr, b: Expr) -> Expr:
-    return If(Un("is_null", a), b, If(Un("is_null", b), a, If(better(a, b), b, a)))
 
 
 def _option(f: dict, name: str, default: str) -> str:
@@ -5737,6 +5750,8 @@ class _Writer:
             case Un(op="ffloor" | "fceil" | "fround" as op, arg=a):
                 f = {"ffloor": d.float_floor, "fceil": d.float_ceil, "fround": d.float_round}[op]
                 return f(self.float_operand(a, ref, cols))
+            case Un(op="froundEven", arg=a):
+                return d.float_round_even(self.float_operand(a, ref, cols))
             case Un(op="froundTo", arg=a, digits=digits):
                 return d.float_round_to(self.float_operand(a, ref, cols), digits)
             case Un(op="ftoi", arg=a):
@@ -5830,9 +5845,14 @@ class _Writer:
                 plain = _nan_ruled_out(op, a, b) and op not in ("fdiv", "fmod")
                 consts = [_float_lit(a), _float_lit(b)]
                 # A finite number divided by a constant of at least 1 in size, or
-                # multiplied by one of at most 1, has no larger magnitude: no overflow.
-                shrinks = (op in ("fdiv", "fdivIeee") and abs(consts[1] or 0.0) >= 1.0) or (
-                    op == "fmul" and any(c is not None and abs(c) <= 1.0 for c in consts)
+                # multiplied by one of at most 1, has no larger magnitude: no overflow
+                # (`BinFn.shrinks_fin`). Nor divided by an integer as a double: zero
+                # raises first, and any other is at least 1 in size
+                # (`Expr.mayInfBin_sound`, #1787).
+                shrinks = (
+                    (op in ("fdiv", "fdivIeee") and abs(consts[1] or 0.0) >= 1.0)
+                    or (op == "fmul" and any(c is not None and abs(c) <= 1.0 for c in consts))
+                    or (op == "fdiv" and isinstance(b, Un) and b.op == "itof")
                 )
                 if not plain and (low := d.lowered(op, [sa, sb], "float", consts)) is not None:
                     if op == "fmod" or shrinks:

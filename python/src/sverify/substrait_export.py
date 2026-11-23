@@ -250,7 +250,12 @@ def ty_of(j: Json) -> Ty:
 
 # -- the YAMLs' type expressions ---------------------------------------------
 
-_TOKEN = re.compile(r"\s*(\d+|[A-Za-z_!][A-Za-z_0-9!]*|&&|\|\||[<>=!]=|[-+*/(),?:<>!])")
+# The two-character operators first, so `!=` is no `!`. A name may hold `!`
+# (a user type's `u!name`), but neither start with it, so `!x` is a negation,
+# nor end with it, so `a!=b` is a comparison.
+_TOKEN = re.compile(
+    r"\s*(\d+|&&|\|\||[<>=!]=|[A-Za-z_][A-Za-z_0-9]*(?:![A-Za-z_0-9]+)*|[-+*/(),?:<>!])"
+)
 
 
 def _tokens(s: str) -> list[str]:
@@ -1639,15 +1644,9 @@ def _refuse_unverified(report: Report) -> None:
             hint="export a report that sv.verify returned",
         )
     if not report._proved:
-        reasons = [f"not proved: {c.label}" for c in report.ensures if not c.portable]
-        reasons += [f"may fail: {i}" for i in report.errors]
-        if report._transfer:
-            reasons.append("the proof does not carry over to Substrait (see report.details())")
-        reasons += [f"needs {n}" for n in report._needs_lines()]
-        if report.floats_unmet:
-            reasons.append(f"no engine meets the lenses' doubles: {report.floats_unmet}")
         raise ExportError(
-            "not verified: " + "; ".join(reasons), hint="fix what it names and verify again"
+            "not verified: " + "; ".join(report._unproved_reasons()),
+            hint="fix what it names and verify again",
         )
 
 

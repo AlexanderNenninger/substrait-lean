@@ -283,11 +283,14 @@ theorem reals_scaled :
       · push_cast; rw [add_mul, add_mul, ha, tiny_scaled, ih.2]; ring
     | _ => simpa [reals, floatsOf, exactSum, scaledAbsSum] using ih
 
-/-- **The core's `SumBoundRaw` holds of every `ANY`, `PAIRWISE` and
-`SEQUENTIAL` sum** (#1196): what `SumOrder` asserts of these orders beside
-their shape follows from the shape, by `TreeSum.error` under the core's
-rounding. -/
-theorem FloatSums.sumBoundRaw {vs : List Value} {c : Int} (h : FloatSums vs c) :
+/-- **The core's `SumBoundRaw` from a bound over the reals**: a sum whose
+value is within `γₖ · Σ(|xᵢ| + 2⁻¹⁰²²)` of the values' sum, for the `k`
+doubles among them, meets `SumBoundRaw`, the same bound in units of
+`2⁻¹⁰⁷⁴` with `γₙ` multiplied out. -/
+theorem sumBoundRaw_of_near {vs : List Value} {c : Int}
+    (h : (∀ x, Value.float x ∈ vs → IsFin x) → ((reals vs).length : ℝ) ≤ 2 ^ 32 →
+      2 * FloatBounds.mag (reals vs) ≤ maxFinite →
+      IsFin c ∧ |val c - (reals vs).sum| ≤ gamma (reals vs).length * FloatBounds.mag (reals vs)) :
     SumBoundRaw vs c := by
   intro hfin hlen hov
   have hpos := two_pow_pos'
@@ -314,13 +317,11 @@ theorem FloatSums.sumBoundRaw {vs : List Value} {c : Int} (h : FloatSums vs c) :
     have : 2 * FloatBounds.mag (reals vs) * 2 ^ 1074 ≤ maxFinite * 2 ^ 1074 := by
       rw [mul_assoc, hmag]; linarith
     exact le_of_mul_le_mul_right this hpos
-  obtain ⟨hfc, _, ht⟩ := FloatSums.treeSum h hfin hnk hovR
+  obtain ⟨hfc, herr⟩ := h hfin hk32 hovR
   refine ⟨hfc, ?_⟩
   have hg := gamma_lt_one hnk
-  have hm := mag_nonneg (reals vs)
   have hk1 : (k : ℝ) * u < 1 := by push_cast at hnk; nlinarith
   have hn1 : (n : ℝ) * u < 1 := by push_cast at hnn; nlinarith
-  have herr := ht.error model hk1 (by nlinarith)
   -- In units of `2⁻¹⁰⁷⁴`: `|c − Σ| ≤ γₖ (S + k 2⁵²) ≤ γₙ (S + n 2⁵²)`.
   have hd : |((scaled c - exactSum vs : Int) : ℝ)| ≤ gamma n * ((S : ℝ) + n * 2 ^ 52) := by
     have e1 : ((scaled c - exactSum vs : Int) : ℝ) = (val c - (reals vs).sum) * 2 ^ 1074 := by
@@ -367,6 +368,21 @@ theorem FloatSums.sumBoundRaw {vs : List Value} {c : Int} (h : FloatSums vs c) :
       Int.cast_abs]
     exact key
   exact_mod_cast hcast
+
+/-- **The core's `SumBoundRaw` holds of every `ANY`, `PAIRWISE` and
+`SEQUENTIAL` sum** (#1196): what `SumOrder` asserts of these orders beside
+their shape follows from the shape, by `TreeSum.error` under the core's
+rounding. -/
+theorem FloatSums.sumBoundRaw {vs : List Value} {c : Int} (h : FloatSums vs c) :
+    SumBoundRaw vs c :=
+  sumBoundRaw_of_near fun hfin hk32 hov => by
+    have hnk := nu_lt hk32
+    obtain ⟨hfc, _, ht⟩ := FloatSums.treeSum h hfin hnk hov
+    have hu := u_pos
+    have hg := gamma_lt_one hnk
+    have hm := mag_nonneg (reals vs)
+    have hk1 : ((reals vs).length : ℝ) * u < 1 := by push_cast at hnk; nlinarith
+    exact ⟨hfc, ht.error model hk1 (by nlinarith)⟩
 
 /-- **The core's `SumBound` holds of every `ANY`, `PAIRWISE` and `SEQUENTIAL`
 sum** (#1196, ruling 242): of the codes as they are by `FloatSums.sumBoundRaw`,

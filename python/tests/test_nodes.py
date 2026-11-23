@@ -21,7 +21,7 @@ from _pipelines import (
     spy_on,
 )
 from sverify import nodes
-from sverify.contracts import label, violations
+from sverify.conditions import label
 from sverify.engines import ENGINES
 from sverify.engines.plan import delta_plans
 from sverify.errors import (
@@ -31,6 +31,7 @@ from sverify.errors import (
     VerificationError,
 )
 from sverify.io import Changes, DeltaSink, DeltaSource, StaticSource, sink_from
+from sverify.report import violations
 
 SETTINGS = settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 

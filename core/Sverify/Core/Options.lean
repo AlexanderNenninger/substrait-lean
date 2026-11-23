@@ -13,8 +13,8 @@ group its options; a `ProfileTable` gives, per option or per group and option,
 the behaviours a profile allows.
 
 `Profile.reference.table` is the reference's table. The parser reads the
-options a plan sets from it (`Parse.optionAccepts`). Step 1c reads it in
-`Rel.AllowedP`; until then it describes what `Rel.Allowed` does. -/
+options a plan sets from it (`Parse.optionAccepts`), and `Rel.AllowedP`
+reads it (step 1c). -/
 
 namespace Substrait
 
@@ -69,7 +69,7 @@ def options : List OptionSpec := [
   { id := "nan_creation", substrait := none, core := ["NAN", "ERROR"],
     extra := [("NAN", "duckdb-R15-double-arith")] },
   { id := "zero_sign", substrait := none, core := ["IEEE", "ONE_ZERO"],
-    extra := [("IEEE", "polars-zero-sign")] },
+    extra := [("IEEE", "polars-zero-sign-streaming")] },
   -- Which zero a negative double that rounds to zero is (`round(-0.4)`,
   -- `ceil(-0.4)`): IEEE's `-0.0`, or `+0.0` (Spark's `round` goes through a
   -- decimal). Another axis than `zero_sign`, which says where the two zeros
@@ -118,11 +118,15 @@ def options : List OptionSpec := [
   -- they are within #85's bound only.
   { id := "sum_order", substrait := none,
     core := ["ANY", "SEQUENTIAL", "PAIRWISE", "COMPENSATED", "SCALED_CONSTANT", "EXACT"],
-    extra := [("SEQUENTIAL", "polars-sum-float"), ("PAIRWISE", "polars-sum-float"),
+    extra := [("SEQUENTIAL", "polars-sum-float-streaming"),
+      ("PAIRWISE", "polars-sum-float-streaming"),
       ("COMPENSATED", "duckdb-kahan-sum"), ("SCALED_CONSTANT", "duckdb-sum-double")] },
   -- `EXACT`: the correctly rounded formula over the exact moments, the reference's (D30).
-  { id := "stat_algo", substrait := none, core := ["GENERIC", "WELFORD_CHAN", "EXACT"],
-    extra := [("WELFORD_CHAN", "duckdb-var-stddev")] },
+  -- `SCHUBERT_GERTZ`: two-pass blocks with Schubert and Gertz's merge, Polars's (ruling 271).
+  { id := "stat_algo", substrait := none,
+    core := ["GENERIC", "WELFORD_CHAN", "SCHUBERT_GERTZ", "EXACT"],
+    extra := [("WELFORD_CHAN", "duckdb-var-stddev"),
+      ("SCHUBERT_GERTZ", "polars-var-std-streaming")] },
   -- How an engine sums a window's frame of doubles (#1032): each frame
   -- anew (`RECOMPUTE`, the reference's), a tree of partial sums (`TREE`), an
   -- accumulator the frame only adds to (`RUNNING_ADD`), or one that adds the
@@ -492,7 +496,7 @@ def Profile.reference.table : ProfileTable where
     -- Native doubles round to nearest, ties to even (D5); `ROUND` rounds
     -- halves away from zero (`core/Sverify/Core/Rounding.lean`, #335).
     (none, "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
-    (some "fp.round", "rounding", .asked ["TIE_AWAY_FROM_ZERO"] ["TIE_AWAY_FROM_ZERO"]),
+    (some "fp.round", "rounding", .asked ["TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN"] ["TIE_AWAY_FROM_ZERO"]),
     -- Outside their domains the elementary functions raise (`Numeric.lean`,
     -- #215); no operation creates a NaN (#257). Integers have no domain error.
     (none, "on_domain_error", .asked ["ERROR"] ["ERROR"]),

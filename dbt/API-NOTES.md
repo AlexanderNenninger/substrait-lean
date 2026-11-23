@@ -24,7 +24,7 @@ Closed in substrait-lean#685:
 |---|---|
 | 1 | `sverify.errors.Unsupported(ValueError)`, the base of every refusal (the lift's, the producer's, the SQL writer's, the Polars translator's); `sverify.engines.Unsupported` was the same class until 1.0 removed that name (#881) |
 | 4 | `CheckedCondition.reason -> Literal["observation", "not_a_key", "ties", "always_false", "may_be_false", "may_be_null", "not_proved_kind", "unknown"] \| None` |
-| 5 | `Report.needs -> list[Needed]`, `Needed(table, column, op, value, sql, label, code, issue)`, `code` being the Python for `requires` (`_.qty != 0`) for an editor's quick fix (`sverify.contracts.Needed`) |
+| 5 | `Report.needs -> list[Needed]`, `Needed(table, column, op, value, sql, label, code, issue)`, `code` being the Python for `requires` (`_.qty != 0`) for an editor's quick fix (`sverify.report.Needed`) |
 | 13 | `verify(tables={"t": {"id": "BIGINT", "s": "VARCHAR NOT NULL"}})`: DuckDB's type names beside Ibis's (`sverify.contracts.input_schema`) |
 | 16 | The SQL lift reads `x IS [NOT] TRUE` and `x IS [NOT] FALSE` |
 | 19 | `CheckedCondition.condition`: the condition as given in `ensures` |
@@ -440,3 +440,12 @@ would give suggestions for more kinds of postcondition.
 ### sverify's 1.0 names (#2345, ruling 263)
 
 sverify-dbt reads one name the 1.0 naming sweep changed: `sverify.types.CheckedCondition`, the type of `Report.ensures`' items, is `sverify.types.Postcondition`, with the same fields (`reason`, `why`, `needs`, `condition`, `proved`). `check.py`, `mapping.py` and `result.py` follow. The other renames (`Lenses`, a route's `taken` and `why`, `SinkWrite.inserts`, the sink record's `semantics`) are not read here.
+
+### sverify-dbt's own 1.0 names (#891 2.6)
+
+sverify-dbt's result types moved before 1.0 freezes them:
+
+- A status is `sverify_dbt.result.Status`, snake_case: `"pending"`, `"proved"`, `"not_proved"` or `"not_checked"`.
+- `sverify_dbt.Needed` is `NeededTest`, with `why` where it said `because`. A `Needed` in the table above (rows 5 and 55) is sverify's, `sverify.types.Needed`. `Suggestion.because` is `Suggestion.why` too: `why` is words (ruling 264).
+- `TestResult`, `NeededTest`, `ContractIssue`, `ModelResult`, `CheckResult` and `Suggestion` take keyword arguments only.
+- `CheckResult.tests` and `.relations`, the manifest's nodes, are internal: `_tests` and `_relations`.

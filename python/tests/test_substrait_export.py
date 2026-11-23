@@ -157,10 +157,9 @@ def test_round_trip(case: str, fmt: Literal["json", "binary"]) -> None:
     report = _verify(expr, requires, ensures)
     out = report.to_substrait(fmt)
     again = sv.Report.from_substrait(out)
-    # The exported plan carries the `+ 0.0` shims of the double keys, whose
-    # overflow the import assumes and checks on the data.
-    expected = sv.Verdict.PROVED_WITH_CHECKS if case == "double keys" else report.verdict
-    assert again.verdict == expected
+    # The `+ 0.0` shims the export writes for double keys cannot overflow
+    # (`BinFn.shrinks_fin`), so the import proves what the export did.
+    assert again.verdict == report.verdict
     assert [(c.label, c.proved) for c in again.ensures] == [
         (c.label, c.proved) for c in report.ensures
     ]
@@ -598,3 +597,199 @@ def test_set_inputs_of_two_decimal_precisions_are_cast_to_one() -> None:
         rel = body["input"]
     assert any("project" in i for i in rel["set"]["inputs"])
     assert sv.Report.from_substrait(plan).verdict == report.verdict
+
+
+# -- the shims a consumer runs, on an engine (#750) -------------------------------------
+
+KT = ibis.table({"i": "int64", "a": "float64", "b": "float64", "g": "int64"}, name="kt")
+_KEYS = [NAN, -0.0, 0.0, 1.5, -1.5, NAN, 1.5, None, float("inf"), float("-inf")]
+KEY_ROWS = pa.table(
+    {
+        "i": pa.array(range(len(_KEYS)), pa.int64()),
+        "a": pa.array(_KEYS, pa.float64()),
+        "b": pa.array(list(reversed(_KEYS)), pa.float64()),
+        "g": pa.array([i % 3 for i in range(len(_KEYS))], pa.int64()),
+    }
+)
+VT = ibis.table({"i": "int64", "a": "float64", "g": "int64"}, name="vt")
+_VALUES = [-0.0, 0.0, 1.5, -1.5, 2.5, -2.5, 0.5, -0.5, 99.9, -99.9, 7.0]
+VALUE_ROWS = pa.table(
+    {
+        "i": pa.array(range(len(_VALUES)), pa.int64()),
+        "a": pa.array(_VALUES, pa.float64()),
+        # Groups of 2, 3, 4, 1 and 1 rows: a group of one is too few for SAMPLE.
+        "g": pa.array([0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 4], pa.int64()),
+    }
+)
+FINITE_A = {"vt": [_.a.notnull(), ~_.a.isnan(), _.a >= -100.0, _.a <= 100.0]}
+
+#: Each shim's plan, the table it reads, its rows and the option its shim writes away.
+SHIMMED = {
+    "a double key": (KT.group_by("a").agg(n=_.i.count()), "kt", None, "nan_equality"),
+    "a double key beside an integer": (
+        KT.group_by(["g", "a"]).agg(n=_.i.count(), s=_.i.sum()),
+        "kt",
+        None,
+        "nan_equality",
+    ),
+    "equal": (KT.filter(KT.a == KT.b).select("i"), "kt", None, "nan_equality"),
+    "not equal": (KT.filter(KT.a != KT.b).select("i"), "kt", None, "nan_equality"),
+    "variance": (VT.group_by("g").agg(v=_.a.var()), "vt", FINITE_A, "stat_degenerate"),
+    "POPULATION": (
+        VT.group_by("g").agg(v=_.a.var(how="pop")),
+        "vt",
+        FINITE_A,
+        "stat_degenerate",
+    ),
+    "a filtered variance": (
+        VT.group_by("g").agg(v=_.a.var(where=_.i > 3)),
+        "vt",
+        FINITE_A,
+        "stat_degenerate",
+    ),
+    "std_dev beside another measure": (
+        VT.group_by("g").agg(n=_.i.count(), s=_.a.std(), t=_.i.sum()),
+        "vt",
+        FINITE_A,
+        "stat_degenerate",
+    ),
+    "no key": (VT.aggregate(v=VT.a.var(), n=VT.i.count()), "vt", FINITE_A, "stat_degenerate"),
+}
+
+
+def _same_rows(got: pa.Table, want: pa.Table) -> bool:
+    """The same rows in any order, NaN equal to NaN, and doubles equal within a
+    relative 1e-12: the class is `observed`, so a consumer's variance may differ
+    in its last bits (D30)."""
+
+    def key(r: dict) -> str:
+        return json.dumps({k: round(v, 6) if isinstance(v, float) else v for k, v in r.items()})
+
+    def same(a: object, b: object) -> bool:
+        if isinstance(a, float) and isinstance(b, float):
+            return (a != a and b != b) or a == b or abs(a - b) <= 1e-12 * max(abs(a), abs(b))
+        return a == b
+
+    g, w = (sorted(t.to_pylist(), key=key) for t in (got, want))
+    return len(g) == len(w) and all(
+        r.keys() == q.keys() and all(same(r[k], q[k]) for k in r) for r, q in zip(g, w, strict=True)
+    )
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("case", list(SHIMMED))
+def test_a_shimmed_plan_gives_the_reference_s_rows_on_an_engine(case: str, engine: str) -> None:
+    """The plan `shims="apply"` writes, read back and run on the engine, gives
+    what the verified plan gives there: the shim rewrites the plan and keeps
+    its meaning, over NaN, both zeros, NULL and the infinities as keys, and
+    groups too small for a variance."""
+    pytest.importorskip(engine)
+    expr, name, requires, option = SHIMMED[case]
+    report = _verify(expr, requires, counterexamples=0)
+    exported = report.to_substrait(shims="apply")
+    m = read(exported).manifest
+    assert any(s["option"] == option for s in m["shims"]), m["shims"]
+    assert not m["assumptions"]
+    back = sv.Report.from_substrait(exported)
+    con = connect()
+    put_table(con, name, KEY_ROWS if name == "kt" else VALUE_ROWS)
+    want, got = report.run(con, engine), back.run(con, engine)
+    assert got.schema.names == want.schema.names
+    assert _same_rows(got, want), (got.to_pylist(), want.to_pylist())
+
+
+def test_the_variance_shim_counts_what_the_variance_reads() -> None:
+    """ST-3's count reads the variance's argument, under its filter and
+    invocation, and the threshold follows the distribution: 2 for SAMPLE, 1
+    for POPULATION."""
+    for expr, threshold in (
+        (VT.group_by("g").agg(v=_.a.var(where=_.i > 3)), "2"),
+        (VT.group_by("g").agg(v=_.a.var(how="pop")), "1"),
+    ):
+        plan = read(_verify(expr, FINITE_A).to_substrait(shims="apply")).plan
+        text = json.dumps(plan)
+        assert '"count' in text and f'"i64": "{threshold}"' in text
+        if threshold == "2":
+            # The count keeps the variance's filter.
+            assert text.count('"filter"') >= 2
+
+
+def _typed(expr, requires=None):
+    """The written plan of a verified `expr`, typed, and a builder for shims."""
+    import copy
+
+    from sverify._substrait_shims import Builder
+
+    report = _verify(expr, requires, counterexamples=0)
+    plan = copy.deepcopy(read(report.to_substrait(shims="annotate")).plan)
+    typer = se._Typer(plan)
+    typer.run()
+    return typer, Builder(plan)
+
+
+def test_st4_puts_nan_first_in_a_double_sort_key() -> None:
+    """ST-4 on a sort of doubles: the key `is_nan(x)` and then `x + 0.0`, so
+    NaN sorts greatest (in the key's direction) and the two zeros tie."""
+    from sverify._substrait_shims import st4
+
+    typer, b = _typed(KT.order_by([ibis.desc("a"), "i"]).select("i", "a"))
+    out = st4(typer, b)
+    assert out is not None and "sort key of doubles" in out["shim"]
+    [sorts] = _find(typer.plan, "sorts")
+    assert len(sorts) == 3
+    first, second, third = sorts
+    # The NaN test sorts in the key's own direction, ahead of the key.
+    assert first["direction"] == second["direction"] != third["direction"]
+    names = {
+        e["extensionFunction"]["functionAnchor"]: e["extensionFunction"]["name"]
+        for e in typer.plan["extensions"]
+    }
+    assert names[first["expr"]["scalarFunction"]["functionReference"]] == "is_nan"
+    assert names[second["expr"]["scalarFunction"]["functionReference"]] == "add"
+    assert "_before" not in json.dumps(typer.plan)
+
+
+def _find(node, key):
+    """Every value under `key` in a plan, depth first."""
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k == key:
+                yield v
+            yield from _find(v, key)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _find(v, key)
+
+
+def test_st6_truncates_before_a_cast_to_an_integer() -> None:
+    """ST-6's rewrite, `if x >= 0 then floor(x) else ceil(x)`, then the cast.
+    `to_substrait` never asks for it today (#2438): the core's cast reads no
+    option."""
+    from sverify._substrait_shims import st6
+
+    narrow = {"vt": [*FINITE_A["vt"], _.i >= 0, _.i < 1000]}
+    typer, b = _typed(VT.select(c=_.a.cast("int64"), n=_.i.cast("int32")), narrow)
+    out = st6(typer, b)
+    assert out == {"shim": "casts to integers: if x >= 0 then floor(x) else ceil(x), then the cast"}
+    text = json.dumps(typer.plan)
+    assert "floor" in text and "ceil" in text and "gte" in text
+    # Only the double's cast: the integer's is exact already.
+    assert len(list(_find(typer.plan, "ifThen"))) == 1
+    typer2, b2 = _typed(VT.select(n=_.i.cast("int32")), narrow)
+    assert st6(typer2, b2) is None
+
+
+def test_st8_holds_or_refuses_by_the_decimal_calls() -> None:
+    """ST-8 rewrites nothing: it holds when every decimal call is a `+`, `-` or
+    `*` whose result keeps every digit, and refuses any other decimal call."""
+    from sverify._substrait_shims import st8
+
+    d = ibis.table({"d": "decimal(10,2)", "e": "decimal(12,3)"}, name="d")
+    typer, b = _typed(d.select(s=_.d + _.e, p=_.d * _.e, m=_.e - _.d))
+    assert st8(typer, b) == {
+        "shim": "none needed: no decimal operation of the plan reduces its scale",
+        "rewrite": False,
+    }
+    typer, b = _typed(d.select(a=_.d.abs()))
+    assert any(c.name == "abs" for c in typer.calls)
+    assert st8(typer, b) is None

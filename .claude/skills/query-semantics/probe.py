@@ -532,7 +532,7 @@ def main() -> int:
             f"  note: {', '.join(small)} has fewer than 2 rows. Polars rewrites arithmetic with"
         )
         print(
-            "  literals differently on one-row frames (PL-3, polars-zero-sign): give 2 rows"
+            "  literals differently on one-row frames (PL-3, polars-zero-sign-streaming): give 2 rows"
             " or more."
         )
     expr = None

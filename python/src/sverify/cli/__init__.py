@@ -31,11 +31,12 @@ data; `--memory-limit` (`SVERIFY_MEMORY_LIMIT`, such as `2GB`) is DuckDB's
 (`SVERIFY_TEMP_DIRECTORY`). A breach of either stops the call before any
 sink commits.
 
-Exit codes: 0 proved (a refresh committed every row), 1 not proved, 2 usage
-error, 3 unsupported, 4 time or memory budget exceeded, 5 a refresh
-committed with rows quarantined, 6 error, 7 refused (no route to the
-engine), 8 a refresh held a node (a condition failed, or a run-time check
-fired). A `refresh` that exits 5 or 8 prints
+Exit codes (`ExitCode`), from the best to the worst, so that the worst of
+several runs is their `max`: 0 proved (a refresh committed every row), 1 not
+proved, 2 usage error, 3 unsupported, 4 refused (no route to the engine), 5
+time or memory budget exceeded, 6 a refresh committed with rows quarantined,
+7 a refresh held a node (a condition failed, or a run-time check fired), 8
+error. A `refresh` that exits 6 or 7 prints
 `Refresh.alert()`'s text after the summary; its JSON's `status` says
 `"quarantined"` or `"held"`, with
 `"outcome"` and `"alert"`. Rows of your data, the quarantine's
@@ -53,6 +54,7 @@ from __future__ import annotations
 from collections.abc import Collection
 from pathlib import Path
 
+from sverify.cli._common import ExitCode
 from sverify.cli._discover import Checked, Discovery, load
 from sverify.cli._main import main
 from sverify.report import Report
@@ -89,4 +91,4 @@ def discover(path: str | Path) -> Discovery:
     return load(path)
 
 
-__all__ = ["Checked", "Discovery", "discover", "main", "summary"]
+__all__ = ["Checked", "Discovery", "ExitCode", "discover", "main", "summary"]

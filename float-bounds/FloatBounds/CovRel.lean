@@ -20,7 +20,11 @@ the co-moment within
 (`cBound`), with `D_x² ≤ L S_xx`, `D_y² ≤ L S_yy` and `L = Lw n`. Welford's
 update keeps it (`cov_step`, `cInv_snoc`), and so does DuckDB's merge, which
 takes the weighted mean (`wmean_spec`) and adds
-`Δx · Δy · n_s · n_t / n` (`T_chain2`, `cInv_merge`). For `n ≤ 2³²` pairs of
+`Δx · Δy · n_s · n_t / n` (`T_chain2`, `cInv_merge`). Any merge meeting
+`CMergeSpec` keeps it (`cInv_merge_of`), as `MergeSpec` is for one variable,
+for the constants `C : CConst` of the bound (`cBoundC`, `CInvC`); DuckDB's
+merge is one instance (`chan_spec`), at `CConst.chan`, whose bound and
+invariant are `cBound` and `CInv` by `rfl` (ruling 271). For `n ≤ 2³²` pairs of
 doubles at most `2³⁹⁹` in magnitude, the co-moment of any plan is within
 `70 n u (√(Q'_x S_yy) + √(Q'_y S_xx)) + 11 n u √(S_xx S_yy) + 3961 n² u² √(Q'_x Q'_y) + 793 n u · tiny`
 of the exact one (`chanCov_rel`).
@@ -344,6 +348,73 @@ theorem cBound_le {K Ax Ay Dx Dy R L : ℝ} (hK1 : 1 ≤ K) (hK : K ≤ 2 ^ 32) 
   have := mul_le_mul c0 hsum h0 (by norm_num)
   linarith
 
+/-- **The constants of the covariance invariant**: `ad`, the coefficient of
+`A · D` in its bound (`cBoundC`), and `nad`, that of `A · h|Δ|` a merge adds
+(`cMergeNew`). DuckDB's merge (Chan's) needs 8.5 and 7.3 (`CConst.chan`,
+whose bound is `cBound`); Schubert and Gertz's needs more (ruling 271). -/
+structure CConst where
+  ad : ℝ
+  nad : ℝ
+  nad0 : 0 ≤ nad
+  nad_le : nad ≤ ad
+  ad_le : ad ≤ 100
+
+/-- Chan's merge, DuckDB's: 8.5 and 7.3. -/
+def CConst.chan : CConst := ⟨8.5, 7.3, by norm_num, by norm_num, by norm_num⟩
+
+/-- `cBound` with the constants `C`: `(1 + 3nu)(ad u (A_x D_y + A_y D_x) + 10 u n R
++ 60 u² L A_x A_y + 12 u L·tiny)`. -/
+noncomputable def cBoundC (C : CConst) (n Ax Ay Dx Dy R L : ℝ) : ℝ :=
+  (1 + 3 * n * u) * (C.ad * u * (Ax * Dy + Ay * Dx) + 10 * u * n * R + 60 * u ^ 2 * L * (Ax * Ay)
+    + 12 * u * tiny * L)
+
+/-- Chan's constants give `cBound`. -/
+theorem cBoundC_chan : cBoundC CConst.chan = cBound := rfl
+
+theorem cBoundC_le {C : CConst} {K Ax Ay Dx Dy R L : ℝ} (hK1 : 1 ≤ K) (hK : K ≤ 2 ^ 32) (hAx0 : 0 ≤ Ax)
+    (hAx : Ax ≤ 2 ^ 432) (hAy0 : 0 ≤ Ay) (hAy : Ay ≤ 2 ^ 432) (hDx0 : 0 ≤ Dx)
+    (hDx : Dx ≤ 2 ^ 436) (hDy0 : 0 ≤ Dy) (hDy : Dy ≤ 2 ^ 436) (hR0 : 0 ≤ R) (hR : R ≤ 2 ^ 830)
+    (hL0 : 0 ≤ L) (hL : L ≤ 2 ^ 39) : cBoundC C K Ax Ay Dx Dy R L ≤ 2 ^ 900 := by
+  unfold cBoundC
+  have had := C.ad_le
+  have had0 : 0 ≤ C.ad := le_trans C.nad0 C.nad_le
+  obtain ⟨hu, hu', ht, ht1, -⟩ := fpFacts
+  have hKu : K * u ≤ 1 / 2 ^ 21 := by
+    calc K * u ≤ 2 ^ 32 * (1 / 2 ^ 53) := by gcongr
+      _ = 1 / 2 ^ 21 := by norm_num
+  have hLu : L * u ≤ 1 / 2 ^ 14 := by
+    calc L * u ≤ 2 ^ 39 * (1 / 2 ^ 53) := by gcongr
+      _ = 1 / 2 ^ 14 := by norm_num
+  have c0 : 1 + 3 * K * u ≤ 2 := by linarith
+  have hAD : Ax * Dy + Ay * Dx ≤ 2 ^ 869 := by
+    have h1 := mul_le_mul hAx hDy hDy0 (by norm_num)
+    have h2 := mul_le_mul hAy hDx hDx0 (by norm_num)
+    have : (2 : ℝ) ^ 432 * 2 ^ 436 + 2 ^ 432 * 2 ^ 436 ≤ 2 ^ 869 := by norm_num
+    linarith
+  have c1 : C.ad * u * (Ax * Dy + Ay * Dx) ≤ 2 ^ 869 := by
+    have h := mul_le_mul_of_nonneg_right (by nlinarith : C.ad * u ≤ 1)
+      (by positivity : 0 ≤ Ax * Dy + Ay * Dx)
+    linarith
+  have c2 : 10 * u * K * R ≤ 2 ^ 830 := by
+    have h := mul_le_mul_of_nonneg_right (by linarith : 10 * (K * u) ≤ 1) hR0; linarith
+  have hA2 : Ax * Ay ≤ 2 ^ 864 := by
+    have := mul_le_mul hAx hAy hAy0 (by norm_num)
+    have : (2 : ℝ) ^ 432 * 2 ^ 432 = 2 ^ 864 := by norm_num
+    linarith
+  have c3 : 60 * u ^ 2 * L * (Ax * Ay) ≤ 2 ^ 864 := by
+    have h1 : 60 * u ^ 2 * L ≤ 1 := by
+      have : u * (L * u) ≤ 1 / 2 ^ 53 * (1 / 2 ^ 14) := mul_le_mul hu' hLu (by positivity) (by norm_num)
+      nlinarith
+    have := mul_le_mul_of_nonneg_right h1 (by positivity : 0 ≤ Ax * Ay); linarith
+  have c4 : 12 * u * tiny * L ≤ 1 := by
+    have := mul_le_mul hLu ht1 ht.le (by norm_num); nlinarith
+  have hsum : C.ad * u * (Ax * Dy + Ay * Dx) + 10 * u * K * R + 60 * u ^ 2 * L * (Ax * Ay)
+      + 12 * u * tiny * L ≤ 2 ^ 870 := by linarith
+  have h0 : 0 ≤ C.ad * u * (Ax * Dy + Ay * Dx) + 10 * u * K * R + 60 * u ^ 2 * L * (Ax * Ay)
+      + 12 * u * tiny * L := by positivity
+  have := mul_le_mul c0 hsum h0 (by norm_num)
+  linarith
+
 /-- A step keeps the bound of the invariant. -/
 theorem carith {n Ax Ay Ax' Ay' Dx Dy dx dy R R' L L' G : ℝ} (hn : 0 ≤ n)
     (hnu : (n + 1) * u ≤ 1 / 2 ^ 21) (hAx0 : 0 ≤ Ax) (hAx : Ax ≤ Ax') (hAy0 : 0 ≤ Ay)
@@ -411,6 +482,19 @@ def CInv (ps : List (ℝ × ℝ)) (s : WState) : Prop :=
       Dy ^ 2 ≤ Lw ps.length * comoment (dupL (ps.map Prod.snd)) ∧
       |s.c - comoment ps| ≤ cBound ps.length (mag (ps.map Prod.fst)) (mag (ps.map Prod.snd)) Dx Dy
         (√(comoment (dupL (ps.map Prod.fst)) * comoment (dupL (ps.map Prod.snd)))) (Lw ps.length)
+
+/-- `CInv` with the constants `C`. -/
+def CInvC (C : CConst) (ps : List (ℝ × ℝ)) (s : WState) : Prop :=
+  s.n = ps.length ∧ |s.mx - mx ps| ≤ 6 * u * mag (ps.map Prod.fst) ∧
+    |s.my - my ps| ≤ 6 * u * mag (ps.map Prod.snd) ∧
+    ∃ Dx Dy : ℝ, 0 ≤ Dx ∧ 0 ≤ Dy ∧
+      Dx ^ 2 ≤ Lw ps.length * comoment (dupL (ps.map Prod.fst)) ∧
+      Dy ^ 2 ≤ Lw ps.length * comoment (dupL (ps.map Prod.snd)) ∧
+      |s.c - comoment ps| ≤ cBoundC C ps.length (mag (ps.map Prod.fst)) (mag (ps.map Prod.snd)) Dx Dy
+        (√(comoment (dupL (ps.map Prod.fst)) * comoment (dupL (ps.map Prod.snd)))) (Lw ps.length)
+
+/-- Chan's constants give `CInv`. -/
+theorem CInvC_chan : CInvC CConst.chan = CInv := rfl
 
 theorem cBound_nonneg {n Ax Ay Dx Dy R L : ℝ} (hn : 0 ≤ n) (hAx : 0 ≤ Ax) (hAy : 0 ≤ Ay)
     (hDx : 0 ≤ Dx) (hDy : 0 ≤ Dy) (hR : 0 ≤ R) (hL : 0 ≤ L) : 0 ≤ cBound n Ax Ay Dx Dy R L := by
@@ -1087,19 +1171,20 @@ theorem cmerge_com {Ca Cb ΔC Sha Shb Sh1 T Sh Ea Eb P Y R A h : ℝ} (hP : 0 �
   linarith
 
 /-- The terms of `cmerge_fold`. -/
-theorem cfold_terms {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La Lb L : ℝ}
+theorem cfold_terms {C : CConst} {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La Lb L Y : ℝ}
     (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hm1 : 1 ≤ m) (_hh : 0 ≤ h) (hhm : h ≤ m)
     (hAxa : 0 ≤ Axa) (hAxb : 0 ≤ Axb) (hAya : 0 ≤ Aya) (hAyb : 0 ≤ Ayb)
     (hDxa : 0 ≤ Dxa) (hDxb : 0 ≤ Dxb) (hDya : 0 ≤ Dya) (hDyb : 0 ≤ Dyb) (hXx : 0 ≤ Xx)
-    (hXy : 0 ≤ Xy) (hRa : 0 ≤ Ra) (hRb : 0 ≤ Rb) (hR : Ra + Rb ≤ R) (hLa : 0 ≤ La) (hLb : 0 ≤ Lb)
-    (hL : La + Lb + 2 * m ≤ L) :
-    (8.5 * u * (Axa * Dya + Aya * Dxa) + 10 * u * na * Ra + 60 * u ^ 2 * La * (Axa * Aya)
+    (hXy : 0 ≤ Xy) (hRa : 0 ≤ Ra) (hRb : 0 ≤ Rb) (hY : 0 ≤ Y) (hR : Ra + Rb + Y ≤ R)
+    (hLa : 0 ≤ La) (hLb : 0 ≤ Lb) (hL : La + Lb + 2 * m ≤ L) :
+    (C.ad * u * (Axa * Dya + Aya * Dxa) + 10 * u * na * Ra + 60 * u ^ 2 * La * (Axa * Aya)
         + 12 * u * tiny * La)
-      + (8.5 * u * (Axb * Dyb + Ayb * Dxb) + 10 * u * nb * Rb + 60 * u ^ 2 * Lb * (Axb * Ayb)
+      + (C.ad * u * (Axb * Dyb + Ayb * Dxb) + 10 * u * nb * Rb + 60 * u ^ 2 * Lb * (Axb * Ayb)
         + 12 * u * tiny * Lb)
-      + (7.3 * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
-        + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny)
-      ≤ 8.5 * u * ((Axa + Axb) * (Dya + Dyb + Xy) + (Aya + Ayb) * (Dxa + Dxb + Xx))
+      + (C.nad * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
+        + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny
+        + 4 * u * (na + nb) * Y)
+      ≤ C.ad * u * ((Axa + Axb) * (Dya + Dyb + Xy) + (Aya + Ayb) * (Dxa + Dxb + Xx))
         + 10 * u * (na + nb) * R + 60 * u ^ 2 * L * ((Axa + Axb) * (Aya + Ayb))
         + 12 * u * tiny * L := by
   obtain ⟨hu, -, ht, -, -⟩ := fpFacts
@@ -1108,15 +1193,23 @@ theorem cfold_terms {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La 
   have a3 : Axb * Dyb ≤ (Axa + Axb) * Dyb := mul_le_mul_of_nonneg_right (by linarith) hDyb
   have a4 : Ayb * Dxb ≤ (Aya + Ayb) * Dxb := mul_le_mul_of_nonneg_right (by linarith) hDxb
   have a5 : 0 ≤ u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) := by positivity
-  have hu8 : 0 ≤ 8.5 * u := by positivity
+  have had0 : 0 ≤ C.ad := le_trans C.nad0 C.nad_le
+  have hu8 : 0 ≤ C.ad * u := by positivity
+  have a7 : C.nad * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) ≤ C.ad * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) :=
+    mul_le_mul_of_nonneg_right (mul_le_mul_of_nonneg_right C.nad_le hu.le) (by positivity)
   have a6 := mul_le_mul_of_nonneg_left (by linarith : Axa * Dya + Aya * Dxa + (Axb * Dyb + Ayb * Dxb)
     ≤ (Axa + Axb) * (Dya + Dyb) + (Aya + Ayb) * (Dxa + Dxb)) hu8
   have b1 : u * (na * Ra) ≤ u * ((na + nb - 1) * Ra) :=
     mul_le_mul_of_nonneg_left (mul_le_mul_of_nonneg_right (by linarith) hRa) hu.le
   have b2 : u * (nb * Rb) ≤ u * ((na + nb - 1) * Rb) :=
     mul_le_mul_of_nonneg_left (mul_le_mul_of_nonneg_right (by linarith) hRb) hu.le
-  have b3 : u * ((na + nb - 1) * (Ra + Rb)) ≤ u * ((na + nb - 1) * R) :=
+  have b3 : u * ((na + nb - 1) * (Ra + Rb + Y)) ≤ u * ((na + nb - 1) * R) :=
     mul_le_mul_of_nonneg_left (mul_le_mul_of_nonneg_left hR (by linarith)) hu.le
+  -- the term `4 u n Y` takes what `R ≥ R_a + R_b + Y` leaves: `n ≤ 2 (n - 1)`.
+  have b5 : 4 * u * (na + nb) * Y ≤ 10 * (u * ((na + nb - 1) * Y)) := by
+    have := mul_le_mul_of_nonneg_left (by linarith : 4 * (na + nb) ≤ 10 * (na + nb - 1))
+      (mul_nonneg hu.le hY)
+    nlinarith
   have b4 : 0 ≤ u * R := mul_nonneg hu.le (by linarith)
   have hAA : 0 ≤ (Axa + Axb) * (Aya + Ayb) := by positivity
   have c1 : Axa * Aya ≤ (Axa + Axb) * (Aya + Ayb) := mul_le_mul (by linarith) (by linarith) hAya (by linarith)
@@ -1140,27 +1233,38 @@ theorem cfold_terms {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La 
 
 /-- **A merge of pairs keeps the invariant's bound**, with `m = min(n_a, n_b)`,
 `h = n_a n_b / n ≤ m`, `X_x = h |Δx|` and `X_y = h |Δy|`. -/
-theorem cmerge_fold {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La Lb L Ea Eb : ℝ}
+theorem cmerge_fold {C : CConst} {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La Lb L Ea Eb Y : ℝ}
     (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hm1 : 1 ≤ m) (_hma : m ≤ na) (_hmb : m ≤ nb) (hh : 0 ≤ h)
     (hhm : h ≤ m) (hn : (na + nb) * u ≤ 1 / 2 ^ 21)
     (hAxa : 0 ≤ Axa) (hAxb : 0 ≤ Axb) (hAya : 0 ≤ Aya) (hAyb : 0 ≤ Ayb)
     (hDxa : 0 ≤ Dxa) (hDxb : 0 ≤ Dxb) (hDya : 0 ≤ Dya) (hDyb : 0 ≤ Dyb) (hXx : 0 ≤ Xx)
-    (hXy : 0 ≤ Xy) (hRa : 0 ≤ Ra) (hRb : 0 ≤ Rb) (hR : Ra + Rb ≤ R) (hLa : 0 ≤ La) (hLb : 0 ≤ Lb)
-    (hL : La + Lb + 2 * m ≤ L)
-    (hEa : Ea ≤ cBound na Axa Aya Dxa Dya Ra La) (hEb : Eb ≤ cBound nb Axb Ayb Dxb Dyb Rb Lb) :
-    (1 + u) ^ 2 * (Ea + Eb) + 7.3 * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
+    (hXy : 0 ≤ Xy) (hRa : 0 ≤ Ra) (hRb : 0 ≤ Rb) (hY : 0 ≤ Y) (hR : Ra + Rb + Y ≤ R)
+    (hLa : 0 ≤ La) (hLb : 0 ≤ Lb) (hL : La + Lb + 2 * m ≤ L)
+    (hEa : Ea ≤ cBoundC C na Axa Aya Dxa Dya Ra La) (hEb : Eb ≤ cBoundC C nb Axb Ayb Dxb Dyb Rb Lb) :
+    (1 + u) ^ 2 * (Ea + Eb) + C.nad * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
         + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny
-      ≤ cBound (na + nb) (Axa + Axb) (Aya + Ayb) (Dxa + Dxb + Xx) (Dya + Dyb + Xy) R L := by
+        + 4 * u * (na + nb) * Y
+      ≤ cBoundC C (na + nb) (Axa + Axb) (Aya + Ayb) (Dxa + Dxb + Xx) (Dya + Dyb + Xy) R L := by
   obtain ⟨hu, -, ht, -, -⟩ := fpFacts
-  unfold cBound at hEa hEb ⊢
-  obtain ⟨Ta, hTa⟩ : ∃ T, T = 8.5 * u * (Axa * Dya + Aya * Dxa) + 10 * u * na * Ra
+  unfold cBoundC at hEa hEb ⊢
+  obtain ⟨Ta, hTa⟩ : ∃ T, T = C.ad * u * (Axa * Dya + Aya * Dxa) + 10 * u * na * Ra
       + 60 * u ^ 2 * La * (Axa * Aya) + 12 * u * tiny * La := ⟨_, rfl⟩
-  obtain ⟨Tb, hTb⟩ : ∃ T, T = 8.5 * u * (Axb * Dyb + Ayb * Dxb) + 10 * u * nb * Rb
+  obtain ⟨Tb, hTb⟩ : ∃ T, T = C.ad * u * (Axb * Dyb + Ayb * Dxb) + 10 * u * nb * Rb
       + 60 * u ^ 2 * Lb * (Axb * Ayb) + 12 * u * tiny * Lb := ⟨_, rfl⟩
   rw [← hTa] at hEa
   rw [← hTb] at hEb
-  have hTa0 : 0 ≤ Ta := by rw [hTa]; positivity
-  have hTb0 : 0 ≤ Tb := by rw [hTb]; positivity
+  have had0 : 0 ≤ C.ad := le_trans C.nad0 C.nad_le
+  have hnad0 := C.nad0
+  have hTa0 : 0 ≤ Ta := by
+    rw [hTa]
+    have := mul_nonneg (mul_nonneg had0 hu.le) (by positivity : 0 ≤ Axa * Dya + Aya * Dxa)
+    have : 0 ≤ 10 * u * na * Ra + 60 * u ^ 2 * La * (Axa * Aya) + 12 * u * tiny * La := by positivity
+    linarith
+  have hTb0 : 0 ≤ Tb := by
+    rw [hTb]
+    have := mul_nonneg (mul_nonneg had0 hu.le) (by positivity : 0 ≤ Axb * Dyb + Ayb * Dxb)
+    have : 0 ≤ 10 * u * nb * Rb + 60 * u ^ 2 * Lb * (Axb * Ayb) + 12 * u * tiny * Lb := by positivity
+    linarith
   have fa := fac_merge (by linarith) (by linarith : na + 1 ≤ na + nb) hn
   have fb := fac_merge (by linarith) (by linarith : nb + 1 ≤ na + nb) hn
   have k1 : (1 + u) ^ 2 * (Ea + Eb) ≤ (1 + 3 * (na + nb) * u) * (Ta + Tb) := by
@@ -1173,16 +1277,25 @@ theorem cmerge_fold {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La 
         _ = ((1 + u) ^ 2 * (1 + 3 * nb * u)) * Tb := by ring
         _ ≤ _ := by gcongr
     linarith
-  have k2 := cfold_terms hna hnb hm1 hh hhm hAxa hAxb hAya hAyb hDxa hDxb hDya hDyb hXx hXy hRa
-    hRb hR hLa hLb hL
+  have k2 := cfold_terms (C := C) hna hnb hm1 hh hhm hAxa hAxb hAya hAyb hDxa hDxb hDya hDyb hXx hXy hRa
+    hRb hY hR hLa hLb hL
   rw [← hTa, ← hTb] at k2
-  obtain ⟨N, hN⟩ : ∃ N, N = 7.3 * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
-      + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny := ⟨_, rfl⟩
+  obtain ⟨N, hN⟩ : ∃ N, N = C.nad * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
+      + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny
+      + 4 * u * (na + nb) * Y := ⟨_, rfl⟩
   have hR0 : 0 ≤ R := by linarith
-  have hN0 : 0 ≤ N := by rw [hN]; positivity
-  have k3 : N ≤ (1 + 3 * (na + nb) * u) * N := le_mul_of_one_le_left hN0 (by nlinarith)
+  have hN0 : 0 ≤ N := by
+    rw [hN]
+    have := mul_nonneg (mul_nonneg hnad0 hu.le)
+      (by positivity : 0 ≤ (Axa + Axb) * Xy + (Aya + Ayb) * Xx)
+    have : 0 ≤ 9.2 * u * R + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny
+      + 4 * u * (na + nb) * Y := by positivity
+    linarith
+  have k3 : N ≤ (1 + 3 * (na + nb) * u) * N := le_mul_of_one_le_left hN0 (by
+    have : 0 ≤ 3 * ((na : ℝ) + nb) * u := by positivity
+    linarith)
   rw [← hN] at k2
-  obtain ⟨Tn, hTn⟩ : ∃ T, T = 8.5 * u * ((Axa + Axb) * (Dya + Dyb + Xy) + (Aya + Ayb) * (Dxa + Dxb + Xx))
+  obtain ⟨Tn, hTn⟩ : ∃ T, T = C.ad * u * ((Axa + Axb) * (Dya + Dyb + Xy) + (Aya + Ayb) * (Dxa + Dxb + Xx))
       + 10 * u * (na + nb) * R + 60 * u ^ 2 * L * ((Axa + Axb) * (Aya + Ayb)) + 12 * u * tiny * L :=
     ⟨_, rfl⟩
   rw [← hTn] at k2 ⊢
@@ -1190,17 +1303,26 @@ theorem cmerge_fold {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx Xy Ra Rb R La 
   have k4 := mul_le_mul_of_nonneg_left k2 hfac
   have e : (1 + 3 * (na + nb) * u) * (Ta + Tb + N)
       = (1 + 3 * (na + nb) * u) * (Ta + Tb) + (1 + 3 * (na + nb) * u) * N := by ring
-  have e2 : (1 + u) ^ 2 * (Ea + Eb) + 7.3 * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
+  have e2 : (1 + u) ^ 2 * (Ea + Eb) + C.nad * u * ((Axa + Axb) * Xy + (Aya + Ayb) * Xx) + 9.2 * u * R
       + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny
+      + 4 * u * (na + nb) * Y
       = (1 + u) ^ 2 * (Ea + Eb) + N := by rw [hN]; ring
   rw [e2]
   linarith
 
-/-- **One merge of pairs keeps the co-moment's bound.** -/
-theorem cmerge_step_arith {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Ra Rb R La Lb L
-    Mxa Mxb Mya Myb mxa mxb mya myb Dhx Dhy T Ca Cb Sha Shb Sh1 Sh : ℝ}
-    (hna : 1 ≤ na) (hnb : 1 ≤ nb) (hm1 : 1 ≤ m) (hma : m ≤ na) (hmb : m ≤ nb) (hh : 0 ≤ h)
-    (hhm : h ≤ m) (hn : (na + nb) * u ≤ 1 / 2 ^ 21)
+/-- What a merge of pairs adds to the co-moment's bound, beside the sides'
+own bounds: `n` pairs after it, `h = n_a n_b / n`, `A` the magnitudes, `D` the
+differences of the exact means, `R = √(S_xx S_yy)` after the merge. The last
+term, `4 u n · h D_x D_y`, is Schubert and Gertz's (`n_b` times a deviation of
+the merged mean); DuckDB's merge has none. -/
+noncomputable def cMergeNew (C : CConst) (n h Ax Ay Dx Dy R : ℝ) : ℝ :=
+  C.nad * u * (Ax * (h * Dy) + Ay * (h * Dx)) + 9.2 * u * R + 105 * u ^ 2 * h * (Ax * Ay)
+    + (7.1 + 5.1 * h) * u * tiny + 4 * u * n * (h * (Dx * Dy))
+
+/-- **One merge of pairs, as DuckDB computes it**: the co-moment is within the
+sides' bounds and `cMergeNew` of the exact one. -/
+theorem cmerge_step_com {n h Axa Axb Aya Ayb R Mxa Mxb Mya Myb mxa mxb mya myb Dhx Dhy T Ca Cb
+    Sha Shb Sh1 Sh Ea Eb : ℝ} (hn0 : 0 ≤ n) (hh : 0 ≤ h)
     (hAxa : 0 ≤ Axa) (hAxb : 0 ≤ Axb) (hAya : 0 ≤ Aya) (hAyb : 0 ≤ Ayb)
     (htx : tiny ≤ Axa + Axb) (hty : tiny ≤ Aya + Ayb)
     (hMxa : |Mxa| ≤ Axa) (hMxb : |Mxb| ≤ Axb) (hMya : |Mya| ≤ Aya) (hMyb : |Myb| ≤ Ayb)
@@ -1209,18 +1331,13 @@ theorem cmerge_step_arith {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Ra Rb R La 
     (eDx : |Dhx - (mxa - mxb)| ≤ u * (|mxa - mxb| + tiny))
     (eDy : |Dhy - (mya - myb)| ≤ u * (|mya - myb| + tiny))
     (eT : |T - Dhx * Dhy * h| ≤ 5 * u * (|Dhx * Dhy| * h + (1 + h) * tiny))
-    (hDxa : 0 ≤ Dxa) (hDxb : 0 ≤ Dxb) (hDya : 0 ≤ Dya) (hDyb : 0 ≤ Dyb)
-    (hRa : 0 ≤ Ra) (hRb : 0 ≤ Rb) (hR : Ra + Rb ≤ R) (hR1 : |Ca + Cb| ≤ R)
-    (hR2 : |Ca + Cb + (Mxa - Mxb) * (Mya - Myb) * h| ≤ R)
+    (hR1 : |Ca + Cb| ≤ R) (hR2 : |Ca + Cb + (Mxa - Mxb) * (Mya - Myb) * h| ≤ R)
     (hY : h * (|Mxa - Mxb| * |Mya - Myb|) ≤ R)
-    (hLa : 0 ≤ La) (hLb : 0 ≤ Lb) (hL : La + Lb + 2 * m ≤ L)
-    (hEa : |Sha - Ca| ≤ cBound na Axa Aya Dxa Dya Ra La)
-    (hEb : |Shb - Cb| ≤ cBound nb Axb Ayb Dxb Dyb Rb Lb)
+    (hEa : |Sha - Ca| ≤ Ea) (hEb : |Shb - Cb| ≤ Eb)
     (h1 : |Sh1 - (Sha + Shb)| ≤ u * (|Sha + Shb| + tiny))
     (h2 : |Sh - (Sh1 + T)| ≤ u * (|Sh1 + T| + tiny)) :
     |Sh - (Ca + Cb + (Mxa - Mxb) * (Mya - Myb) * h)|
-      ≤ cBound (na + nb) (Axa + Axb) (Aya + Ayb) (Dxa + Dxb + h * |Mxa - Mxb|)
-        (Dya + Dyb + h * |Mya - Myb|) R L := by
+      ≤ (1 + u) ^ 2 * (Ea + Eb) + cMergeNew CConst.chan n h (Axa + Axb) (Aya + Ayb) |Mxa - Mxb| |Mya - Myb| R := by
   have hu := u_pos
   have hAx : |Mxa - Mxb| ≤ Axa + Axb := by have := abs_sub Mxa Mxb; linarith
   have hAy : |Mya - Myb| ≤ Aya + Ayb := by have := abs_sub Mya Myb; linarith
@@ -1246,9 +1363,10 @@ theorem cmerge_step_arith {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Ra Rb R La 
     rw [abs_mul, abs_mul, abs_of_nonneg hh]; linarith
   have hT := cT_err (by positivity) hYabs (by positivity) hh hQ eT'
   have hc := cmerge_com (by positivity) (by positivity) hY (by positivity) hh hR1 hR2 hEa hEb hT h1 h2
-  refine le_trans hc ?_
-  exact cmerge_fold hna hnb hm1 hma hmb hh hhm hn hAxa hAxb hAya hAyb hDxa hDxb hDya hDyb
-    (by positivity) (by positivity) hRa hRb hR hLa hLb hL le_rfl le_rfl
+  have : 0 ≤ 4 * u * n * (h * (|Mxa - Mxb| * |Mya - Myb|)) := by positivity
+  unfold cMergeNew CConst.chan
+  dsimp only
+  linarith
 
 /-- The exact merge of pairs. -/
 theorem exact_pair_merge {a b : List (ℝ × ℝ)} (ha : a ≠ []) (hb : b ≠ []) :
@@ -1274,11 +1392,168 @@ theorem exact_pair_merge {a b : List (ℝ × ℝ)} (ha : a ≠ []) (hb : b ≠ [
   · rw [hx]; ring
   · rw [hy]; ring
 
+/-- One side of a merge of pairs: `n ≥ 1` pairs of magnitudes `A_x`, `A_y`,
+the computed means within `6 u A` of the exact ones `M`, and the computed
+co-moment `Ĉ` within `E` of the exact one `C`, each far from overflow. -/
+structure CMergeSide (n : ℕ) (mx my Mx My Ax Ay C Ch E : ℝ) : Prop where
+  one : 1 ≤ n
+  Ax0 : 0 ≤ Ax
+  Axb : Ax ≤ 2 ^ 432
+  Axt : n * tiny ≤ Ax
+  MxA : |Mx| * n + n * tiny ≤ Ax
+  Mxb : |Mx| ≤ 2 ^ 400
+  ex : |mx - Mx| ≤ 6 * u * Ax
+  Ay0 : 0 ≤ Ay
+  Ayb : Ay ≤ 2 ^ 432
+  Ayt : n * tiny ≤ Ay
+  MyA : |My| * n + n * tiny ≤ Ay
+  Myb : |My| ≤ 2 ^ 400
+  ey : |my - My| ≤ 6 * u * Ay
+  Cb : |C| ≤ 2 ^ 830
+  com : |Ch - C| ≤ E
+  Eb : E ≤ 2 ^ 900
+
+/-- **What a merge of pairs must meet** for the covariance invariant to hold
+through it (`cInv_merge_of`): the merged count is `n_a + n_b`, each merged
+mean is within `6 u (n_b A_a + n_a A_b) / n` of the weighted mean of the
+computed ones, and the merged co-moment is within the sides' bounds, grown by
+`(1 + u)²`, and `cMergeNew` of the exact one, for any `R` at least
+`|C_a| + |C_b|`, `|C|` after the merge and the merge's term. DuckDB's merge
+(`chan_spec`) meets it. -/
+def CMergeSpec (C : CConst) (mg : WState → WState → WState) : Prop :=
+  ∀ ⦃na nb : ℕ⦄ ⦃mxa mya mxb myb Mxa Mya Mxb Myb Axa Aya Axb Ayb Ca Cb Sha Shb Ea Eb : ℝ⦄,
+    na + nb ≤ 2 ^ 32 →
+    CMergeSide na mxa mya Mxa Mya Axa Aya Ca Sha Ea →
+    CMergeSide nb mxb myb Mxb Myb Axb Ayb Cb Shb Eb → ∀ R : ℝ,
+    |Ca| + |Cb| ≤ R →
+    |Ca + Cb + (Mxa - Mxb) * (Mya - Myb) * ((na : ℝ) * nb / ((na : ℝ) + nb))| ≤ R →
+    (na : ℝ) * nb / ((na : ℝ) + nb) * (|Mxa - Mxb| * |Mya - Myb|) ≤ R →
+    (mg ⟨na, mxa, mya, Sha⟩ ⟨nb, mxb, myb, Shb⟩).n = na + nb ∧
+    |(mg ⟨na, mxa, mya, Sha⟩ ⟨nb, mxb, myb, Shb⟩).mx - ((na : ℝ) * mxa + nb * mxb) / ((na : ℝ) + nb)|
+      ≤ 6 * u * ((nb : ℝ) * Axa + na * Axb) / ((na : ℝ) + nb) ∧
+    |(mg ⟨na, mxa, mya, Sha⟩ ⟨nb, mxb, myb, Shb⟩).my - ((na : ℝ) * mya + nb * myb) / ((na : ℝ) + nb)|
+      ≤ 6 * u * ((nb : ℝ) * Aya + na * Ayb) / ((na : ℝ) + nb) ∧
+    |(mg ⟨na, mxa, mya, Sha⟩ ⟨nb, mxb, myb, Shb⟩).c
+        - (Ca + Cb + (Mxa - Mxb) * (Mya - Myb) * ((na : ℝ) * nb / ((na : ℝ) + nb)))|
+      ≤ (1 + u) ^ 2 * (Ea + Eb) + cMergeNew C ((na : ℝ) + nb) ((na : ℝ) * nb / ((na : ℝ) + nb))
+          (Axa + Axb) (Aya + Ayb) |Mxa - Mxb| |Mya - Myb| R
+
 set_option maxHeartbeats 2000000 in
-/-- **DuckDB's merge keeps the covariance invariant.** -/
-theorem StdModel.cInv_merge {a b : List (ℝ × ℝ)} (ha : a ≠ []) (hb : b ≠ [])
+/-- **DuckDB's merge meets `CMergeSpec`**: the weighted means of `wmean_spec`,
+and the co-moment `fl(fl(Ŝ_b + Ŝ_a) + T̂)` of `T_chain2` and
+`cmerge_step_com`. -/
+theorem StdModel.chan_spec : CMergeSpec CConst.chan M.chan := by
+  intro na nb mxa mya mxb myb Mxa Mya Mxb Myb Axa Aya Axb Ayb Ca Cb Sha Shb Ea Eb hN sa sb R
+    hR1 hR2 hY
+  obtain ⟨hu, hu', htn, -, hmax⟩ := fpFacts
+  have hla := sa.one
+  have hlb := sb.one
+  have hdm : M.chan ⟨na, mxa, mya, Sha⟩ ⟨nb, mxb, myb, Shb⟩ = ⟨na + nb,
+      M.fl (M.fl (M.fl ((nb : ℝ) * mxb) + M.fl ((na : ℝ) * mxa)) / ((na : ℝ) + nb)),
+      M.fl (M.fl (M.fl ((nb : ℝ) * myb) + M.fl ((na : ℝ) * mya)) / ((na : ℝ) + nb)),
+      M.fl (M.fl (Shb + Sha) + M.fl (M.fl (M.fl (M.fl (M.fl (mxa - mxb) * M.fl (mya - myb))
+        * nb) * na) / ((na : ℝ) + nb)))⟩ := by
+    have h1 : na ≠ 0 := by omega
+    have h2 : nb ≠ 0 := by omega
+    simp [StdModel.chan, h1, h2]
+  rw [hdm]
+  have hna1 : (1 : ℝ) ≤ na := by exact_mod_cast hla
+  have hnb1 : (1 : ℝ) ≤ nb := by exact_mod_cast hlb
+  have hnab : (na : ℝ) + nb ≤ 2 ^ 32 := by exact_mod_cast hN
+  have hta : (0 : ℝ) ≤ na * tiny := mul_nonneg (Nat.cast_nonneg _) htn.le
+  have htb : (0 : ℝ) ≤ nb * tiny := mul_nonneg (Nat.cast_nonneg _) htn.le
+  obtain ⟨hmxa1, hmxab, hMxaA⟩ := mean_mag hna1 (by linarith) sa.Ax0 sa.Axb
+    (by have := sa.MxA; linarith) sa.Mxb sa.ex
+  obtain ⟨hmxb1, hmxbb, hMxbA⟩ := mean_mag hnb1 (by linarith) sb.Ax0 sb.Axb
+    (by have := sb.MxA; linarith) sb.Mxb sb.ex
+  obtain ⟨hmya1, hmyab, hMyaA⟩ := mean_mag hna1 (by linarith) sa.Ay0 sa.Ayb
+    (by have := sa.MyA; linarith) sa.Myb sa.ey
+  obtain ⟨hmyb1, hmybb, hMybA⟩ := mean_mag hnb1 (by linarith) sb.Ay0 sb.Ayb
+    (by have := sb.MyA; linarith) sb.Myb sb.ey
+  refine ⟨rfl, ?_, ?_, ?_⟩
+  · exact M.wmean_spec (ns := nb) (nt := na) hlb hla (by omega) (ms := mxb) (mt := mxa)
+      (As := Axb) (At := Axa) hmxb1 hmxa1 sb.Axt sa.Axt hmxbb hmxab
+  · exact M.wmean_spec (ns := nb) (nt := na) hlb hla (by omega) (ms := myb) (mt := mya)
+      (As := Ayb) (At := Aya) hmyb1 hmya1 sb.Ayt sa.Ayt hmybb hmyab
+  · show |M.fl (M.fl (Shb + Sha) + M.fl (M.fl (M.fl (M.fl (M.fl (mxa - mxb) * M.fl (mya - myb))
+        * nb) * na) / ((na : ℝ) + nb))) - _| ≤ _
+    obtain ⟨h, hh⟩ : ∃ h : ℝ, h = (na : ℝ) * nb / ((na : ℝ) + nb) := ⟨_, rfl⟩
+    rw [← hh]
+    have hh0 : 0 ≤ h := by rw [hh]; positivity
+    have hh32 : h ≤ 2 ^ 32 := by
+      rw [hh, div_le_iff₀ (by positivity)]
+      have := mul_le_mul_of_nonneg_left (by linarith : (nb : ℝ) ≤ 2 ^ 32)
+        (Nat.cast_nonneg na : (0 : ℝ) ≤ na)
+      linarith
+    have hdx : |mxa - mxb| ≤ 2 ^ 402 := by have := abs_sub mxa mxb; linarith
+    have hdy : |mya - myb| ≤ 2 ^ 402 := by have := abs_sub mya myb; linarith
+    have eDx := M.err (mxa - mxb) (by linarith)
+    have eDy := M.err (mya - myb) (by linarith)
+    have hb403 : ∀ {z : ℝ}, |z| ≤ 2 ^ 402 → |M.fl z| ≤ 2 ^ 403 := by
+      intro z hz
+      have := M.err z (by linarith)
+      have := abs_sub_abs_le_abs_sub (M.fl z) z
+      have : u * (|z| + tiny) ≤ 1 / 2 ^ 53 * (2 ^ 402 + 1) :=
+        mul_le_mul hu' (by linarith [show tiny ≤ 1 by unfold tiny; norm_num]) (by positivity)
+          (by norm_num)
+      have : (1 : ℝ) / 2 ^ 53 * (2 ^ 402 + 1) + 2 ^ 402 ≤ 2 ^ 403 := by norm_num
+      linarith
+    have hDhx := hb403 hdx
+    have hDhy := hb403 hdy
+    generalize M.fl (mxa - mxb) = Dhx at eDx hDhx ⊢
+    generalize M.fl (mya - myb) = Dhy at eDy hDhy ⊢
+    have hP : |Dhx * Dhy| ≤ 2 ^ 840 := by
+      rw [abs_mul]
+      have := mul_le_mul hDhx hDhy (abs_nonneg _) (by norm_num)
+      have : (2 : ℝ) ^ 403 * 2 ^ 403 ≤ 2 ^ 840 := by norm_num
+      linarith
+    have eT := M.T_chain2 (P := Dhx * Dhy) hlb hla (by omega) hP
+    rw [show (nb : ℝ) * na = na * nb from mul_comm _ _, ← hh] at eT
+    generalize M.fl (M.fl (M.fl (M.fl (Dhx * Dhy) * nb) * na) / ((na : ℝ) + nb)) = T at eT ⊢
+    have hSS : |Sha + Shb| ≤ 2 ^ 902 := by
+      have := abs_add_le Sha Shb
+      have := abs_sub_abs_le_abs_sub Sha Ca
+      have := abs_sub_abs_le_abs_sub Shb Cb
+      have := sa.com; have := sb.com; have := sa.Eb; have := sb.Eb; have := sa.Cb; have := sb.Cb
+      linarith
+    have e1 := M.err (Shb + Sha) (by rw [add_comm]; linarith)
+    generalize M.fl (Shb + Sha) = Sh1 at e1 ⊢
+    rw [add_comm Shb Sha] at e1
+    have hS1 : |Sh1| ≤ 2 ^ 903 := by
+      have := abs_sub_abs_le_abs_sub Sh1 (Sha + Shb)
+      have : u * (|Sha + Shb| + tiny) ≤ 1 / 2 ^ 53 * (2 ^ 902 + 1) :=
+        mul_le_mul hu' (by linarith [show tiny ≤ 1 by unfold tiny; norm_num]) (by positivity)
+          (by norm_num)
+      have : (1 : ℝ) / 2 ^ 53 * (2 ^ 902 + 1) + 2 ^ 902 ≤ 2 ^ 903 := by norm_num
+      linarith
+    have hTb : |T| ≤ 2 ^ 875 := by
+      have := abs_sub_abs_le_abs_sub T (Dhx * Dhy * h)
+      have hPh : |Dhx * Dhy * h| ≤ 2 ^ 840 * 2 ^ 32 := by
+        rw [abs_mul, abs_of_nonneg hh0]; exact mul_le_mul hP hh32 hh0 (by norm_num)
+      have : 5 * u * (|Dhx * Dhy| * h + (1 + h) * tiny)
+          ≤ 5 * (1 / 2 ^ 53) * (2 ^ 840 * 2 ^ 32 + (1 + 2 ^ 32) * 1) := by
+        have : |Dhx * Dhy| * h ≤ 2 ^ 840 * 2 ^ 32 := by
+          rw [abs_mul _ h, abs_of_nonneg hh0] at hPh; exact hPh
+        gcongr
+        unfold tiny; norm_num
+      have : (5 : ℝ) * (1 / 2 ^ 53) * (2 ^ 840 * 2 ^ 32 + (1 + 2 ^ 32) * 1) + 2 ^ 840 * 2 ^ 32
+          ≤ 2 ^ 875 := by norm_num
+      linarith
+    have e2 := M.err (Sh1 + T) (by have := abs_add_le Sh1 T; linarith)
+    have htx : tiny ≤ Axa + Axb := by
+      have := sa.Axt; have := sb.Ax0; have := mul_le_mul_of_nonneg_right hna1 htn.le; linarith
+    have hty : tiny ≤ Aya + Ayb := by
+      have := sa.Ayt; have := sb.Ay0; have := mul_le_mul_of_nonneg_right hna1 htn.le; linarith
+    exact cmerge_step_com (by positivity) hh0 sa.Ax0 sb.Ax0 sa.Ay0 sb.Ay0 htx hty hMxaA hMxbA hMyaA hMybA
+      sa.ex sb.ex sa.ey sb.ey eDx eDy eT (le_trans (abs_add_le _ _) hR1) (by rw [hh]; exact hR2) (by rw [hh]; exact hY)
+      sa.com sb.com e1 e2
+
+set_option maxHeartbeats 2000000 in
+/-- **A merge meeting `CMergeSpec` keeps the covariance invariant.** -/
+theorem cInv_merge_of {C : CConst} {mg : WState → WState → WState} (hmg : CMergeSpec C mg)
+    {a b : List (ℝ × ℝ)} (ha : a ≠ []) (hb : b ≠ [])
     (hN : a.length + b.length ≤ 2 ^ 32) (hBa : Bounded (2 ^ 399) a) (hBb : Bounded (2 ^ 399) b)
-    {t s : WState} (ht : CInv a t) (hs : CInv b s) : CInv (a ++ b) (M.chan t s) := by
+    {t s : WState} (ht : CInvC C a t) (hs : CInvC C b s) : CInvC C (a ++ b) (mg t s) := by
   obtain ⟨hu, hu', htn, -, hmax⟩ := fpFacts
   obtain ⟨ct, mxa, mya, Sha⟩ := t
   obtain ⟨cs, mxb, myb, Shb⟩ := s
@@ -1293,21 +1568,51 @@ theorem StdModel.cInv_merge {a b : List (ℝ × ℝ)} (ha : a ≠ []) (hb : b �
   obtain ⟨⟨hAxb0, hAxbb, hAxbt, hMxb, hMxbb, hSxb0, hSxbb⟩,
     ⟨hAyb0, hAybb, hAybt, hMyb, hMybb, hSyb0, hSybb⟩⟩ := pair_facts hb (by omega) hBb
   obtain ⟨hmxe, hmye, hce, hsxe, hsye⟩ := exact_pair_merge ha hb
+  -- the two sides
+  have hLa0' := Lw_nonneg a.length
+  have hLb0' := Lw_nonneg b.length
+  have hla1 : (1 : ℝ) ≤ a.length := by exact_mod_cast hla
+  have hlb1 : (1 : ℝ) ≤ b.length := by exact_mod_cast hlb
+  have hla32 : (a.length : ℝ) ≤ 2 ^ 32 := by exact_mod_cast (show a.length ≤ 2 ^ 32 by omega)
+  have hlb32 : (b.length : ℝ) ≤ 2 ^ 32 := by exact_mod_cast (show b.length ≤ 2 ^ 32 by omega)
+  have hLa' : Lw a.length ≤ 2 ^ 39 := by have := Lw_le (n := a.length) (by omega); linarith
+  have hLb' : Lw b.length ≤ 2 ^ 39 := by have := Lw_le (n := b.length) (by omega); linarith
+  -- `n |M| ≤ Σ |x|`: the mean's magnitude below the values' sum, without `n·tiny`.
+  have hMP : ∀ (ps : List (ℝ × ℝ)),
+      |mx ps| * ps.length + ps.length * tiny ≤ mag (ps.map Prod.fst) ∧
+        |my ps| * ps.length + ps.length * tiny ≤ mag (ps.map Prod.snd) := by
+    intro ps
+    have h1 := length_mul_abs_mx_le (ps.map Prod.fst)
+    have h2 := length_mul_abs_mx_le (ps.map Prod.snd)
+    rw [List.length_map, mx_dupL_fst] at h1
+    rw [List.length_map, mx_dupL_snd] at h2
+    have h3 := mag_eq_sum_abs (ps.map Prod.fst)
+    have h4 := mag_eq_sum_abs (ps.map Prod.snd)
+    rw [List.length_map] at h3 h4
+    constructor <;> linarith
+  obtain ⟨hMPxa, hMPya⟩ := hMP a
+  obtain ⟨hMPxb, hMPyb⟩ := hMP b
+  have sa : CMergeSide a.length mxa mya (mx a) (my a) (mag (a.map Prod.fst)) (mag (a.map Prod.snd))
+      (comoment a) Sha _ :=
+    { one := hla, Ax0 := hAxa0, Axb := hAxab, Axt := hAxat, MxA := hMPxa, Mxb := hMxab, ex := exa,
+      Ay0 := hAya0, Ayb := hAyab, Ayt := hAyat, MyA := hMPya, Myb := hMyab, ey := eya,
+      Cb := le_trans (abs_comoment_le_sqrt a) (sqrt_le_830 hSxa0 hSya0 hSxab hSyab), com := hEa,
+      Eb := cBoundC_le hla1 hla32 hAxa0 hAxab hAya0 hAyab hDxa0
+        (Ds_le hDxa0 hSxa0 hLa' hSxab hDxa) hDya0 (Ds_le hDya0 hSya0 hLa' hSyab hDya)
+        (Real.sqrt_nonneg _) (sqrt_le_830 hSxa0 hSya0 hSxab hSyab) hLa0' hLa' }
+  have sb : CMergeSide b.length mxb myb (mx b) (my b) (mag (b.map Prod.fst)) (mag (b.map Prod.snd))
+      (comoment b) Shb _ :=
+    { one := hlb, Ax0 := hAxb0, Axb := hAxbb, Axt := hAxbt, MxA := hMPxb, Mxb := hMxbb, ex := exb,
+      Ay0 := hAyb0, Ayb := hAybb, Ayt := hAybt, MyA := hMPyb, Myb := hMybb, ey := eyb,
+      Cb := le_trans (abs_comoment_le_sqrt b) (sqrt_le_830 hSxb0 hSyb0 hSxbb hSybb), com := hEb,
+      Eb := cBoundC_le hlb1 hlb32 hAxb0 hAxbb hAyb0 hAybb hDxb0
+        (Ds_le hDxb0 hSxb0 hLb' hSxbb hDxb) hDyb0 (Ds_le hDyb0 hSyb0 hLb' hSybb hDyb)
+        (Real.sqrt_nonneg _) (sqrt_le_830 hSxb0 hSyb0 hSxbb hSybb) hLb0' hLb' }
+  have hsp := hmg (by omega) sa sb
   have hRa := abs_comoment_le_sqrt a
   have hRb := abs_comoment_le_sqrt b
   have hRn := abs_comoment_le_sqrt (a ++ b)
-  have hdm : M.chan ⟨a.length, mxa, mya, Sha⟩ ⟨b.length, mxb, myb, Shb⟩ = ⟨a.length + b.length,
-      M.fl (M.fl (M.fl ((b.length : ℝ) * mxb) + M.fl ((a.length : ℝ) * mxa))
-        / ((a.length : ℝ) + b.length)),
-      M.fl (M.fl (M.fl ((b.length : ℝ) * myb) + M.fl ((a.length : ℝ) * mya))
-        / ((a.length : ℝ) + b.length)),
-      M.fl (M.fl (Shb + Sha) + M.fl (M.fl (M.fl (M.fl (M.fl (mxa - mxb) * M.fl (mya - myb))
-        * b.length) * a.length) / ((a.length : ℝ) + b.length)))⟩ := by
-    have h1 : a.length ≠ 0 := by omega
-    have h2 : b.length ≠ 0 := by omega
-    simp [StdModel.chan, h1, h2]
-  rw [hdm]
-  unfold CInv
+  unfold CInvC
   -- names
   obtain ⟨na, hna⟩ : ∃ n : ℝ, n = a.length := ⟨_, rfl⟩
   obtain ⟨nb, hnb⟩ : ∃ n : ℝ, n = b.length := ⟨_, rfl⟩
@@ -1316,8 +1621,8 @@ theorem StdModel.cInv_merge {a b : List (ℝ × ℝ)} (ha : a ≠ []) (hb : b �
   have hnab : na + nb ≤ 2 ^ 32 := by rw [hna, hnb]; exact_mod_cast hN
   obtain ⟨h, hh⟩ : ∃ h : ℝ, h = na * nb / (na + nb) := ⟨_, rfl⟩
   simp only [← hna, ← hnb] at hmxe hmye hce hsxe hsye hMxa hMya hMxb hMyb hAxat hAyat hAxbt hAybt
-  simp only [← hna, ← hnb] at hEa hEb hDxa hDya hDxb hDyb ⊢
-  simp only [← hh] at hce hsxe hsye
+  simp only [← hna, ← hnb] at hEa hEb hDxa hDya hDxb hDyb hsp ⊢
+  simp only [← hh] at hce hsxe hsye hsp
   have hh0 : 0 ≤ h := by rw [hh]; positivity
   obtain ⟨m, hm⟩ : ∃ m : ℝ, m = ((min a.length b.length : ℕ) : ℝ) := ⟨_, rfl⟩
   have hhm : h ≤ m := by rw [hh, hm, hna, hnb]; exact h_le_min hla hlb
@@ -1379,26 +1684,15 @@ theorem StdModel.cInv_merge {a b : List (ℝ × ℝ)} (ha : a ≠ []) (hb : b �
   have hmagy : mag ((a ++ b).map Prod.snd) = mag (a.map Prod.snd) + mag (b.map Prod.snd) := by
     rw [List.map_append, mag_append]
   have hlen : ((a ++ b).length : ℝ) = na + nb := by rw [List.length_append, hna, hnb]; push_cast; ring
-  refine ⟨by simp, ?_, ?_, Dxa + Dxb + h * |mx a - mx b|, Dya + Dyb + h * |my a - my b|,
-    by positivity, by positivity, ?_, ?_, ?_⟩
+  obtain ⟨hn', hmx', hmy', hc'⟩ := hsp R (by linarith) hRn hY
+  refine ⟨by rw [hn', List.length_append], ?_, ?_, Dxa + Dxb + h * |mx a - mx b|,
+    Dya + Dyb + h * |my a - my b|, by positivity, by positivity, ?_, ?_, ?_⟩
   · -- the mean of the `x`s
     rw [hmxe, hmagx]
-    apply merge_mean hna1 hnb1 hAxa0 hAxb0 exa exb
-    have := M.wmean_spec (ns := b.length) (nt := a.length) hlb hla (by omega)
-      (ms := mxb) (mt := mxa) (As := mag (b.map Prod.fst)) (At := mag (a.map Prod.fst))
-      (by rw [← hnb]; exact hmxb1) (by rw [← hna]; exact hmxa1) (by rw [← hnb]; exact hAxbt)
-      (by rw [← hna]; exact hAxat) hmxbb hmxab
-    simp only [← hna, ← hnb] at this
-    exact this
+    exact merge_mean hna1 hnb1 hAxa0 hAxb0 exa exb hmx'
   · -- the mean of the `y`s
     rw [hmye, hmagy]
-    apply merge_mean hna1 hnb1 hAya0 hAyb0 eya eyb
-    have := M.wmean_spec (ns := b.length) (nt := a.length) hlb hla (by omega)
-      (ms := myb) (mt := mya) (As := mag (b.map Prod.snd)) (At := mag (a.map Prod.snd))
-      (by rw [← hnb]; exact hmyb1) (by rw [← hna]; exact hmya1) (by rw [← hnb]; exact hAybt)
-      (by rw [← hna]; exact hAyat) hmybb hmyab
-    simp only [← hna, ← hnb] at this
-    exact this
+    exact merge_mean hna1 hnb1 hAya0 hAyb0 eya eyb hmy'
   · -- `D_x² ≤ L S_xx`
     rw [List.length_append]
     have hX2 : (h * |mx a - mx b|) ^ 2 ≤ (2 * m) * ((mx a - mx b) ^ 2 * h) := by
@@ -1419,82 +1713,31 @@ theorem StdModel.cInv_merge {a b : List (ℝ × ℝ)} (ha : a ≠ []) (hb : b �
     linarith
   · -- the co-moment
     rw [hlen, hmagx, hmagy, List.length_append]
-    -- the differences of the means
-    have hdx : |mxa - mxb| ≤ 2 ^ 402 := by have := abs_sub mxa mxb; linarith
-    have hdy : |mya - myb| ≤ 2 ^ 402 := by have := abs_sub mya myb; linarith
-    have eDx := M.err (mxa - mxb) (by linarith)
-    have eDy := M.err (mya - myb) (by linarith)
-    have hb403 : ∀ {z : ℝ}, |z| ≤ 2 ^ 402 → |M.fl z| ≤ 2 ^ 403 := by
-      intro z hz
-      have := M.err z (by linarith)
-      have := abs_sub_abs_le_abs_sub (M.fl z) z
-      have : u * (|z| + tiny) ≤ 1 / 2 ^ 53 * (2 ^ 402 + 1) :=
-        mul_le_mul hu' (by linarith [show tiny ≤ 1 by unfold tiny; norm_num]) (by positivity)
-          (by norm_num)
-      have : (1 : ℝ) / 2 ^ 53 * (2 ^ 402 + 1) + 2 ^ 402 ≤ 2 ^ 403 := by norm_num
-      linarith
-    have hDhx := hb403 hdx
-    have hDhy := hb403 hdy
-    generalize M.fl (mxa - mxb) = Dhx at eDx hDhx ⊢
-    generalize M.fl (mya - myb) = Dhy at eDy hDhy ⊢
-    have hP : |Dhx * Dhy| ≤ 2 ^ 840 := by
-      rw [abs_mul]
-      have := mul_le_mul hDhx hDhy (abs_nonneg _) (by norm_num)
-      have : (2 : ℝ) ^ 403 * 2 ^ 403 ≤ 2 ^ 840 := by norm_num
-      linarith
-    have eT := M.T_chain2 (P := Dhx * Dhy) hlb hla (by omega) hP
-    simp only [← hna, ← hnb] at eT
-    rw [show nb * na = na * nb from mul_comm _ _, ← hh] at eT
-    generalize M.fl (M.fl (M.fl (M.fl (Dhx * Dhy) * nb) * na) / (na + nb)) = T at eT ⊢
-    -- the bounds against overflow
-    have hDxa' := Ds_le hDxa0 hSxa0 hLa' hSxab hDxa
-    have hDya' := Ds_le hDya0 hSya0 hLa' hSyab hDya
-    have hDxb' := Ds_le hDxb0 hSxb0 hLb' hSxbb hDxb
-    have hDyb' := Ds_le hDyb0 hSyb0 hLb' hSybb hDyb
-    have hRa8 := sqrt_le_830 hSxa0 hSya0 hSxab hSyab
-    have hRb8 := sqrt_le_830 hSxb0 hSyb0 hSxbb hSybb
-    have hEa' := cBound_le hna1 (by linarith) hAxa0 hAxab hAya0 hAyab hDxa0 hDxa' hDya0 hDya'
-      (Real.sqrt_nonneg _) hRa8 hLa0 hLa'
-    have hEb' := cBound_le hnb1 (by linarith) hAxb0 hAxbb hAyb0 hAybb hDxb0 hDxb' hDyb0 hDyb'
-      (Real.sqrt_nonneg _) hRb8 hLb0 hLb'
-    have hSS : |Sha + Shb| ≤ 2 ^ 902 := by
-      have := abs_add_le Sha Shb
-      have := abs_sub_abs_le_abs_sub Sha (comoment a)
-      have := abs_sub_abs_le_abs_sub Shb (comoment b)
-      linarith
-    have e1 := M.err (Shb + Sha) (by rw [add_comm]; linarith)
-    generalize M.fl (Shb + Sha) = Sh1 at e1 ⊢
-    rw [add_comm Shb Sha] at e1
-    have hS1 : |Sh1| ≤ 2 ^ 903 := by
-      have := abs_sub_abs_le_abs_sub Sh1 (Sha + Shb)
-      have : u * (|Sha + Shb| + tiny) ≤ 1 / 2 ^ 53 * (2 ^ 902 + 1) :=
-        mul_le_mul hu' (by linarith [show tiny ≤ 1 by unfold tiny; norm_num]) (by positivity)
-          (by norm_num)
-      have : (1 : ℝ) / 2 ^ 53 * (2 ^ 902 + 1) + 2 ^ 902 ≤ 2 ^ 903 := by norm_num
-      linarith
-    have hh32 : h ≤ 2 ^ 32 := by linarith
-    have hTb : |T| ≤ 2 ^ 875 := by
-      have := abs_sub_abs_le_abs_sub T (Dhx * Dhy * h)
-      have hPh : |Dhx * Dhy * h| ≤ 2 ^ 840 * 2 ^ 32 := by
-        rw [abs_mul, abs_of_nonneg hh0]; exact mul_le_mul hP hh32 hh0 (by norm_num)
-      have : 5 * u * (|Dhx * Dhy| * h + (1 + h) * tiny)
-          ≤ 5 * (1 / 2 ^ 53) * (2 ^ 840 * 2 ^ 32 + (1 + 2 ^ 32) * 1) := by
-        have : |Dhx * Dhy| * h ≤ 2 ^ 840 * 2 ^ 32 := by
-          rw [abs_mul _ h, abs_of_nonneg hh0] at hPh; exact hPh
-        gcongr
-        unfold tiny; norm_num
-      have : (5 : ℝ) * (1 / 2 ^ 53) * (2 ^ 840 * 2 ^ 32 + (1 + 2 ^ 32) * 1) + 2 ^ 840 * 2 ^ 32
-          ≤ 2 ^ 875 := by norm_num
-      linarith
-    have e2 := M.err (Sh1 + T) (by have := abs_add_le Sh1 T; linarith)
-    have htx : tiny ≤ mag (a.map Prod.fst) + mag (b.map Prod.fst) := by
-      have := mul_le_mul_of_nonneg_right hna1 htn.le; linarith
-    have hty : tiny ≤ mag (a.map Prod.snd) + mag (b.map Prod.snd) := by
-      have := mul_le_mul_of_nonneg_right hna1 htn.le; linarith
-    exact cmerge_step_arith (Mxa := mx a) (Mxb := mx b) (Mya := my a) (Myb := my b) hna1 hnb1 hm1
-      hmA hmB hh0 hhm hnu hAxa0 hAxb0 hAya0 hAyb0 htx hty hMxaA hMxbA hMyaA hMybA exa exb eya eyb
-      eDx eDy eT hDxa0 hDxb0 hDya0 hDyb0 (Real.sqrt_nonneg _) (Real.sqrt_nonneg _) hRab hR1 hRn hY
-      hLa0 hLb0 hLm hEa hEb e1 e2
+    simp only [← hSxa', ← hSya', ← hSxb', ← hSyb'] at hc'
+    refine le_trans hc' ?_
+    unfold cMergeNew
+    have hRY : √(Sxa * Sya) + √(Sxb * Syb) + h * (|mx a - mx b| * |my a - my b|) ≤ R := by
+      have e : h * (|mx a - mx b| * |my a - my b|)
+          = √(((mx a - mx b) ^ 2 * h) * ((my a - my b) ^ 2 * h)) := by
+        rw [show ((mx a - mx b) ^ 2 * h) * ((my a - my b) ^ 2 * h)
+            = (h * (|mx a - mx b| * |my a - my b|)) ^ 2 by
+              rw [mul_pow, mul_pow, sq_abs, sq_abs]; ring]
+        exact (Real.sqrt_sq (by positivity)).symm
+      rw [e, hR']
+      exact le_trans (add_le_add_left (sqrt_add_sqrt_le hSxa0 hSya0 hSxb0 hSyb0) _)
+        (sqrt_add_sqrt_le (by positivity) (by positivity) hΔx0 hΔy0)
+    have := cmerge_fold (C := C) (Xx := h * |mx a - mx b|) (Xy := h * |my a - my b|)
+      (Y := h * (|mx a - mx b| * |my a - my b|)) hna1 hnb1 hm1 hmA hmB
+      hh0 hhm hnu hAxa0 hAxb0 hAya0 hAyb0 hDxa0 hDxb0 hDya0 hDyb0 (by positivity) (by positivity)
+      (Real.sqrt_nonneg _) (Real.sqrt_nonneg _) (by positivity) hRY hLa0 hLb0 hLm le_rfl le_rfl
+    linarith
+
+/-- **DuckDB's merge keeps the covariance invariant.** -/
+theorem StdModel.cInv_merge {a b : List (ℝ × ℝ)} (ha : a ≠ []) (hb : b ≠ [])
+    (hN : a.length + b.length ≤ 2 ^ 32) (hBa : Bounded (2 ^ 399) a) (hBb : Bounded (2 ^ 399) b)
+    {t s : WState} (ht : CInv a t) (hs : CInv b s) : CInv (a ++ b) (M.chan t s) := by
+  rw [← CInvC_chan] at ht hs ⊢
+  exact cInv_merge_of M.chan_spec ha hb hN hBa hBb ht hs
 
 /-! ## Every plan -/
 
@@ -1582,30 +1825,28 @@ theorem mag_sq_le (xs : List ℝ) :
   rw [e1, e2, List.length_map] at h; exact h
 
 set_option maxHeartbeats 1000000 in
-/-- **DuckDB's parallel covariance, to first order in the spread**: for any
-plan of updates and merges over `n ≤ 2³²` pairs of doubles at most `2³⁹⁹` in
-magnitude, the computed co-moment `Ĉ` is within
-`70 n u (√(Q'_x S_yy) + √(Q'_y S_xx)) + 11 n u √(S_xx S_yy) + 3961 n² u² √(Q'_x Q'_y) + 793 n u · tiny`
-of `C = Σ (x − x̄)(y − ȳ)`, where `Q'_x = Σ (|x| + tiny)²`, `Q'_y` likewise. -/
-theorem StdModel.chanCov_rel (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.length ≤ 2 ^ 32)
-    (hB : Bounded (2 ^ 399) P.pairs) (hrep : ∀ p ∈ P.pairs, M.fl p.1 = p.1 ∧ M.fl p.2 = p.2) :
-    |(M.run P).c - comoment P.pairs|
-      ≤ 70 * P.pairs.length * u
-          * (√((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum
-                * comoment (dupL (P.pairs.map Prod.snd)))
-            + √((P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum
-                * comoment (dupL (P.pairs.map Prod.fst))))
-        + 11 * P.pairs.length * u
-          * √(comoment (dupL (P.pairs.map Prod.fst)) * comoment (dupL (P.pairs.map Prod.snd)))
-        + 3961 * P.pairs.length ^ 2 * u ^ 2
-          * √((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum
-              * (P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum)
-        + 793 * P.pairs.length * u * tiny := by
+/-- **The covariance invariant's bound, to first order in the spread**: a
+state within `CInvC C` of `n ≤ 2³²` pairs has its co-moment `Ĉ` within
+`8.14 a n u (√(Q'_x S_yy) + √(Q'_y S_xx)) + 11 n u √(S_xx S_yy) + 3961 n² u² √(Q'_x Q'_y) + 793 n u · tiny`
+of `C = Σ (x − x̄)(y − ȳ)`, `a = C.ad`, where `Q'_x = Σ (|x| + tiny)²`, `Q'_y`
+likewise. -/
+theorem covRel_of_cInvC {C : CConst} {ps : List (ℝ × ℝ)} {s : WState} (hinv : CInvC C ps s)
+    (hne : ps ≠ []) (hN : ps.length ≤ 2 ^ 32) :
+    |s.c - comoment ps|
+      ≤ 8.14 * C.ad * ps.length * u
+          * (√((ps.map fun p => (|p.1| + tiny) ^ 2).sum * comoment (dupL (ps.map Prod.snd)))
+            + √((ps.map fun p => (|p.2| + tiny) ^ 2).sum * comoment (dupL (ps.map Prod.fst))))
+        + 11 * ps.length * u
+          * √(comoment (dupL (ps.map Prod.fst)) * comoment (dupL (ps.map Prod.snd)))
+        + 3961 * ps.length ^ 2 * u ^ 2
+          * √((ps.map fun p => (|p.1| + tiny) ^ 2).sum * (ps.map fun p => (|p.2| + tiny) ^ 2).sum)
+        + 793 * ps.length * u * tiny := by
   obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
-  obtain ⟨-, -, -, Dx, Dy, hDx0, hDy0, hDx, hDy, hC⟩ := M.cInv_plan P hne hN hB hrep
-  generalize P.pairs = ps at hne hN hB hrep hDx hDy hC ⊢
+  obtain ⟨-, -, -, Dx, Dy, hDx0, hDy0, hDx, hDy, hC⟩ := hinv
+  have had0 : 0 ≤ C.ad := le_trans C.nad0 C.nad_le
+  have had := C.ad_le
   have hL := Lw_le hN
-  unfold cBound at hC
+  unfold cBoundC at hC
   have hQx' : (ps.map fun p => (|p.1| + tiny) ^ 2).sum
       = ((ps.map Prod.fst).map fun x => (|x| + tiny) ^ 2).sum := by
     simp [List.map_map, Function.comp_def]
@@ -1656,9 +1897,8 @@ theorem StdModel.chanCov_rel (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.len
   have hR0 : 0 ≤ R := by rw [hR]; exact Real.sqrt_nonneg _
   have hW0 : 0 ≤ W := by rw [hW]; exact Real.sqrt_nonneg _
   -- the terms
-  have t1 : 8.5 * u * (Ax * Dy + Ay * Dx) ≤ 69.11 * (n * u * (Rx + Ry)) := by
-    have := mul_le_mul_of_nonneg_left (add_le_add k1 k2) (by positivity : (0 : ℝ) ≤ 8.5 * u)
-    have : 0 ≤ n * u * (Rx + Ry) := mul_nonneg (mul_nonneg (by linarith) hu.le) (by linarith)
+  have t1 : C.ad * u * (Ax * Dy + Ay * Dx) ≤ 8.13 * C.ad * (n * u * (Rx + Ry)) := by
+    have := mul_le_mul_of_nonneg_left (add_le_add k1 k2) (by positivity : (0 : ℝ) ≤ C.ad * u)
     linarith
   have t3 : 60 * u ^ 2 * L * (Ax * Ay) ≤ 3960 * (n ^ 2 * u ^ 2 * W) := by
     have h1 := mul_le_mul hL k3 (by positivity) (by positivity)
@@ -1666,23 +1906,58 @@ theorem StdModel.chanCov_rel (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.len
     linarith
   have t4 : 12 * u * tiny * L ≤ 792 * (n * u * tiny) := by
     have := mul_le_mul_of_nonneg_left hL (by positivity : (0 : ℝ) ≤ 12 * u * tiny); linarith
-  obtain ⟨T, hT⟩ : ∃ T, T = 8.5 * u * (Ax * Dy + Ay * Dx) + 10 * u * n * R
+  obtain ⟨T, hT⟩ : ∃ T, T = C.ad * u * (Ax * Dy + Ay * Dx) + 10 * u * n * R
       + 60 * u ^ 2 * L * (Ax * Ay) + 12 * u * tiny * L := ⟨_, rfl⟩
   rw [← hT] at hC
   have p1 : 0 ≤ n * u * (Rx + Ry) := by positivity
   have p2 : 0 ≤ n ^ 2 * u ^ 2 * W := by positivity
   have p3 : 0 ≤ n * u * tiny := by positivity
   have p4 : 0 ≤ n * u * R := by positivity
-  have hT' : T ≤ 69.11 * (n * u * (Rx + Ry)) + 10 * (n * u * R) + 3960 * (n ^ 2 * u ^ 2 * W)
+  have p5 : 0 ≤ C.ad * (n * u * (Rx + Ry)) := by positivity
+  have hT' : T ≤ 8.13 * C.ad * (n * u * (Rx + Ry)) + 10 * (n * u * R) + 3960 * (n ^ 2 * u ^ 2 * W)
       + 792 * (n * u * tiny) := by
     have e : 10 * u * n * R = 10 * (n * u * R) := by ring
     rw [hT]; linarith
   have hT0 : 0 ≤ T := by rw [hT]; positivity
   have hfin : (1 + 3 * n * u) * T ≤ T + T / 2 ^ 19 := by
-    have := mul_le_mul_of_nonneg_right (by linarith : 3 * n * u ≤ 1 / 2 ^ 19) hT0; nlinarith
-  have e1 : 70 * n * u * (Rx + Ry) = 70 * (n * u * (Rx + Ry)) := by ring
+    have := mul_le_mul_of_nonneg_right (by linarith : 3 * n * u ≤ 1 / 2 ^ 19) hT0; linarith
+  have e1 : 8.14 * C.ad * n * u * (Rx + Ry) = 8.14 * (C.ad * (n * u * (Rx + Ry))) := by ring
   have e2 : 11 * n * u * R = 11 * (n * u * R) := by ring
   have e3 : 3961 * n ^ 2 * u ^ 2 * W = 3961 * (n ^ 2 * u ^ 2 * W) := by ring
   have e4 : 793 * n * u * tiny = 793 * (n * u * tiny) := by ring
   rw [e1, e2, e3, e4]
+  linarith
+
+/-- **DuckDB's parallel covariance, to first order in the spread**: for any
+plan of updates and merges over `n ≤ 2³²` pairs of doubles at most `2³⁹⁹` in
+magnitude, the computed co-moment `Ĉ` is within
+`70 n u (√(Q'_x S_yy) + √(Q'_y S_xx)) + 11 n u √(S_xx S_yy) + 3961 n² u² √(Q'_x Q'_y) + 793 n u · tiny`
+of `C = Σ (x − x̄)(y − ȳ)`, where `Q'_x = Σ (|x| + tiny)²`, `Q'_y` likewise. -/
+theorem StdModel.chanCov_rel (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.length ≤ 2 ^ 32)
+    (hB : Bounded (2 ^ 399) P.pairs) (hrep : ∀ p ∈ P.pairs, M.fl p.1 = p.1 ∧ M.fl p.2 = p.2) :
+    |(M.run P).c - comoment P.pairs|
+      ≤ 70 * P.pairs.length * u
+          * (√((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum
+                * comoment (dupL (P.pairs.map Prod.snd)))
+            + √((P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum
+                * comoment (dupL (P.pairs.map Prod.fst))))
+        + 11 * P.pairs.length * u
+          * √(comoment (dupL (P.pairs.map Prod.fst)) * comoment (dupL (P.pairs.map Prod.snd)))
+        + 3961 * P.pairs.length ^ 2 * u ^ 2
+          * √((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum
+              * (P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum)
+        + 793 * P.pairs.length * u * tiny := by
+  have h := covRel_of_cInvC (C := CConst.chan) (M.cInv_plan P hne hN hB hrep) hne hN
+  have e : 8.14 * CConst.chan.ad = 69.19 := by norm_num [CConst.chan]
+  rw [e] at h
+  generalize P.pairs = ps at h ⊢
+  obtain ⟨X, hX⟩ : ∃ X, X = √((ps.map fun p => (|p.1| + tiny) ^ 2).sum
+      * comoment (dupL (ps.map Prod.snd)))
+    + √((ps.map fun p => (|p.2| + tiny) ^ 2).sum * comoment (dupL (ps.map Prod.fst))) := ⟨_, rfl⟩
+  rw [← hX] at h ⊢
+  have hX0 : 0 ≤ X := by rw [hX]; positivity
+  have : 0 ≤ (ps.length : ℝ) * u * X := by have := u_pos; positivity
+  have e1 : 69.19 * (ps.length : ℝ) * u * X = 69.19 * ((ps.length : ℝ) * u * X) := by ring
+  have e2 : 70 * (ps.length : ℝ) * u * X = 70 * ((ps.length : ℝ) * u * X) := by ring
+  rw [e2]; rw [e1] at h
   linarith

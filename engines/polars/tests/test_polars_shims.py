@@ -78,13 +78,16 @@ DIVISIONS = [(-7, 2), (7, -2), (-7, -2), (7, 2), (1, -2), (-1, 2), (1, -7), (-6,
              (MIN, 7), (MAX, -3), (0, -5)]  # fmt: skip
 
 
-def test_polars_floors_and_the_shims_truncate():
+def test_polars_floors_and_the_lowering_truncates():
+    """Polars's own `//` and `%` floor; the generated lowering's templates
+    truncate (`sverify_polars.lowering`, #271)."""
     df = pl.DataFrame({"a": [a for a, _ in DIVISIONS], "b": [b for _, b in DIVISIONS]})
     a, b = pl.col("a"), pl.col("b")
     want = [_tdiv(a, b) for a, b in DIVISIONS]
     assert native(df, a // b, a % b) != want
-    assert native(df, shims.int_div_trunc(a, b), shims.int_mod_trunc(a, b)) == want
-    assert native(df, shims.int_mod_trunc(pl.lit(MIN), pl.lit(-1))) == [(0,)]
+    div, mod = polars_engine.lowered("idiv", a, b), polars_engine.lowered("imod", a, b)
+    assert native(df, div.cast(pl.Int64), mod.cast(pl.Int64)) == want
+    assert native(df, polars_engine.lowered("imod", pl.lit(MIN), pl.lit(-1))) == [(0,)]
 
 
 def _tdiv(a: int, b: int) -> tuple[int, int]:
@@ -201,7 +204,7 @@ def test_float_sum_and_avg_match_lean(measure):
             or math.isclose(want, got, abs_tol=1e-6)
             or (math.isnan(want) and math.isnan(got))
         ), (lean, polars)
-    # One zero: Polars keeps -0.0 for a group of one (polars-zero-sign).
+    # One zero: Polars keeps -0.0 for a group of one (polars-zero-sign-streaming).
     zeros = [m for g, m in polars if g in (3, 4)]
     assert all(math.copysign(1.0, z) == 1.0 for z in zeros)
 
@@ -384,7 +387,7 @@ def test_substring_with_a_negative_start_matches_lean(start):
 
 def test_double_group_keys_have_one_zero_and_one_nan():
     """B2: Polars groups `-0.0` with `0.0` but keeps the first zero it sees
-    as the key (polars-zero-sign); the reference has one zero."""
+    as the key (polars-zero-sign-streaming); the reference has one zero."""
     df = pl.DataFrame({"x": [-0.0, 0.0, math.nan, -math.nan]})
     keys = df.group_by("x", maintain_order=True).len()["x"].to_list()
     assert math.copysign(1.0, keys[0]) == -1.0
@@ -682,7 +685,7 @@ def test_a_subnormal_divisor_is_refused():
 
 
 def test_a_difference_of_zeros_is_the_one_zero():
-    """polars-zero-sign: with more than one row, the in-memory engine
+    """polars-zero-sign-streaming: on a morsel of two rows or more, Polars
     computes `0.0 - x` as `-x`; the sum and difference go through `canon`."""
     rows = [(0, 0.0), (1, 0.0), (2, 0.0)]
     con = connect()

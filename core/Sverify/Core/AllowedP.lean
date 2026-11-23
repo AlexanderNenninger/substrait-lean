@@ -98,8 +98,9 @@ one, of its shape: a tree (`ANY`, `PAIRWISE`) or a sequential sum in some
 order (`SEQUENTIAL`). Kahan's compensated sum (`COMPENSATED`) and a constant
 run's product (`SCALED_CONSTANT`) are the bound and exactness on small
 integers (D35, amended 2026-11-19): where `vs` are `SmallInts`, the exact
-sum. The shapes prove that (`SumOrder.int_exact`); here it is trusted, as
-the bound is. -/
+sum. The shapes prove that (`SumOrder.int_exact`); for these two, the
+algorithms on codes (`kahanSum`, `FloatSumsK`) meet both clauses
+(`float-bounds/FloatBridge/Orders.lean`, #1196). -/
 def SumOrder (b : Behaviour) (vs : List Value) (c : Int) : Prop :=
   if b = "EXACT" then c = floatSumCR vs
   else SumBound vs c ∧
@@ -116,11 +117,13 @@ def AvgOrder (b : Behaviour) (vs : List Value) (c : Int) : Prop :=
 
 /-- What a statistical aggregate gives under a `stat_algo` behaviour: the
 exact moments rounded once for `EXACT`, the reference's (D30). An engine's
-own algorithm (`WELFORD_CHAN`) is not modelled here: it meets the generic
-properties (`StatProps`), which is all this allows of it. -/
+own algorithm is not modelled here: it meets the generic properties
+(`StatProps`), which is all this allows of it, at Chan's constants for
+`WELFORD_CHAN` and Schubert and Gertz's for `SCHUBERT_GERTZ` (ruling 271). -/
 def StatAlgo (b : Behaviour) (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   if b = "EXACT" then v = f.apply vs
-  else if b = "GENERIC" ∨ b = "WELFORD_CHAN" then StatProps f vs v else True
+  else if b = "GENERIC" ∨ b = "WELFORD_CHAN" then StatProps .chan f vs v
+  else if b = "SCHUBERT_GERTZ" then StatProps .sg f vs v else True
 
 /-- What `lo + (hi − lo)·w` (`LINEAR_DIFF`) gives beyond a
 double between the neighbours `nb`, each value conditioned on them: NaN where
