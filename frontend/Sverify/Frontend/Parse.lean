@@ -548,15 +548,15 @@ def intBits (ty : Json) : Nat :=
 /-! ## Integer widths
 
 The model's integers are unbounded; 64-bit arithmetic wraps around in
-DataFusion, which `analysis/Sverify/Analysis/Safety.lean` reports. Narrower integers wrap
+Polars and in Spark without ANSI mode (`Guards.lean`), and
+`analysis/Sverify/Analysis/Safety.lean` reports it. Narrower integers wrap
 at their own width, so the parser tracks the width of integer expressions and
-marks arithmetic on narrower ones with `UnFn.wrap`. DataFusion computes at the
+marks arithmetic on narrower ones with `UnFn.wrap`. An engine computes at the
 widest operand type (`INT + BIGINT` is a `BIGINT`), and an integer literal has
 its own type (SQL's `1` is a `BIGINT`, Calcite's an `INT`). Unsigned integers
 (a type variation in Substrait) are refused. -/
 
-/-- Is this an integer type with a type variation (DataFusion's unsigned
-integers)? -/
+/-- Is this an integer type with a type variation (an unsigned integer)? -/
 def unsignedType (ty : Json) : Bool :=
   intTags.any fun (k, _) =>
     ((field? ty k).bind (field? · "typeVariationReference")).any (·.getNat?.toOption != some 0)
