@@ -1,0 +1,17 @@
+{
+  "id": "U-2026-11-22-exit-code-severity",
+  "date": "2026-11-22",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "The command line's exit codes are numbered in order of severity, so a higher code is a worse outcome, and the worst of several is their maximum: 0 proved, 1 not proved, 2 usage, 3 unsupported, 4 refused, 5 budget, 6 quarantined, 7 held, 8 error. A refresh that held a node, including on a fired run-time check, exits 7.",
+  "issues": [
+    2458
+  ],
+  "amends": [
+    "F258",
+    "F260"
+  ],
+  "source": "https://github.com/AlexanderNenninger/substrait-lean/issues/2458",
+  "note": "The old numbering was 4 budget, 5 quarantined, 6 error, 7 refused and 8 held, which the template's `lake.py` had to reorder with a severity table to take the worst of several targets. This is a breaking change to a stable surface, so it lands before 1.0. One table in sverify is the single source, read by the CLI, the JSON `exit` field, the GitHub Action, `lake.py`, the docs and the tests. Rulings 258 and 260 said a fired run-time check exits 8 as a held node; that is now 7."
+}
