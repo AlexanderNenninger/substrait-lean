@@ -45,10 +45,10 @@ inductive AggAlgo where
   /-- Welford's update with Chan's merge (`duckdb-var-stddev`, `duckdb-covar`,
   `spark-var-stddev`, `spark-covar`). -/
   | welfordChan
-  /-- Two-pass per block, blocks merged by Chan's formula (`polars-var-std`,
+  /-- Two-pass per block, blocks merged by Chan's formula (`polars-var-std-streaming`,
   ungrouped). -/
   | blockTwoPass
-  /-- Pairwise summation (`polars-sum-float`). -/
+  /-- Pairwise summation (`polars-sum-float-streaming`). -/
   | pairwiseSum
   /-- Kahan's compensated summation (`duckdb-kahan-sum`, `fsum`). -/
   | kahanSum

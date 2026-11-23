@@ -27,6 +27,7 @@ from sverify.io._common import (
     ConcurrentWriteError,
     Contract,
     SinkWrite,
+    check_same_sources,
     check_same_state,
     other_tables,
     public_uri,
@@ -352,6 +353,8 @@ class Sink:
             raise ValueError(f"no node is stored in {self.location}: node.write(sink) attaches one")
         contract = view_contract_record(view)
         done = self.contract()
+        if done is not None:
+            check_same_sources(self.location, done, contract)
         pending, self._pending = self._pending, None
         if (
             pending is not None

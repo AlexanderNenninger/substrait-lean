@@ -417,7 +417,7 @@ Engines compute `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` with different
 algorithms, none documented: DuckDB 2.0 and Spark 4.3 use Welford's update
 with Chan's merge, Polars 2.1 a two-pass per block of 128 values when
 ungrouped and Welford when grouped (`engines/*/facts/`, ids
-`duckdb-var-stddev`, `duckdb-covar`, `duckdb-corr`, `polars-var-std`,
+`duckdb-var-stddev`, `duckdb-covar`, `duckdb-corr`, `polars-var-std-streaming`,
 `polars-cov`, `polars-corr`, `spark-var-stddev`, `spark-covar`, `spark-corr`).
 The reference picks none. Its value is the
 exact moments rounded once
@@ -647,7 +647,7 @@ the first column are the names the tables below use.
 | Option | Core | Substrait | Reference | DuckDB |
 |---|---|---|---|---|
 | `rounding` (`+ - × /`, the elementary functions, `sum`, `avg`, `variance`, `std_dev`) | the five of the YAML | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR` | `TIE_TO_EVEN`: the exact result rounded once for `+ - × /` and the aggregates, native `Float` for the elementary functions | `TIE_TO_EVEN` (native IEEE; no fact records it) |
-| `rounding` (`round`) | the ten of the YAML | ten modes | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` ([R15-round](../engines/duckdb/facts/duckdb-R15-round.json), [R15-round-digits](../engines/duckdb/facts/duckdb-R15-round-digits.json)) |
+| `rounding` (`round`) | the ten of the YAML | ten modes | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` ([R15-round](../engines/duckdb/facts/duckdb-R15-round.json), [round-digits-2](../engines/duckdb/facts/duckdb-round-digits-2.json)) |
 | `on_division_by_zero` (doubles) | `IEEE`, `LIMIT`, `NULL`, `ERROR` | the four | `ERROR`; the others when asked | `IEEE` under `ieee_floating_point_ops`, `ERROR` with it off ([R5](../engines/duckdb/facts/duckdb-R5.json)) |
 | `on_domain_error` (`sqrt`, `asin`, `acos`, `atanh`, `acosh`, logs, `atan2`, `divide`) | `NAN`, `NULL`, `ERROR` | `NAN`, `ERROR` (logs and integer `divide` add `NULL`) | `ERROR` | `NAN` ([R15-math-domain](../engines/duckdb/facts/duckdb-R15-math-domain.json)); `atan2(0, 0)` is `0` ([R15-atan2](../engines/duckdb/facts/duckdb-R15-atan2.json)) |
 | `on_log_zero` | `NAN`, `ERROR`, `MINUS_INFINITY` | the three | `ERROR` | `MINUS_INFINITY` (R15-math-domain) |

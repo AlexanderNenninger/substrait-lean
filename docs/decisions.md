@@ -526,7 +526,7 @@ is one value and order-free (`floatSumCR_perm`).
 
 Engines add in an order of their own: DuckDB in the order values reach each
 thread's state (`duckdb-sum-double`), Polars pairwise in blocks of 128
-(`polars-sum-float`), Spark per partition (`spark-sum-double`). Each refines the reference up to the
+(`polars-sum-float-streaming`), Spark per partition (`spark-sum-double`). Each refines the reference up to the
 plan's bound, the distance of any order of additions from the exact sum
 (`StdModel.epsilon_sum` in [`float-bounds/`](float-bounds.md)) plus half an
 ulp of the final rounding (`epsilon_sum_cr`). Their `sum_order` rows stay

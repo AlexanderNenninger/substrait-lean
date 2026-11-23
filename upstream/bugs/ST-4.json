@@ -26,7 +26,7 @@
     "duckdb-signbit",
     "duckdb-arg-min-nulls",
     "duckdb-quantile-disc",
-    "polars-zero-sign",
+    "polars-zero-sign-streaming",
     "polars-nan-sign",
     "polars-nan-equality",
     "polars-nan-order",

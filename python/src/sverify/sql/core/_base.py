@@ -2805,9 +2805,8 @@ class _Parser:
                 # A double literal is its code in Lean, which `lean_expr_kind`
                 # calls an integer; its declared kind says double (`doubleJ`).
                 has_float = any(
-                    lean_expr_kind(e, cols.lean) == "float"
-                    or (isinstance(e, Lit) and e.kind == "float")
-                    for e in parsed
+                    lean_expr_kind(e, cols.lean) == "float" or _declared_double(self.fns, a)
+                    for a, e in zip(arg_js, parsed, strict=True)
                 )
                 float_call = name in floats and (out == "float" or has_float or name in DOUBLE_FNS)
                 if fmod_ext and not float_call:
@@ -2841,6 +2840,7 @@ class _Parser:
                         if lean_expr_kind(e, cols.lean) == "int"
                         and not keep_int(k)
                         and not isinstance(e, Lit)
+                        and not _declared_double(self.fns, arg_js[k])
                         else e
                         for k, e in enumerate(parsed)
                     ]
