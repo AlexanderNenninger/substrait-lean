@@ -98,11 +98,10 @@ def Profile.spark.obs : ObsTable := [
   (none, "nan_creation", (ObsRow.native ["spark-double-arith", "spark-nonfinite-aggregates"]).proved "Rel.spark_sound"),
   (none, "float_overflow", (ObsRow.native ["spark-double-arith"]).proved "Shim.makes_infinite"),
   -- A variance or covariance whose correctly rounded value overflows is `+inf`
-  -- (spark-nonfinite-aggregates, #1601).
-  (some "agg.var", "float_overflow", (ObsRow.native ["spark-nonfinite-aggregates"]).proved
-    "Shim.makes_infinite"),
-  (some "agg.stat", "float_overflow", (ObsRow.native ["spark-nonfinite-aggregates"]).proved
-    "Shim.makes_infinite"),
+  -- (spark-nonfinite-aggregates, #1601). `Shim.makes_infinite` is about binary
+  -- operations; no theorem states Spark's aggregate guard yet (#185).
+  (some "agg.var", "float_overflow", (ObsRow.native ["spark-nonfinite-aggregates"]).tracking 185),
+  (some "agg.stat", "float_overflow", (ObsRow.native ["spark-nonfinite-aggregates"]).tracking 185),
   -- Values are raw (D31), and the zeros are one at `=`, `<`, keys and
   -- partitions; MIN and MAX keep whichever zero came first, a member of the class.
   (none, "zero_sign", (ObsRow.native ["spark-zero-sign", "spark-zero-order"]).tracking 271),
