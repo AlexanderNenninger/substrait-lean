@@ -196,6 +196,23 @@ theorem Rel.exactOn_of_exactOnB {p : Profile} {L : Lowering p} {r : Rel}
 def Rel.constsDblB (r : Rel) : Bool := r.litDbl && r.mappedExprs.all Expr.litDbl
 
 omit [Boxes.Ambient] in
+/-- The first constant of an expression that is not a double's code: the
+checker's error names it. -/
+def Expr.nonDblLit? : Expr → Option Value
+  | .lit v => if v.dbl then none else some v
+  | .field _ => none
+  | .un _ a => a.nonDblLit?
+  | .bin _ a b => a.nonDblLit? <|> b.nonDblLit?
+  | .ifThen c t e => c.nonDblLit? <|> t.nonDblLit? <|> e.nonDblLit?
+  | .hof _ l b => l.nonDblLit? <|> b.nonDblLit?
+
+omit [Boxes.Ambient] in
+/-- Where `Rel.constsDblB` fails, the constant that fails it, as text. -/
+def Rel.nonDblLit (r : Rel) : String :=
+  if !r.litDbl then "a VALUES row or a window default"
+  else ((r.mappedExprs.findSome? Expr.nonDblLit?).map reprStr).getD "none"
+
+omit [Boxes.Ambient] in
 theorem Rel.constsDbl_of_constsDblB {r : Rel} (h : r.constsDblB = true) : r.ConstsDbl := by
   simp only [Rel.constsDblB, Bool.and_eq_true, List.all_eq_true] at h
   exact h

@@ -79,7 +79,7 @@ def has (j : Json) (path : List String) : Bool :=
 #guard ((realizabilityJson entries).getObjValD "dummy" |>.getObjValD "theorem") ==
   "DummyEngine.Engine.dummy_sound"
 #guard ((realizabilityJson entries).getObjValD "dummy" |>.getObjValD "side") ==
-  "Engine.GuardFreeSide"
+  "Engine.SparkSide"
 -- A request under its name gets the reference's report, pending `dummy`.
 #guard (Checker.underProfile engines (Lean.Json.mkObj [("profile", "dummy")]) (Lean.Json.mkObj [])
   true |>.toOption.map (·.1.getObjValD "pending")) == some "dummy"

@@ -1,6 +1,7 @@
 import Sverify.Spark.Profile
 import Sverify.Spark.Tables
 import Sverify.Spark.Lowering
+import Sverify.Engines.LoweringRaises
 import Sverify.Engines.Sound
 
 /-!

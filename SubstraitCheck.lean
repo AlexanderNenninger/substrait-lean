@@ -411,9 +411,15 @@ def contract (es : List EngineProfile) (input : String) : IO UInt32 := do
   match (do
       let j ← Lean.Json.parse input
       let R ← ContractCheck.parse j
-      return (j, R, ← R.check) : Except String _) with
+      -- The plan's double constants are doubles' codes (`Rel.constsDblB`), which
+      -- Spark's soundness reads (ruling 277 Q2); the parser builds them by
+      -- `ofFloat`, so this never fires. M4's parser lemma replaces it (#2516).
+      if let some T := R.transform then
+        if !T.root.constsDblB then
+          throw s!"internal error: a double constant that is not a double's code: {T.root.nonDblLit}"
+      return (j, R, ← R.check, ← R.runPlanJson) : Except String _) with
   | .error e => IO.eprintln s!"error: {e}"; return 1
-  | .ok (j, R, report) =>
+  | .ok (j, R, report, runPlan) =>
     -- The profile it was checked under (`underProfile`), and the options
     -- the transformation meets (#444).
     let depends := (Epsilon.depends j).toOption.getD Lean.Json.null
@@ -435,7 +441,7 @@ def contract (es : List EngineProfile) (input : String) : IO UInt32 := do
     let engines := (Realize.enginesJson es j rowsExact report robust eps).toOption.getD []
     -- The plan an engine runs, or the gate that keeps the plan as
     -- written (#1787, `SubstraitLean/RunPlan.lean`).
-    let runPlan := R.runPlanJson ++ [("assumed_check", R.assumedCheckJson R.kenv)]
+    let runPlan := runPlan ++ [("assumed_check", R.assumedCheckJson R.kenv)]
     let withRun := runPlan.foldl (fun b (k, v) => b.setObjVal! k v) report.json
     -- A decision on a marked value (D52, ruling 104): an error issue.
     let source := (EngineRobust.sourceIssues es j).toOption.getD []
