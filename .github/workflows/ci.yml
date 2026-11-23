@@ -204,6 +204,7 @@ jobs:
       dbtreplay: ${{ steps.diff.outputs.dbtreplay }}
       evidence: ${{ steps.diff.outputs.evidence }}
       python: ${{ steps.diff.outputs.python }}
+      action: ${{ steps.diff.outputs.action }}
       models: ${{ steps.diff.outputs.models }}
       matrix: ${{ steps.diff.outputs.matrix }}
     steps:
@@ -271,6 +272,7 @@ jobs:
             out dbtreplay=true
             out evidence=true
             out python=true
+            out action=true
             out models=true
             out "matrix=$(matrix '"duckdb","polars snowflake"' true)"
           }
@@ -292,7 +294,7 @@ jobs:
           }
           if [ "$EVENT" != pull_request ]; then
             if tested; then
-              for o in code floats proofs oracle notebooks dbt dbtreplay evidence python models; do out "$o=false"; done
+              for o in code floats proofs oracle notebooks dbt dbtreplay evidence python action models; do out "$o=false"; done
               out 'matrix={"backends":["duckdb"]}'
               exit 0
             fi
@@ -357,6 +359,13 @@ jobs:
             out python=true
           else
             out python=false
+          fi
+          # The `sverify check` action (`actions/check/`), which only `action` reads; the
+          # CLI it runs counts too.
+          if [ "$batch" = true ] || grep -qE '^(actions/|python/src/sverify/cli/|\.github/workflows/ci\.yml$)' <<< "$files"; then
+            out action=true
+          else
+            out action=false
           fi
           # The TLA+ models, which only `refresh-model` reads.
           if grep -qE '^(models/|\.github/workflows/ci\.yml$)' <<< "$files"; then
@@ -756,6 +765,85 @@ jobs:
           prune-cache: true
           cache-suffix: pruned
       - run: bash python/scripts/wheel_tests.sh --editable python --fast -n 4 --dist worksteal
+
+  # The `sverify check` action (`actions/check/`, #770) on its example pipelines, with the
+  # PyPI release and with this checkout (editable, on the run's checker): the release does
+  # not have what main has, and `require-proved` says so.
+  action:
+    needs: [route, changes, checker]
+    if: needs.changes.outputs.action == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [release, branch]
+        include:
+          - leg: branch
+            source: -e ./engines/duckdb -e ./python
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - if: matrix.leg == 'branch'
+        uses: ./.github/actions/checker
+      - name: A proved pipeline exits 0
+        id: proved
+        uses: ./actions/check
+        with:
+          targets: actions/check/example/orders.py
+          source: ${{ matrix.source }}
+          upload: "false"
+          sarif-file: proved.sarif
+      - name: An unproved one exits 1, beside the proved one, in one SARIF
+        id: unproved
+        continue-on-error: true
+        uses: ./actions/check
+        with:
+          targets: |
+            actions/check/example/orders.py
+            actions/check/example/unproved.py
+          source: ${{ matrix.source }}
+          upload: "false"
+          sarif-file: both.sarif
+      - name: require-proved needs sverify 0.9.0
+        id: required
+        continue-on-error: true
+        uses: ./actions/check
+        with:
+          targets: actions/check/example/orders.py
+          source: ${{ matrix.source }}
+          require-proved: "true"
+          upload: "false"
+          sarif-file: required.sarif
+      - name: Read the results
+        env:
+          LEG: ${{ matrix.leg }}
+          PROVED: ${{ steps.proved.outputs.exit-code }}
+          UNPROVED: ${{ steps.unproved.outputs.exit-code }}
+          UNPROVED_OUTCOME: ${{ steps.unproved.outcome }}
+          REQUIRED: ${{ steps.required.outputs.exit-code }}
+          REQUIRED_OUTCOME: ${{ steps.required.outcome }}
+        run: |
+          test "$PROVED" = 0
+          test "$UNPROVED" = 1 && test "$UNPROVED_OUTCOME" = failure
+          if [ "$LEG" = release ]; then
+            # The release has no --require-proved: one failure before any target runs.
+            test "$REQUIRED_OUTCOME" = failure && test -z "$REQUIRED"
+          else
+            test "$REQUIRED_OUTCOME" = success && test "$REQUIRED" = 0
+          fi
+          python - <<'PY'
+          import json
+          one = json.load(open("proved.sarif"))
+          both = json.load(open("both.sarif"))
+          assert one["version"] == both["version"] == "2.1.0"
+          assert len(both["runs"]) == 1 and not one["runs"][0]["results"]
+          ids = {r["ruleId"] for r in both["runs"][0]["results"]}
+          assert {"may_be_false", "needs"} <= ids, ids
+          assert {r["id"] for r in both["runs"][0]["tool"]["driver"]["rules"]} >= ids
+          PY
 
   # sverify without DuckDB (#1288, #1485 item 16): the base install, no extra,
   # in an environment that has no `duckdb`. `verify` proves a plan and writes
@@ -1274,7 +1362,7 @@ jobs:
   # follows a failed `changes` or `checker`, which this catches. A pull request
   # into another branch fails it (see the header).
   qa:
-    needs: [changes, checker, lean, golden, static, test, outside-repo, no-duckdb, notebooks, bench, dbt, template, float-bounds, oracle-a, ledger, refresh-model]
+    needs: [changes, checker, lean, golden, static, test, outside-repo, action, no-duckdb, notebooks, bench, dbt, template, float-bounds, oracle-a, ledger, refresh-model]
     if: always()
     runs-on: ubuntu-latest
     steps:

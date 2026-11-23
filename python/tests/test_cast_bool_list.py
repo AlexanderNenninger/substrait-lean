@@ -30,8 +30,8 @@ def run(report, engine):
     ("to", "expected", "ty"),
     [
         ("int64", [1, 0, None], pa.int64()),
-        # A computed integer is int64 in the report and the run (ruling 114).
-        ("int8", [1, 0, None], pa.int64()),
+        # A cast gives the integer type it names (ruling 114, #1772).
+        ("int8", [1, 0, None], pa.int8()),
         ("float64", [1.0, 0.0, None], pa.float64()),
     ],
 )

@@ -552,9 +552,21 @@ meets `MergeSpec` keeps the invariant (`tInv_merge_of`), DuckDB's
 co-moment is within DuckDB's bound (`plVar_rel`) and its `VAR_*`, clamped at
 `0` as `VarState::finalize` does, within `varTol` (`core_var_polars`). The
 fuzz (`polars-var-bound`) measured `1.03 n u √(Q' S)` against the proved
-`148`. Polars's `agg.var` row cites `core_var_polars`. Its `COVAR_*`
-(`CovState`) has no theorem yet: at 1.0 Polars's `COVAR_*` rests on the fuzzed
-bound (`polars-var-bound`), and its `agg.stat` row stays tested
+`148`. Polars's `agg.var` row cites `core_var_polars`.
+
+Polars's `COVAR_*` (`CovState`, [`CovSG.lean`](../float-bounds/FloatBounds/CovSG.lean))
+merges with Schubert and Gertz's update too, which falls outside Chan's
+constants: its `n_b (m_b − m̂)` term carries `u n_b |Δ_x| |Δ_y|` that Chan's
+merge does not. Any merge that meets `CMergeSpec C` keeps the covariance
+invariant at the constants `C` (`cInv_merge_of`), and Schubert and Gertz's
+meets it at `CConst.sg` (`sgCov_spec`). A two-pass block of pairs meets the
+invariant with `D_x = √(n S_xx)` (`cInvC_block`), so every plan of blocks,
+single pairs and merges does (`cInvC_pcrun`). The invariant's bound over any
+constants (`covRel_of_cInvC`) gives the co-moment within `106 n u (…)`
+(`plCov_rel`, DuckDB's `70`), and `COVAR_*` within `covTolK 107`
+(`core_cov_polars`, `StatTol.sg` in `StatProps.lean`, ruling 271). Its `CORR`
+(`PearsonState`) has no theorem yet, and the `agg.stat` row, which both
+read, stays tested until it does
 ([#1808](https://github.com/AlexanderNenninger/substrait-lean/issues/1808)).
 
 `Epsilon.statEps` reports these bounds per column: a `VAR_*`'s and a

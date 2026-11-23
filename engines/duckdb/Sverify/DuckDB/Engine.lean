@@ -20,7 +20,8 @@ namespace Substrait
 /-- The options at which `Profile.duckdb_withinOk` uses DuckDB's table. -/
 def Profile.duckdbExtras : List (Functions.Ctor × String) :=
   FMath.all.map (fun g => (.un (.fmath g), "on_domain_error")) ++
-    [(.un .fround, "round_zero_sign"), (.un .fceil, "round_zero_sign"),
+    [(.un .fround, "round_zero_sign"), (.un .froundEven, "round_zero_sign"),
+     (.un .fceil, "round_zero_sign"),
      (.bin .fadd, "nan_creation"), (.bin .fsub, "nan_creation"), (.bin .fmul, "nan_creation"),
      (.bin .fdiv, "on_division_by_zero"), (.bin .fdiv, "nan_creation"),
      (.bin .fmod, "nan_creation"), (.bin .fpow, "on_domain_error"),
@@ -59,7 +60,7 @@ theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
             simp [optionScope, Functions.Ctor.issue, UnFn.issueAll, UnFn.issue, domainIssue, hc.2]
           · cases hd
         -- IEEE's `-0.0` where the reference's result is a zero (`round_zero_sign`).
-        case fround | fceil =>
+        case fround | froundEven | fceil =>
           split at hd
           · rename_i hc
             refine callExtra_of_at (o := "round_zero_sign") (extraAt_of_all (Profile.duckdb_extras _) (by decide)) ?_
