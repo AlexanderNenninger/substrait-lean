@@ -2005,7 +2005,7 @@ def _decided(c: Expr) -> Expr:
             a = _decided(a)
             return (
                 Lit(not a.value, "bool")
-                if isinstance(a, Lit) and a.kind == "bool"
+                if isinstance(a, Lit) and a.kind == "bool" and a.value is not None
                 else Un("not", a)
             )
     return c
