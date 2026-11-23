@@ -112,14 +112,16 @@ print(report.verdict)
 # proved
 ```
 
-The route to Spark is exact, and names the theorem:
+The route to Spark is exact, and names the theorems: this one, and
+`Rel.spark_sound_or_raises` for the division's zero divisor
+(`on_division_by_zero`), where Spark raises as the reference does:
 
 ```python
 route = routes.choose(report, "spark")
 print(route.taken, route.cls)
 # translated exact
 print(route.theorems)
-# ('Rel.spark_sound',)
+# ('Rel.spark_sound', 'Rel.spark_sound_or_raises')
 ```
 
 Without the precondition `n != 0` the plan is not proved, and the route is
