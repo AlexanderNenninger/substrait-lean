@@ -286,7 +286,7 @@ class _Checker:
             res.sql = None
             return res.refuse(
                 f"DuckDB cannot plan the compiled SQL: {_first_line(e)}; sverify-dbt reads "
-                "DuckDB projects (other adapters: see #271)"
+                "DuckDB projects (other adapters: see #866)"
             )
         res.duckdb_types = {row[0]: row[1] for row in out}
         # sverify reads DuckDB's type names (`verify(tables=...)`).
