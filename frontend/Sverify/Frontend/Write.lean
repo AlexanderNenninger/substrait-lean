@@ -793,13 +793,28 @@ def withCommon (kind : String) (body : List (String × Json)) (emit : Option (Li
     else obj [("project", obj [common m, ("input", obj [(kind, obj body)]),
       ("expressions", Json.arr #[])])]
 
+/-- The number of nodes of an expression. -/
+def exprSize : Expr → Nat
+  | .lit _ | .field _ => 1
+  | .un _ a => exprSize a + 1
+  | .bin _ a b => exprSize a + exprSize b + 1
+  | .ifThen c t e => exprSize c + exprSize t + exprSize e + 1
+  | .hof _ l b => exprSize l + exprSize b + 1
+
+/-- The most nodes `unbindProject` lets a projection's expressions reach. -/
+def unbindBudget : Nat := 2048
+
 /-- The expressions of a projection over `below` with the columns that the
-projections under it bind (`Rel.bindStep`) written back in, through at most
-`fuel` of them: each level can double the expressions (#2338), and a plan that
-declares a kind binds a few levels at most. -/
+projections under it bind (`Rel.bindStep`) written back in, level by level
+while they stay within `unbindBudget` nodes: a binding exists because an
+argument repeats, so each level can double them (#2338). The expressions as
+they stand when the next level would pass the budget, which find no declared
+kinds. -/
 def unbindProject (cat : Catalog) : Nat → Rel → List Expr → List Expr
   | fuel + 1, .project r ss, es =>
-    unbindProject cat fuel r (es.map (·.subst ((List.range (r.arity cat)).map .field ++ ss)))
+    let es' := es.map (·.subst ((List.range (r.arity cat)).map .field ++ ss))
+    if (es'.map exprSize).foldl (· + ·) 0 > unbindBudget then es
+    else unbindProject cat fuel r es'
   | _, _, es => es
 
 /-- The kinds of a projection's expressions over columns of kinds `ks`:
@@ -813,7 +828,7 @@ def projKinds (schemas : Schemas) (cat : Catalog) (below : Rel) (ks : List WKind
   -- are not the ones the source plan declared kinds for: substituting the
   -- bound columns back gives those (`Rel.bindStep_spec`, #2102).
   let declared := if declared.isEmpty then
-      Parse.schemaKinds (schemas (Parse.projectKey (unbindProject cat 3 below es)) 0)
+      Parse.schemaKinds (schemas (Parse.projectKey (unbindProject cat 64 below es)) 0)
     else declared
   es.zipIdx.map fun (e, i) => match declared[i]? with
     | some k => if k == .other then wkind ks e else .ofKind k
