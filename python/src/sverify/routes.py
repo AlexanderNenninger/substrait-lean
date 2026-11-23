@@ -60,10 +60,12 @@ from __future__ import annotations
 
 import functools
 import json
+import math
 import re
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 from sverify._engines import translations
@@ -639,11 +641,32 @@ _ISSUES = "https://github.com/AlexanderNenninger/substrait-lean/issues"
 _KINDS = ("abs", "rel", "ulps")
 
 
+class Printed(float):
+    """A number as the checker printed it: the nearest double, and the text it came from
+    (`json.loads(..., parse_float=Printed)`)."""
+
+    text: str
+
+    def __new__(cls, text: str) -> Printed:
+        self = super().__new__(cls, text)
+        self.text = text
+        return self
+
+
+def _up(value: float) -> float:
+    """The least double at or above a printed bound. Each bound is an upper bound on an
+    error, printed rounded up; its nearest double may lie below it, and a double `s` is
+    at least the bound exactly when it is at least this one."""
+    d = Decimal(getattr(value, "text", None) or repr(float(value)))
+    f = float(d)
+    return math.nextafter(f, math.inf) if Decimal(f) < d else f
+
+
 def _bounds(eps: Mapping[str, Any]) -> dict[str, tuple[float, bool]]:
     """A column's `ε` as `{kind: (value, proved)}`, as the checker normalises
     it (`Realize.epsBounds`: `"epsilon_bounds"`, or an engine's
     `"epsilon"`, where `proved` is that engine's)."""
-    return {k: (float(b["value"]), bool(b["proved"])) for k, b in eps["bounds"].items()}
+    return {k: (_up(b["value"]), bool(b["proved"])) for k, b in eps["bounds"].items()}
 
 
 def _plan_bound(

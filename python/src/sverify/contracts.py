@@ -1490,7 +1490,11 @@ def _prove_once(
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
     if code not in (0, 4):
         raise checker_failed("--contract", stderr)
-    out = json.loads(stdout)
+    # A bound keeps the text it was printed as (`Printed`): its nearest double may
+    # lie below it.
+    from sverify.routes import Printed
+
+    out = json.loads(stdout, parse_float=Printed)
     if semantics in _profile_requests() and out.get("pending") == semantics:
         # The engine's profile is its own, with no report under it yet
         # (#1288): the reference's report, labelled as such.

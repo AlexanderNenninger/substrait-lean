@@ -5,6 +5,8 @@ from __future__ import annotations
 import ibis
 import pyarrow as pa
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
@@ -475,3 +477,21 @@ def test_a_sessions_own_version_decides() -> None:
 
     assert routes.session_version(Session()) == "4.3.1"
     assert routes.session_version("spark") is None
+
+
+@given(st.decimals(min_value=0, max_value=1000, allow_nan=False, allow_infinity=False, places=30))
+def test_a_printed_bound_rounds_up_to_the_least_double(d) -> None:
+    """`_up` gives the least double at or above the decimal the checker printed, so a
+    tolerance at or above it meets the bound exactly (ruling 274)."""
+    import math
+    from decimal import Decimal
+
+    text = str(d)
+    got = routes._up(routes.Printed(text))
+    assert Decimal(got) >= Decimal(text)
+    assert Decimal(math.nextafter(got, -math.inf)) < Decimal(text)
+
+
+@given(st.floats(min_value=0, max_value=1e300, allow_nan=False, allow_infinity=False))
+def test_a_double_printed_as_itself_is_unchanged(x) -> None:
+    assert routes._up(routes.Printed(repr(x))) == x
