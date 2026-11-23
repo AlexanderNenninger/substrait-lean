@@ -94,6 +94,7 @@ BinFn.dadd	native
 BinFn.dsub	native
 BinFn.dmul	native
 BinFn.ddiv	native
+BinFn.dmod	hand-written schema: a % b of decimals truncated: Polars's % by -b where the signs differ
 BinFn.pair	native
 BinFn.greatest	native
 BinFn.least	native

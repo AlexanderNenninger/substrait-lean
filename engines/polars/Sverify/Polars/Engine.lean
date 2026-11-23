@@ -281,6 +281,7 @@ theorem Polars.floorDiffers_unscaled {v w : Value} {a b : Int} (hv : v.unscaled?
     floorDiffers [v, w] = (decide (a * b < 0) && a.tmod b != 0) := by
   cases v <;> cases w <;> simp_all [floorDiffers]
 
+omit [Boxes.Ambient] in
 theorem Polars.floor_or_differs {a b : Int} (h : floorDiffers [.int a, .int b] = false) :
     a.fdiv b = a.tdiv b ∧ a.fmod b = a.tmod b := by
   have hd : a * b < 0 → b ∣ a := fun hab => by
