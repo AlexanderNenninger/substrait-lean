@@ -165,7 +165,8 @@ class ChangeLog[T]:
     """A table's changes by version, the last `keep` of them (all if None).
     It holds every change after version `floor`.
 
-    A source's readers report the version each has committed (`consumed`),
+    A source's readers report the version each has durably committed
+    (`consumed`): written to its sink, or refreshed where it has none,
     and the log drops the changes every reader has read: a source then keeps
     the changes no reader has, not every change since it was built (#1329).
     A reader older than the log, one it no longer counts, gets the whole
@@ -180,12 +181,13 @@ class ChangeLog[T]:
         """Each reader's committed version; a reader that is gone counts no more."""
 
     def consumed(self, reader: object, version: int) -> None:
-        """`reader` has committed `version`: drop the changes every reader
-        has read."""
+        """`reader` has durably committed `version`: drop the changes every
+        reader has read. The change at the oldest reader's version stays: a
+        sink reads its cursor there (`at`) once that reader commits."""
         self.readers[reader] = version
         oldest = min(self.readers.values())
         if oldest > self.floor:
-            self.entries = [(v, c) for v, c in self.entries if v > oldest]
+            self.entries = [(v, c) for v, c in self.entries if v >= oldest]
             self.floor = oldest
 
     def add(self, version: int, change: T) -> None:

@@ -1777,6 +1777,17 @@ class Pipeline:
         self.on_violation[name] = _quarantine.check_policy(getattr(source, "on_violation", None))
         return self.con.table(name)
 
+    def release(self) -> None:
+        """Tell each source the version this pipeline has durably committed,
+        so its change log can drop what every reader has read
+        (`ChangeLog.consumed`). The caller calls it once nothing can take the
+        pipeline back below these versions: after its sink records them, or
+        after a refresh where nothing is recorded. A rebuild from a sink
+        starts at the versions it recorded, which the log then still
+        keeps."""
+        for t, src in self.sources.items():
+            _consumed(src, self, self.versions[t])
+
     def seal(self) -> None:
         """Move the rows of every Arrow-fed source into the store of the
         views' engine (#1329, A1): the state that changes are added to and
@@ -2713,8 +2724,6 @@ class Pipeline:
                 v = views[n]
                 v.state, v.serial, v._log, v.groups = state, serial, log, groups
             raise
-        for t in pending.versions:
-            _consumed(self.sources[t], self, self.versions[t])
 
 
 def _consumed(source: object, reader: object, version: int) -> None:
