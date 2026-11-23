@@ -20,6 +20,6 @@ generate_lowering polarsOn : Profile.polars
   excluding []
   hand_written LoweringSearch.polarsSchemas
   writing "engines/polars/Sverify/Polars/LoweringOn"
-  refusing [BinFn.fmod]
+  refusing [BinFn.fmod, UnFn.ftod]
 
 end Substrait

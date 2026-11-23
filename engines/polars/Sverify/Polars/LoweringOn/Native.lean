@@ -468,16 +468,6 @@ abbrev Substrait.polarsOn.dtrunc : (k : Nat) → Substrait.UnEntry Substrait.Pro
   Substrait.UnEntry.native (Substrait.UnFn.dtrunc k)
     (Substrait.Lowering.un_agree_of_eq (Substrait.polarsOn.dtrunc_native k))
 
-theorem Substrait.polarsOn.ftod_native : ∀ (s : Nat) (x : Substrait.Value),
-  Substrait.Profile.un Substrait.Profile.polars (Substrait.UnFn.ftod s) x =
-    Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.ftod s) x := by
-  native_tac
-
-abbrev Substrait.polarsOn.ftod : (s : Nat) → Substrait.UnEntry Substrait.Profile.polars (Substrait.UnFn.ftod s) :=
-  fun s =>
-  Substrait.UnEntry.native (Substrait.UnFn.ftod s)
-    (Substrait.Lowering.un_agree_of_eq (Substrait.polarsOn.ftod_native s))
-
 theorem Substrait.polarsOn.dtof_native : ∀ (s : Nat) (x : Substrait.Value),
   Substrait.Profile.un Substrait.Profile.polars (Substrait.UnFn.dtof s) x =
     Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.dtof s) x := by

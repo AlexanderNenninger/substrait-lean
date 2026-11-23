@@ -31,8 +31,10 @@ write the gap away (the export then refuses, or annotates with
   exact.
 - ST-8 (`decimal_rescale`): no rewrite; it holds when no decimal `+`, `-`
   or `*` of the plan reduces its scale (the YAML's result type keeps every
-  digit) and no cast brings a decimal to a smaller scale, and the export
-  says so.
+  digit), no cast brings a decimal to a smaller scale and no cast takes a
+  double to a decimal, and the export says so. A cast of a double to a
+  decimal leaves open both which value is rounded (the double product
+  `x · 10^s`, or the double's shortest decimal text) and how (ruling 278).
 """
 
 from __future__ import annotations
@@ -370,16 +372,35 @@ def st6(typer: _Typer, b: Builder) -> Json | None:
 # -- ST-8 -----------------------------------------------------------------------
 
 
+#: What a consumer must do at a cast of a double to a decimal for the proof to
+#: hold, which Substrait leaves open (ST-8, ruling 278).
+DOUBLE_TO_DECIMAL = (
+    "a cast of a double to a decimal of scale s rounds the double product x * 10^s "
+    "half away from zero"
+)
+
+
+def double_to_decimal(typer: _Typer) -> bool:
+    """Does the plan cast a double to a decimal?"""
+    return any(
+        "decimal" in cast["type"] and t is not None and t.name in _DOUBLES
+        for cast, t in typer.casts
+    )
+
+
 def st8(typer: _Typer, b: Builder) -> Json | None:
-    """No decimal `+`, `-` or `*` of the plan reduces its scale, and no cast
-    brings a decimal to a smaller one (ST-8, ruling 273)."""
+    """No decimal `+`, `-` or `*` of the plan reduces its scale, no cast
+    brings a decimal to a smaller one (ST-8, ruling 273), and no cast takes a
+    double to a decimal, which no rewrite makes exact (ruling 278)."""
     for cast, t in typer.casts:
         target = cast["type"].get("decimal")
         if target is None:
             continue
         # The typer types every cast's input (`_Typer.expr` returns a `Ty` or raises);
         # an input of unknown type could be a decimal of a larger scale, so it refuses.
-        if t is None or (t.name == "decimal" and int(target.get("scale", 0)) < t.params[1]):
+        if t is None or t.name in _DOUBLES:
+            return None
+        if t.name == "decimal" and int(target.get("scale", 0)) < t.params[1]:
             return None
     for c in typer.calls:
         ds = [a for a in c.args if not isinstance(a, str) and a.name == "decimal"]
