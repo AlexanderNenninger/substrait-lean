@@ -33,7 +33,8 @@ docstring names the sharper theorem.
 | `Rel.Allowed`, `Rel.OrderAllowed` | The reference's results, every choice it leaves open | the specification | `Rel.eval_allowed`, `Rel.eval_orderAllowed` |
 | `Rel.eval` | One result the reference allows | no | `Rel.eval_allowed` |
 | `r'.eval cat (Engine.duckdb {} rfl).impl` | DuckDB's model: its profile's functions over the reference's relational evaluator | the model's relational part (`trusted-base.md`) | `Engine.duckdb_sound` |
-| `r.eval cat Engine.polars.impl`, `Engine.spark.impl` | Polars's and Spark's models: the written plan's functions | as above | `Engine.polars_sound`, `Engine.spark_sound` |
+| `r'.eval cat Engine.polars.impl` | Polars's model: its profile's functions, its own on the error side, over the plan its table lowers | as above | `Engine.polars_sound` |
+| `r.eval cat Engine.spark.impl` | Spark's model: the written plan's functions | as above | `Engine.spark_sound` |
 | the compiled checker | `check`, run natively | the compiler, as every report is | the `#guard`s below |
 | the engines themselves | the run | D16's claim (`Engine.Runs`), facts and tests | none |
 
@@ -138,8 +139,10 @@ condition. `DataAssumed` asks for the bounds on rows per key, which the
 sharper `check_proved_on_polars` does not need. -/
 theorem verified_holds_polars {input : Json} {R : Request} {rep : Report} {T : Plan} {k : Nat}
     {p : Post} (h : Verified input R rep T k p) (hE : Verified.GuardFree rep) {data : Catalog}
-    (hD : DataAssumed R data T) : p.HoldsOn (T.root.eval data Engine.polars.impl) :=
+    (hD : DataAssumed R data T) {r' : Rel} (hr : Lowering.polars.lowerRel? T.root = .ok r') :
+    p.HoldsOn (r'.eval data Engine.polars.impl) :=
   check_proved_on_polars h.parsed h.checked hD.meets h.transform h.post h.proved hE.1 hD.small hE.2
+    hr
 
 /-- **A verified postcondition holds on Spark's model**, under its report
 condition. The sharper form is `check_proved_on_spark`, without the bounds
@@ -206,8 +209,10 @@ declared foreign keys (`references`) and the assumptions of
 theorem verified_holds_run_plan_polars {input : Json} {R : Request} {rep : Report} {T : Plan}
     {k : Nat} {p : Post} (h : Verified input R rep T k p) (hE : Verified.GuardFree rep)
     {data : Catalog} (hD : DataAssumed R data T) (hFK : R.foreignKeysOf.Hold data) {s : Rel}
-    (hs : R.runPlanIn R.kenv = .ok s) : p.HoldsOn (s.eval data Engine.polars.impl) :=
-  verified_holds_run_plan h hE.1 hD.meets hFK hs Engine.polars_sound rfl
+    (hs : R.runPlanIn R.kenv = .ok s) {s' : Rel} (hr : Lowering.polars.lowerRel? s = .ok s') :
+    p.HoldsOn (s'.eval data Engine.polars.impl) :=
+  verified_holds_run_plan h hE.1 hD.meets hFK hs Engine.polars_sound
+    (by simp [Engine.polars, hr, Except.toOption])
     (run_plan_guardFreeSide h.toChecked hD.meets hFK hs hD.small hE.2)
 
 /-- **A verified postcondition holds on Spark's model of the plan to run**
