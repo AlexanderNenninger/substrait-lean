@@ -24,7 +24,7 @@ namespace Substrait
 def Profile.polarsExtras : List (Functions.Ctor × String) :=
   [(.bin .add, "overflow"), (.bin .sub, "overflow"), (.bin .mul, "overflow"),
    (.bin .idiv, "on_division_by_zero"), (.bin .imod, "on_division_by_zero"),
-   (.bin .idiv, "division_type"), (.bin .imod, "division_type"),
+   (.bin .idiv, "division_type"), (.bin .imod, "division_type"), (.bin .dmod, "division_type"),
    (.bin .fpow, "on_domain_error"), (.bin .fadd, "nan_creation"), (.bin .fsub, "nan_creation"),
    (.bin .fmul, "nan_creation"), (.bin .fdiv, "nan_creation"), (.bin .fmod, "nan_creation")]
 
@@ -276,6 +276,11 @@ omit [Boxes.Ambient] in
 /-- A floored quotient or remainder is the truncated one, or the call is in
 `division_type`'s scope (`floorDiffers`: the signs differ and the division is
 not exact). -/
+theorem Polars.floorDiffers_unscaled {v w : Value} {a b : Int} (hv : v.unscaled? = some a)
+    (hw : w.unscaled? = some b) :
+    floorDiffers [v, w] = (decide (a * b < 0) && a.tmod b != 0) := by
+  cases v <;> cases w <;> simp_all [floorDiffers]
+
 theorem Polars.floor_or_differs {a b : Int} (h : floorDiffers [.int a, .int b] = false) :
     a.fdiv b = a.tdiv b ∧ a.fmod b = a.tmod b := by
   have hd : a * b < 0 → b ∣ a := fun hab => by
@@ -311,11 +316,36 @@ theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polar
   | none => simp only [Profile.polars, hf] at h; exact .inl (raiseIf_ok h)
   | some t =>
     have hx := Profile.polars_bin_ok hf h
-    have hfc : f = .idiv ∨ f = .imod ∨ f = .fmod := by
+    have hfc : f = .idiv ∨ f = .imod ∨ f = .fmod ∨ f = .dmod := by
       cases f <;> simp only [BinFn.polarsTmpl, reduceCtorEq] at hf <;> simp
-    rcases hfc with rfl | rfl | rfl
+    rcases hfc with rfl | rfl | rfl | rfl
     rotate_left 2
     · exact absurd rfl hne
+    · -- Decimal `%`: Polars floors it (D62), so it differs from the reference where `FLOOR` does.
+      simp only [BinFn.polarsTmpl, Option.some.injEq] at hf; subst hf
+      cases hv : v.unscaled? with
+      | none =>
+        rw [Profile.polars_dmod_null (.inl hv)] at h; cases h
+        exact .inl (by simp [BinFn.apply, hv])
+      | some a =>
+        cases hw : w.unscaled? with
+        | none =>
+          rw [Profile.polars_dmod_null (.inr hw)] at h; cases h
+          exact .inl (by simp [BinFn.apply, hv, hw])
+        | some b =>
+          by_cases hb : b = 0
+          · subst hb; rw [Profile.polars_dmod_zero hv hw] at h; cases h
+          · rw [Profile.polars_dmod hv hw hb] at h; cases h
+            by_cases hd : floorDiffers [v, w]
+            · exact .inr (callExtra_of_at (o := "division_type")
+                (extraAt_of_all Profile.polars_extras (by decide)) (by simp [optionScope, hd]))
+            · left
+              have hd' : floorDiffers [.int a, .int b] = false := by
+                have := Polars.floorDiffers_unscaled hv hw
+                simp only [hd] at this
+                simpa [floorDiffers] using this
+              simp only [BinFn.apply, hv, hw, hb, ↓reduceIte, Polars.floorMod,
+                (Polars.floor_or_differs hd').2]
     · simp only [BinFn.polarsTmpl, Option.some.injEq] at hf; subst hf
       cases v
       case int a =>
@@ -361,7 +391,8 @@ theorem Lowering.polars_bin_tmpl (f : BinFn) (en : BinEntry Profile.polars f)
     (h : Lowering.polars.bin f = some en) : Functions.Ctor.bin .fmod ∉ en.tmpl.ctors := by
   cases f <;> simp only [Lowering.polars, polarsOn, Option.some.injEq, reduceCtorEq] at h <;>
     subst h <;>
-    simp [BinEntry.native, BinEntry.ofAgree, Expr.ctors, Polars.idivTemplate, Polars.imodTemplate]
+    simp [BinEntry.native, BinEntry.ofAgree, Expr.ctors, Polars.idivTemplate, Polars.imodTemplate,
+      Polars.dmodTemplate]
 
 /-- **Polars's lowering calls no `%` of doubles** (R1): the table has no entry
 for it (`refusing`), and no template calls it, so no expression of a plan it

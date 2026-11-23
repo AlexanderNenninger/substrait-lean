@@ -81,6 +81,10 @@ def divisorZero : List Value → Bool
 def floorDiffers : List Value → Bool
   | [.int a, .int b] => decide (a * b < 0) && a.tmod b != 0
   | [.float a, .float b] => decide (a * b < 0)
+  -- Decimals, which the parser brings to one scale (D62): their unscaled integers.
+  | [x, y] => match x.unscaled?, y.unscaled? with
+    | some a, some b => decide (a * b < 0) && a.tmod b != 0
+    | _, _ => false
   | _ => false
 
 /-- Is an integer `SUM` of `vs` outside 64 bits? -/
