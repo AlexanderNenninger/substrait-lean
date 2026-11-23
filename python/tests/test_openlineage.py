@@ -520,6 +520,11 @@ def test_read_takes_json_lines_a_list_or_one_event(tmp_path):
         ("INTEGER", "int32"),
         ("int", "int32"),
         ("short", "int16"),
+        ("byte", "int8"),
+        ("string", "string"),
+        ("boolean", "boolean"),
+        ("date", "date"),
+        ("binary", "binary"),
         ("float", "float32"),
         ("double", "float64"),
         ("timestamp", "timestamp('UTC')"),
@@ -527,15 +532,54 @@ def test_read_takes_json_lines_a_list_or_one_event(tmp_path):
         ("VARCHAR", "string"),
         ("DECIMAL(10,2)", "decimal(10, 2)"),
         ("array<string>", "array<string>"),
+        # Spark's names inside Spark's nested types (#2448).
+        ("array<int>", "array<int32>"),
+        ("struct<a:int>", "struct<a: int32>"),
+        ("struct<a:int,b:array<long>>", "struct<a: int32, b: array<int64>>"),
+        ("map<string,int>", "map<string, int32>"),
+        ("MAP<STRING, MAP<INT, FLOAT>>", "map<string, map<int32, float32>>"),
+        (
+            "array<struct<ts:timestamp,d:decimal(10,2)>>",
+            "array<struct<ts: timestamp('UTC'), d: decimal(10, 2)>>",
+        ),
+        ("struct<`my col`:short>", "struct<my col: int16>"),
+        # Ibis's and DuckDB's nested names read as before.
+        ("struct<a: int64>", "struct<a: int64>"),
+        ("STRUCT(a INTEGER)", "struct<a: int32>"),
+        ("INTEGER[]", "array<int32>"),
+        # A malformed nested type is unknown, never DuckDB's reading of Spark's names.
+        ("struct<a:int,>", "unknown"),
+        ("map<string>", "unknown"),
+        ("array<no such>", "unknown"),
         ("no such type", "unknown"),
         (None, "unknown"),
         (3, "unknown"),
     ],
 )
 def test_a_schema_facets_type_names(name, ibis_type):
-    """Spark's names first, then DuckDB's, then Ibis's; anything else is unknown."""
+    """Spark's names first, then DuckDB's, then Ibis's, also inside Spark's
+    nested types; anything else is unknown."""
     got = ol._ibis_type(name)
     assert got.is_unknown() if ibis_type == "unknown" else str(got) == ibis_type
+
+
+def test_a_spark_jobs_nested_columns_keep_their_widths(tmp_path):
+    """#2448: a Spark job's struct, array and map columns read back with the
+    field types the job wrote, `int` as 32 bits inside them too."""
+    event = _event()
+    event["outputs"][0]["facets"]["schema"]["fields"] = [
+        {"name": "s", "type": "struct<id:int,tags:array<string>>"},
+        {"name": "m", "type": "map<string,int>"},
+        {"name": "xs", "type": "array<short>"},
+    ]
+    path = tmp_path / "spark.json"
+    path.write_text(json.dumps(event), encoding="utf-8")
+    schema = ol.read(path).dataset("file", "/lake/t").schema
+    assert {n: str(t) for n, t in schema.items()} == {
+        "s": "struct<id: int32, tags: array<string>>",
+        "m": "map<string, int32>",
+        "xs": "array<int16>",
+    }
 
 
 def test_dataset_names_follow_the_naming_conventions(tmp_path, monkeypatch):
