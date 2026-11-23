@@ -517,3 +517,49 @@ def test_a_sessions_own_version_decides() -> None:
 
     assert routes.session_version(Session()) == "4.3.1"
     assert routes.session_version("spark") is None
+
+
+def _unbounded_means():
+    """A mean of values in [0, 100] with no row cap (so no bound on its
+    distance to the reference) and the same with a cap."""
+    import ibis
+
+    t = ibis.table({"k": "int64", "x": "float64"}, name="t")
+    s = t.group_by("k").aggregate(avg=t.x.mean()).select("k", "avg")
+    base = [_.x >= 0, _.x <= 100, _.x.notnull(), _.k.notnull()]
+    return s, {"t": base}, {"t": [*base, sv.max_rows(1000)]}
+
+
+def test_a_postcondition_that_reads_an_unbounded_double_is_refused_as_for_a_bounded_one() -> None:
+    """#1045: `avg <= 100` is proved of the reference's exact mean, which an
+    engine's is only near. With a row cap the route refused it; without one,
+    where the checker has no bound at all, it ran. Both refuse now, naming
+    `sv.approx` as the exit, and the uncapped one also names the cap."""
+    s, uncapped, capped = _unbounded_means()
+    for requires, what in ((capped, "is within"), (uncapped, "has no bound on its distance")):
+        report = sv.verify(s, requires=requires, ensures=[_.avg <= 100], on_inferred="warn")
+        r = routes.choose(report, "duckdb")
+        assert r.refused and "reads avg" in r.why and what in r.why, r.why
+        assert "sv.approx((_.avg <= 100))" in r.why
+    assert (
+        "sv.max_rows(n)"
+        in routes.choose(
+            sv.verify(s, requires=uncapped, ensures=[_.avg <= 100], on_inferred="warn"), "duckdb"
+        ).why
+    )
+
+
+def test_what_the_engine_keeps_of_an_unbounded_double_still_runs() -> None:
+    """The sign of a sum of values of one sign holds of every engine's value
+    (`TreeSum.sign`): a postcondition that reads only that is not held, and
+    `sv.approx` states the claim that is."""
+    import ibis
+
+    t = ibis.table({"k": "int64", "x": "float64"}, name="t")
+    s = t.group_by("k").aggregate(total=t.x.sum()).select("k", "total")
+    requires = {"t": [_.x >= 0, _.x.notnull(), _.k.notnull()]}
+    sign = sv.verify(s, requires=requires, ensures=[_.total >= 0], on_inferred="warn")
+    assert not routes.choose(sign, "duckdb").refused
+    s2, uncapped, _capped = _unbounded_means()
+    stated = sv.verify(s2, requires=uncapped, ensures=[sv.approx(_.avg <= 100)], on_inferred="warn")
+    assert not routes.choose(stated, "duckdb").refused
