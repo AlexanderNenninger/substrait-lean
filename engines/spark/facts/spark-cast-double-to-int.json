@@ -17,6 +17,13 @@
       ]
     },
     {
+      "group": "cast.num",
+      "option": "float_to_int",
+      "types": [
+        "any"
+      ]
+    },
+    {
       "option": "cast_failure",
       "types": [
         "any"
