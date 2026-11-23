@@ -64,7 +64,9 @@
         "fp64"
       ],
       "evidence": "probe"
-    }
+    },
+    {"group": "agg.var", "option": "float_overflow", "types": ["fp64"]},
+    {"group": "agg.stat", "option": "float_overflow", "types": ["fp64"]}
   ],
   "constructs": [
     "sum",
@@ -85,7 +87,8 @@
     "`sum` and `avg` of inf and -inf are NaN; `variance` and `stddev` of a set with an infinity are NaN; `sum(1e308, 1e308)` and `avg` are +inf, while `variance(1e308, 1e308)` is 0.0. A NaN input makes `sum`, `avg`, `variance` NaN; `min` skips it (it sorts last) and `max` returns it. None of this raises under ANSI.",
     "`COVAR_*` and `CORR` follow `variance`: a NaN or ±inf input makes them NaN, under ANSI too.",
     "`var_samp`, `var_pop`, `stddev_*`, `covar_*` and `corr` of values holding `+inf` or `-inf` in `x` are NaN, with `spark.sql.ansi.enabled` true and false: the NaN is `nan_creation`'s (the reference raises, D37). An infinity only in `y` leaves `var_samp(x)` finite and makes `covar_*` and `corr` NaN; a single `inf` alone gives a null sample moment and `corr`. Grouped, only the group holding the infinity is NaN.",
-    "`quantile_cont` and `median` over values holding both `-inf` and `+inf` give NaN at a fraction between the two infinite neighbours: the NaN is `nan_creation`'s (the reference raises, D37)."
+    "`quantile_cont` and `median` over values holding both `-inf` and `+inf` give NaN at a fraction between the two infinite neighbours: the NaN is `nan_creation`'s (the reference raises, D37).",
+    "A variance, deviation or covariance of finite doubles whose correctly rounded value overflows is `+inf` (`var_pop`, `var_samp`, `stddev_pop`, `covar_pop`, `covar_samp` of [1e200, -1e200], ungrouped and grouped), where the reference raises (`AggFn.infAgg`, #1601). `corr` of the same values is NaN, `inf / inf`: its exact value, 1, is finite, so `float_overflow` does not apply to it, and outside `Stat.fits` (values above 2³⁹⁸) `StatProps` allows any double."
   ],
   "reference": "`nan_creation`: raise (#257); a statistical aggregate of ±inf raises (`nan_creation`); a sum past the largest double raises (#575). ST-3 and ST-5 record that Substrait leaves both open. Spark needs guards.",
   "status": "open",
@@ -198,6 +201,18 @@
           "note": "Spark 4.3.0 local[2], ANSI on: `percentile_cont(p) WITHIN GROUP (ORDER BY x)` of [-inf, +inf] at p = 0.25, 0.5, 0.75 is NaN (-inf at 0.0, +inf at 1.0); of [-inf, 1] NaN at 0.25, 0.5, 0.75 and 1 at 1.0; of [-inf, 1, +inf]: NaN at 0.25, 1 at 0.5, +inf at 0.75; of [-inf, 0, +inf, 5]: NaN, 2.5, +inf; of [1, +inf]: +inf. The same `lo + (hi − lo)·w` as Polars (Spark 4.0.1 gives -inf, not NaN, at [-inf, 1], so the interpolation changed between 4.0 and 4.3)."
         }
       ]
+    },
+    {
+      "checked_at": "2026-11-23",
+      "method": "probe",
+      "checked_by": "lean-c session (#1601), pyspark 4.3.0 local session, Java 21, macOS arm64",
+      "evidence": [
+        {
+          "sql": "SELECT var_pop(x), var_samp(x), stddev_pop(x), covar_pop(x, x), covar_samp(x, x), corr(x, x) FROM VALUES (CAST(1e200 AS DOUBLE)), (CAST(-1e200 AS DOUBLE)) AS t(x), and GROUP BY a constant key",
+          "observed": "(inf, inf, inf, inf, inf, NaN); grouped: (1, inf, inf, NaN)"
+        }
+      ],
+      "notes": "Probed for the agg.var and agg.stat float_overflow rows (#1601)."
     }
   ],
   "issues": [
