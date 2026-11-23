@@ -505,18 +505,15 @@ def _error(e: BaseException) -> str:
     return "error: " + _clip(str(e).strip().splitlines()[0] if str(e).strip() else repr(e), 200)
 
 
-#: DuckDB settings that change what a query means, or what it is expected to do
-#: (`max_execution_time` makes a time limit the outcome, which no model states, #2498):
-#: queries run while one is set are skipped, and so are those under `default_null_order`
-#: (`Replay.probe_lift`).
+#: DuckDB settings that change what a query means: queries run while one is
+#: set are skipped, and so are those under `default_null_order` (`Replay.probe_lift`).
 SEMANTIC = {
     "binary_as_string", "calendar", "current_dialect", "default_collation", "default_order",
     "dialect_compatibility_mode", "disable_timestamptz_casts", "error_on_division_by_zero",
-    "ieee_floating_point_ops", "integer_division", "legacy_disable_null_type",
-    "max_execution_time", "null_order", "old_implicit_casting", "order_by_non_integer_literal",
-    "preserve_identifier_case", "regex_match_operator_semantics",
-    "scalar_subquery_error_on_multiple_rows", "schema", "search_path", "sqlite_all_varchar",
-    "timezone", "variable",
+    "ieee_floating_point_ops", "integer_division", "legacy_disable_null_type", "null_order",
+    "old_implicit_casting", "order_by_non_integer_literal", "preserve_identifier_case",
+    "regex_match_operator_semantics", "scalar_subquery_error_on_multiple_rows", "schema",
+    "search_path", "sqlite_all_varchar", "timezone", "variable",
 }  # fmt: skip
 
 #: Statements after which a name no longer means what the lift takes it to:
@@ -529,6 +526,9 @@ _SETTING = re.compile(
     r"^\s*(SET|PRAGMA|RESET)\s+(?:(?:GLOBAL|SESSION|LOCAL)\s+)?(\w+)\s*(?:(?:=|TO)\s*(.*?))?\s*;?\s*$",
     re.I | re.S,
 )
+
+#: DuckDB's error when `max_execution_time` stops a query.
+_TIME_LIMIT = re.compile(r"maximum execution time", re.I)
 
 #: DuckDB errors from reading the query, not from running it.
 _FRONTEND = tuple(
@@ -776,6 +776,12 @@ class Replay:
         if (dml := _modifies(rec.sql)) is not None:
             # DuckDB ran it above, so the state stays the test's.
             res.reason = f"modifies data ({dml} in a query), outside sverify's scope"
+            return res
+        if ddb_err and _TIME_LIMIT.search(ddb_err):
+            # The test checks DuckDB's interrupt (`SET max_execution_time`): a time limit is
+            # an outcome no model states, and lifting a query built to run long would run Lean
+            # into the checker's watchdog (#2498).
+            res.reason = "DuckDB's time limit interrupted it"
             return res
         if self.settings or _REDEFINES.search(rec.sql):
             res.reason = "setting " + ", ".join(sorted(self.settings or {"collation"}))
