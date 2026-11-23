@@ -16,6 +16,9 @@
   "amends": [
     "F261"
   ],
+  "amended_by": [
+    "U-2026-11-22-dbt-bars"
+  ],
   "source": "https://github.com/AlexanderNenninger/substrait-lean/issues/1487#issuecomment-7078595109",
   "note": "Settles the two items ruling 261 held for the maintainer: #1485 items 11 and 13, with item 6 as one of the measurements. A Snowflake project waits for #866 (After 1.0). Design partners: 1.0.0rc1 (#756) invites outside users, and the scoped statement says who maintains sverify and how."
 }
