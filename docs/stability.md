@@ -244,7 +244,7 @@ and its shims are in the [realizability table](realizability.md). The
 other engines refuse the functions that only DuckDB runs so far
 ([`SUPPORT` and `WINDOW_SUPPORT`](../python/src/sverify/_support.py)), with a
 message that points to
-[the issue tracking them](https://github.com/AlexanderNenninger/substrait-lean/issues/271).
+[the issue tracking them](https://github.com/AlexanderNenninger/substrait-lean/issues/2540).
 DuckDB, Polars, Spark and Snowflake are the engines of 1.0. Sverify has no
 Snowflake profile or route yet: Snowflake runs the SQL sverify writes. The
 `all` extra installs every engine in the promise.

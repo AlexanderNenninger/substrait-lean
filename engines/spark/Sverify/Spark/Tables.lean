@@ -106,11 +106,11 @@ def Profile.spark.obs : ObsTable := [
   -- A variance or covariance whose correctly rounded value overflows is `+inf`
   -- (spark-nonfinite-aggregates, #1601). `Shim.makes_infinite` is about binary
   -- operations; no theorem states Spark's aggregate guard yet (#185).
-  (some "agg.var", "float_overflow", (ObsRow.native ["spark-nonfinite-aggregates"]).tracking 185),
-  (some "agg.stat", "float_overflow", (ObsRow.native ["spark-nonfinite-aggregates"]).tracking 185),
+  (some "agg.var", "float_overflow", (ObsRow.native ["spark-nonfinite-aggregates"]).tracking 2544),
+  (some "agg.stat", "float_overflow", (ObsRow.native ["spark-nonfinite-aggregates"]).tracking 2544),
   -- Values are raw (D31), and the zeros are one at `=`, `<`, keys and
   -- partitions; MIN and MAX keep whichever zero came first, a member of the class.
-  (none, "zero_sign", (ObsRow.native ["spark-zero-sign", "spark-zero-order"]).tracking 271),
+  (none, "zero_sign", (ObsRow.native ["spark-zero-sign", "spark-zero-order"]).tracking 2544),
   -- A double or decimal to integer cast truncates natively
   -- (spark-cast-double-to-int, ruling 273).
   (some "cast.num", "float_to_int", (ObsRow.native ["spark-cast-double-to-int"]).proved
@@ -139,12 +139,12 @@ def Profile.spark.obs : ObsTable := [
   -- within the ulps of spark-elem-rounding of libm's value, which the reference
   -- takes (tested, not proved, as Polars's `fp.log`).
   (some "fp.elem", "rounding", ({ ObsRow.approxWithin "plan" ["spark-elem-rounding", "spark-ulp-libm"] with
-    note := "StrictMath and java.lang.Math, S + R ulps of libm's value per call (spark-ulp-libm, EngineProfile.elemUlps); sin, cos and tan only up to |x| ≤ 2²⁰." }).tracking 271),
+    note := "StrictMath and java.lang.Math, S + R ulps of libm's value per call (spark-ulp-libm, EngineProfile.elemUlps); sin, cos and tan only up to |x| ≤ 2²⁰." }).tracking 2544),
   (some "fp.log", "rounding", ({ ObsRow.approxWithin "plan" ["spark-elem-rounding", "spark-ulp-libm"] with
-    note := "StrictMath's logarithms, and log2 as ln x / ln 2 (two roundings), S + R ulps of libm's value per call (spark-ulp-libm, EngineProfile.elemUlps)." }).tracking 271),
-  (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["spark-nan-sign"]).tracking 271),
-  (none, "nan_order", (ObsRow.native ["spark-nan-order"]).tracking 271),
-  (none, "nan_equality", (ObsRow.native ["spark-nan-equality"]).tracking 271),
+    note := "StrictMath's logarithms, and log2 as ln x / ln 2 (two roundings), S + R ulps of libm's value per call (spark-ulp-libm, EngineProfile.elemUlps)." }).tracking 2544),
+  (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["spark-nan-sign"]).tracking 2544),
+  (none, "nan_order", (ObsRow.native ["spark-nan-order"]).tracking 2544),
+  (none, "nan_equality", (ObsRow.native ["spark-nan-equality"]).tracking 2544),
   -- Partial sums merged in the order the tasks finish: trees the reference
   -- allows, within #85's bound, varying run to run with the partitioning.
   (none, "sum_order", ObsRow.fsumOrder ["spark-sum-double", "spark-avg-double"]
@@ -153,25 +153,25 @@ def Profile.spark.obs : ObsTable := [
     ["spark-double-arith", "spark-sum-double", "spark-avg-double"]
     "Each addition is the JVM's, rounded to nearest, ties to even (spark-double-arith); the sum is plain additions in an order the partitioning sets (spark-sum-double), a FLOAT column summed in DOUBLE, and AVG divides it once by the count (spark-avg-double): StdModel.TreeSum and fl(s / n), which epsilon_sum_cr and epsilon_avg_cr bound for any rounding to nearest."),
   (none, "avg_int_result", (ObsRow.shimmed "int_avg_decimal" ["spark-avg-int"]).proved "Shim.avg_trunc"),
-  (none, "empty_group_aggregates", (ObsRow.native ["spark-sum-int", "spark-sum-double"]).tracking 271),
+  (none, "empty_group_aggregates", (ObsRow.native ["spark-sum-int", "spark-sum-double"]).tracking 2539),
   -- Unstated, Spark puts NULLs first in an ascending key; the writer states
   -- each key's placement (`Shim.null_order`).
   (none, "null_order", (ObsRow.shimmed "null_order" ["spark-null-order"]).proved "Shim.null_order"),
-  (none, "clustered", (ObsRow.shimmed "sort on the keys" ["spark-clustered"]).tracking 271),
+  (none, "clustered", (ObsRow.shimmed "sort on the keys" ["spark-clustered"]).tracking 2539),
   -- After a shuffle, ties come in the order the partitions' rows arrive.
   (none, "tie_order", ({ ObsRow.native ["spark-sort-stability", "spark-window-values", "spark-rank"] with
     rerun := some { rows := .tiesPermuted, elements := .multiset },
-    rerunEvidence := .probed ["spark-sort-stability", "spark-exec-parallel"] }).tracking 900),
+    rerunEvidence := .probed ["spark-sort-stability", "spark-exec-parallel"] }).tracking 2539),
   (none, "tie_pick", ({ ObsRow.native ["spark-first-last"] with
     rerun := some { rows := .tiesPermuted },
-    rerunEvidence := .probed ["spark-first-last", "spark-exec-parallel"] }).tracking 900),
+    rerunEvidence := .probed ["spark-first-last", "spark-exec-parallel"] }).tracking 2539),
   -- Only starts from 1 reach Spark's `substring`, whose start 0 reads as 1
   -- (`Dialect.substring` of the writer).
   (none, "negative_start", (ObsRow.native ["spark-substring"]).proved "Rel.spark_sound"),
   (none, "case_sensitivity", (ObsRow.native ["spark-match-functions"]).proved "Rel.spark_sound"),
   (none, "string_positions", (ObsRow.native ["spark-strpos", "spark-substring"]).proved "Rel.spark_sound"),
-  (none, "null_join_keys", (ObsRow.native ["spark-null-keys"]).tracking 271),
-  (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["spark-window-agg"]).tracking 900),
+  (none, "null_join_keys", (ObsRow.native ["spark-null-keys"]).tracking 2539),
+  (none, "window_sum_algo", (ObsRow.approxWithin "plan" ["spark-window-agg"]).tracking 2544),
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["spark-var-stddev", "spark-covar", "spark-corr"] with
     rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_var_chan"),
   -- `var_pop` and `stddev_pop` of one NaN are NaN (spark-var-pop-one-nan): Spark's
@@ -184,8 +184,8 @@ def Profile.spark.obs : ObsTable := [
   -- `lo + (hi - lo) · w`, as Polars's: NaN with a `-∞` lower neighbour, `+∞` where `hi - lo` overflows (spark-quantile).
   (none, "quantile_interp", ({ ObsRow.native ["spark-quantile"] with
     cls := .refused
-    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, spark-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference. The neighbours are those of the engine's double position, `⌊(n − 1)·q⌋` and `⌈(n − 1)·q⌉` in doubles (`contNeighboursD`, spark-quantile)." }).tracking 900),
-  (none, "decimal_rescale", (ObsRow.native ["spark-decimal-arith"]).tracking 739),
+    note := "`lo + (hi - lo) · w` (`LINEAR_DIFF`, spark-quantile) gives NaN with a `-∞` lower neighbour and `+∞` where `hi - lo` overflows, where the reference's value lies between the neighbours: refused under the reference. The neighbours are those of the engine's double position, `⌊(n − 1)·q⌋` and `⌈(n − 1)·q⌉` in doubles (`contNeighboursD`, spark-quantile)." }).tracking 2544),
+  (none, "decimal_rescale", (ObsRow.native ["spark-decimal-arith"]).tracking 2544),
   -- `-x` and `abs` round past 34 digits (SP-1); the writer's `0 - x` is exact
   -- where its type keeps the scale, and a type past 38 digits at a scale
   -- above 6, which Spark would round, is refused.
