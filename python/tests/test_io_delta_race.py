@@ -156,7 +156,7 @@ def test_a_change_does_not_land_on_another_writers_commit(jobs, engine):
 
 @pytest.mark.parametrize("engine", ENGINES)
 def test_a_restart_does_not_write_on_a_late_commit(tmp_path, monkeypatch, engine):
-    """#963, the TLA+ model's trace (models/refresh/traces/today-zombie-resume.txt):
+    """#963, the TLA+ model's trace (docs/refresh-findings.md):
     the old process has computed v2 when a new one starts at v3 and resumes
     from the sink's v1; then the old process's commit lands. The new
     process's change since v1 must not be written on it."""

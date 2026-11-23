@@ -1,19 +1,26 @@
 import Sverify.Spark.Profile
 import Sverify.Spark.Tables
+import Sverify.Spark.Lowering
+import Sverify.Engines.LoweringRaises
 import Sverify.Engines.Sound
 
 /-!
-# Spark's Engine value (#900)
+# Spark's Engine value (#900, #271)
 
-`Engine.spark` runs the plan as the writer writes it under ANSI, with its
-profile's functions where they do not raise (`Profile.sparkWritten`).
-`Profile.spark_withinOk` and `Profile.sparkWritten_withinOk` prove those
-within Spark's table, `Profile.sparkWritten_okImpl_faithful` that they agree
-with the reference where it reports no issue, and `Engine.spark_sound` that
-the run is sound under guard elimination's side condition
-(`Engine.GuardFreeSide`).
+`Engine.spark` runs the plan Spark's generated lowering writes
+(`Lowering.spark`, `Spark/Lowering.lean`) with its profile's functions where
+they do not raise (`Spark.impl`, within Spark's table by
+`Profile.spark_withinOk`). Its soundness has two branches (ruling 277), on a
+catalog of doubles for a plan whose constants are doubles:
+
+* `Rel.spark_sound`: a plan every expression of which the table lowers exactly
+  (`Rel.ExactOnB`, false exactly where it calls IEEE division), under guard
+  elimination's side condition (ruling 256 A).
+* `Rel.spark_sound_or_raises`: any plan the table lowers, every guard kept,
+  where Spark does not raise (ruling 256 B), as for DuckDB (`Engine.NoRaiseSide`).
+
+`Engine.spark_sound` joins them under `Engine.SparkSide`.
 -/
-
 namespace Substrait
 
 /-- The options at which `Profile.spark_withinOk` uses Spark's table. -/
@@ -151,126 +158,79 @@ theorem Profile.spark_withinOk : Profile.spark.WithinOk Profile.spark.table := b
         · cases hs
       case h_12 => cases hs
 
-/-- **Spark as the writer writes it is within its table**: the reference's
-functions where the writer shims or refuses (`Profile.sparkWritten`), Spark's
-elsewhere (`Profile.spark_withinOk`). -/
-theorem Profile.sparkWritten_withinOk : Profile.sparkWritten.WithinOk Profile.spark.table := by
-  refine ⟨fun f v w h => ?_, fun f v w x h => ?_⟩
-  · simp only [Profile.sparkWritten] at h
-    split at h
-    · exact .inl (raiseIf_ok h)
-    · exact Profile.spark_withinOk.1 f v w h
-  · simp only [Profile.sparkWritten] at h
-    split at h
-    · exact .inl (raiseIf_ok h)
-    · exact Profile.spark_withinOk.2 f v w x h
+/-- Spark's functions: its profile's values where they do not raise. Where
+the profile raises, Spark's run stops (ANSI). -/
+def Spark.impl : Impl := Profile.spark.okImpl
 
-/-- **Spark as the writer writes it is faithful where it does not raise**:
-wherever the reference reports no issue, the written plan gives the
-reference's value or raises (IEEE division by a zero, `floor` past 64 bits),
-and `okImpl` then takes the reference's. Spark's own values there (`floor`
-of NaN, `power(1, ∞)`) are the writer's to shim or refuse
-(`Profile.sparkWritten`); every other value of its own is where the
-reference raises. -/
-theorem Profile.sparkWritten_okImpl_faithful : Profile.sparkWritten.okImpl.Faithful := by
-  refine ⟨fun f v h => ?_, fun f v w h => ?_⟩
-  · show (match Profile.sparkWritten.un f v with | .ok w => w | .error _ => f.apply v) = f.apply v
-    by_cases hw : f.sparkWritten = true
-    · simp [Profile.sparkWritten, hw, Profile.reference, h, raiseIf]
-    simp only [Profile.sparkWritten, hw, Bool.false_eq_true, ↓reduceIte, Profile.spark,
-      Profile.reference, h, raiseIf]
-    cases hs : sparkUn f v with
-    | none => rfl
-    | some o =>
-      simp only [Option.getD]
-      unfold sparkUn at hs
-      split at hs
-      case h_1 g c =>
-        split at hs
-        · rename_i hc; simp [UnFn.issue, domainIssue, hc] at h
-        · cases hs
-      case h_2 | h_3 => simp [UnFn.sparkWritten] at hw
-      all_goals cases hs
-  · show (match Profile.sparkWritten.bin f v w with | .ok x => x | .error _ => f.apply v w) =
-      f.apply v w
-    by_cases hw : f.sparkWritten = true
-    · simp [Profile.sparkWritten, hw, Profile.reference, h, raiseIf]
-    simp only [Profile.sparkWritten, hw, Bool.false_eq_true, ↓reduceIte, Profile.spark,
-      Profile.reference, h, raiseIf]
-    cases hs : sparkBin f v w with
-    | none => rfl
-    | some o =>
-      simp only [Option.getD]
-      unfold sparkBin at hs
-      split at hs
-      case h_1 | h_2 | h_3 | h_4 | h_5 =>
-        split at hs
-        · rename_i hn
-          -- `/` and `%` report a zero divisor first, a domain issue else.
-          simp [BinFn.issue, nanIssue, hn] at h <;> split at h <;> simp at h
-        · cases hs
-      case h_6 a b =>
-        split at hs
-        · cases hs; rfl
-        · split at hs
-          · rename_i _ hn
-            have : nanCase .fdivIeee a b = true := by
-              simp only [nanCase, Bool.or_eq_true] at hn ⊢; exact .inl hn
-            cases hs; simp only [BinFn.apply, fdiv_of_nanCase_ieee this]
-          · cases hs
-      case h_7 | h_8 => simp [BinFn.sparkWritten] at hw
-      case h_9 | h_10 =>
-        split at hs
-        · cases hs
-        · rename_i hr; simp [BinFn.issue, domainIssue, BitOp.apply, hr] at h
-      case h_11 a b =>
-        split at hs
-        · cases hs
-          simp only [BinFn.issue, rangeIssue] at h
-          split at h
-          · rename_i hr
-            simp only [between, Bool.and_eq_true, decide_eq_true_eq] at hr
-            have h1 : Time.dayMin = -719162 := rfl
-            have h2 : Time.dayMax = 2932896 := rfl
-            show Value.date (Spark.wrap32 (a + b)) = BinFn.dateAdd.apply (.date a) (.int b)
-            simp only [BinFn.apply]
-            rw [Spark.wrap32_of_small (by omega) (by omega)]
-          · simp at h
-        · cases hs
-      case h_12 => cases hs
-
-/-- **A verified plan runs on Spark.** When `Rel.mayIssues` reports nothing
-but assumed issues (whose guards the writer keeps), on every catalog that
-satisfies the preconditions, Spark under ANSI as the writer writes it
-(`Profile.sparkWritten`) gives `Rel.eval`'s rows. -/
-theorem Rel.spark_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+/-- **A verified plan runs on Spark, guards dropped** (ruling 277, the first
+branch; ruling 256 A). When `Rel.mayIssues` reports nothing but assumed
+issues (whose guards the writer keeps), on every catalog of doubles that
+satisfies the preconditions, a plan whose constants are doubles and whose
+expressions Spark's table lowers exactly (no IEEE division) gives `Rel.eval`'s
+rows lowered (`Lowering.spark.lowerRel?`, every template guard kept). The
+lowered plan raises only where the reference does
+(`Lowering.lowerRel?_raises_dbl`), and the reference does not raise here. -/
+theorem Rel.spark_sound {cat : Catalog} (hcat : cat.WF) (hdbl : cat.Dbl) {A : String → List AVal}
     {F : String → List Fact}
     (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
     {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
-    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) :
-    r.eval cat Profile.sparkWritten.okImpl = r.eval cat :=
-  Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm Profile.sparkWritten_okImpl_faithful
+    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) (hc : r.ConstsDbl)
+    (hx : r.ExactOnB Lowering.spark = true) {r' : Rel} (hr : Lowering.spark.lowerRel? r = .ok r') :
+    r'.eval cat Spark.impl = r.eval cat := by
+  have h0 := Rel.not_raises_of_assumed hcat hA hF hT hwf hsmall hs hm
+  have h1 : ¬r'.Raises Profile.spark cat := fun h =>
+    h0 (Lowering.lowerRel?_raises_dbl hdbl hc (Rel.exactOn_of_exactOnB hx) hr h)
+  rw [Spark.impl, Rel.eval_okImpl h1]
+  exact Lowering.lowerRel?_sound_dbl hdbl hc hr h1
 
-/-- Spark under ANSI, as the writer writes it: its profile's functions where
-they do not raise (`Profile.sparkWritten`), its own choices. -/
+/-- **A plan Spark's table lowers runs correctly on Spark, or raises**
+(ruling 277, the second branch; ruling 256 B): on a catalog of doubles, for a
+plan whose constants are doubles, with every guard kept, the lowered plan
+gives `Rel.eval`'s rows where Spark does not raise. It covers IEEE division,
+whose entry raises at a zero divisor of either sign where IEEE gives `±∞`:
+Spark raises there under ANSI (spark-double-divide; #1130's obligation 2;
+`spark.sql.ansi.enabled` in `sverify_spark.dialect.SPARK_CONF`), which stops
+the run, and gives no wrong value. -/
+theorem Rel.spark_sound_or_raises {cat : Catalog} (hdbl : cat.Dbl) {r r' : Rel}
+    (hc : r.ConstsDbl) (hr : Lowering.spark.lowerRel? r = .ok r')
+    (h : ¬r'.Raises Profile.spark cat) : r'.eval cat Spark.impl = r.eval cat := by
+  rw [Spark.impl, Rel.eval_okImpl h]
+  exact Rel.spark_lowered_sound hdbl hc hr h
+
+/-- Spark under ANSI, as its generated lowering writes the plan: its profile's
+functions where they do not raise. -/
 def Engine.spark : Engine where
   name := "spark"
   profile := Profile.spark
   table := Profile.spark.table
   obs := Profile.spark.obs
-  lower := some
-  impl := Profile.sparkWritten.okImpl
-  within := Profile.okImpl_within Profile.sparkWritten_withinOk
+  lower r := (Lowering.spark.lowerRel? r).toOption
+  impl := Spark.impl
+  within := Profile.okImpl_within Profile.spark_withinOk
 
-/-- Spark: its profile's functions where they do not raise give the
-reference's value wherever the reference reports no issue
-(`Profile.sparkWritten_okImpl_faithful`), so guard elimination applies. -/
-theorem Engine.spark_sound : Engine.spark.Sound Engine.GuardFreeSide := by
-  intro cat r r' hl ⟨_, _, _, ⟨hcat, hA, hF, hT, hsmall⟩, hwf, hs, hm⟩
-  cases hl
-  show r.Allowed cat (r.eval cat Profile.sparkWritten.okImpl)
-  rw [Rel.spark_sound hcat hA hF hT hwf hsmall hs hm]; exact r.eval_allowed cat
+theorem Engine.spark_lower {r r' : Rel} (h : Engine.spark.lower r = some r') :
+    Lowering.spark.lowerRel? r = .ok r' := by
+  simp only [Engine.spark] at h
+  cases hr : Lowering.spark.lowerRel? r <;> simp_all [Except.toOption]
+
+/-- **Spark's side condition** (ruling 277): a catalog of doubles and a plan
+whose constants are doubles, and either the first branch's (no IEEE division,
+`Engine.GuardFreeSide`) or the second's (Spark does not raise on the lowered
+plan, every guard kept). -/
+def Engine.SparkSide (cat : Catalog) (r : Rel) : Prop :=
+  cat.Dbl ∧ r.ConstsDbl ∧
+    ((r.ExactOnB Lowering.spark = true ∧ Engine.GuardFreeSide cat r) ∨ Engine.spark.NoRaiseSide cat r)
+
+/-- **Spark's run is sound** under `Engine.SparkSide`: `Rel.spark_sound` on
+the first branch, `Rel.spark_sound_or_raises` on the second. -/
+theorem Engine.spark_sound : Engine.spark.Sound Engine.SparkSide := by
+  intro cat r r' hl ⟨hdbl, hc, hb⟩
+  have hr := Engine.spark_lower hl
+  show r.Allowed cat (r'.eval cat Spark.impl)
+  rcases hb with ⟨hx, _, _, _, ⟨hcat, hA, hF, hT, hsmall⟩, hwf, hs, hm⟩ | hn
+  · rw [Rel.spark_sound hcat hdbl hA hF hT hwf hsmall hs hm hc hx hr]; exact r.eval_allowed cat
+  · rw [Rel.spark_sound_or_raises hdbl hc hr (hn r' hl)]; exact r.eval_allowed cat
 
 end Substrait
 
@@ -285,8 +245,13 @@ theorem Engine.spark_contract_example :
     ∀ row ∈ postRows Engine.examplePost [2]
         (Engine.examplePlan.eval Engine.exampleCat Engine.spark.impl),
       ∀ v ∈ row, v = .bool true := by
-  exact Engine.example_contract Engine.spark_sound (T' := Engine.examplePlan) rfl
-    Engine.guardFreeSide_example
+  refine Engine.example_contract Engine.spark_sound (T' := Engine.examplePlan) rfl
+    ⟨fun t row h v hv => ?_, ⟨rfl, fun e he => ?_⟩, .inl ⟨rfl, Engine.guardFreeSide_example⟩⟩
+  · simp only [Engine.exampleCat] at h
+    split at h <;> simp at h
+    rcases h with rfl | rfl <;> simp at hv <;> subst hv <;> rfl
+  · simp [Engine.examplePlan, Rel.mappedExprs] at he
+    subst he; rfl
 
 end Example
 end Substrait

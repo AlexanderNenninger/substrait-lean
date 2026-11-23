@@ -499,18 +499,24 @@ def runPlanIn (K : KnowledgeEnv) : Except RunGate Rel :=
 /-- The report's `run_plan` (the plan in the writer's JSON, or null),
 `run_gate` (the gate that kept the plan as written, or null) and
 `run_unchecked` (the plan's per-expression marks, as `unchecked`). -/
-def runPlanJson : List (String × Json) :=
+def runPlanJson : Except String (List (String × Json)) :=
   let K := R.kenv
   match R.transform, R.runPlanIn K with
   | some p, .ok s =>
+    -- The plan to run's double constants are doubles' codes (`Rel.constsDblB`),
+    -- which `verified_holds_run_plan_spark` reads (ruling 277 Q2). M4's parser
+    -- lemma replaces this check (#2516).
+    if !s.constsDblB then
+      .error s!"internal error: a double constant that is not a double's code: {s.nonDblLit}"
+    else
     let A := K.cols
     let F := K.facts
     let W := K.windows R.cat
-    [("run_plan", Write.writePlan (Write.planSchemas p) R.cat s p.names),
+    .ok [("run_plan", Write.writePlan (Write.planSchemas p) R.cat s p.names),
       ("run_gate", .null),
       ("run_unchecked", if s.looseSub then s.marksJson (s.marks R.cat A F W R.caps false) else .null)]
-  | _, .error g => [("run_plan", .null), ("run_gate", g.name), ("run_unchecked", .null)]
-  | none, .ok _ => [("run_plan", .null), ("run_gate", RunGate.noRewrite.name),
+  | _, .error g => .ok [("run_plan", .null), ("run_gate", g.name), ("run_unchecked", .null)]
+  | none, .ok _ => .ok [("run_plan", .null), ("run_gate", RunGate.noRewrite.name),
       ("run_unchecked", .null)]
 
 end Request
