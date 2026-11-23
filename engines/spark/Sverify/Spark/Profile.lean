@@ -109,10 +109,13 @@ def sparkBin : BinFn → Value → Value → Option Outcome
   | _, _, _ => none
 
 /-- A cast of doubles to decimals within one unit at its scale of the
-reference's (`FloatCode.toDecimal?`), defined where the reference's is. -/
+reference's (`FloatCode.toDecimal?`), with a value wherever the reference has
+one. Spark's may have a value where the reference has none: it reads the
+double's shortest text, which does not overflow where the product `x · 10ˢ`
+does; only its later precision check fails. -/
 structure Spark.DoubleToDecimal where
   conv : Int → Nat → Option Int
-  defined : ∀ c s, (conv c s).isSome = (FloatCode.toDecimal? c s).isSome
+  defined : ∀ c s, (FloatCode.toDecimal? c s).isSome → (conv c s).isSome
   near : ∀ {c s a b}, conv c s = some a → FloatCode.toDecimal? c s = some b → (a - b).natAbs ≤ 1
 
 /-- **Spark's native cast of a double to a decimal**, as the profile states it:
@@ -122,7 +125,7 @@ it differs from the product's rounding only at a near-tie (`1.005`, `0.285`),
 and the opaque constant states no more than the bound. The reference's cast
 shows that such a cast exists. -/
 opaque Spark.doubleToDecimal : Spark.DoubleToDecimal :=
-  ⟨FloatCode.toDecimal?, fun _ _ => rfl, fun ha hb => by simp_all⟩
+  ⟨FloatCode.toDecimal?, fun _ _ h => h, fun ha hb => by simp_all⟩
 
 /-- A logarithm (`ln`, `log10`, `log2`), which Spark makes NULL at `x ≤ 0`. -/
 def FMath.sparkNull : FMath → Bool
@@ -145,7 +148,7 @@ def sparkUn : UnFn → Value → Option Outcome
         (FloatCode.negInf < x ∧ x < FloatCode.ofInt (-(2 ^ 63)))
     then some (.error .overflow) else none
   -- A double to a decimal: within one unit of the reference's (`decimal_rescale`),
-  -- failing where it fails (`badCast`: NaN, `±∞`, a product that overflows).
+  -- with a value wherever the reference has one; where Spark's gives none, `badCast`.
   | .ftod s, .float x => some (match Spark.doubleToDecimal.conv (FloatCode.canon x) s with
     | some m => .ok (.int m)
     | none => .error .badCast)
