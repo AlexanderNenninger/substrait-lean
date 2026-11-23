@@ -172,9 +172,11 @@ def test_conditions(
     elif base in ("unique", "expect_column_values_to_be_unique") and col:
         return _unique(test, (col,), side, not_null, row_filter, nulls_ignored=True)
     elif base in ("unique_combination_of_columns", "expect_compound_columns_to_be_unique"):
-        cols = kw.get("combination_of_columns") or kw.get("column_list") or []
-        if not cols:
+        cols = test.columns
+        if cols is None:
             return Mapped([], "the test names no columns")
+        if not cols:
+            return Mapped([], "its columns are no list of column names")
         ignore = str(kw.get("ignore_row_if", "all_values_are_missing"))
         nulls_ignored = ns == "dbt_expectations" and ignore != "never"
         return _unique(test, tuple(cols), side, not_null, row_filter, nulls_ignored)
@@ -287,9 +289,8 @@ def _row_test(base: str, col: str | None, kw: dict[str, Any]) -> Any:
 
 
 def _cols(test: Test) -> tuple[str, ...]:
-    cols = test.kwargs.get("combination_of_columns") or test.kwargs.get("column_list")
-    if cols:
-        return tuple(cols)
+    if cols := test.columns:
+        return cols
     pair = tuple(test.kwargs[k] for k in ("column_A", "column_B") if test.kwargs.get(k))
     if pair:
         return pair

@@ -1,0 +1,109 @@
+name: sverify check
+description: Prove the contracts of your pipelines with sverify check and upload the findings to code scanning as SARIF.
+branding:
+  icon: check-circle
+  color: green
+inputs:
+  targets:
+    description: Files to check, one per line or separated by spaces (pipeline .py files, a .sql file or a dbt project). A target may name a node, as pipelines/orders.py:paid.
+    required: true
+  version:
+    description: The sverify version to install from PyPI, such as 0.8.0 (default, the latest).
+    default: ""
+  source:
+    description: "What pip installs in place of sverify (version and extras are then unused): arguments such as ./wheel.whl, or -e ./engines/duckdb -e ./python for a checkout. For testing a build."
+    default: ""
+  extras:
+    description: Extras of the package, such as delta,iceberg.
+    default: ""
+  timeout:
+    description: Seconds for proof, planning and checking of each target (sverify's default is 30; 0 turns it off).
+    default: "30"
+  require-proved:
+    description: "Fail for a node whose postconditions are only checked on the data, as for one that is not proved. Needs sverify 0.9.0 or later: with an older install the step fails once, naming the minimum."
+    default: "false"
+  python-version:
+    description: The Python the action installs (3.12 or later).
+    default: "3.12"
+  upload:
+    description: "Upload the SARIF to code scanning. The job needs the permission security-events: write, and a pull request from a fork has no token for it."
+    default: "true"
+  sarif-file:
+    description: Where the SARIF goes, one file for all targets (one run, since code scanning takes one per category).
+    default: sverify.sarif
+outputs:
+  exit-code:
+    description: The worst exit code of the targets (0 proved, 1 not proved, 2 usage, 3 unsupported, then the refusal, budget, quarantine, hold and error codes (4 to 8) `sverify check --help` lists for the installed version).
+    value: ${{ steps.check.outputs.exit-code }}
+  sarif-file:
+    description: The SARIF file.
+    value: ${{ inputs.sarif-file }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Install sverify
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        EXTRAS: ${{ inputs.extras }}
+        SOURCE: ${{ inputs.source }}
+      run: |
+        if [ -n "$SOURCE" ]; then
+          # shellcheck disable=SC2086 # arguments, split on purpose
+          python -m pip install --quiet $SOURCE
+        else
+          python -m pip install --quiet "sverify${EXTRAS:+[$EXTRAS]}${VERSION:+==$VERSION}"
+        fi
+    - name: Check the version for require-proved
+      if: inputs.require-proved == 'true'
+      shell: bash
+      run: |
+        python - <<'PY'
+        import sys
+        from importlib.metadata import version
+        from packaging.version import Version
+
+        have = version("sverify")
+        # `--require-proved` came after 0.8.0; the development builds of 0.9.0 have it.
+        if Version(have) < Version("0.9.0.dev0"):
+            print(
+                f"::error::require-proved needs sverify 0.9.0 or later; {have} is installed. "
+                "Set `version: 0.9.0` or later, or drop require-proved."
+            )
+            sys.exit(2)
+        PY
+    - name: Check
+      id: check
+      shell: bash
+      env:
+        TARGETS: ${{ inputs.targets }}
+        TIMEOUT: ${{ inputs.timeout }}
+        REQUIRE_PROVED: ${{ inputs.require-proved }}
+        SARIF_FILE: ${{ inputs.sarif-file }}
+      run: |
+        # One `sverify check` per target; the job's code is the greatest of theirs (the codes
+        # grow with severity from sverify 0.9.0). Their SARIF logs are merged into one run.
+        parts="$(mktemp -d)"
+        flags=(--timeout "$TIMEOUT")
+        [ "$REQUIRE_PROVED" = "true" ] && flags+=(--require-proved)
+        worst=0
+        n=0
+        for target in $TARGETS; do
+          n=$((n + 1))
+          code=0
+          sverify check "${flags[@]}" --format sarif "$target" > "$parts/$n.sarif" || code=$?
+          [ "$code" -gt "$worst" ] && worst=$code
+        done
+        [ "$n" -gt 0 ] || { echo "::error::targets is empty"; exit 2; }
+        python "$GITHUB_ACTION_PATH/merge_sarif.py" "$SARIF_FILE" "$parts"/*.sarif
+        echo "exit-code=$worst" >> "$GITHUB_OUTPUT"
+        exit "$worst"
+    - name: Upload the SARIF
+      if: always() && inputs.upload == 'true' && hashFiles(inputs.sarif-file) != ''
+      uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+      with:
+        sarif_file: ${{ inputs.sarif-file }}
+        category: sverify

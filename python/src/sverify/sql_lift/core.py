@@ -471,7 +471,13 @@ def _case(lf: _Lift, node: sge.Case, sub: Sub, scope: list[Column]) -> E:
 
 def _if(lf: _Lift, node: sge.If, sub: Sub, scope: list[Column]) -> E:
     """DuckDB's `if(c, a, b)`, another spelling of `CASE WHEN c THEN a ELSE b END`
-    (#328)."""
+    (#328). DuckDB's `if` needs all three arguments."""
+    if node.args.get("false") is None:
+        raise SqlUnsupported(
+            f"{_shown(node)}: DuckDB's if takes three arguments",
+            hint="write if(condition, then, else), or CASE WHEN condition THEN then END",
+            construct="function if",
+        )
     case = sge.Case(
         ifs=[sge.If(this=node.this, true=node.args["true"])], default=node.args.get("false")
     )

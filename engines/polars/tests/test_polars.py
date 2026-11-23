@@ -473,6 +473,34 @@ def test_unwritten_plans_are_refused():
         polars_engine.to_lazy(raw, {"r": pa.table({"a": [1], "b": [1], "c": [1]})})
 
 
+def test_a_streamed_aggregate_beside_a_list_is_refused():
+    """A list per group puts the whole grouping on Polars's in-memory engine,
+    whose double sums are Kahan's and whose variances its own, outside
+    Polars's `sum_order` and `stat_algo` (#2411, #2507). Each alone in a
+    grouping streams, and so does an ungrouped list's neighbour."""
+    con = connect()
+    con.create("t", ibis.schema({"k": "int64", "x": "float64"}), [(1, 1.0), (1, 3.0)])
+    t = con.table("t")
+    aggs = {
+        "sum": (t.x.sum(), 4.0),
+        "mean": (t.x.mean(), 2.0),
+        "var": (t.x.var(), 2.0),
+        "var_pop": (t.x.var(how="pop"), 1.0),
+        "std": (t.x.std(), math.sqrt(2.0)),
+        "std_pop": (t.x.std(how="pop"), 1.0),
+    }
+    for name, (agg, want) in aggs.items():
+        beside = t.group_by("k").aggregate(l=t.x.collect(), s=agg)
+        with pytest.raises(polars_engine.Unsupported, match="in-memory engine"):
+            run_plan(con, written_plan(to_substrait_json(beside)), "polars")
+        alone = t.group_by("k").aggregate(s=agg)
+        [(_, got)] = rows_of(run_plan(con, written_plan(to_substrait_json(alone)), "polars"))
+        assert math.isclose(got, want), name
+        ungrouped = t.aggregate(l=t.x.collect(), s=agg)
+        [(lst, got)] = rows_of(run_plan(con, written_plan(to_substrait_json(ungrouped)), "polars"))
+        assert lst == [1.0, 3.0] and math.isclose(got, want), name
+
+
 def test_strings_order_by_code_point():
     """`BinFn.lt` orders strings by code point, as SQL does (#1492)."""
     con = connect()

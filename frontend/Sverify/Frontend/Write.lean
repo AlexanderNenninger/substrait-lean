@@ -256,11 +256,6 @@ def isConst : Expr → Bool
   | .bin _ a b => isConst a && isConst b
   | .ifThen c t e => isConst c && isConst t && isConst e
 
-/-- Is `i` a double's code rather than an integer? Integers are 64-bit, and
-every double but zero and the subnormals below 2⁻¹⁰¹¹ has a code outside
-that range (`FloatCode`); `Pretty` prints them as doubles by the same rule. -/
-def isDoubleCode (i : Int) : Bool := i < -(2 ^ 63) || 2 ^ 63 ≤ i
-
 /-- A literal's kind, by its constructor (#923). -/
 def litWKind (v : Value) : WKind := .ofKind (Parse.litKind v)
 
@@ -370,10 +365,6 @@ def narrowLit (n : Nat) (x : Expr) (j : Json) : Json :=
 /-- An argument of arithmetic at width `w`: a literal at that width. -/
 def fitArg (w : IntWidth) (x : Expr) (j : Json) : Json :=
   if w.bits < 64 then narrowLit w.bits x j else j
-
-def isLit : Expr → Bool
-  | .lit _ => true
-  | _ => false
 
 /-- A field reference with the segment `seg` into the value of `e`. -/
 def reference (seg e : Json) : Json :=
@@ -622,6 +613,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .ffloor a => call (fn "floor") [writeExpr cols .float a]
   | .un .fceil a => call (fn "ceil") [writeExpr cols .float a]
   | .un .fround a => call (fn "round") [writeExpr cols .float a]
+  | .un .froundEven a => callOpt (fn "round") [writeExpr cols .float a] "rounding" "TIE_TO_EVEN"
   | .un (.fmath f) a => call (UnFn.anchor (.fmath f)) [writeExpr cols .float a]
   | .un .neg a => call (fn "negate") [writeExpr cols ctx a]
   | .un (.regexMatch p) a =>

@@ -55,13 +55,6 @@ def duckElementary (f : FMath) (x : Int) : Int :=
 `ieee_floating_point_ops` (probed on DuckDB 2.0.0, fact duckdb-R15-power-neginf). -/
 def duckNegInfPow (y : Int) : Int := if 0 < y then FloatCode.posInf else 0
 
-/-- DuckDB's `power` of doubles: NaN where IEEE 754 gives it (a negative
-finite base to a finite power that is not an integer, `nanCase`), else the
-native power (`0 ^ -1` is `∞`). -/
-def duckPower (x y : Int) : Int :=
-  if negInfPow x y then duckNegInfPow y
-  else if nanCase .fpow x y then FloatCode.nan else FloatCode.lift₂ Float.pow x y
-
 /-- A zero divisor under `error_on_division_by_zero` (integers) or with
 `ieeeOps` off (doubles): an error, or NULL. -/
 def duckZero (s : DuckDBSettings) : Outcome :=
@@ -132,6 +125,8 @@ def duckUn (s : DuckDBSettings) : UnFn → Int → Option Outcome
   -- `ceil(-0.4)`; duckdb-R15-round), where the reference gives `0.0`: the
   -- `round_zero_sign` option, which the reference leaves open.
   | .fround, x => if x < 0 ∧ FloatCode.round x = 0 then some (.ok (.float FloatCode.negZero)) else none
+  | .froundEven, x =>
+    if x < 0 ∧ FloatCode.roundEven x = 0 then some (.ok (.float FloatCode.negZero)) else none
   | .fceil, x => if x < 0 ∧ FloatCode.ceil x = 0 then some (.ok (.float FloatCode.negZero)) else none
   | _, _ => none
 
@@ -171,10 +166,10 @@ def BinFn.duckdbWritten : BinFn → Bool
   | .imod | .bit .shl => true
   | _ => false
 
-/-- `round` and `ceil`, whose IEEE `-0.0` the SQL printer makes `0.0` through
+/-- `round`, `round_even` and `ceil`, whose IEEE `-0.0` the SQL printer makes `0.0` through
 the proved template (`Lowering.zeroTemplate`, `round_zero_sign`). -/
 def UnFn.duckdbWritten : UnFn → Bool
-  | .fround | .fceil => true
+  | .fround | .froundEven | .fceil => true
   | _ => false
 
 /-- DuckDB's profile with the functions of `BinFn.duckdbWritten` and

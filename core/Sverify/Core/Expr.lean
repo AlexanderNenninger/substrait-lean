@@ -102,6 +102,8 @@ inductive UnFn where
   | fneg
   /-- `FLOOR`, `CEIL` and `ROUND` of a double, as a double. -/
   | ffloor | fceil | fround
+  /-- `ROUND(x, 0, rounding: TIE_TO_EVEN)` of a double: halves to the even integer (D55). -/
+  | froundEven
   /-- `ROUND(x, d)` of a double for `d ≠ 0`, computed with native floats. -/
   | froundTo (d : Int)
   /-- `CAST(x AS BIGINT)` of a double: truncation toward zero. -/
@@ -445,6 +447,7 @@ def UnFn.apply : UnFn → Value → Value
   | .ffloor, .float c => .float (FloatCode.floor c)
   | .fceil, .float c => .float (FloatCode.ceil c)
   | .fround, .float c => .float (FloatCode.round c)
+  | .froundEven, .float c => .float (FloatCode.roundEven c)
   | .froundTo d, .float c => .float (FloatCode.roundTo d c)
   -- Casts read one zero (D31): `CAST(-0.0 AS BIGINT)` is `0`.
   | .ftoi, .float c => match FloatCode.toInt? (FloatCode.canon c) with
@@ -1120,8 +1123,8 @@ theorem Value.pick_eq (better : Value → Value → Bool) (v w : Value) :
       else if better v w then w else v := by
   cases v <;> cases w <;> simp [Value.pick, UnFn.apply, Value.isTrue]
 
-/-- `GREATEST` as one operation is the conditional `Parse` used to write
-(`Parse.mkCall.pick`): `b` if `a` is `NULL`, `a` if `b` is, else the larger. -/
+/-- `GREATEST` as one operation is the conditional `Parse` used to write:
+`b` if `a` is `NULL`, `a` if `b` is, else the larger. -/
 theorem Expr.eval_greatest (row : Row) (a b : Expr) :
     (Expr.bin .greatest a b).eval row =
       (Expr.ifThen (.un .isNull a) b

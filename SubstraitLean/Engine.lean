@@ -66,7 +66,7 @@ theorem Engine.duckdb_noRaise_of_mayIssues {cat : Catalog} (hcat : cat.WF)
     (h : r.mayIssues cat A F T false = []) : (Engine.duckdb {} rfl).NoRaiseSide cat r := by
   intro r' hl hr
   cases hl
-  obtain ⟨p, hp⟩ := Rel.hasIssue_of_raises false hs (Lowering.lowerRel_raises Lowering.duckdb_total Lowering.duckdb_allExact
+  obtain ⟨p, hp, -⟩ := Rel.hasIssue_of_raises false hs (Lowering.lowerRel_raises Lowering.duckdb_total Lowering.duckdb_allExact
       Lowering.duckdb_noneOnDbl hr)
   have := Rel.mayIssues_sound hcat hA hF hT hwf hsm p hp
   rw [h] at this

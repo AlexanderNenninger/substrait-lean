@@ -17,5 +17,11 @@ name = "FloatBounds"
 name = "sverify-core"
 path = "../core"
 
+# The analysis's lemmas on codes (exactness on small integers), which the
+# bridge combines with the bound over the reals into `SumOrder`.
+[[require]]
+name = "sverify-analysis"
+path = "../analysis"
+
 [[lean_lib]]
 name = "FloatBridge"

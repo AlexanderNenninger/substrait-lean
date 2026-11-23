@@ -24,7 +24,7 @@
       false
     ]
   },
-  "description": "DuckDB rounds to `d` digits; below zero it computes `round(x / 10^-d) · 10^-d`, and 0 where that is not finite. A negative value that rounds to zero keeps its sign: `round(-0.04, 1)` is `-0.0`.",
+  "description": "DuckDB rounds to `d` digits; below zero it computes `round(x / 10^-d) · 10^-d`, and 0 where that is not finite. A negative value that rounds to zero keeps its sign: `round(-0.04, 1)` is `-0.0`. Its non-finite case is wrong: duckdb-round-digits-2 corrects it, and the zero sign is duckdb-R15-round's.",
   "reference": "`round` with a digit count: DuckDB's formula since #335, so the outcomes match on every probed `d`.",
   "status": "no-finding",
   "evidence": "probe",

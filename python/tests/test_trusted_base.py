@@ -137,3 +137,29 @@ def test_every_kernel_checked_theorem_has_its_axioms_printed() -> None:
         assert f"#print axioms Substrait.{name}\n" in examples, name
         for a in axioms.split(", "):
             assert a in STANDARD or a.removeprefix("Substrait.") in trusted, (name, a)
+
+
+#: The modules that may read a postcondition's `portable` flag, which decides
+#: "proved": the `Report` that combines it with the other fields (`_proved`,
+#: `_verified`, `_unproved_reasons`), and sverify-dbt's status of one dbt test,
+#: which is proved when its own condition is (each a row of the page).
+READS_PORTABLE = {
+    "python/src/sverify/report.py",
+    "dbt/src/sverify_dbt/check.py",
+}
+
+
+def test_only_the_report_decides_proved() -> None:
+    """No other module combines `portable` with the report's other fields: a
+    site that decides "proved" for itself would miss the next field `Report`
+    adds (#1088)."""
+    found = {
+        str(p.relative_to(ROOT))
+        for top in ("python/src", "dbt/src")
+        for p in (ROOT / top).rglob("*.py")
+        if re.search(r"\.portable\b", p.read_text())
+    }
+    assert found <= READS_PORTABLE, sorted(found - READS_PORTABLE)
+    page = PAGE.read_text()
+    for name in ("Report.verdict", "Report._verified", "cli/_discover.py", "sverify_dbt"):
+        assert name in page, name

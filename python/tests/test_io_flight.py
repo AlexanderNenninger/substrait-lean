@@ -81,7 +81,7 @@ def test_appends_by_the_number_of_the_last_batch(server):
     assert "appended to samples v1→v2" in entry.detail
     assert "numbers batches in order of arrival" in entry.detail
     assert rows(node) == [("a", 1, 0.5), ("b", 2, 0.75)]
-    assert cursor(src) == {"seq": 4, "floor": 1}
+    assert cursor(src) == {"seq": 4, "floor": 1, "log": server.id}
     assert json.loads(json.dumps(cursor(src))) == cursor(src)
     # Nothing new: no new version.
     [entry] = node.refresh()["busy"].report.sources
@@ -167,13 +167,13 @@ def test_a_source_restored_at_a_cursor_deletes_what_the_server_drops(server):
     put(server, "samples", [sample("a", 3, 0.7)])
     assert resumed.restore(recorded).to_pylist() == [sample("a", 1, 0.5), sample("a", 2, 0.6)]
     batch = read(resumed, recorded)
-    assert (batch.kind, batch.cursor) == ("append", {"seq": 3, "floor": 1})
+    assert (batch.kind, batch.cursor) == ("append", {"seq": 3, "floor": 1, "log": server.id})
     assert batch.table.to_pylist() == [sample("a", 3, 0.7)]
     server.drop("samples", below=2)
     batch = read(resumed, batch.cursor)
     assert (batch.kind, batch.cursor, batch.table.num_rows) == (
         "changes",
-        {"seq": 3, "floor": 2},
+        {"seq": 3, "floor": 2, "log": server.id},
         0,
     )
     assert batch.deletes.to_pylist() == [sample("a", 1, 0.5)]
@@ -200,7 +200,7 @@ def test_an_empty_log_restores_to_no_rows(server):
     # Nothing of the table up to a cursor before its first batch.
     assert (
         FlightSource(location(server), "samples", schema=SAMPLES)
-        .restore({"seq": 0, "floor": 1})
+        .restore({"seq": 0, "floor": 1, "log": server.id})
         .num_rows
         == 0
     )
@@ -246,7 +246,9 @@ def test_a_restarted_job_resumes_and_reads_later_drops_as_deletes(server, tmp_pa
     _, node = restart_job(server, path)
     node.refresh()
     recorded = DeltaSource(path).contract()
-    assert recorded is not None and recorded.cursors == {"samples": {"seq": 2, "floor": 1}}
+    assert recorded is not None and recorded.cursors == {
+        "samples": {"seq": 2, "floor": 1, "log": server.id}
+    }
     put(server, "samples", [sample("a", 3, 0.7)])
     _, restarted = restart_job(server, path)
     out = restarted.refresh()["busy"]
@@ -268,3 +270,378 @@ def test_a_drop_while_down_recomputes(server, tmp_path):
     w = restarted.refresh().writes[0]
     assert w.mode == "overwrite"
     assert stored_ts(path) == [2]
+
+
+# -- the protocol's edges -----------------------------------------------------
+
+
+def get(server, ticket):
+    """The server's answer to a raw ticket, called in this process."""
+    return server.do_get(None, fl.Ticket(ticket))
+
+
+@pytest.mark.parametrize(
+    "ticket",
+    [
+        b"not json",
+        b"[1]",
+        b"5",
+        b'{"after": 1}',
+        b'{"table": ["samples"]}',
+        b'{"table": "samples", "after": "2"}',
+        b'{"table": "samples", "until": 2.5}',
+        b'{"table": "samples", "after": true}',
+    ],
+)
+def test_a_malformed_ticket_is_refused_with_the_ticket_shape(server, ticket):
+    # #2427: a wrongly typed value got a Python traceback, not this message.
+    with pytest.raises(fl.FlightServerError, match="the ticket is"):
+        get(server, ticket)
+
+
+def test_a_malformed_ticket_reaches_the_client_as_the_ticket_shape(server):
+    client = fl.connect(location(server))
+    with pytest.raises(fl.FlightServerError, match="the ticket is") as e:
+        client.do_get(fl.Ticket(b'{"table": "samples", "after": "2"}')).read_all()
+    assert "Traceback" not in str(e.value)
+    client.close()
+
+
+def test_a_ticket_picks_the_batches_in_its_range(server):
+    put(server, "samples", *[[sample("a", t, 0.5)] for t in (1, 2, 3, 4)])
+    put(server, "other", [sample("x", 9, 0.9)])
+
+    def seqs(ticket):
+        reader = fl.connect(location(server)).do_get(fl.Ticket(json.dumps(ticket).encode()))
+        meta = reader.schema.metadata
+        got = [json.loads(c.app_metadata.to_pybytes())["seq"] for c in reader]
+        return got, int(meta[b"floor"])
+
+    assert seqs({"table": "samples"}) == ([1, 2, 3, 4], 1)
+    assert seqs({"table": "samples", "after": 1, "until": 3}) == ([2, 3], 1)
+    assert seqs({"table": "samples", "after": None, "until": None}) == ([1, 2, 3, 4], 1)
+    # A table nothing was sent to: no batches, and the floor is the next number.
+    assert seqs({"table": "nothing"}) == ([], 6)
+
+
+@pytest.mark.parametrize(
+    ("descriptor", "schema", "error"),
+    [
+        (fl.FlightDescriptor.for_path("a", "b"), SAMPLES, "a path of one table name"),
+        (fl.FlightDescriptor.for_command(b"samples"), SAMPLES, "a path of one table name"),
+        (
+            fl.FlightDescriptor.for_path("samples"),
+            pa.schema([("host", pa.string())]),
+            "samples: the batches' schema is not the table's",
+        ),
+    ],
+)
+def test_a_put_the_log_cannot_take_is_refused(server, descriptor, schema, error):
+    put(server, "samples", [sample("a", 1, 0.5)])
+    client = fl.connect(location(server))
+    with pytest.raises(fl.FlightServerError, match=error):
+        writer, _ = client.do_put(descriptor, schema)
+        writer.write_batch(pa.RecordBatch.from_pylist([{"host": "a"}], schema=pa.schema(schema)))
+        writer.close()
+    client.close()
+    # Nothing was stored.
+    assert [s for s, _ in server.tables["samples"][1]] == [1]
+
+
+def test_an_empty_batch_takes_no_number(server):
+    client = fl.connect(location(server))
+    writer, _ = client.do_put(fl.FlightDescriptor.for_path("samples"), SAMPLES)
+    writer.write_batch(pa.RecordBatch.from_pylist([], schema=SAMPLES))
+    writer.close()
+    client.close()
+    assert server.tables["samples"][1] == [] and server.seq == 0
+
+
+def test_dropping_from_a_table_the_log_lacks_does_nothing(server):
+    server.drop("nothing", below=5)
+    assert server.tables == {}
+
+
+class _NoFloor(fl.FlightServerBase):
+    """A Flight server that streams a batch with no floor in its schema."""
+
+    def do_get(self, context, ticket):
+        return fl.RecordBatchStream(pa.table({"host": ["a"], "ts": [1], "cpu": [0.5]}))
+
+
+def test_a_stream_without_a_floor_is_refused():
+    s = _NoFloor("grpc://127.0.0.1:0")
+    try:
+        src = FlightSource(location(s), "samples", name="busy_samples", schema=SAMPLES)
+        with pytest.raises(ValueError, match="busy_samples: the Flight stream names no floor"):
+            src.read(None)
+    finally:
+        s.shutdown()
+
+
+def test_an_unreachable_server_connects_again_on_the_next_read():
+    s = FlightLog()
+    port = s.port
+    s.shutdown()
+    src = FlightSource(f"grpc://127.0.0.1:{port}", "samples", schema=SAMPLES, timeout=2)
+    with pytest.raises(fl.FlightUnavailableError):
+        src.read(None)
+    assert src._client is None
+
+
+def test_a_source_pickles_without_its_connection(server):
+    import pickle
+
+    put(server, "samples", [sample("a", 1, 0.5)])
+    src = FlightSource(location(server), "samples")
+    first = read(src, None).cursor
+    assert src._client is not None
+    copy = pickle.loads(pickle.dumps(src))
+    assert copy._client is None and src._client is not None
+    assert list(copy._held) == [1] and repr(copy) == repr(src)
+    # The copy connects again when it reads, from the cursor the first read gave.
+    put(server, "samples", [sample("a", 2, 0.6)])
+    after = read(copy, first).cursor
+    assert (after["seq"], after["floor"]) == (2, 1)
+
+
+def test_an_audit_before_any_read_compares_no_rows(server):
+    src = FlightSource(location(server), "samples", schema=SAMPLES)
+    busy(src).refresh()
+    assert src.reread(None).num_rows == 0
+    assert src.reread(None).schema == src.snapshot().table.schema
+
+
+def test_a_cursor_of_another_shape_does_not_restore(server):
+    src = FlightSource(location(server), "samples", schema=SAMPLES)
+    for bad in (None, 3, {"seq": 3}, {"floor": 1}, "seq"):
+        assert src.restore(bad) is None
+
+
+# -- a server that restarted numbers its batches from 1 again ----------------------
+
+
+def restarted(server):
+    """A new log at the address of `server`, which is shut down: batches from 1
+    again, under another identity."""
+    port = server.port
+    server.shutdown()
+    return FlightLog(f"grpc://127.0.0.1:{port}")
+
+
+def test_a_restarted_log_is_another_log(server):
+    put(server, "samples", [sample("a", 1, 0.5)], [sample("a", 2, 0.6)], [sample("a", 3, 0.7)])
+    src = FlightSource(location(server), "samples")
+    busy(src).refresh()
+    recorded = cursor(src)
+    assert recorded["seq"] == 3 and recorded["log"] == server.id
+    old = server.id
+    new = restarted(server)
+    try:
+        assert new.id != old
+        put(new, "samples", [sample("b", 1, 0.5)], [sample("b", 2, 0.6)], [sample("b", 3, 0.7)])
+        # A refresh of the running source asks for the batches after 3: it
+        # refuses, where it used to skip batch 3 of the new log.
+        with pytest.raises(ValueError, match="now serves the log") as e:
+            src.read(recorded)
+        assert str(old) in str(e.value) and str(new.id) in str(e.value)
+        assert "new sink" in str(e.value)
+        # So does a source restored at the cursor a sink recorded.
+        with pytest.raises(ValueError, match="now serves the log"):
+            FlightSource(location(new), "samples", schema=SAMPLES).restore(recorded)
+        # And the audit's read up to the cursor.
+        with pytest.raises(ValueError, match="now serves the log"):
+            src.reread(recorded)
+        # Reading the new log from the start is the other source's choice.
+        fresh = FlightSource(location(new), "samples")
+        batch = read(fresh, None)
+        assert batch.table.num_rows == 3
+        assert batch.cursor == {"seq": 3, "floor": 1, "log": new.id}
+    finally:
+        new.shutdown()
+
+
+def test_a_cursor_that_names_no_log_is_refused_by_a_server_that_names_one(server):
+    put(server, "samples", [sample("a", 1, 0.5)])
+    old_cursor = {"seq": 1, "floor": 1}  # recorded before logs had identities
+    src = FlightSource(location(server), "samples", schema=SAMPLES)
+    with pytest.raises(ValueError, match="a log that was not named"):
+        src.restore(old_cursor)
+    with pytest.raises(ValueError, match="a log that was not named"):
+        src.read(old_cursor)
+
+
+def test_a_restarted_job_is_refused_by_the_log_it_did_not_read(server, tmp_path):
+    path = str(tmp_path / "busy")
+    put(server, "samples", [sample("a", 1, 0.5)], [sample("a", 2, 0.6)])
+    restart_job(server, path)[1].refresh()
+    new = restarted(server)
+    try:
+        put(new, "samples", [sample("b", 1, 0.5)], [sample("b", 2, 0.6)], [sample("b", 3, 0.7)])
+        _, job = restart_job(new, path)
+        with pytest.raises(ValueError, match="now serves the log"):
+            job.refresh()
+        assert stored_ts(path) == [1, 2]  # nothing of the new log was written
+    finally:
+        new.shutdown()
+
+
+def test_a_server_that_names_no_log_is_read_as_before(server):
+    """A server of another make names no log: its cursors carry none, and a
+    cursor with or without one reads and restores."""
+    server.id = None
+    put(server, "samples", [sample("a", 1, 0.5)], [sample("a", 2, 0.6)])
+    src = FlightSource(location(server), "samples")
+    batch = read(src, None)
+    assert batch.cursor == {"seq": 2, "floor": 1}
+    put(server, "samples", [sample("a", 3, 0.7)])
+    resumed = FlightSource(location(server), "samples", schema=SAMPLES)
+    assert resumed.restore(batch.cursor).num_rows == 2
+    assert read(resumed, batch.cursor).cursor == {"seq": 3, "floor": 1}
+    # A cursor an earlier run recorded against a log that named one reads too.
+    named = {"seq": 2, "floor": 1, "log": "an-earlier-log"}
+    assert resumed.restore(named).num_rows == 2
+    assert read(resumed, named).table.to_pylist() == [sample("a", 3, 0.7)]
+    assert resumed.reread(named).num_rows == 2
+
+
+def test_the_audit_refuses_a_restarted_log(server, tmp_path):
+    put(server, "samples", [sample("a", 1, 0.5)], [sample("a", 2, 0.6)])
+    src = FlightSource(location(server), "samples")
+    node = busy(src)
+    node.refresh()
+    new = restarted(server)
+    try:
+        put(new, "samples", [sample("b", 1, 0.5)], [sample("b", 2, 0.6)], [sample("b", 3, 0.7)])
+        with pytest.raises(ValueError, match="now serves the log"):
+            node.refresh(audit=True)
+    finally:
+        new.shutdown()
+
+
+# -- two writers of one sink that read different servers (#2441) --------------------
+
+
+def test_a_second_writer_reading_another_server_is_refused(server, tmp_path):
+    """Two nodes share a sink and its app id, and read different servers
+    under one source name. A Flight source has no table id, so versions were
+    all that told them apart; the contract names the source now."""
+    path = str(tmp_path / "busy")
+    other = FlightLog()
+    # Servers that name no log (a log that does names itself: the cursor of
+    # the first server is refused by the second, `test_a_restarted_log_...`).
+    server.id = other.id = None
+    try:
+        put(server, "samples", [sample("a", 1, 0.5)], [sample("a", 2, 0.6)], [sample("a", 3, 0.7)])
+        put(other, "samples", [sample("b", 1, 0.5)])
+        first = busy(FlightSource(location(server), "samples", schema=SAMPLES)).write(
+            DeltaSink(path)
+        )
+        first.refresh()
+        recorded = DeltaSource(path).contract()
+        assert recorded is not None
+        assert recorded.fingerprints == {"samples": f"flight:{location(server)}/samples"}
+        # The second writer is at a lower version (1 against 3), and refused.
+        second = busy(FlightSource(location(other), "samples", schema=SAMPLES)).write(
+            DeltaSink(path)
+        )
+        with pytest.raises(ValueError, match="Two writers with one app_id") as e:
+            second.refresh()
+        assert location(server) in str(e.value) and location(other) in str(e.value)
+        # And one at a higher version (5 against 3).
+        put(other, "samples", *[[sample("b", i, 0.5)] for i in range(2, 6)])
+        third = busy(FlightSource(location(other), "samples", schema=SAMPLES)).write(
+            DeltaSink(path)
+        )
+        with pytest.raises(ValueError, match="Two writers with one app_id"):
+            third.refresh()
+        assert stored_ts(path) == [1, 2, 3]  # nothing of the other server was written
+        # The first writer goes on.
+        put(server, "samples", [sample("a", 4, 0.8)])
+        first.refresh()
+        assert stored_ts(path) == [1, 2, 3, 4]
+    finally:
+        other.shutdown()
+
+
+def test_a_record_without_fingerprints_is_not_compared():
+    from sverify.io._common import Contract, check_same_sources
+
+    def record(**kw):
+        return Contract(
+            node="n",
+            plan="p" * 64,
+            sources={"t": 1},
+            epoch=1,
+            not_null=[],
+            checks={},
+            unique=[],
+            **kw,
+        )
+
+    old = record()  # written before fingerprints
+    check_same_sources("sink", old, record(fingerprints={"t": "flight:x/t"}))
+    check_same_sources("sink", record(fingerprints={"t": "flight:x/t"}), old)
+    check_same_sources(
+        "sink", record(fingerprints={"t": "flight:x/t"}), record(fingerprints={"t": "flight:x/t"})
+    )
+    with pytest.raises(ValueError, match="Two writers"):
+        check_same_sources(
+            "sink",
+            record(fingerprints={"t": "flight:x/t"}),
+            record(fingerprints={"t": "flight:y/t"}),
+        )
+
+
+def test_a_table_and_a_source_without_an_id_are_not_the_same_source(tmp_path):
+    """Under one source name, a Delta table has an id and a static table has
+    none, so the writers read different sources, in either order."""
+    from _pipelines import make_orders, orders_table, paid
+    from sverify.io import StaticSource
+
+    rows = [(1, "ada", 5), (2, "ada", 5), (3, "bob", 1)]
+
+    def static():
+        return StaticSource(orders_table(rows), name="orders")
+
+    for n, (first, second) in enumerate(
+        [
+            (lambda: make_orders(tmp_path / "x" / "orders", rows), static),
+            (static, lambda: make_orders(tmp_path / "y" / "orders", rows)),
+        ]
+    ):
+        path = str(tmp_path / f"sink{n}")
+        paid(first()).write(DeltaSink(path)).refresh()
+        with pytest.raises(ValueError, match="Two writers with one app_id"):
+            paid(second()).write(DeltaSink(path)).refresh()
+
+
+def test_the_fingerprint_of_a_location_with_userinfo_holds_no_secret():
+    src = FlightSource("grpc://ada:s3cret@pi3:8815?token=t0k", "samples", schema=SAMPLES)
+    assert src._fingerprint() == "flight:grpc://pi3:8815/samples"
+
+
+def test_a_table_id_and_a_fingerprint_are_different_kinds_of_source():
+    from sverify.io._common import Contract, check_same_sources
+
+    def record(**kw):
+        return Contract(
+            node="n",
+            plan="p" * 64,
+            sources={"t": 1},
+            epoch=1,
+            not_null=[],
+            checks={},
+            unique=[],
+            **kw,
+        )
+
+    table = record(table_ids={"t": "abc"}, sverify="1")
+    flight = record(fingerprints={"t": "flight:grpc://x/t"}, sverify="1")
+    for a, b in [(table, flight), (flight, table)]:
+        with pytest.raises(ValueError, match="Two writers"):
+            check_same_sources("sink", a, b)
+    # A record from before `sverify` was recorded names neither: versions decide.
+    old = record()
+    check_same_sources("sink", old, table)
+    check_same_sources("sink", old, flight)

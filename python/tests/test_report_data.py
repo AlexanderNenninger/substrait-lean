@@ -9,7 +9,7 @@ import pytest
 import sverify as sv
 import sverify.engines
 import sverify.errors
-from sverify.contracts import Needed
+from sverify.report import Needed
 
 
 def _needed(report):

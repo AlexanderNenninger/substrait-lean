@@ -14,7 +14,7 @@ from ibis import _
 
 import sverify as sv
 from sverify._duration import duration
-from sverify.contracts import label
+from sverify.conditions import label
 from sverify.io import Changes, Contract, DeltaSink, Sink, StaticSource
 from sverify.testing import source
 

@@ -13,9 +13,10 @@ from ibis import _
 
 import sverify as sv
 from _pipelines import orders_table
-from sverify.contracts import RelationRows, label, violations
+from sverify.conditions import RelationRows, label
 from sverify.errors import PreconditionError
 from sverify.io import StaticSource
+from sverify.report import violations
 
 ORDERS = ibis.table(
     {"id": "int64", "customer": "string", "region": "string", "amount": "int64"}, name="orders"

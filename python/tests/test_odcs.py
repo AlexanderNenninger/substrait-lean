@@ -19,7 +19,7 @@ import sverify as sv
 from _repo import needs_repo
 from sverify import odcs
 from sverify.cli import main
-from sverify.contracts import Key, MaxRows, References, RowsPer, Unique, label
+from sverify.conditions import Key, MaxRows, References, RowsPer, Unique, label
 from sverify.io import StaticSource
 
 # The wheel's tests install only what the Wheels workflow lists.
@@ -412,7 +412,7 @@ def test_cli_contract_export(tmp_path, capsys):
             """
         )
     )
-    assert main(["contract", "export", f"{path}:p", "--format", "odcs"]) == 0
+    assert main(["contract", "export", f"{path}:p"]) == 0
     doc = valid(yaml.safe_load(capsys.readouterr().out))
     assert prop(doc, "id")["primaryKey"]
     out = tmp_path / "paid.json"

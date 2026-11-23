@@ -1,5 +1,6 @@
 import Sverify.Core.AllowedP
 import Sverify.Core.FloatArith
+import Sverify.Core.FloatDbl
 
 /-!
 # The range of an engine's double `SUM` (D35)
@@ -154,11 +155,113 @@ theorem SumBoundRaw.canon_of {vs : List Value} {c c' : Int} (h : SumBoundRaw vs 
   have hc : canon c' = c' := fp64.canon_eq_self ⟨hfin.ne.2.2.2.2, hfin.ne.2.1⟩
   rw [← e, hc]; exact ⟨hfin, hb⟩
 
+/-- **`SumBound` from `SumBoundRaw`**, for any sums `P` that keep their
+shape over the canonical values up to `canon`: the canonical clause is the raw
+one of the canonical sum. -/
+theorem SumBound.of_raw {P : List Value → Int → Prop}
+    (hcanon : ∀ {vs : List Value} {c : Int}, P vs c →
+      ∃ c', P (vs.map Value.canonV) c' ∧ canon c' = canon c)
+    (hraw : ∀ {vs : List Value} {c : Int}, P vs c → SumBoundRaw vs c)
+    {vs : List Value} {c : Int} (h : P vs c) : SumBound vs c := by
+  obtain ⟨c', h', e⟩ := hcanon h
+  exact ⟨hraw h, (hraw h').canon_of e⟩
+
 /-- `SumBound` of every sum `FloatSums` allows, from `SumBoundRaw` of them:
 the canonical clause follows from `FloatSums.canonV`. -/
 theorem FloatSums.sumBound_of_raw (hraw : ∀ {vs : List Value} {c : Int}, FloatSums vs c → SumBoundRaw vs c)
-    {vs : List Value} {c : Int} (h : FloatSums vs c) : SumBound vs c := by
-  obtain ⟨c', h', e⟩ := h.canonV
-  exact ⟨hraw h, (hraw h').canon_of e⟩
+    {vs : List Value} {c : Int} (h : FloatSums vs c) : SumBound vs c :=
+  SumBound.of_raw FloatSums.canonV hraw h
+
+/-! ## Kahan's sum and constant runs on codes (#1196)
+
+The two orders whose `SumOrder` clause is a bound and no shape, written as the
+engines compute them. `float-bounds/FloatBridge/Orders.lean` proves that each
+meets `SumOrder`: Kahan's sum in any order (`COMPENSATED`) and a tree of sums
+with constant runs (`SCALED_CONSTANT`). -/
+
+/-- One step of Kahan's compensated sum on codes: from the running sum and
+the compensation `(s, c)`, a double `x` takes `y = x − c`, `t = s + y`, and
+the compensation `(t − s) − y`. -/
+def kahanStep (p : Int × Int) : Value → Int × Int
+  | .float x =>
+    let y := fsub x p.2
+    let t := fadd p.1 y
+    (t, fsub (fsub t p.1) y)
+  | _ => p
+
+/-- **Kahan's compensated sum** of the doubles among `ws`, in list order, from
+`(+0.0, +0.0)`: the running sum at the end. -/
+def kahanSum (ws : List Value) : Int := (ws.foldl kahanStep (0, 0)).1
+
+/-- Kahan's sums of `vs`, doubles' codes (`Dbl`, ruling 268): one per order
+of its values. -/
+def KahanSums (vs : List Value) (c : Int) : Prop :=
+  (∀ x, Value.float x ∈ vs → Dbl x) ∧ ∃ ws, ws.Perm vs ∧ c = kahanSum ws
+
+/-- **Sums with constant runs**: `FloatSums`' shapes, and a run of `k ≥ 1`
+copies of one double added as one product `k · x`, rounded once
+(`SCALED_CONSTANT`). The run's value is a double's
+code (`Dbl`, ruling 268): the codes `-1` and `-2`, of magnitude zero, are no
+double's, and their product is `-0.0`. -/
+inductive FloatSumsK : List Value → Int → Prop
+  | seq {vs ws : List Value} : ws.Perm vs → FloatSumsK vs (floatSum ws)
+  | split {vs xs ys : List Value} {a b : Int} : vs.Perm (xs ++ ys) → FloatSumsK xs a →
+      FloatSumsK ys b → FloatSumsK vs (fadd a b)
+  | const (k : Nat) (x : Int) : 1 ≤ k → Dbl x →
+      FloatSumsK (List.replicate k (.float x)) (fmul (ofInt k) x)
+
+/-- Kahan's steps over the canonical values, from a state equal up to `canon`,
+end in a state equal up to `canon`. -/
+theorem foldl_kahanStep_canonV (ws : List Value) {p p' : Int × Int}
+    (e1 : canon p'.1 = canon p.1) (e2 : canon p'.2 = canon p.2) :
+    canon ((ws.map Value.canonV).foldl kahanStep p').1 = canon (ws.foldl kahanStep p).1 := by
+  induction ws generalizing p p' with
+  | nil => exact e1
+  | cons w ws ih =>
+    apply ih
+    all_goals cases w <;> simp only [Value.canonV, kahanStep]
+    all_goals first | exact e1 | exact e2 | skip
+    all_goals rename_i x
+    · have ey : canon (fsub (canon x) p'.2) = canon (fsub x p.2) := by
+        rw [← fsub_canon, canon_idem, e2, fsub_canon]
+      rw [← fadd_canon, e1, ey, fadd_canon]
+    · have ey : canon (fsub (canon x) p'.2) = canon (fsub x p.2) := by
+        rw [← fsub_canon, canon_idem, e2, fsub_canon]
+      have et : canon (fadd p'.1 (fsub (canon x) p'.2)) = canon (fadd p.1 (fsub x p.2)) := by
+        rw [← fadd_canon, e1, ey, fadd_canon]
+      have ed : canon (fsub (fadd p'.1 (fsub (canon x) p'.2)) p'.1) =
+          canon (fsub (fadd p.1 (fsub x p.2)) p.1) := by
+        rw [← fsub_canon, et, e1, fsub_canon]
+      rw [← fsub_canon, ed, ey, fsub_canon]
+
+/-- **A Kahan's sum is, up to `canon`, one of the canonical values** (ruling
+242): IEEE arithmetic reads `-0.0` as `+0.0` but for the sign of a zero
+result. -/
+theorem KahanSums.canonV {vs : List Value} {c : Int} (h : KahanSums vs c) :
+    ∃ c', KahanSums (vs.map Value.canonV) c' ∧ canon c' = canon c := by
+  obtain ⟨hd, ws, hp, rfl⟩ := h
+  refine ⟨kahanSum (ws.map Value.canonV), ⟨fun y hy => ?_, _, hp.map _, rfl⟩,
+    foldl_kahanStep_canonV ws rfl rfl⟩
+  obtain ⟨v, hv, e⟩ := List.mem_map.mp hy
+  cases v <;> simp only [Value.canonV, Value.float.injEq, reduceCtorEq] at e
+  rw [← e]; exact dbl_canon (hd _ hv)
+
+/-- **A sum with constant runs is, up to `canon`, one of the canonical values**
+(ruling 242). -/
+theorem FloatSumsK.canonV {vs : List Value} {c : Int} (h : FloatSumsK vs c) :
+    ∃ c', FloatSumsK (vs.map Value.canonV) c' ∧ canon c' = canon c := by
+  induction h with
+  | @seq vs ws hp =>
+    exact ⟨floatSum (ws.map Value.canonV), .seq (hp.map _), foldl_fadd_canonV ws rfl⟩
+  | @split vs xs ys a b hp _ _ iha ihb =>
+    obtain ⟨a', ha, ea⟩ := iha
+    obtain ⟨b', hb, eb⟩ := ihb
+    refine ⟨fadd a' b', .split (by rw [← List.map_append]; exact hp.map _) ha hb, ?_⟩
+    rw [← fadd_canon, ea, eb, fadd_canon]
+  | const k x hk hx =>
+    refine ⟨fmul (ofInt k) (canon x), ?_, ?_⟩
+    · rw [List.map_replicate, Value.canonV]
+      exact .const k (canon x) hk (dbl_canon hx)
+    · rw [← fmul_canon, canon_idem, fmul_canon]
 
 end Substrait

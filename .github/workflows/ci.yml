@@ -55,7 +55,10 @@ permissions:
 # Ibis and validator replays) and the dbt packages' replay step (`dbt`) run
 # when the package's code (not its I/O, CLI, skills or schemas) or an engine
 # package's code, the lock files, their own ledgers or a Lean input change. All three report and never fail a run, or
-# (`outside-repo`) repeat what `test` runs from the source.
+# (`outside-repo`) repeat what `test` runs from the source. One exception: the
+# dbt replay fails the job on an `unsound` entry (a test sverify-dbt proves
+# that dbt's own run fails), read from the fresh run: a wrong proof is a
+# correctness bug, where a changed outcome only warns.
 #
 # The other pull requests run `test (core)` and `test (duckdb)` always, and
 # skip a job when every file they change is one the job cannot read: the
@@ -201,6 +204,7 @@ jobs:
       dbtreplay: ${{ steps.diff.outputs.dbtreplay }}
       evidence: ${{ steps.diff.outputs.evidence }}
       python: ${{ steps.diff.outputs.python }}
+      action: ${{ steps.diff.outputs.action }}
       models: ${{ steps.diff.outputs.models }}
       matrix: ${{ steps.diff.outputs.matrix }}
     steps:
@@ -268,6 +272,7 @@ jobs:
             out dbtreplay=true
             out evidence=true
             out python=true
+            out action=true
             out models=true
             out "matrix=$(matrix '"duckdb","polars snowflake"' true)"
           }
@@ -289,7 +294,7 @@ jobs:
           }
           if [ "$EVENT" != pull_request ]; then
             if tested; then
-              for o in code floats proofs oracle notebooks dbt dbtreplay evidence python models; do out "$o=false"; done
+              for o in code floats proofs oracle notebooks dbt dbtreplay evidence python action models; do out "$o=false"; done
               out 'matrix={"backends":["duckdb"]}'
               exit 0
             fi
@@ -355,6 +360,13 @@ jobs:
           else
             out python=false
           fi
+          # The `sverify check` action (`actions/check/`), which only `action` reads; the
+          # CLI it runs counts too.
+          if [ "$batch" = true ] || grep -qE '^(actions/|python/src/sverify/cli/|\.github/workflows/ci\.yml$)' <<< "$files"; then
+            out action=true
+          else
+            out action=false
+          fi
           # The TLA+ models, which only `refresh-model` reads.
           if grep -qE '^(models/|\.github/workflows/ci\.yml$)' <<< "$files"; then
             out models=true
@@ -386,8 +398,29 @@ jobs:
           m=$(matrix "$backends" "$(flag "$skip_spark")")
           echo "matrix: $m"
           out "matrix=$m"
-          if grep -qE '^(float-bounds/|core/Sverify/Core/Float(Exact|Format)?\.lean$|lean-toolchain$|\.github/workflows/ci\.yml$|\.github/actions/setup-lean/)' \
-             <<< "$files"; then
+          # float-bounds' bridge imports the core's modules (`import Sverify.*`
+          # in float-bounds/), and those import others: the closure of the
+          # imports is what a change to must rebuild it, read from the
+          # sources.
+          float_deps() {
+            local todo seen="" m f p
+            todo=$(grep -rhoE '^((public|meta|private) )*import Sverify\.[A-Za-z0-9_.]+' float-bounds --include='*.lean' | awk '{print $NF}' | sort -u)
+            while [ -n "$todo" ]; do
+              m=${todo%%$'\n'*}
+              case "$todo" in *$'\n'*) todo=${todo#*$'\n'} ;; *) todo= ;; esac
+              case $'\n'"$seen"$'\n' in *$'\n'"$m"$'\n'*) continue ;; esac
+              seen="$seen"$'\n'"$m"
+              f=
+              for p in core analysis; do [ -f "$p/${m//.//}.lean" ] && f="$p/${m//.//}.lean"; done
+              [ -n "$f" ] || continue
+              echo "$f"
+              todo="$todo"$'\n'$(grep -hoE '^((public|meta|private) )*import Sverify\.[A-Za-z0-9_.]+' "$f" | awk '{print $NF}' || true)
+            done
+          }
+          float_deps > "$RUNNER_TEMP/float-deps"
+          echo "float-bounds reads $(wc -l < "$RUNNER_TEMP/float-deps") core files"
+          if grep -qE '^(float-bounds/|core/(lakefile\.toml|lake-manifest\.json)$|lean-toolchain$|\.github/workflows/ci\.yml$|\.github/actions/setup-lean/)' <<< "$files" \
+             || grep -qxFf "$RUNNER_TEMP/float-deps" <<< "$files"; then
             out floats=true
           else
             out floats=false
@@ -732,6 +765,85 @@ jobs:
           prune-cache: true
           cache-suffix: pruned
       - run: bash python/scripts/wheel_tests.sh --editable python --fast -n 4 --dist worksteal
+
+  # The `sverify check` action (`actions/check/`, #770) on its example pipelines, with the
+  # PyPI release and with this checkout (editable, on the run's checker): the release does
+  # not have what main has, and `require-proved` says so.
+  action:
+    needs: [route, changes, checker]
+    if: needs.changes.outputs.action == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: [release, branch]
+        include:
+          - leg: branch
+            source: -e ./engines/duckdb -e ./python
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
+      - if: matrix.leg == 'branch'
+        uses: ./.github/actions/checker
+      - name: A proved pipeline exits 0
+        id: proved
+        uses: ./actions/check
+        with:
+          targets: actions/check/example/orders.py
+          source: ${{ matrix.source }}
+          upload: "false"
+          sarif-file: proved.sarif
+      - name: An unproved one exits 1, beside the proved one, in one SARIF
+        id: unproved
+        continue-on-error: true
+        uses: ./actions/check
+        with:
+          targets: |
+            actions/check/example/orders.py
+            actions/check/example/unproved.py
+          source: ${{ matrix.source }}
+          upload: "false"
+          sarif-file: both.sarif
+      - name: require-proved needs sverify 0.9.0
+        id: required
+        continue-on-error: true
+        uses: ./actions/check
+        with:
+          targets: actions/check/example/orders.py
+          source: ${{ matrix.source }}
+          require-proved: "true"
+          upload: "false"
+          sarif-file: required.sarif
+      - name: Read the results
+        env:
+          LEG: ${{ matrix.leg }}
+          PROVED: ${{ steps.proved.outputs.exit-code }}
+          UNPROVED: ${{ steps.unproved.outputs.exit-code }}
+          UNPROVED_OUTCOME: ${{ steps.unproved.outcome }}
+          REQUIRED: ${{ steps.required.outputs.exit-code }}
+          REQUIRED_OUTCOME: ${{ steps.required.outcome }}
+        run: |
+          test "$PROVED" = 0
+          test "$UNPROVED" = 1 && test "$UNPROVED_OUTCOME" = failure
+          if [ "$LEG" = release ]; then
+            # The release has no --require-proved: one failure before any target runs.
+            test "$REQUIRED_OUTCOME" = failure && test -z "$REQUIRED"
+          else
+            test "$REQUIRED_OUTCOME" = success && test "$REQUIRED" = 0
+          fi
+          python - <<'PY'
+          import json
+          one = json.load(open("proved.sarif"))
+          both = json.load(open("both.sarif"))
+          assert one["version"] == both["version"] == "2.1.0"
+          assert len(both["runs"]) == 1 and not one["runs"][0]["results"]
+          ids = {r["ruleId"] for r in both["runs"][0]["results"]}
+          assert {"may_be_false", "needs"} <= ids, ids
+          assert {r["id"] for r in both["runs"][0]["tool"]["driver"]["rules"]} >= ids
+          PY
 
   # sverify without DuckDB (#1288, #1485 item 16): the base install, no extra,
   # in an environment that has no `duckdb`. `verify` proves a plan and writes
@@ -1098,9 +1210,10 @@ jobs:
           $DBT seed $SHOP
           $DBT build $SHOP --exclude selector:sverify_proved
           $DBT test $SHOP --select selector:sverify_proved
-      # dbt packages' integration projects (#859): built with dbt on DuckDB
-      # and checked with sverify-dbt, against the ledgers in dbt/replay/.
-      # A gate: it reports a change as a warning and never fails the job.
+      # dbt packages' integration projects and dbt's own test suites (#859):
+      # built with dbt on DuckDB and checked with sverify-dbt, against the
+      # ledgers in dbt/replay/. A changed outcome warns (exit 1); an `unsound`
+      # entry, a proof dbt's run contradicts, fails the job (exit 2).
       - if: needs.changes.outputs.dbtreplay == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -1112,11 +1225,16 @@ jobs:
           DO_NOT_TRACK: "1"
           GH_TOKEN: ${{ github.token }}  # the closed-issue check asks `gh`
         run: |
-          if ! uv run --no-sync python -m sverify_dbt.replay --check > "$RUNNER_TEMP/replay.txt" 2>&1; then
+          code=0
+          uv run --no-sync python -m sverify_dbt.replay --check > "$RUNNER_TEMP/replay.txt" 2>&1 || code=$?
+          cat "$RUNNER_TEMP/replay.txt"
+          { echo "### dbt replays (#859)"; echo '```'; cat "$RUNNER_TEMP/replay.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" = 2 ]; then
+            echo "::error title=dbt replay: unsound::a test sverify-dbt proves fails in dbt's own run; see the step's log"
+            exit 1
+          elif [ "$code" != 0 ]; then
             echo "::warning title=dbt replay gate::the replay check found something (an outcome that differs from dbt/replay/, or an entry on a closed issue); see the step's log and the summary"
           fi
-          cat "$RUNNER_TEMP/replay.txt"
-          { echo "### dbt packages' integration projects (#859)"; echo '```'; cat "$RUNNER_TEMP/replay.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       # The tour's dbt notebook (`poe notebooks` skips it: the python/
       # environment has no dbt).
       - env:
@@ -1244,7 +1362,7 @@ jobs:
   # follows a failed `changes` or `checker`, which this catches. A pull request
   # into another branch fails it (see the header).
   qa:
-    needs: [changes, checker, lean, golden, static, test, outside-repo, no-duckdb, notebooks, bench, dbt, template, float-bounds, oracle-a, ledger, refresh-model]
+    needs: [changes, checker, lean, golden, static, test, outside-repo, action, no-duckdb, notebooks, bench, dbt, template, float-bounds, oracle-a, ledger, refresh-model]
     if: always()
     runs-on: ubuntu-latest
     steps:

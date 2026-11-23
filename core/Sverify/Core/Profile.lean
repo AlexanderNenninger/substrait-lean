@@ -45,10 +45,10 @@ inductive AggAlgo where
   /-- Welford's update with Chan's merge (`duckdb-var-stddev`, `duckdb-covar`,
   `spark-var-stddev`, `spark-covar`). -/
   | welfordChan
-  /-- Two-pass per block, blocks merged by Chan's formula (`polars-var-std`,
+  /-- Two-pass per block, blocks merged by Chan's formula (`polars-var-std-streaming`,
   ungrouped). -/
   | blockTwoPass
-  /-- Pairwise summation (`polars-sum-float`). -/
+  /-- Pairwise summation (`polars-sum-float-streaming`). -/
   | pairwiseSum
   /-- Kahan's compensated summation (`duckdb-kahan-sum`, `fsum`). -/
   | kahanSum
@@ -405,6 +405,22 @@ omit [Boxes.Ambient] in
 theorem FloatCode.round_negNan : FloatCode.round FloatCode.negNan = FloatCode.negNan := by
   have h := FloatCode.negNan_eq'
   unfold FloatCode.round FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
+omit [Boxes.Ambient] in
+theorem FloatCode.roundEven_negZero : FloatCode.roundEven FloatCode.negZero = FloatCode.negZero := by
+  have h := FloatCode.negZero_eq'
+  unfold FloatCode.roundEven FloatCode.onMag
+  split
+  · rfl
+  · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm
+
+omit [Boxes.Ambient] in
+theorem FloatCode.roundEven_negNan : FloatCode.roundEven FloatCode.negNan = FloatCode.negNan := by
+  have h := FloatCode.negNan_eq'
+  unfold FloatCode.roundEven FloatCode.onMag
   split
   · rfl
   · rename_i hm; exact absurd (by rw [FloatCode.mag, h]; omega) hm

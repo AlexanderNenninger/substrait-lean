@@ -95,11 +95,8 @@ from sverify._unsupported import ConditionError, SverifyWarning
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify._user_text import did_you_mean
 from sverify._verdict import split_assumed, verdict
-from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
-    _DATA_ONLY,
-    DATA_CHECK,
+from sverify.conditions import (
     ON_DATA,
-    ROWS_SHOWN,
     Approx,
     ArrivesWithin,
     Discharged,
@@ -110,28 +107,15 @@ from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts
     Postcondition,
     PreconditionError,
     References,
-    RelationRows,
     RowsPer,
     TableCondition,
     TextFact,
     Unique,
-    _check_approx,
-    _count,
-    _duplicate_rows,
-    _KeyResult,
     _positions,
-    _relax,
-    _Rows,
-    approx,
-    arrives_within,
     expand_keys,
     label,
-    max_rows,
     q,
-    references,
     resolve,
-    rows_per,
-    show_duration,
     unique,
 )
 from sverify.counterexample import Counterexample
@@ -150,22 +134,12 @@ from sverify.proposers import (
     Obligation,
     _text_condition,
 )
-from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
-    _DECIMAL_ARG,
-    _EPOCH_DAY,
-    _MICROSECOND,
-    _ORDERED,
+from sverify.report import (
     CONSTANT_HINT,
-    FINITE_ASSUMED,
     INFINITE,
     INFINITE_HINT,
-    OVERFLOW_HINT,
-    PARAMS_NOTE,
-    RUNTIME_CHECK,
     SOURCE_THRESHOLD,
     SOURCE_THRESHOLD_HINT,
-    SUM_ASSUMED,
-    TIES_HINT,
     TRUNC_HINT,
     ColumnFacts,
     Condition,
@@ -176,30 +150,16 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     PostconditionError,
     Report,
     Semantics,
-    TiePlace,
     Transform,
-    UnprovedReason,
-    UnverifiedRunError,
     VerificationError,
-    _assumption,
     _by_table,
-    _cause,
-    _labels_by_table,
     _needed,
-    _needed_deferred,
-    _sql_value,
     _sum,
-    _sum_assumed,
-    _transfer_failure,
     _truncates,
-    _unparen,
-    _would_hold,
     column_facts,
     condition_query,
-    error_text,
     proved_not_null,
     render_fact,
-    tie_places,
     violating_rows,
     violation_counts,
     violations,
@@ -1970,8 +1930,9 @@ def _checker_decimals(dtypes: dict[str, Any], kinds: Sequence[dict] | None) -> d
     """`dtypes` as the run returns them (`outputKinds`, from `Write.relKinds`
     and `Rel.outBits`): a decimal `AVG` or `SUM` and an integer's width differ
     from Ibis's (a computed integer is 64 bits, a passed-through column keeps its
-    declared width), and a timestamp has microseconds. A checker without the
-    field, or with another number of columns, leaves Ibis's types as they are."""
+    declared width, a cast has the width it names), and a timestamp has
+    microseconds. A checker without the field, or with another number of
+    columns, leaves Ibis's types as they are."""
     if kinds is None or len(kinds) != len(dtypes):
         return dtypes
     return {name: _checker_type(ty, k) for (name, ty), k in zip(dtypes.items(), kinds, strict=True)}

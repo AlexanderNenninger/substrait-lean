@@ -1281,11 +1281,16 @@ def Lowering.zeroTemplate (f : UnFn) : Expr :=
 
 def Lowering.froundTemplate : Expr := Lowering.zeroTemplate .fround
 def Lowering.fceilTemplate : Expr := Lowering.zeroTemplate .fceil
+def Lowering.froundEvenTemplate : Expr := Lowering.zeroTemplate .froundEven
 
 omit [Boxes.Ambient] in
 /-- The templates read their argument, for the entries' strictness. -/
 theorem Lowering.froundTemplate_must : 0 ∈ Lowering.froundTemplate.must := by
   simp [Expr.must, Lowering.froundTemplate, Lowering.zeroTemplate]
+
+omit [Boxes.Ambient] in
+theorem Lowering.froundEvenTemplate_must : 0 ∈ Lowering.froundEvenTemplate.must := by
+  simp [Expr.must, Lowering.froundEvenTemplate, Lowering.zeroTemplate]
 
 omit [Boxes.Ambient] in
 theorem Lowering.fceilTemplate_must : 0 ∈ Lowering.fceilTemplate.must := by

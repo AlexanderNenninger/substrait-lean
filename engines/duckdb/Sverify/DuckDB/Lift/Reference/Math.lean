@@ -34,10 +34,6 @@ abbrev Substrait.liftReference.elementary_sqrt : Substrait.LiftEntry Substrait.S
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":17,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sqrt) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_sqrt_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.sqrt)
-  ((Lean.Json.parse (Substrait.liftReference.elementary_sqrt).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.elementary_sqrt).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.elementary_exp_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -52,10 +48,6 @@ abbrev Substrait.liftReference.elementary_exp : Substrait.LiftEntry Substrait.Se
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":18,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.exp) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_exp_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.exp)
-  ((Lean.Json.parse (Substrait.liftReference.elementary_exp).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.elementary_exp).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.elementary_ln_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -69,10 +61,6 @@ theorem Substrait.liftReference.elementary_ln_agree : ∀ (x : Substrait.Value),
 abbrev Substrait.liftReference.elementary_ln : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.ln) :=
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":19,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.ln) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_ln_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.ln)
-  ((Lean.Json.parse (Substrait.liftReference.elementary_ln).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.elementary_ln).tmpl
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.elementary_log10_agree : ∀ (x : Substrait.Value),
@@ -89,10 +77,6 @@ abbrev Substrait.liftReference.elementary_log10 : Substrait.LiftEntry Substrait.
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":20,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log10) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_log10_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.log10)
-  ((Lean.Json.parse (Substrait.liftReference.elementary_log10).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.elementary_log10).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.elementary_log2_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -106,10 +90,6 @@ theorem Substrait.liftReference.elementary_log2_agree : ∀ (x : Substrait.Value
 abbrev Substrait.liftReference.elementary_log2 : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.log2) :=
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":21,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.log2) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_log2_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.log2)
-  ((Lean.Json.parse (Substrait.liftReference.elementary_log2).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.elementary_log2).tmpl
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.elementary_sin_agree : ∀ (x : Substrait.Value),
@@ -125,10 +105,6 @@ abbrev Substrait.liftReference.elementary_sin : Substrait.LiftEntry Substrait.Se
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":22,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.sin) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_sin_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.sin)
-  ((Lean.Json.parse (Substrait.liftReference.elementary_sin).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.elementary_sin).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.elementary_cos_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -142,10 +118,6 @@ theorem Substrait.liftReference.elementary_cos_agree : ∀ (x : Substrait.Value)
 abbrev Substrait.liftReference.elementary_cos : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.cos) :=
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":23,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.cos) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_cos_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.cos)
-  ((Lean.Json.parse (Substrait.liftReference.elementary_cos).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.elementary_cos).tmpl
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.elementary_tan_agree : ∀ (x : Substrait.Value),
@@ -161,10 +133,6 @@ abbrev Substrait.liftReference.elementary_tan : Substrait.LiftEntry Substrait.Se
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":24,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.tan) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_tan_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.tan)
-  ((Lean.Json.parse (Substrait.liftReference.elementary_tan).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.elementary_tan).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.elementary_asin_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -178,10 +146,6 @@ theorem Substrait.liftReference.elementary_asin_agree : ∀ (x : Substrait.Value
 abbrev Substrait.liftReference.elementary_asin : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.asin) :=
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":25,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.asin) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_asin_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.asin)
-  ((Lean.Json.parse (Substrait.liftReference.elementary_asin).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.elementary_asin).tmpl
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.elementary_acos_agree : ∀ (x : Substrait.Value),
@@ -197,10 +161,6 @@ abbrev Substrait.liftReference.elementary_acos : Substrait.LiftEntry Substrait.S
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":26,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.acos) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_acos_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.acos)
-  ((Lean.Json.parse (Substrait.liftReference.elementary_acos).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.elementary_acos).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.elementary_atan_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -214,6 +174,46 @@ theorem Substrait.liftReference.elementary_atan_agree : ∀ (x : Substrait.Value
 abbrev Substrait.liftReference.elementary_atan : Substrait.LiftEntry Substrait.Semantics.reference (Substrait.DuckFn.elementary Substrait.FMath.atan) :=
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":27,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un (Substrait.UnFn.fmath Substrait.FMath.atan) (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.elementary_atan_agree⟩
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.sqrt)
+  ((Lean.Json.parse (Substrait.liftReference.elementary_sqrt).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.elementary_sqrt).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.exp)
+  ((Lean.Json.parse (Substrait.liftReference.elementary_exp).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.elementary_exp).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.ln)
+  ((Lean.Json.parse (Substrait.liftReference.elementary_ln).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.elementary_ln).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.log10)
+  ((Lean.Json.parse (Substrait.liftReference.elementary_log10).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.elementary_log10).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.log2)
+  ((Lean.Json.parse (Substrait.liftReference.elementary_log2).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.elementary_log2).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.sin)
+  ((Lean.Json.parse (Substrait.liftReference.elementary_sin).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.elementary_sin).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.cos)
+  ((Lean.Json.parse (Substrait.liftReference.elementary_cos).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.elementary_cos).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.tan)
+  ((Lean.Json.parse (Substrait.liftReference.elementary_tan).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.elementary_tan).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.asin)
+  ((Lean.Json.parse (Substrait.liftReference.elementary_asin).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.elementary_asin).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.acos)
+  ((Lean.Json.parse (Substrait.liftReference.elementary_acos).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.elementary_acos).tmpl
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.elementary Substrait.FMath.atan)
   ((Lean.Json.parse (Substrait.liftReference.elementary_atan).json).toOption.getD Lean.Json.null) ==

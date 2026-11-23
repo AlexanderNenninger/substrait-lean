@@ -109,7 +109,7 @@ assert sv.verify(fixed, requires=bounded, ensures=[_.total > 5]).verdict == sv.V
 ```
 
 `report.issues` lists runtime errors that may happen (division by zero,
-overflow at the declared width, bad casts); an error makes `proved` False.
+overflow at the declared width, bad casts); an error leaves the verdict short of `PROVED`.
 Sverify infers the bounds that rule most of them out (`amount * 2` needs
 `_.amount < 2**62`) and, by default (`on_inferred="error"`), reports each
 under `needs:` (`report.needs`, ready for `requires=` as
