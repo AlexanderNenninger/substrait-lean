@@ -152,7 +152,8 @@ def test_sequence_needs_a_total_sort(con) -> None:
     req = {"t": [_.i.between(-100, 100)]}
     seq = sv.equivalent(rows="sequence")
     unsorted = sv.verify(t.select("k", "i"), requires=req, ensures=[seq])
-    assert "not sorted" in routes.choose(unsorted, "duckdb").why
+    why = routes.choose(unsorted, "duckdb").why
+    assert "not sorted" in why and "order_by" in why and 'rows="multiset"' in why
     order = [ibis.asc("k", nulls_first=True), "i"]
     tied = sv.verify(t.select("k", "i").order_by(order), requires=req, ensures=[seq])
     assert not tied._sequence_determined

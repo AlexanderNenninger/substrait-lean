@@ -1457,7 +1457,8 @@ def choose(
     if report.lenses.rows == "sequence" and not report._sequence_determined:
         return refuse(
             "the postcondition observes the rows as a sequence, and the plan does not fix their "
-            "order: its result is not sorted on a key of its input"
+            "order: its result is not sorted on a key of its input; sort the result with "
+            'order_by on a key, or state sv.equivalent(rows="multiset")'
         )
     from sverify.sql.core import _base
 

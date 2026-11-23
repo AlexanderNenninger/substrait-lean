@@ -66,7 +66,11 @@ def ObsRow.shimmed (shim : String) (ids : List String) : ObsRow :=
 def ObsRow.upTo (q : Obs) (ids : List String) : ObsRow :=
   { cls := .refinesUpTo, q, evidence := .ofIds ids }
 
-/-- Within the bound named `b` of a result the reference allows. -/
+/-- Within the bound named `b` of a result the reference allows. A row constructor:
+it states the class and the bound and proves nothing. A row is proved where `proved`
+names its theorem (`fsumOrder`, `fsumRounding`, the `stat_algo` rows by
+`StdModel.core_var_chan` and `core_var_polars`), tested on the facts `ids`
+otherwise, and tracked by an issue where neither (`tracking`). -/
 def ObsRow.approxWithin (b : String) (ids : List String) : ObsRow :=
   { cls := .approx, q := { floats := .within b }, evidence := .ofIds ids }
 
