@@ -250,7 +250,7 @@ def test_a_decimal_rescale_runs_as_the_reference_on_polars():
         ),
     )
     t = con.table("t")
-    report = sv.verify(t.select(r=t.d.cast("decimal(3, 2)")), requires={"t": [ibis._.d.abs() < 9]})
+    report = sv.verify(t.select(r=t.d.cast("decimal(4, 2)")))
     assert report.verdict == sv.Verdict.PROVED, str(report)
     out = report.run(con, "polars")
     assert report.routes["polars"].taken == "translated", report.routes["polars"]
