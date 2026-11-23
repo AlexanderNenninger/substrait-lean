@@ -1,0 +1,3 @@
+### An engine plugin brings its state store: `ProfilePlugin.store`
+
+`ProfilePlugin.store` makes the state store an engine keeps an incremental pipeline's state in. DuckDB keeps it in a DuckDB table, Polars and Spark in Arrow tables, as before. A plugin without one runs one-shot plans only, and refreshing a node on its engine raises an error that says so, as a dialect-only plugin like `sverify-snowflake` does. `ProfilePlugin` is outside the 1.x promise ([stability.md](docs/stability.md)), so a plugin written for 0.8.0 adds the field to keep refreshing on its engine ([#1189](https://github.com/AlexanderNenninger/substrait-lean/issues/1189), [#1359](https://github.com/AlexanderNenninger/substrait-lean/pull/1359)).
