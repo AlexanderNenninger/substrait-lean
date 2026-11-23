@@ -20,8 +20,9 @@ process of its own, twice:
   were built (after a garbage collection, Arrow's `release_unused` and
   `malloc_trim`, so freed memory is not counted), and the residual of
   that growth the parts above leave unexplained. The timed run builds no
-  Parquet of its own, and drops each batch once the source has it. The residual includes the engines' own
-  libraries, loaded at the first refresh, a constant: compare it across N;
+  Parquet of its own, and drops each batch once the source has it. The
+  residual includes the engines' own libraries, loaded at the first
+  refresh, a constant: compare it across N;
 * sized: after each refresh, the view's state (`arrow_of(view.state)`): its
   rows, and its size as Parquet, against the Parquet size of the rows read
   so far. The worst of the four ratios and the last one are printed.
