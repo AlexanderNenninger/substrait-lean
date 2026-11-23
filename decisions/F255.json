@@ -1,0 +1,17 @@
+{
+  "id": "F255",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#271 Polars step 2: `Polars.written` retires. The engine's functions are `Profile.polars`'s functions with only the error side overridden, each case citing its fact, so the value side is written once. The engine runs `lowerRel?`, and `Rel.polars_sound` is restated for the lowered plan: where `mayIssues` reports only assumed issues, the lowered plan's evaluation equals the plan's.",
+  "issues": [
+    271
+  ],
+  "amended_by": [
+    "F256",
+    "F259"
+  ],
+  "source": "fable-ruling-255-271-polars-error-side.md",
+  "note": "Fills the gap F235 left about where the error side lives. Unproving six rows (A) and keeping a theorem about value shims that no longer run (C) are declined. The override is named by the `Engine` field it fills, not a new word. Conditions: N1, nothing proved today is lost, including the six `Rel.polars_sound` rows, `GuardFreeSide` and its consumers, and the guards `run_guard_free` drops. N2, `#print axioms` is unchanged. N3, the proof composes `lowerRel?_sound` with the off-error-side equality, amended by F256. N4, the hooks leave in the same PR, after track B's entry change merges. N5, Spark follows the same shape. Its `fmod` of doubles is the one exception, per F259."
+}

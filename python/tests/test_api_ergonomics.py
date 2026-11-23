@@ -7,7 +7,8 @@ import pytest
 from ibis import _
 
 import sverify as sv
-from sverify.contracts import CheckedCondition, References, requires_by_input
+from sverify.conditions import Postcondition, References
+from sverify.contracts import requires_by_input
 
 
 def _needed(report):
@@ -154,7 +155,7 @@ def test_connection_public_attributes_are_generic():
     ],
 )
 def test_why_a_condition_is_unproved(value, why):
-    assert CheckedCondition("c", False, value).why.startswith(why)
+    assert Postcondition("c", False, value).why.startswith(why)
 
 
 def test_a_nullable_column_suggests_not_null_only_where_null_alone_fails():

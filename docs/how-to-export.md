@@ -155,7 +155,7 @@ print(doubled_paid.verify(paid=paid_contract.schema()).verdict)
 
 ```bash
 # skip: runs on pipelines/orders.py, the reader's file
-sverify contract export pipelines/orders.py:paid --format odcs -o paid.odcs.yaml
+sverify contract export pipelines/orders.py:paid -o paid.odcs.yaml
 ```
 
 The export is one schema object named after the node, with a property per

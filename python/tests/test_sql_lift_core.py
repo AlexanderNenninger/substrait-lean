@@ -26,7 +26,7 @@ from sverify.engines import UnsupportedError
 from sverify.errors import VerificationError
 from sverify.io import StaticSource
 from sverify.plan_json import Unsupported as Refused
-from sverify.sql_lift import DUCKDB, REFERENCE, lift
+from sverify.sql_lift import DUCKDB, PORTABLE, lift
 from sverify.testing import LeanRaised, lean_values
 from sverify_dev import catalogue, slt
 from sverify_dev.lift import check, duckdb_result, score
@@ -46,6 +46,10 @@ QUERIES = [
     " CASE qty WHEN 3 THEN 1.5 ELSE 2 END AS c, coalesce(qty, 0) AS z FROM orders",
     "SELECT id, cost * cost AS c2, cost + 1 AS c1, cost * 2 AS cd, cost > 3.5 AS big FROM orders",
     "SELECT 1 + 1 AS two, 7 // 2 AS q, 1 // 1 AS one",
+    # A BETWEEN of a BETWEEN: the operand is bound once (#2338).
+    "SELECT id, (((qty BETWEEN 1 AND 3)::INT BETWEEN 0 AND 1)::INT BETWEEN 0 AND 2) AS b,"
+    " ((price + 1 BETWEEN 0 AND 5)::INT + qty BETWEEN 2 AND 6) AS c FROM orders",
+    "SELECT (((1 BETWEEN 0 AND 2)::INT BETWEEN 0 AND 2)::INT BETWEEN 0 AND 2) AS nested",
     # IS [NOT] TRUE/FALSE, never NULL: COALESCE of the test (#177).
     "SELECT id, (qty > 2) IS TRUE AS t, (qty > 2) IS NOT TRUE AS nt,"
     " (price > 1.5) IS FALSE AS f, (price > 1.5) IS NOT FALSE AS nf FROM orders",
@@ -82,14 +86,14 @@ def test_oracles_a_and_c(query):
 
 @pytest.mark.parametrize("query", [q for q in QUERIES if isinstance(q, str)])
 def test_the_reference_lift_is_checked_too(query):
-    plan = json.dumps(lift(query, SCHEMAS, "reference").plan)
+    plan = json.dumps(lift(query, SCHEMAS, "portable").plan)
     code, out, err = run_checker((), plan)
     assert code == 0, err or out
 
 
 def test_the_profiles_differ_only_in_what_functions_do():
     fields = DUCKDB.__dataclass_fields__
-    assert {f for f in fields if getattr(DUCKDB, f) != getattr(REFERENCE, f)} == {
+    assert {f for f in fields if getattr(DUCKDB, f) != getattr(PORTABLE, f)} == {
         "name",
         "min_mod_neg_one",
         "float_to_int",
@@ -125,11 +129,12 @@ def options(plan: dict, name: str) -> list[list[dict]]:
 
 def test_division_states_its_meaning():
     query = "SELECT amount / qty AS r, amount // qty AS q FROM orders"
-    duck, ref = (lift(query, SCHEMAS, s).plan for s in ("duckdb", "reference"))
+    duck, ref = (lift(query, SCHEMAS, s).plan for s in ("duckdb", "portable"))
     zero = {"name": "on_division_by_zero"}
-    # `/` divides doubles: by zero DuckDB gives inf, the reference raises.
+    # `/` divides doubles: by zero DuckDB gives inf, the reference raises (its
+    # proved template keeps the function's default, an error).
     assert options(duck, "divide")[0] == [{**zero, "preference": ["IEEE"]}]
-    assert options(ref, "divide")[0] == [{**zero, "preference": ["ERROR"]}]
+    assert options(ref, "divide")[0] == []
     # `//` divides integers, and raises by zero in both.
     for plan in (duck, ref):
         assert {**zero, "preference": ["ERROR"]} in options(plan, "divide")[1]
@@ -148,6 +153,61 @@ def test_nested_double_arithmetic_lifts_to_a_linear_plan():
     assert size(12) - size(11) <= 1.1 * (size(5) - size(4))
 
 
+#: A BETWEEN whose operand or bound divides by `y`, written so that the lift
+#: binds the division below the SELECT list (#2338) or leaves it in place, under
+#: a `CASE` that every row takes.
+BETWEEN_DIVISIONS = [
+    "x BETWEEN 1 // y AND 2",
+    "(1 // y) BETWEEN 0 AND 2",
+    "((1 // y) BETWEEN 0 AND 2)::INT BETWEEN 0 AND 1",
+    "CASE WHEN x IS NOT NULL THEN (1 // y) BETWEEN 0 AND 2 END",
+]
+
+
+def _duckdb_and_lean(query: str, rows: list[tuple]) -> tuple[list | None, list | None]:
+    """The values of `query` over `t(x, y)` in DuckDB and in the Lean evaluator
+    of the lifted plan; None where it raises."""
+    table = pa.table({"x": [r[0] for r in rows], "y": [r[1] for r in rows]})
+    try:
+        expected: list | None = duckdb_result(query, {"t": table}).column("b").to_pylist()
+    except duckdb.Error:
+        expected = None
+    plan = json.dumps(lift(query, {"t": ibis.Schema.from_pyarrow(table.schema)}).plan)
+    inlined = json.dumps(slt._typed_inline(json.loads(plan), {"t": rows}, None))
+    try:
+        got: list | None = [r[0] for r in lean_values(inlined)]
+    except LeanRaised:
+        got = None
+    return expected, got
+
+
+@pytest.mark.parametrize("operand", BETWEEN_DIVISIONS)
+def test_a_division_by_zero_in_a_between_raises_shared_or_in_place(operand):
+    """A divisor of zero raises in DuckDB and in Lean whether the lift binds the
+    division to a column or writes it in place; the other rows agree (#2338)."""
+    query = f"SELECT {operand} AS b FROM t"
+    zero = _duckdb_and_lean(query, [(1, 1), (5, 0)])
+    assert zero == (None, None), query
+    ok = _duckdb_and_lean(query, [(1, 1), (5, 2), (None, 1)])
+    assert ok[0] is not None and ok[0] == ok[1], query
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [[(1, 0), (2, 0)], [(-1, 0), (-2, 0)], [(1, 0), (-1, 0), (None, 0)], [(-1, 1), (3, 1)]],
+    ids=["lower passes", "lower is false", "mixed, with NULL", "no zero divisor"],
+)
+def test_a_division_by_zero_in_the_upper_bound_agrees_with_duckdb(rows):
+    """The upper bound is lifted without sharing (#2339): it is not bound below
+    the SELECT list, where it would be evaluated on rows the `AND` may not reach.
+    DuckDB and Lean give the same answer on every row set. Both raise by a zero
+    divisor even where the lower comparison is FALSE (neither short-circuits)."""
+    query = "SELECT x BETWEEN 0 AND 1 // y AS b FROM t"
+    duck, lean = _duckdb_and_lean(query, rows)
+    assert duck == lean
+    assert (duck is None) == any(y == 0 for _, y in rows)
+
+
 def test_nested_double_arithmetic_checks_quickly():
     # The check end to end, in a subprocess with a timeout: six divisions took
     # 193 s before #1952, ten now take a few seconds.
@@ -156,6 +216,38 @@ def test_nested_double_arithmetic_checks_quickly():
         "cols = {f'c{i}': 'float64' for i in range(10)}\n"
         "sv.verify('SELECT ' + ' / '.join(cols) + ' AS s FROM t',"
         " tables={'t': ibis.table(cols, name='t')}, semantics='duckdb', on_inferred='warn')\n"
+    )
+    subprocess.run([sys.executable, "-c", script], check=True, timeout=120)
+
+
+def _nested_between(depth: int) -> str:
+    q = "qty"
+    for _ in range(depth):
+        q = f"({q} BETWEEN 0 AND 2)::INT"
+    return f"SELECT {q} AS c FROM orders"
+
+
+def test_nested_between_lifts_to_a_linear_plan():
+    # A BETWEEN names its operand in both bounds; the lift binds it to a column
+    # once, so every further level adds the same size (#2338). Copied, the plan
+    # doubled per level, and 30 levels were about 2^24 times 6.
+    def size(n: int) -> int:
+        return len(json.dumps(lift(_nested_between(n), SCHEMAS).plan))
+
+    assert size(12) - size(11) <= 1.1 * (size(5) - size(4))
+    assert size(30) < 100_000
+
+
+def test_nested_between_checks_quickly():
+    # The check end to end, in a subprocess with a timeout: ten levels did not
+    # finish in 100 s before #2338.
+    script = (
+        "import ibis, sverify as sv\n"
+        "q = 'qty'\n"
+        "for _ in range(12):\n"
+        "    q = f'({q} BETWEEN 0 AND 2)::INT'\n"
+        "sv.verify(f'SELECT {q} AS c FROM t', tables={'t': ibis.table({'qty': 'int32'}, name='t')},"
+        " semantics='duckdb', on_inferred='warn')\n"
     )
     subprocess.run([sys.executable, "-c", script], check=True, timeout=120)
 
@@ -202,6 +294,9 @@ def test_duckdb_types_literals_and_decimals_its_own_way():
     ("query", "message"),
     [
         ("SELECT my_udf(id) FROM orders", "unknown function my_udf"),
+        # #328: DuckDB 2.0 has no `iff`, and its `if` takes three arguments.
+        ("SELECT iff(id > 1, 1, 0) FROM orders", "unknown function iff"),
+        ("SELECT if(id > 1, 1) FROM orders", "takes three arguments"),
         # Literals SQLGlot reads otherwise.
         ("SELECT 1__2", "underscore not between two digits"),
         ("SELECT 1._5", "underscore not between two digits"),
@@ -258,9 +353,9 @@ def test_a_duckdb_sql_step_chains():
     step = sv.sql(
         "SELECT o.id, c.region FROM orders o JOIN customers c ON c.name = o.customer",
         dialect="duckdb",
-        semantics="reference",
+        semantics="portable",
     )
-    assert step.dialect == "duckdb" and step.semantics == "reference"
+    assert step.dialect == "duckdb" and step.semantics == "portable"
     node = orders.pipe(step, customers=customers)
     node.refresh(engine="duckdb")
     assert sorted(rows(node)) == [(1, "eu"), (2, "us"), (3, "eu")]
@@ -297,16 +392,19 @@ def test_sql_checks_dialect_and_semantics():
         sv.sql("SELECT a FROM t", dialect="postgres", t=t)
     with pytest.raises(ValueError, match="semantics must be"):
         sv.sql("SELECT a FROM t", dialect="duckdb", semantics="spark", t=t)  # type: ignore[call-overload]
+    # 1.0 keeps no synonym (#2081): the refusal names the new name.
+    with pytest.raises(ValueError, match="'reference' is called 'portable' since 1.0"):
+        sv.sql("SELECT a FROM t", semantics="reference", t=t)  # type: ignore[call-overload]
     with pytest.raises(UnsupportedError, match="unknown function"):
         sv.sql("SELECT my_udf(a) FROM t", dialect="duckdb", t=t)
 
 
-def test_sql_uses_the_reference_semantics_by_default():
+def test_sql_uses_the_portable_semantics_by_default():
     # #411: DuckDB's semantics is an explicit opt-in.
     t = ibis.table({"a": "int64"}, name="t")
     op: Any = sv.sql("SELECT a FROM t", t=t).op()
-    assert (op.dialect, op.semantics) == ("duckdb", "reference")
-    assert sv.sql("SELECT a FROM t").semantics == "reference"
+    assert (op.dialect, op.semantics) == ("duckdb", "portable")
+    assert sv.sql("SELECT a FROM t").semantics == "portable"
 
 
 def test_verify_states_and_takes_its_semantics():
@@ -315,12 +413,14 @@ def test_verify_states_and_takes_its_semantics():
     sql = "SELECT a / b AS ratio FROM t"
     ref = sv.verify(sql, tables={"t": t}, on_inferred="off")
     duck = sv.verify(sql, tables={"t": t}, semantics="duckdb", on_inferred="off")
-    assert (ref.semantics, duck.semantics) == ("reference", "duckdb")
-    assert "semantics: reference" in ref.details().splitlines()
+    assert (ref.semantics, duck.semantics) == ("portable", "duckdb")
+    assert "semantics: portable" in ref.details().splitlines()
     assert any("zero" in str(i) for i in ref.issues)
     assert not any("zero" in str(i) for i in duck.issues)
     with pytest.raises(ValueError, match="semantics must be"):
         sv.verify(sql, tables={"t": t}, semantics="sparkk")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="'reference' is called 'portable' since 1.0"):
+        sv.verify(sql, tables={"t": t}, semantics="reference")
     # Spark's profile reads Ibis transformations; SQL is DuckDB's.
     with pytest.raises(ValueError, match="semantics='spark' checks Ibis transformations"):
         sv.verify(sql, tables={"t": t}, semantics="spark")
@@ -354,9 +454,7 @@ def test_benchmark_queries_through_the_lift():
 
 def test_a_remainder_of_doubles_runs_with_the_reference_semantics():
     # `sverify_fmod` (#256): C's `fmod`, as DuckDB computes `%` of doubles.
-    result = check(
-        "SELECT id, price % 2.0 AS m, -price % 4.0 AS n FROM orders", TABLES, "reference"
-    )
+    result = check("SELECT id, price % 2.0 AS m, -price % 4.0 AS n FROM orders", TABLES, "portable")
     assert result.ok, f"{result.stage}: {result.detail}"
 
 
@@ -424,7 +522,7 @@ def test_an_error_in_a_conjunct_that_is_never_true_may_raise():
     columns = {"col0": [64, 75, 46], "col1": [77, 67, 51], "col2": [40, 58, 23]}
     tab2 = pa.table({k: pa.array(v, pa.int32()) for k, v in columns.items()})
     schema = ibis.Schema.from_pyarrow(tab2.schema)
-    for semantics in ("duckdb", "reference"):
+    for semantics in ("duckdb", "portable"):
         report = sv.verify(query, tables={"tab2": schema}, semantics=semantics, counterexamples=0)
         # The overflow is an issue, or a precondition that rules it out (an
         # INTEGER column's type bounds it, D46): `col1 < 1`, which the data breaks.
@@ -614,7 +712,7 @@ def test_a_lens_remainder_lists_min_mod_neg_one(width):
     assert any("MIN % -1" in str(i) for i in unbounded.issues)
     for bound in ("b > 0", f"b <> 0 AND a > {low + 1}"):
         assert verify("duckdb", bound).verdict == sv.Verdict.PROVED
-    assert verify("reference", "b <> 0").verdict == sv.Verdict.PROVED
+    assert verify("portable", "b <> 0").verdict == sv.Verdict.PROVED
     assert (
         verify("duckdb", "a IS NOT NULL", "SELECT a % 7 AS m FROM t").verdict == sv.Verdict.PROVED
     )

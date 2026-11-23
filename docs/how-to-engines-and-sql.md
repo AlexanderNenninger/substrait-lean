@@ -50,6 +50,11 @@ not proved, as `refresh` and `run` refuse it.
 
 `refresh(engine=...)` picks where a node's plans run; `sv.connect(engine=...)`
 and `engine=` on a transform pick where checks on data run.
+`semantics=` and `engine=` pair up: `semantics=` names the profile a plan is
+proved under, `engine=` the engine that runs it, and a
+[route](#routes-classes-and-profiles) carries the proof from the one to the
+other: `native` for `semantics="duckdb"` on `engine="duckdb"`, `translated`
+from the default `semantics="portable"`.
 `run(con, plan, "spark")` runs the Spark SQL on a local session, and
 `run(con, plan, session)` on one you pass (the `spark` extra). The generated SQL assumes
 the following about the warehouse:
@@ -81,7 +86,7 @@ defines it. On `x = -7`, with `d = 2`:
 
 | Input | `x // 2` | `x % 2` | `q * 2 + r == x` |
 |---|---|---|---|
-| Ibis, `semantics="reference"` or `"duckdb"` | -4 (floor) | -1 (truncated) | no |
+| Ibis, `semantics="portable"` or `"duckdb"` | -4 (floor) | -1 (truncated) | no |
 | SQL through `sv.sql` or `sv.verify`, reference | -3 (truncated) | -1 | yes |
 
 A plan that splits milliseconds into seconds and a remainder with `t.ms // 1000`
@@ -120,13 +125,13 @@ the evidence, and the route where it is not `translated`:
 | Class (`route.cls`) | What it means for you |
 |---|---|
 | `exact` | every result the engine gives is one the proof covers |
-| `observed` | the result equals one the proof covers up to the report's observation: doubles within the plan's bound (`floats="plan"`, the default; computed from the bounds `float-bounds/` proves over the reals, [what is trusted](trusted-base.md)), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
+| `observed` | the result equals one the proof covers up to the report's lenses: doubles within the plan's bound (`floats="plan"`, the default; computed from the bounds `float-bounds/` proves over the reals, [what is trusted](trusted-base.md)), or what `ensures` states with `sv.equivalent(...)`, such as rows as a multiset, one zero, or a tolerance `floats=sv.within(...)` the plan's bound meets |
 | `shim` | either of the above after the translation adds a small fix (a truncating division, a NULL placement); it costs an expression per row or a sort |
 | `refused` | none of the above: the run raises `sverify.errors.RouteError` and nothing runs; for a plan that is not proved, `sverify.errors.UnverifiedRunError`, a `VerificationError` |
 
 `route.evidence` says whether each step rests on a Lean proof (`proved`)
 or on anything else, tests and probes among them (`tested`). `route.theorems`
-names the proofs, and `route.facts` and `route.version` the engine facts and
+names the proofs, and `route.engine_facts` and `route.probed_version` the engine facts and
 the engine version they were probed at. `print(report.details())` shows the same before
 any run, one `evidence:` line per engine:
 `evidence: polars shim, proved by Rel.polars_sound, Polars.int_div_trunc on polars's model (facts …)` or
@@ -142,7 +147,7 @@ list every fact). What to do about one:
 
 - Verify under the reference (the default), whose translation shims most
   differences, in place of an engine's profile.
-- State the observation the difference hides: `rows="multiset"` for row
+- State the lenses that hide the difference: `rows="multiset"` for row
   order, `zeros="canon"` for the sign of a zero. A sum in another order is
   within the plan's bound, which a run accepts by default.
 - Add the precondition the reference raises on, such as a bound on a
@@ -188,7 +193,7 @@ absolute.
 
 Doubles follow one model. Without `sv.equivalent` in `ensures`, rows and
 list elements are multisets, one zero and one NaN are read, doubles are within
-the plan's bound and other values are exact: the default observation
+the plan's bound and other values are exact: the default lenses
 ([the table](core-semantics.md#the-default-observation)), which
 `report.lenses` prints with its bound,
 `equivalent(elements='multiset', floats=plan, ≤ 2.2e-04, zeros='canon')` here. `sv.equivalent(...)` states each component, and one you
@@ -201,18 +206,18 @@ would do ([example 5](getting-started.md#5-doubles-within-the-plans-bound)).
 
 `sv.equivalent` also takes `elements="multiset"`, `zeros="canon"`,
 `timestamps="ms"`, `strings="nfc"` (or `"casefold"`, `"ascii"`), `decimals="value"` and
-`errors="kind"`; `Observation.refines` orders observations component by
-component. A postcondition that reads what the observation ignores, such as
+`errors="kind"`; `Lenses.refines` orders lenses component by
+component. A postcondition that reads what the lenses ignore, such as
 `_.mean_x <= 100` under a float tolerance, is reported with
-`CheckedCondition.ignores`; `sv.approx(_.mean_x <= 100)` allows for the
+`Postcondition.ignores`; `sv.approx(_.mean_x <= 100)` allows for the
 tolerance. The checker names the components each condition's value depends
 on, from the columns it reads, and a condition that depends on none the
-observation ignores holds on every result equal to a proved one up to the
-observation. A comparison with a constant
+lenses ignore holds on every result equal to a proved one up to the
+lenses. A comparison with a constant
 narrowed by the tolerance, `x ≤ c - ε` for `x ≤ c`, keeps the original on
 every such result. A postcondition is proved on every
 result the reference allows, and
-`CheckedCondition.allowed` says so. A double `SUM` or `AVG` is one
+`Postcondition.allowed` says so. A double `SUM` or `AVG` is one
 value, the exact sum rounded once, so this covers postconditions that read
 it; one that reads a statistical aggregate, whose value is still a choice of
 the reference, is proved of the plan's own value, and `sv.approx` allows for
@@ -251,6 +256,6 @@ assert sorted(totals.to_arrow().to_pylist(), key=str) == [
 `sverify check` reads a Python file or a dbt project; a bare `.sql` file is not checked yet, so put the query in `sv.sql` in a `.py` file, or use [sverify-dbt](../dbt/README.md).
 Several inputs are several keywords (`sv.sql(query, orders=orders,
 customers=customers)`). The SQL is DuckDB's, and sverify plans it itself,
-through SQLGlot, with sverify's reference semantics (`semantics="reference"`,
+through SQLGlot, with sverify's reference semantics (`semantics="portable"`,
 the default) or DuckDB's (`semantics="duckdb"`), for a subset of
 SQL so far ([what the SQL lift reads](reference-semantics.md)).

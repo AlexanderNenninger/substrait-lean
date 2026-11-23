@@ -84,6 +84,9 @@ from sverify_polars import shims
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
 US = pl.Datetime("us")
+#: A timestamp in nanoseconds (D61): ordered and aggregated by `MIN` and `MAX`, never
+#: in arithmetic.
+NS = pl.Datetime("ns")
 INSTANT = pl.Datetime("us", "UTC")
 """An instant: a UTC-zoned timestamp (#1725)."""
 INTERVAL = pl.Duration("us")
@@ -271,36 +274,17 @@ def interval_micros(d: dict) -> int:
 
 
 def null_type(t: dict) -> DType:
-    """The dtype of a typed NULL. The writer types unknown kinds as `i64`, so
-    those stay untyped (`pl.Null`) and take the type of what they meet."""
+    """The dtype of a typed NULL: `type_of`'s, but the writer types unknown
+    kinds as `i64`, so those stay untyped (`pl.Null`) and take the type of
+    what they meet."""
     match _plan_read.type_kind(t):
-        case "float", _:
-            return pl.Float64
-        case "str", _:
-            return pl.String
-        case "bool", _:
-            return pl.Boolean
-        case "time", p:
-            if p != 6:
-                raise Unsupported("only microsecond timestamps are supported")
-            return US
-        case "instant", p:
-            if p != 6:
-                raise Unsupported("only microsecond timestamps are supported")
-            return INSTANT
-        case "date", _:
-            return pl.Date
-        case "tod", _:
-            return pl.Time
         case "int", _:
             return pl.Null
-        case "decimal", (p, s):
-            return decimal_type(p, s)
         case "list", elem:
             return pl.List(materialize(null_type(elem or {"i64": {}})))
         case "struct", fields:
             return struct_type([materialize(null_type(f)) for f in fields])
-    raise Unsupported(f"unsupported NULL type {json.dumps(t)}")
+    return type_of(t)
 
 
 def struct_type(fields: list[DType]) -> DType:
@@ -366,7 +350,7 @@ def lit_expr(value: Any, dtype: DType) -> pl.Expr:
 INTEGRAL = (pl.Int64, US, INSTANT, INTERVAL)
 #: The types `<`, `GREATEST` and `LEAST` order, as the model does (`Value.ltB`): strings by
 #: code point (UTF-8 byte order) and booleans `FALSE < TRUE` among them.
-ORDERED = (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.String, pl.Boolean)
+ORDERED = (*INTEGRAL, NS, pl.Date, pl.Time, pl.Float64, pl.String, pl.Boolean)
 
 
 @dataclass(frozen=True)
@@ -1329,6 +1313,10 @@ class Exprs:
             if t == pl.Int64 or is_decimal(t):
                 return decimal_rescale(v, p, s, f"CAST to DECIMAL({p}, {s})")
             raise Unsupported(f"unsupported cast from {t} to DECIMAL({p}, {s})")
+        if kind == "str":
+            # `UnFn.dtext` (D72): the scale's digits, with a leading zero; Polars's own text
+            # (polars-cast-decimal-timestamp-text).
+            return Val(v.expr.cast(pl.String), pl.String, v.issues)
         if kind == "float" and "fp64" in target:
             # Correctly rounded, as `FloatCode.ofDecimal` (polars-decimal-casts).
             return Val(v.expr.cast(pl.Float64), pl.Float64, v.issues)
@@ -1617,8 +1605,8 @@ class Exprs:
                     "% of doubles on Polars: Polars's % floors (polars-double-modulus), "
                     "where the reference's truncates as C's fmod; run it on DuckDB or Spark"
                 )
-            # Polars rewrites `0.0 - x` as `-x` and `x + 0.0` as `x` on the
-            # in-memory engine (polars-zero-sign): a sum or difference gets
+            # Polars rewrites `0.0 - x` as `-x` and `x + 0.0` as `x` on a morsel
+            # of two rows or more (polars-zero-sign-streaming): a sum or difference gets
             # IEEE's zero sign by a shim.
             ops = {"add": shims.ieee_zero_sum(x + y, x, y, False),
                    "subtract": shims.ieee_zero_sum(x - y, x, y, True), "multiply": x * y,
@@ -1933,6 +1921,8 @@ def type_of(t: dict) -> DType:
             return pl.String
         case "bool", _:
             return pl.Boolean
+        case "time", 9:
+            return NS
         case "time", _:
             return US
         case "instant", _:
@@ -2023,7 +2013,7 @@ class Measure:
         """The argument on the kept rows, NULL elsewhere (times as integers)."""
         a = (
             self.arg.expr.to_physical()
-            if self.arg.dtype in (US, INSTANT, pl.Date)
+            if self.arg.dtype in (US, NS, INSTANT, pl.Date)
             else self.arg.expr
         )
         return a if self.filter is None else pl.when(is_true(self.filter.expr)).then(a)
@@ -2098,7 +2088,7 @@ class Measure:
             # `pickFold`: equal values are the same value, so which of them
             # is kept does not show. Times aggregate as their integers.
             agg = v.min() if self.fn == "min" else v.max()
-            temporal = self.arg.dtype in (US, INSTANT, pl.Date)
+            temporal = self.arg.dtype in (US, NS, INSTANT, pl.Date)
             return NativeAgg({name: agg}, r.cast(self.arg.dtype) if temporal else r)
         if self.fn in ("bit_and", "bit_or", "bit_xor"):
             # `AggFn.bit`; NULL for no values, as Polars gives.
@@ -2965,7 +2955,7 @@ class Translator:
         elif name == "avg" and t == pl.Int64 and _int_output(m):
             fn = "iavg"
         elif name in ("min", "max") and (
-            t in (pl.Int64, pl.String, pl.Boolean, US, INSTANT, pl.Date) or is_decimal(t)
+            t in (pl.Int64, pl.String, pl.Boolean, US, NS, INSTANT, pl.Date) or is_decimal(t)
         ):
             fn = name
         elif name in ("min", "max") and t == pl.Float64:

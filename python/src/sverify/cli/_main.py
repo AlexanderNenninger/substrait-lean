@@ -47,9 +47,9 @@ exit codes:
   3  unsupported: a construct outside sverify's model
   4  time or memory budget exceeded
   5  a refresh committed with rows quarantined
-  6  error: the file raised, I/O, a crash
+  6  error: the file raised outside a run-time check, I/O, a crash
   7  refused: no route takes the proved node to the engine
-  8  a refresh held a node"""
+  8  a refresh held a node: a condition failed, or a run-time check fired"""
 STATUS = {
     OK: "proved",
     NOT_PROVED: "not_proved",
@@ -62,7 +62,9 @@ STATUS = {
     HELD: "held",
 }
 #: The version of the JSON document every command prints (`schemas/cli.schema.json`).
-FORMAT = 1
+#: Format 1, before 1.0, named a write's `inserts` and `deletes` `inserted` and
+#: `deleted` (#2345).
+FORMAT = 2
 FORMATS = ("text", "json", "github", "sarif")
 
 
@@ -439,7 +441,7 @@ def cmd_check(args: argparse.Namespace) -> int:
                 "transform": f.transform,
                 "requires": f.conditions,
                 "placed": f.placed,
-                "reason": f.reason,
+                "why": f.why,
             }
             for f in plan.fixes
         ],
@@ -464,8 +466,8 @@ def cmd_check(args: argparse.Namespace) -> int:
             lines.append("No preconditions to add: no proof in the file needs one.")
     for f in plan.fixes:
         lines += [f"{f.transform}: requires {p}: {', '.join(cs)}" for p, cs in f.conditions.items()]
-        if f.reason:
-            lines.append(f"  not placed: {f.reason}")
+        if f.why:
+            lines.append(f"  not placed: {f.why}")
     if plan.fixes:
         lines.append(NARROWS)
     if diff:
@@ -562,8 +564,8 @@ def cmd_refresh(args: argparse.Namespace) -> int:
                 else {
                     "mode": w.mode,
                     "version": w.version,
-                    "inserted": w.inserted,
-                    "deleted": w.deleted,
+                    "inserts": w.inserts,
+                    "deletes": w.deletes,
                 },
             }
         )
@@ -606,9 +608,6 @@ def parser() -> argparse.ArgumentParser:
         choices=FORMATS,
         default="text",
         help="text (the default), json, or for check: github (annotations), sarif",
-    )
-    common.add_argument(
-        "--json", dest="format", action="store_const", const="json", help="--format json"
     )
     common.add_argument(
         "--timeout",
@@ -719,7 +718,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     return its exit code: 0 proved (a refresh committed every row), 1 not
     proved, 2 usage error, 3 unsupported, 4 time or memory budget exceeded,
     5 a refresh quarantined rows, 6 error, 7 refused (no route to the
-    engine), 8 a refresh held a node."""
+    engine), 8 a refresh held a node (a condition failed or a run-time check
+    fired)."""
     try:
         args = parser().parse_args(argv)
     except SystemExit as e:

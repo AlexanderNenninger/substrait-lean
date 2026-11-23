@@ -26,7 +26,7 @@ def job(tmp_path, src=None, **options):
 
 
 def ops(uri):
-    return [c.get("operation") for c in reversed(DeltaTable(uri).history())]
+    return [c.get("operation") for c in reversed(list(DeltaTable(uri).history()))]
 
 
 def grow(src, n):
@@ -62,7 +62,7 @@ def test_a_restart_resumes_past_another_writers_maintenance(tmp_path, engine, ot
     grow(src, 1)
     _, again = job(tmp_path, src)
     entry = again.refresh(engine=engine)["big"]
-    assert entry.started == f"resumed from {state.where}"
+    assert entry.started == f"resumed from {state.location}"
     assert entry.write is not None and entry.write.mode == "merge"
     assert rows(again) == recomputed(doubled(paid(src)), src)
 
@@ -136,7 +136,7 @@ def test_compact_every_compacts_with_the_contract(tmp_path, engine):
     stored.refresh(engine=engine)
     grow(src, 1)
     stored.refresh(engine=engine)
-    history = DeltaTable(uri).history()
+    history = list(DeltaTable(uri).history())
     assert [c["operation"] for c in history[:3]] == ["VACUUM END", "VACUUM START", "OPTIMIZE"]
     # The maintenance commits carry the contract, and add no transaction.
     contract = DeltaSource(uri).contract()
@@ -173,7 +173,7 @@ def test_maintain_without_the_contract_after_another_writer(tmp_path):
     sink = DeltaSink(uri)
     out = sink.maintain()
     assert "optimize" in out and "vacuumed" not in out
-    assert METADATA_KEY not in DeltaTable(uri).history(1)[0]
+    assert METADATA_KEY not in list(DeltaTable(uri).history(1))[0]
     assert DeltaSource(uri).stored() is None
 
 

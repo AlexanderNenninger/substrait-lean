@@ -11,7 +11,7 @@ from ibis import _
 
 import sverify as sv
 from _pipelines import discharged, make_orders, orders_table
-from sverify.contracts import ON_DATA
+from sverify.conditions import ON_DATA
 from sverify.errors import PreconditionError
 from sverify.io import Changes, StaticSource
 

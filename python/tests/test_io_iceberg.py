@@ -14,7 +14,8 @@ import sverify as sv
 from _pipelines import batch, discharged, recomputed, rows
 from sverify import routes
 from sverify._weighted import consolidated
-from sverify.contracts import ON_DATA, SCHEMA
+from sverify.conditions import ON_DATA
+from sverify.contracts import SCHEMA
 from sverify.errors import PreconditionError
 from sverify.incremental import arrow_rows, change_table, snapshot_diff
 from sverify.io import IcebergSink, IcebergSource
@@ -220,7 +221,7 @@ def test_another_plan_overwrites_the_iceberg_sink(catalog):
     # type: the table gets its schema and its rows, not a skip.
     other = src.pipe(as_text).write(IcebergSink(catalog, "db.big"))
     w = other.refresh().writes[0]
-    assert (w.mode, w.inserted, w.deleted) == ("overwrite", 2, 0)
+    assert (w.mode, w.inserts, w.deletes) == ("overwrite", 2, 0)
     fields = catalog.load_table("db.big").schema().fields
     assert [(f.name, str(f.field_type), f.required) for f in fields] == [
         ("customer", "string", False),
@@ -290,7 +291,7 @@ def test_a_delete_reads_only_the_changed_files(catalog, monkeypatch):
     monkeypatch.setattr(ice, "_scan", spy)
     change = src.changes(3)
     # Copy-on-write: one file removed, none added (it held only id 3).
-    assert len(read) == 1 and change.kind == "snapshot_diff"
+    assert len(read) == 1 and change.mode == "snapshot_diff"
     assert change.changes is not None
     deletes, inserts = change.changes.deletes, change.changes.inserts
     assert isinstance(deletes, pa.Table) and isinstance(inserts, pa.Table)
@@ -316,7 +317,7 @@ def test_sink_writes_a_change_as_position_deletes(catalog):
     src.table().delete("id IN (1, 2, 3)")
     src.table().append(rows_table([(1, "c", 10), (2, "c", 20)]))
     w = view.refresh().writes[0]
-    assert (w.mode, w.inserted, w.deleted) == ("row_level", 2, 3)
+    assert (w.mode, w.inserts, w.deletes) == ("row_level", 2, 3)
     out = catalog.load_table("db.amounts")
     # One data file of the two new rows and one delete file of three positions.
     assert written_entries(out) == {0: [2], 1: [3]}
@@ -333,14 +334,14 @@ def test_sink_deletes_one_copy_of_a_duplicate(catalog):
     names.refresh()
     src.table().delete("id = 1")
     w = names.refresh().writes[0]
-    assert (w.mode, w.inserted, w.deleted) == ("row_level", 0, 1)
+    assert (w.mode, w.inserts, w.deletes) == ("row_level", 0, 1)
     got = sorted(
         tuple(r.values()) for r in catalog.load_table("db.names").scan().to_arrow().to_pylist()
     )
     assert got == rows(names) == [("ada", 5), ("bob", 7)]
     # Again: the deleted position is not deleted twice.
     src.table().delete("id = 2")
-    assert names.refresh().writes[0].deleted == 1
+    assert names.refresh().writes[0].deletes == 1
     got = catalog.load_table("db.names").scan().to_arrow().to_pylist()
     assert [tuple(r.values()) for r in got] == rows(names) == [("bob", 7)]
 
@@ -366,7 +367,7 @@ def test_reading_a_table_with_position_deletes(catalog):
     ]
     change = down.changes(copy.versions["amounts"])
     assert as_diff(change) == arrow_rows(snapshot_diff(before, snap.table))
-    assert "on the 1 + 1 data file(s) that changed" in change.trusted
+    assert "on the 1 + 1 data file(s) that changed" in change.assumes
     copy.refresh(audit=True)
     assert rows(copy) == recomputed(copy, down) == [(1, 5), (2, 7)]
 
@@ -445,7 +446,7 @@ def test_a_restart_resumes_past_a_compaction(catalog, monkeypatch):
     src.table().append(rows_table([(4, "di", 2)]))
     again = doubled(src).write(IcebergSink(catalog, "db.big"))
     entry = again.refresh()["big"]
-    assert entry.started == f"resumed from {stored.where}"
+    assert entry.started == f"resumed from {stored.location}"
     assert entry.write is not None and entry.write.mode == "append"
     assert big_rows(catalog) == rows(again) == recomputed(doubled(src), src)
 
@@ -767,7 +768,7 @@ def test_a_restart_resumes_past_the_sinks_own_compaction(catalog):
     src.table().append(rows_table([(9, "bob", 1)]))
     again = totals(src).write(IcebergSink(catalog, "db.totals"))
     entry = again.refresh()["totals"]
-    assert entry.started == f"resumed from {stored.where}"
+    assert entry.started == f"resumed from {stored.location}"
     assert entry.write is not None and entry.write.mode == "row_level"
     assert rows(again) == recomputed(totals(src), src)
     # Expiry keeps the newest snapshots and the sink's last one.

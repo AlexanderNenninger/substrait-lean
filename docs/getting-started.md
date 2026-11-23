@@ -56,7 +56,7 @@ small native binary, so you need no Lean toolchain; they exist for Linux
 
 Correlated scalar subqueries are not in the model. An `ibis.param` is
 checked with its value bound (`sv.verify(expr, params={threshold: 50})`),
-and an unbound one is refused. [The Ibis coverage table](../README.md#ibis-coverage)
+and an unbound one is refused. [The Ibis coverage table](coverage.md)
 lists what gets through.
 
 ## 1. A contract, proved and run
@@ -197,7 +197,7 @@ still needs the precondition. Guarding the division itself,
 `route="auto"` chooses how the proof reaches the engine and refuses the plan
 where none applies. The route names the plan's class on that engine:
 `exact` (every result the engine gives, the reference allows), `observed`
-(equal under an observation the postcondition states, a float tolerance
+(equal under lenses the postcondition states, a float tolerance
 included), `shim` (after shims proved against the model of the engine's
 functions) or `refused`
 ([how a route is chosen](verifying.md),
@@ -224,7 +224,7 @@ each engine.
 DuckDB and Polars add doubles in different orders, so a mean's last bits may
 differ. The checker proves how far: a bound on each double the plan computes
 ([float bounds](float-bounds.md)). With
-no observation in `ensures`, a run accepts doubles within that bound, the
+no lenses in `ensures`, a run accepts doubles within that bound, the
 same as `sv.equivalent(floats="plan")`, and the report prints the bound.
 
 ```python
@@ -266,7 +266,7 @@ that give them on its `lenses:` line: for this mean, none.
 Three helpers state what a postcondition observes:
 
 * `sv.equivalent(rows=..., floats=..., ...)` in `ensures` names the
-  observation. Rows are a multiset unless it says `rows="sequence"`;
+  lenses. Rows are a multiset unless it says `rows="sequence"`;
   doubles are the same bits unless it gives a tolerance or `floats="plan"`;
   every component left out is exact. Without it, `ensures` observes rows as
   a multiset and doubles within the plan's bound.
@@ -283,7 +283,7 @@ Three helpers state what a postcondition observes:
 
 A sink commits each epoch once, so a rerun must give the same result. The
 sink says what "the same" means (`reproducible=`,
-[two observations per output](how-to-production.md#reproducible-sinks)), and a refresh is
+[two lenses per output](how-to-production.md#reproducible-sinks)), and a refresh is
 refused where the engine's run-to-run variation does not refine it. Polars's
 streaming `SUM` of doubles may add in another order each run, so a sink that
 asks for exact bits, `reproducible=sv.equivalent()`, is refused there, and
@@ -348,7 +348,7 @@ try:
     filtered.run(con, "polars", route="auto")
 except RouteError as e:
     print(e)
-# refused on polars: verify with semantics='reference' to run on polars...
+# refused on polars: verify with semantics='portable' to run on polars...
 
 divided = sv.verify(
     t.select(t.id, unit=t.total // t.qty),
@@ -364,7 +364,7 @@ try:
     divided.run(con, "polars", route="auto")
 except RouteError as e:
     print(e)
-# refused on polars: verify with semantics='reference' to run on polars...
+# refused on polars: verify with semantics='portable' to run on polars...
 ```
 
 The transfer check fails on the comparison's zero and the division's options. A
@@ -426,12 +426,12 @@ parity = sv.verify(
     s.select(s.x, odd=s.x % 2), requires=notnull, ensures=[_.odd >= 0], semantics="polars"
 )
 print(parity.semantics)
-# reference
+# portable
 print(parity.verdict)
 # proved
 print(parity.run(con, "polars", route="auto").column("odd").to_pylist())
 # [1, 0, 1, 0]
-print(parity.routes["polars"].kind)
+print(parity.routes["polars"].taken)
 # translated
 ```
 

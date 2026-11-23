@@ -17,7 +17,7 @@ from ibis import _
 
 import sverify as sv
 from sverify import report_json
-from sverify.contracts import Report
+from sverify.report import Report
 
 jsonschema = pytest.importorskip("jsonschema")
 
@@ -48,7 +48,7 @@ def test_proved() -> None:
         orders.select("id", d=_.total * 2), requires=BOUNDED, ensures=[_.d >= 0, sv.unique("id")]
     )
     doc = _round_trip(report)
-    assert doc["format"] == report_json.FORMAT == 4
+    assert doc["format"] == report_json.FORMAT == 5
     assert doc["proved"] and doc["verdict"] == "proved"
     assert [
         (c["properties"]["label"], c["ruleId"], c["level"], c["kind"]) for c in doc["ensures"]
@@ -116,9 +116,9 @@ def test_routes_after_a_run() -> None:
     doc = _round_trip(report)
     assert set(doc["routes"]) == {"duckdb"}
     r = doc["routes"]["duckdb"]
-    assert r["kind"] and r["class"] == "exact" and r["reason"]
-    assert r["semantics"] == "reference" and "profile" not in r
-    assert Report.from_json(report.to_json()).routes["duckdb"].kind == r["kind"]
+    assert r["taken"] and r["class"] == "exact" and r["why"]
+    assert r["semantics"] == "portable" and "profile" not in r
+    assert Report.from_json(report.to_json()).routes["duckdb"].taken == r["taken"]
 
 
 def test_tolerance_observation() -> None:

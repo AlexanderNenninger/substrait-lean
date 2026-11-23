@@ -32,7 +32,9 @@ theorem Substrait.polarsOn.idiv_agree : ∀ (x y : Substrait.Value),
   intros; apply Substrait.Polars.idiv_agree
 
 abbrev Substrait.polarsOn.idiv : Substrait.BinEntry Substrait.Profile.polars Substrait.BinFn.idiv :=
-  ⟨Substrait.Polars.idivTemplate, by exact Substrait.Polars.idivTemplate_must, Substrait.polarsOn.idiv_agree⟩
+  Substrait.BinEntry.ofAgree
+  (Substrait.Polars.idivTemplate)
+  (by exact Substrait.Polars.idivTemplate_must) Substrait.polarsOn.idiv_agree
 
 theorem Substrait.polarsOn.imod_agree : ∀ (x y : Substrait.Value),
   Substrait.Outcome.Agree
@@ -41,5 +43,7 @@ theorem Substrait.polarsOn.imod_agree : ∀ (x y : Substrait.Value),
   intros; apply Substrait.Polars.imod_agree
 
 abbrev Substrait.polarsOn.imod : Substrait.BinEntry Substrait.Profile.polars Substrait.BinFn.imod :=
-  ⟨Substrait.Polars.imodTemplate, by exact Substrait.Polars.imodTemplate_must, Substrait.polarsOn.imod_agree⟩
+  Substrait.BinEntry.ofAgree
+  (Substrait.Polars.imodTemplate)
+  (by exact Substrait.Polars.imodTemplate_must) Substrait.polarsOn.imod_agree
 

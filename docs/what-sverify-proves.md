@@ -15,7 +15,7 @@ every possible input, or says why it can't ([what is proved](proved-theorems.md)
   anything runs. The [runtime-error theorems](proved-theorems.md#runtime-errors) list what is ruled out.
 * A route takes the proof to the engine. `route="auto"` runs the plan on
   DuckDB, Polars or Spark natively, through the reference's translation, or by a check that the engine's choices are within the proof's, and names
-  the plan's class there: exact, equal under an observation the
+  the plan's class there: exact, equal under lenses the
   postcondition states (a float tolerance is one), or exact or observed
   after a shim. The proofs speak of a model of each engine's scalar
   functions. DuckDB's lowering and the shims are proved against that model;

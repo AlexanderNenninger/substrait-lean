@@ -256,11 +256,11 @@ def test_route_lines_lead_with_the_class_in_plain_words() -> None:
     prose = re.sub(r"proved by [\w.]+(, [\w.]+)*", "proved by", text)
     for internal in ("Lowering", "lower_correct", "polars_engine", "Rel.eval", "Lean"):
         assert internal not in prose
-    assert "DuckDB lowering" in report.routes["duckdb"].reason
+    assert "DuckDB lowering" in report.routes["duckdb"].why
 
 
 def test_an_observed_route_rounds_its_bound() -> None:
-    obs = sv.observation.Observation(floats=sv.within(abs=1.998402245904532e-07))
+    obs = sv.observation.Lenses(floats=sv.within(abs=1.998402245904532e-07))
     assert routes.observed_text(obs) == "doubles within abs=2e-07"
 
 
@@ -285,7 +285,7 @@ def test_no_message_makes_lean_its_subject() -> None:
     )
     for c in report.ensures:
         assert not c.why.startswith("Lean")
-    c = sv.contracts.CheckedCondition("(_.x > 1)", False, "TRUE or UNKNOWN")
+    c = sv.conditions.Postcondition("(_.x > 1)", False, "TRUE or UNKNOWN")
     assert c.why == "the checker only knows it is TRUE or UNKNOWN"
 
 
@@ -552,5 +552,5 @@ def test_str_is_the_plain_contract_and_details_the_full_text():
     assert "Not proved:" in lines and any("total < 10" in line for line in lines)
     assert not any(line.startswith(("semantics:", "evidence:", "route on")) for line in lines)
     full = report.details().splitlines()
-    assert "semantics: reference" in full
+    assert "semantics: portable" in full
     assert "requires orders: unique(id)" in full

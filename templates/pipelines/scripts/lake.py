@@ -9,12 +9,12 @@ run the same steps.
     python scripts/lake.py preview --refresh refresh.json --pr <n>
     python scripts/lake.py drop
 
-`check` runs `sverify check --json` on every pipeline file (`pipelines/*.py`
+`check` runs `sverify check --format json` on every pipeline file (`pipelines/*.py`
 but helpers starting with `_`), prints GitHub annotations for each problem
 and writes the plain-language contract as Markdown for the PR comment.
 With `--plans`, each proved node is also exported to Substrait in that folder
 and proved again from the export, for a consumer that runs the plan itself.
-`refresh` runs `sverify refresh --json` on each node `pipelines.toml` lists
+`refresh` runs `sverify refresh --format json` on each node `pipelines.toml` lists
 and, when one fails, writes the text of the alert issue. `catalog` writes a
 static site: an index and one page per stored table with its proved facts,
 description, lineage, freshness, a chart and a query box (DuckDB-WASM).
@@ -57,7 +57,7 @@ def config() -> dict[str, Any]:
 
 
 def sverify(*args: str) -> tuple[int, dict[str, Any]]:
-    """Run the `sverify` CLI with `--json` in this process (`sverify.cli.main`):
+    """Run the `sverify` CLI with `--format json` in this process (`sverify.cli.main`):
     its exit code and document.
 
     One process for every step: sverify, Ibis and DuckDB load once, and the
@@ -68,7 +68,7 @@ def sverify(*args: str) -> tuple[int, dict[str, Any]]:
     out = io.StringIO()
     try:
         with contextlib.redirect_stdout(out):
-            code = main([*args, "--json"])
+            code = main([*args, "--format", "json"])
     except SystemExit as e:  # argparse
         code = e.code if isinstance(e.code, int) else 2
     text = out.getvalue()
@@ -340,7 +340,7 @@ def cmd_refresh(args: argparse.Namespace) -> int:
             lines.append(
                 f"- `{n['node']}`: {n.get('started')}; "
                 + (
-                    f"v{w.get('version')}, +{w.get('inserted')} −{w.get('deleted')}"
+                    f"v{w.get('version')}, +{w.get('inserts')} −{w.get('deletes')}"
                     if w
                     else "no write"
                 )
@@ -530,7 +530,7 @@ def cmd_preview(args: argparse.Namespace) -> int:
         for n in r["result"].get("nodes", []):
             w = n.get("write") or {}
             lines.append(
-                f"- `{n['node']}`: {w.get('inserted', 0)} rows written, {w.get('deleted', 0)} deleted"
+                f"- `{n['node']}`: {w.get('inserts', 0)} rows written, {w.get('deletes', 0)} deleted"
             )
         if r["exit"]:
             e = r["result"].get("error") or {}
@@ -595,7 +595,7 @@ def cmd_catalog(args: argparse.Namespace) -> int:
         dt = DeltaTable(uri)
         contract = DeltaSource(uri).contract()
         arrow = dt.to_pyarrow_table()
-        last = dt.history(1)[0] if dt.version() >= 0 else {}
+        last = next(iter(dt.history(1)), {}) if dt.version() >= 0 else {}
         meta = cfg.get(name, {})
         files: list[str] = []
         if args.data == "snapshot":
@@ -832,7 +832,7 @@ def status_page(
     for r in runs:
         for n in r["result"].get("nodes", []):
             w, e = n.get("write") or {}, stored.get(n["node"])
-            wrote = f"+{w.get('inserted', 0):,} −{w.get('deleted', 0):,}" if w else "no write"
+            wrote = f"+{w.get('inserts', 0):,} −{w.get('deletes', 0):,}" if w else "no write"
             table = f'<a href="{html.escape(e["name"])}.html">{e["rows"]:,}</a>' if e else ""
             rows.append(
                 f"<tr><td>{html.escape(n['node'])}</td><td>{wrote}</td><td>{table}</td></tr>"

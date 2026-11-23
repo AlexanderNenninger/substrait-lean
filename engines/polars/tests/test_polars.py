@@ -21,6 +21,7 @@ import sverify as sv
 from _pipelines import integer_powers
 from _repo import ROOT
 from _zero import one_zero
+from sverify._fired import fired_check
 from sverify.engine import (
     connect,
     plan_json,
@@ -321,7 +322,7 @@ def test_polars_view_matches_duckdb_view(name, data):
 def polars_rows(con, sql: str) -> list[tuple]:
     # The reference's semantics, and the model's integer `power`: Polars
     # against the model.
-    plan = integer_powers(json.loads(substrait_json(con, sql, "reference")))
+    plan = integer_powers(json.loads(substrait_json(con, sql, "portable")))
     return rows_of(run_plan(con, written_plan(json.dumps(plan)), "polars"))
 
 
@@ -589,7 +590,7 @@ def test_casts_to_bigint_truncate_and_refuse_nan():
     con = connect()
     con.create("r", F, [(x,) for x in DOUBLES])
     sql = "SELECT f, CAST(floor(f) AS BIGINT) AS i FROM r"
-    duck, pl_rows = on_both(con, written_plan(substrait_json(con, sql, "reference")))
+    duck, pl_rows = on_both(con, written_plan(substrait_json(con, sql, "portable")))
     assert duck == pl_rows
     con.create("r", F, [(1.0,), (math.nan,)])
     with pytest.raises(polars_engine.BadCast):
@@ -842,8 +843,10 @@ def test_the_lens_remainder_guard_raises_at_min_mod_neg_one(width):
     with pytest.raises(polars_engine.RuntimeIssue, match=r"MIN % -1"):
         go()
     _, go = run([(5, 0), (7, 2)])
-    with pytest.raises(polars_engine.DivisionByZero):
+    with pytest.raises(polars_engine.DivisionByZero) as fired:
         go()
+    # A refresh holds the node for it (ruling 258, `sverify._fired`).
+    assert fired_check(fired.value) == "division by zero"
     rows = [(5, 2), (-7, 2), (low + 1, -1), (None, 3), (4, None)]
     plan, go = run(rows)
     assert go() == lean_values(json.dumps(inline_tables(json.loads(plan), {"r": rows})))

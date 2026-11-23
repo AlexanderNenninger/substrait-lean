@@ -115,7 +115,7 @@ def behaviourRefines : List (String × Behaviour × Behaviour × String) := [
   ("round_zero_sign", "IEEE", "ANY", "-0.0 is one of the zeros the reference leaves open (duckdb-R15-round, polars-round)"),
   ("round_zero_sign", "POSITIVE", "ANY", "+0.0 is one of the zeros the reference leaves open (spark-round)"),
   ("avg_int_result", "EXACT_TRUNCATE", "DECLARED_TYPE", "AggFn.iavg: the exact mean, truncated (duckdb-R6)"),
-  ("stat_algo", "WELFORD_CHAN", "GENERIC", "Welford with Chan's merge meets the generic properties (duckdb-var-stddev, polars-var-std)")]
+  ("stat_algo", "WELFORD_CHAN", "GENERIC", "Welford with Chan's merge meets the generic properties (duckdb-var-stddev, polars-var-std-streaming)")]
 
 /-- Each behaviour of `a` is one of `b`'s, or refines one of them. -/
 private def sub (o : String) (a b : List Behaviour) : Bool :=
@@ -350,20 +350,23 @@ theorem Rel.raises_mapExprs {p q : Profile} {f : Expr → Expr} (hx : ∀ e, Exp
           obtain ⟨e, he, rfl⟩ := Measure.mem_mapExpr_exprs hf he'
           exact ⟨e, List.mem_append_right _ (List.mem_flatMap.mpr ⟨m, hm, he⟩), hr e row hc⟩
 
-/-- A lowered expression raises only where the reference does (`agree`). -/
-theorem Lowering.lowerE_raises {p : Profile} {L : Lowering p} (hL : L.Total) (e : Expr) (row : Row)
+/-- A lowered expression raises only where the reference does (`agree`), for a
+table whose entries are exact (ruling 252). -/
+theorem Lowering.lowerE_raises {p : Profile} {L : Lowering p} (hL : L.Total) (hX : L.AllExact)
+    (hN : L.NoneOnDbl) (e : Expr) (row : Row)
     (h : (L.lowerE e).RaisesOn p row) : e.RaisesOn Profile.reference row := by
   obtain ⟨t, ht⟩ := Option.isSome_iff_exists.mp (lower_isSome hL e)
-  have hc := L.lower_correct e t ht row
+  have hc := L.lower_correct e t ht row (exactOn_of_allExact hX e) (.inl (dblFree_of_noneOnDbl hN e))
   simp only [lowerE, ht, Option.getD_some, Expr.RaisesOn] at h ⊢
   revert h hc
   cases t.evalP p row <;> cases e.evalP Profile.reference row <;>
     simp [Outcome.Agree, Outcome.err?]
 
 /-- **A lowered plan raises only where the reference may.** -/
-theorem Lowering.lowerRel_raises {p : Profile} {L : Lowering p} (hL : L.Total) {cat : Catalog}
-    {r : Rel} (h : (L.lowerRel r).Raises p cat) : r.Raises Profile.reference cat :=
-  Rel.raises_mapExprs (lowerE_exact hL) (fun _ => rfl) (lowerE_raises hL)
+theorem Lowering.lowerRel_raises {p : Profile} {L : Lowering p} (hL : L.Total) (hX : L.AllExact)
+    (hN : L.NoneOnDbl) {cat : Catalog} {r : Rel} (h : (L.lowerRel r).Raises p cat) :
+    r.Raises Profile.reference cat :=
+  Rel.raises_mapExprs (lowerE_exact hL hN) (fun _ => rfl) (lowerE_raises hL hX hN)
     (fun _ h => Rel.evalI_reference h) h
 
 /-! ## A reference raise is an issue (FM round 9)
@@ -514,7 +517,8 @@ theorem Rel.duckdb_refines {cat : Catalog} (r : Rel) :
     ((Lowering.duckdb.lowerRel r).Raises (Profile.duckdb {}) cat →
       r.Raises Profile.reference cat) :=
   ⟨fun h => Rel.allowedP_reference.mpr (Rel.duckdb_shim_allowed h),
-   Lowering.lowerRel_raises Lowering.duckdb_total⟩
+   Lowering.lowerRel_raises Lowering.duckdb_total Lowering.duckdb_allExact
+      Lowering.duckdb_noneOnDbl⟩
 
 /-! ## Every theorem a row names exists -/
 

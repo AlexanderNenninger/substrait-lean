@@ -74,7 +74,7 @@ class Direct:
         if end == since:
             return SourceBatch.unchanged(since)
         return SourceBatch.from_changes(
-            since, end, inserts=rows(self.n, self.n + CHANGE), trusted="Δ"
+            since, end, inserts=rows(self.n, self.n + CHANGE), assumes="Δ"
         )
 
 

@@ -217,15 +217,15 @@ def _plan(p: Probe, rows: Sequence[Sequence[Any]], option: str | None) -> str:
 
 
 def lean_outcomes(
-    p: Probe, rows: Sequence[Sequence[Any]], option: str | None, semantics: str = "reference"
+    p: Probe, rows: Sequence[Sequence[Any]], option: str | None, semantics: str = "portable"
 ) -> list[Outcome]:
     """Lean's outcome of `p` with `option` on each row under `semantics`
-    (the reference's profile, or DuckDB's), or a refusal for all. DuckDB's is
+    (`"portable"`, the reference profile, or DuckDB's), or a refusal for all. DuckDB's is
     the checker's internal stopgap, until `semantics="duckdb"` runs
     engine to engine (#1288)."""
-    if semantics not in ("reference", "duckdb"):
+    if semantics not in ("portable", "duckdb"):
         raise ValueError(f"no outcomes under {semantics!r}")
-    flag = "--outcomes" if semantics == "reference" else "--outcomes-duckdb-stopgap"
+    flag = "--outcomes" if semantics == "portable" else "--outcomes-duckdb-stopgap"
     code, out, err = run_checker((flag,), _plan(p, rows, option))
     if code != 0:
         why = ((err or out).strip().splitlines() or ["?"])[-1]

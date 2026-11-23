@@ -1040,7 +1040,7 @@ def _(mo):
     Each sample keeps its row because the ranking is per accelerometer row,
     numbered first. Framed window aggregates
     (`AVG(v) OVER (ROWS 5 PRECEDING)`), `RANK` and running sums verify too
-    ([Ibis coverage](https://github.com/AlexanderNenninger/substrait-lean/blob/main/README.md#ibis-coverage)).
+    ([Ibis coverage](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/coverage.md)).
 
     ## Composing contracts
 

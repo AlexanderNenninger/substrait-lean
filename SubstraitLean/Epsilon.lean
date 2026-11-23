@@ -1,7 +1,7 @@
 import SubstraitLean.ShardCheck
 import SubstraitLean.EngineTables
 import Sverify.Core.MarginCheck
-import Sverify.Analysis.AsofSite
+import Sverify.Analysis.AsofExact
 import Sverify.Core.ExactBound
 
 /-!
@@ -40,7 +40,7 @@ give (`Measure.abs`, `floatBound`):
 `"proved"` marks a bound those theorems cover (`provedEps`): the engines'
 `sum_order` behaviours are among the proved ones, the plan has no
 single-precision column (Polars sums `Float32` in single precision,
-polars-sum-float), and the argument, its rows and its groups are the same on
+polars-sum-float-streaming), and the argument, its rows and its groups are the same on
 every engine (`colEps`). That an engine's algorithm is the one its
 behaviour names rests on its characterization (duckdb-sum-double,
 polars-sum-float, polars-sum-float-streaming).
@@ -727,7 +727,7 @@ def rowsExact (es : List EngineProfile) (engine : String) (cat : Catalog) (A : S
   (rowSites es engine cat A F T r).all (·.1)
 
 /-- Does the plan read or write a single-precision column? Polars sums
-`Float32` in single precision (polars-sum-float), which no bound here covers. -/
+`Float32` in single precision (polars-sum-float-streaming), which no bound here covers. -/
 def hasFp32 (tj : Json) : Bool := (tj.compress.splitOn "\"fp32\"").length > 1
 
 /-- What `"epsilon"` says of a double `SUM` of exact values with no row cap,
@@ -927,8 +927,9 @@ root, 0 for an input or a join's left side, 1 for the right; `json_path` the
 same in the written JSON, `Rel.jsonPath`), its shape
 (`AsofForm`), the keys as (left column, right column) pairs, `lon` and
 `ron` (the left columns are the join's left input's, the right ones the
-right input's own), whether it is a LEFT join and whether it has more
-conjuncts (a tolerance). `Report.run` evaluates the count on the engine
+right input's own), whether it is a LEFT join, whether it has more
+conjuncts (a tolerance) and whether it has the shape that keeps one row per
+left row (`left_exact`, `AsofSite.left_exactly_one`). `Report.run` evaluates the count on the engine
 before the plan and refuses the run above the cap `asof_join` states,
 whatever the rows come from. -/
 def asofChecksJson (input : Json) : Except String Json := do
@@ -940,7 +941,7 @@ def asofChecksJson (input : Json) : Except String Json := do
       ("form", toJson s.form.name),
       ("keys", toJson (s.keys.map fun (l, r) => [l, r])), ("lon", toJson s.lon),
       ("ron", toJson s.ron), ("outer", toJson (s.type == .left)),
-      ("tolerance", toJson !s.rest.isEmpty)]
+      ("tolerance", toJson !s.rest.isEmpty), ("left_exact", toJson (s.leftExact cat))]
 
 /-- Where an output column comes from, as far as window aggregates of doubles
 go (#1032): a window's double `SUM` or `AVG` over its input `r`, a value that

@@ -44,7 +44,7 @@ the rows out first. A tool that phrases the fix in its own terms (a dbt
 test, an editor's quick fix) reads `Report.needs`: one `Needed` per
 precondition, with its table, column, comparison, bound, SQL and the
 runtime error it rules out. Each postcondition's
-`CheckedCondition.reason` says the same of an unproved postcondition, as a
+`Postcondition.reason` says the same of an unproved postcondition, as a
 code (`"not_a_key"`, `"may_be_false"`, `"may_be_null"`, …).
 
 `on_inferred` takes four values: `"error"` (the default) needs the bound in
@@ -140,7 +140,7 @@ print(report.details())
 # requires samples: (_.cpu >= 0)
 # requires samples: (_.cpu <= 100)
 # requires samples: max_rows(1000000000000)
-# semantics: reference
+# semantics: portable
 # evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6; #1985)
 # evidence: polars exact, proved by Polars.sum_leaves_i64 on polars's model (facts polars-sum-int)
 # evidence: spark shim, proved by Shim.sum_empty_null on spark's model (facts spark-sum-int, spark-exec-parallel)

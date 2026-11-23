@@ -28,14 +28,15 @@ pairs, so its run takes no count and has no cap. At a tie on the right it may
 pick another of the tied rows than the range join does; the report already
 says `deterministic` is false there.
 
-No theorem is about ASOF joins: the plan is proved as any plan is. What an
+The plan is proved as any plan is. What an
 ASOF join promises, stated in `ensures`, is proved for each plan by the
 theorems every contract rests on (`docs/proofs.md`): `on_right <= on` and
 `on - on_right <= tolerance` (`contract_sound`); `tests/test_asof.py` proves
 the two. The plan computes one output row per left row. Sverify proves at most
 one: a key of the left table is a key of the output (#1992), so
-`unique(*by, on)` on the left gives it of the output. That a `how="left"` join
-keeps every left row is not proved. The ranking is only
+`unique(*by, on)` on the left gives it of the output. A `how="left"` join keeps
+every left row: every result has as many rows as the left rows it numbers
+(`AsofSite.left_exactly_one`, #1992). The ranking is only
 determined when no two right rows tie: without a key on `(*by, on)` on the
 right side these guarantees still hold for every pick of the tied rows,
 and the report is not `deterministic`.

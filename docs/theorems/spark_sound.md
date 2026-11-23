@@ -96,7 +96,7 @@ The route to Spark is exact, and names the theorem:
 
 ```python
 route = routes.choose(report, "spark")
-print(route.kind, route.cls)
+print(route.taken, route.cls)
 # translated exact
 print(route.theorems)
 # ('Rel.spark_sound',)

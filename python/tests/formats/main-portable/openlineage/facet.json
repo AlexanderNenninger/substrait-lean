@@ -1,0 +1,50 @@
+{
+  "_producer": "https://github.com/AlexanderNenninger/substrait-lean/tree/v0.9.0.dev0/python",
+  "_schemaURL": "https://alexandernenninger.github.io/substrait-lean/schemas/openlineage-contract-facet/2.json",
+  "ensures": [
+    {
+      "label": "(_.amount > 10)",
+      "sql": "amount > 10",
+      "status": "proved"
+    },
+    {
+      "label": "unique(id)",
+      "status": "proved",
+      "unique": [
+        "id"
+      ]
+    },
+    {
+      "label": "\"id\" IS NOT NULL",
+      "sql": "\"id\" IS NOT NULL",
+      "status": "proved"
+    }
+  ],
+  "format": 2,
+  "lenses": "equivalent(elements='multiset', floats=plan, zeros='canon')",
+  "node": "paid",
+  "not_null": [
+    "id",
+    "amount"
+  ],
+  "outcome": "ok",
+  "plan": "81ae55fe8d676e2a7247ee502d011b9a58a918aac109e4a805d0dacdd17c734b",
+  "proved": true,
+  "quarantined": 0,
+  "requires": {
+    "orders": [
+      "(_.amount >= 0)",
+      "(_.amount < 1000)",
+      "unique(id)",
+      "\"id\" IS NOT NULL"
+    ]
+  },
+  "route": {
+    "class": "exact",
+    "engine": "duckdb",
+    "kind": "translated"
+  },
+  "semantics": "reference",
+  "sverify": "0.9.0.dev0",
+  "verdict": "proved"
+}

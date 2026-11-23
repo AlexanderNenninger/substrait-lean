@@ -27,6 +27,13 @@ on the source, chooses otherwise:
   through.
 - `"error"` is the default.
 
+A run-time check of the plan that fires on a batch (a product that overflows to
+infinity) holds the node the same way, whatever the setting: nothing is
+committed and `Refresh.alert()` names the check, with no rows. Stating the bound
+it needs in `requires=` removes the check. The run stopped part-way, so the node's
+in-memory state is dropped: at its next refresh a node with a sink resumes from the
+sink, and a node without one starts from scratch.
+
 The transform's setting holds over the source's. Where two transforms fused
 into one node state the same condition, the stricter setting holds: error,
 then hold, then quarantine.

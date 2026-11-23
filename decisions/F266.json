@@ -1,0 +1,13 @@
+{
+  "id": "F266",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Ibis's cast of a double to a timestamp is read in the producer as `cast(cast(round(multiply(x, 1e6:fp64), TIE_TO_EVEN) AS i64) AS timestamp)`: x·10⁶ as a double, rounded half to even. Every op already has its meaning under D55 and F239, so the reference doesn't change, and there is no new option and no D-number. NaN, ±inf and a product outside i64 raise at the i64 cast, and a count outside the timestamp's range raises at the timestamp cast.",
+  "issues": [
+    1922
+  ],
+  "source": "fable-ruling-266-1922-double-to-timestamp.md",
+  "note": "A frontend reading of the same kind as #1974, taking DuckDB's meaning for the Ibis construct; refusing it was declined. The product is the double product, so `2.5e-6`, `1.5e-6` and `5e-7` give 2, 2 and 0 microseconds. Ruling 266 names the scope \"frontend\", which the schema lacks, so the entry is filed under reference-semantics. Conditions: G1, an engine fact that DuckDB's `epoch_us(to_timestamp(d))` equals `CAST(d * 1e6 AS BIGINT)`, covering ties, -0.0 and subnormals, random doubles and the edges. It is met by a DuckDB probe over 29,286 doubles with 0 differences. G2, no engine branch: each engine reaches the composed ops through #2320's `froundEven` path. G3, TRY_CAST, zoned targets and ns targets stay refused. G4, the implementing PR starts after #2320 merges, rewrites the replay ledgers and closes #1922 if its replay tests and `test_subsecond_cast_to_timestamp` pass. The by-design entry for timestamp to number (#2110) stays. G5, the Improvement lines follow CLAUDE.md."
+}

@@ -68,7 +68,7 @@ def test_floor_run_agrees_with_floor_division(report: sv.Report, rows) -> None:
     out = report.run(con, "polars")
     assert out.column("m").to_pylist() == [a % b for a, b in rows]
     assert out.column("q").to_pylist() == [a // b for a, b in rows]
-    assert report.routes["polars"].kind == "translated"
+    assert report.routes["polars"].taken == "translated"
 
 
 def test_floor_run_over_mixed_signs(report: sv.Report) -> None:
@@ -101,7 +101,7 @@ def test_a_polars_request_is_reported_as_pending() -> None:
         r = sv.verify(
             t.select(q=t.i // t.j), requires={"t": [_.i >= LOW, _.j != 0]}, semantics="polars"
         )
-    assert r.verdict == sv.Verdict.PROVED and r.semantics == "reference"
+    assert r.verdict == sv.Verdict.PROVED and r.semantics == "portable"
 
 
 def test_written_plan_states_floor(report: sv.Report) -> None:
@@ -165,9 +165,9 @@ def test_written_floor_raises(report: sv.Report, engine: str) -> None:
 def test_routes_from_polars(report: sv.Report) -> None:
     """Translated on Polars, DuckDB and Spark: the report is the reference's
     until the checker reports under each engine's profile (#1288, #271)."""
-    assert routes.choose(report, "polars").kind == "translated"
-    assert routes.choose(report, "duckdb").kind == "translated"
-    assert routes.choose(report, "spark").kind == "translated"
+    assert routes.choose(report, "polars").taken == "translated"
+    assert routes.choose(report, "duckdb").taken == "translated"
+    assert routes.choose(report, "spark").taken == "translated"
 
 
 # --- `%` of doubles ------------------------------------------------------------
@@ -203,7 +203,7 @@ def test_double_modulus_floors() -> None:
     out = report.run(con, "polars").column("m").to_pylist()
     assert out == [r[2] for r in DOUBLE_ROWS]
     assert all(str(v) == str(float(r[2])) for v, r in zip(out, DOUBLE_ROWS, strict=True))
-    assert report.routes["polars"].kind == "translated"
+    assert report.routes["polars"].taken == "translated"
 
 
 def test_double_modulus_is_the_floor_formula_over_divide() -> None:
@@ -272,7 +272,7 @@ def test_double_modulus_is_refused_under_the_reference() -> None:
     Polars (#1270)."""
     con = sv.connect()
     con.put("t", _double_table())
-    report = _double_report(con, "reference", None)
+    report = _double_report(con, "portable", None)
     with pytest.raises(Exception, match="polars-double-modulus"):
         report.run(con, "polars")
 

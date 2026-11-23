@@ -78,7 +78,7 @@ SCHEMAS = Path(sv.__file__).resolve().parent / "schemas"
 def run_json(capsys, *argv: str) -> tuple[int, dict]:
     """The command's JSON document, checked against the CLI's schema, and
     each embedded report against the report's."""
-    code, out = run(capsys, *argv, "--json")
+    code, out = run(capsys, *argv, "--format", "json")
     doc = json.loads(out)
     jsonschema = pytest.importorskip("jsonschema")
     jsonschema.validate(doc, json.loads((SCHEMAS / "cli.schema.json").read_text()))
@@ -116,7 +116,7 @@ def test_the_json_document(tmp_path, capsys):
     path = write(tmp_path, NOT_PROVED)
     code, doc = run_json(capsys, "check", str(path))
     assert code == 1
-    assert doc["format"] == 1
+    assert doc["format"] == 2
     assert doc["command"] == "check"
     assert (doc["exit"], doc["status"]) == (1, "not_proved")
     assert doc["file"] == str(path)
@@ -127,7 +127,7 @@ def test_the_json_document(tmp_path, capsys):
     assert set(item) == {"name", "nodes", "status", "relaxations", "summary", "links", "report"}
     assert (item["name"], item["nodes"], item["status"]) == ("paid", ["p"], "not_proved")
     assert set(item["summary"]) == {"guarantees", "checks", "not_proved"}
-    assert item["report"]["format"] == 4 and item["report"]["proved"] is False
+    assert item["report"]["format"] == 5 and item["report"]["proved"] is False
 
 
 def test_one_node_of_a_file(tmp_path, capsys):
@@ -235,7 +235,7 @@ def test_fix_extends_requires(tmp_path, capsys, decorator):
     code, doc = run_json(capsys, "check", str(path), "--fix")
     [fix] = doc["fixes"]
     if "if False" in decorator:
-        assert not fix["placed"] and "not a literal" in fix["reason"]
+        assert not fix["placed"] and "not a literal" in fix["why"]
         assert code == 1
         return
     assert fix["placed"], fix
@@ -358,7 +358,7 @@ def test_every_code_check_prints_is_explained():
     from typing import get_args
 
     from sverify.cli import _explain
-    from sverify.contracts import UnprovedReason
+    from sverify.report import UnprovedReason
 
     reasons = get_args(UnprovedReason)
     assert all(_explain.explain(r) for r in reasons)
@@ -411,7 +411,7 @@ def test_refresh_runs_a_node(tmp_path, capsys):
     assert code == 0, doc
     [node] = doc["nodes"]
     assert node["node"] == "paid"
-    assert node["write"]["inserted"] == 2
+    assert node["write"]["inserts"] == 2
     code, out = run(capsys, "refresh", f"{path}:stored", "--timeout", "0.000001")
     assert code == 4 and "budget exceeded" in out
 
@@ -451,7 +451,7 @@ def test_a_duckdb_memory_breach_exits_4_and_writes_nothing(tmp_path):
     path = tmp_path / "big.py"
     path.write_text(MEMORY.replace("SINK", repr(str(sink))))
     env = {**os.environ, "SVERIFY_TIMEOUT": "0", "SVERIFY_TEMP_DIRECTORY": str(tmp_path / "spill")}
-    argv = [sys.executable, "-m", "sverify.cli", "refresh", f"{path}:stored", "--json"]
+    argv = [sys.executable, "-m", "sverify.cli", "refresh", f"{path}:stored", "--format", "json"]
     done = subprocess.run(
         [*argv, "--memory-limit", "20MB"], capture_output=True, text=True, env=env
     )
@@ -475,7 +475,7 @@ def test_a_duckdb_memory_breach_exits_4_and_writes_nothing(tmp_path):
     # bytecode), so the refresh computes again.
     newer = tmp_path / "newer.py"
     newer.write_text(path.read_text().replace('name="orders",', 'name="orders", version=2,'))
-    again = [sys.executable, "-m", "sverify.cli", "refresh", f"{newer}:stored", "--json"]
+    again = [sys.executable, "-m", "sverify.cli", "refresh", f"{newer}:stored", "--format", "json"]
     done = subprocess.run(
         [*again, "--memory-limit", "20MB"], capture_output=True, text=True, env=env
     )

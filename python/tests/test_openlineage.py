@@ -23,7 +23,7 @@ import sverify as sv
 from _repo import ROOT, needs_repo
 from sverify import openlineage as ol
 from sverify.cli import main
-from sverify.contracts import MaxRows, Unique
+from sverify.conditions import MaxRows, Unique
 from sverify.errors import PreconditionError
 from sverify.io import Changes, DeltaSink, StaticSource
 
@@ -146,7 +146,7 @@ def test_refresh_emits_start_and_complete(tmp_path):
     assert facets["version"]["datasetVersion"] == str(write.version)
     assert out["outputFacets"]["outputStatistics"]["rowCount"] == 2
     c = facets["sverify_contract"]
-    assert c["format"] == 2 and c["node"] == "paid" and c["proved"] is True
+    assert c["format"] == 3 and c["node"] == "paid" and c["proved"] is True
     assert c["_schemaURL"] == ol.FACET_SCHEMA_URL
     assert {e["label"]: e["status"] for e in c["ensures"]} == {
         "(_.amount > 10)": "proved",
@@ -323,7 +323,7 @@ def test_a_verified_facet_becomes_requires(tmp_path):
     assert up.producer["job"] == "upstream/paid"
     assert [f["name"] for f in up.fields] == ["id", "cust", "amount"]
     assert str(up.schema["amount"]) == "int64" and up.version == _written(log)
-    assert up.verified and up.why_unverified is None
+    assert up.verified and up.why is None
     reqs = up.requires
     assert "amount > 10" in reqs
     assert any(isinstance(c, Unique) and c.cols == ("id",) for c in reqs)
@@ -345,15 +345,15 @@ def test_an_unverifiable_facet_is_evidence(tmp_path):
     del facet["substrait"]
     up = ol.read(lines).dataset(sink)
     assert not up.verified and up.requires == []
-    assert "no plan" in (up.why_unverified or "")
-    assert any("(_.amount > 10)" in a.assertion for a in up.evidence)
+    assert "no plan" in (up.why or "")
+    assert any("(_.amount > 10)" in a.assertion for a in up.assertions)
     # A claim the plan does not prove stays evidence too.
     lines = events(log)
     facet = lines[-1]["outputs"][0]["facets"]["sverify_contract"]
     facet["ensures"].append({"label": "amount > 500", "status": "proved", "sql": "amount > 500"})
     up = ol.read(lines).dataset(sink)
     assert up.verified and "amount > 500" not in up.requires
-    assert any("amount > 500" in a.assertion for a in up.evidence)
+    assert any("amount > 500" in a.assertion for a in up.assertions)
 
 
 def test_read_other_tools_events():
@@ -366,7 +366,7 @@ def test_read_other_tools_events():
     assert up.producer["job"] == "dbt-prod/analytics.orders"
     assert str(up.schema["order_id"]) == "int32" and str(up.schema["status"]) == "string"
     assert up.contract is None and up.requires == [] and not up.verified
-    assert {(a.assertion, a.column, a.success) for a in up.evidence} == {
+    assert {(a.assertion, a.column, a.success) for a in up.assertions} == {
         ("not_null", "order_id", True),
         ("unique", "order_id", True),
         ("accepted_values", "status", False),
@@ -469,3 +469,283 @@ def test_marquez_round_trip(tmp_path):
     assert [d["name"] for d in job["inputs"]] == [ol.dataset_id(orders())[1]]
     assert job["latestRun"]["state"] == "COMPLETED"
     assert job["latestRun"]["id"] == up.producer["run"]
+
+
+# -- reading files, types and names (#750) ------------------------------------------
+
+
+def _event(version: str = "3") -> dict:
+    return {
+        "eventType": "COMPLETE",
+        "producer": "https://example/producer",
+        "job": {"namespace": "n", "name": "j"},
+        "run": {"runId": "r1"},
+        "outputs": [
+            {
+                "namespace": "file",
+                "name": "/lake/t",
+                "facets": {
+                    "schema": {"fields": [{"name": "a", "type": "long"}]},
+                    "version": {"datasetVersion": version},
+                },
+            }
+        ],
+    }
+
+
+def test_read_takes_json_lines_a_list_or_one_event(tmp_path):
+    one, two = _event("1"), _event("2")
+    files = {
+        "lines.jsonl": json.dumps(one) + "\n\n" + json.dumps(two) + "\n",
+        "list.json": json.dumps([one, two], indent=2),
+        "one_line.json": json.dumps(two),
+        # #2447: one event over several lines, as `jq .` writes it.
+        "indented.json": json.dumps(two, indent=2),
+    }
+    for name, text in files.items():
+        (tmp_path / name).write_text(text)
+        got = ol.read(tmp_path / name)
+        assert got.dataset("file", "/lake/t").version == "2", name
+        assert len(got) == (1 if name in ("one_line.json", "indented.json") else 2), name
+    assert len(ol.read([one, two])) == 2
+    (tmp_path / "bad.json").write_text("{not json\n")
+    with pytest.raises(json.JSONDecodeError):
+        ol.read(tmp_path / "bad.json")
+
+
+@pytest.mark.parametrize(
+    ("name", "ibis_type"),
+    [
+        ("long", "int64"),
+        ("INTEGER", "int32"),
+        ("int", "int32"),
+        ("short", "int16"),
+        ("byte", "int8"),
+        ("string", "string"),
+        ("boolean", "boolean"),
+        ("date", "date"),
+        ("binary", "binary"),
+        ("float", "float32"),
+        ("double", "float64"),
+        ("timestamp", "timestamp('UTC')"),
+        ("timestamp_ntz", "timestamp"),
+        ("VARCHAR", "string"),
+        ("DECIMAL(10,2)", "decimal(10, 2)"),
+        ("array<string>", "array<string>"),
+        # Spark's names inside Spark's nested types (#2448).
+        ("array<int>", "array<int32>"),
+        ("struct<a:int>", "struct<a: int32>"),
+        ("struct<a:int,b:array<long>>", "struct<a: int32, b: array<int64>>"),
+        ("map<string,int>", "map<string, int32>"),
+        ("MAP<STRING, MAP<INT, FLOAT>>", "map<string, map<int32, float32>>"),
+        (
+            "array<struct<ts:timestamp,d:decimal(10,2)>>",
+            "array<struct<ts: timestamp('UTC'), d: decimal(10, 2)>>",
+        ),
+        ("struct<`my col`:short>", "struct<my col: int16>"),
+        # Ibis's and DuckDB's nested names read as before.
+        ("struct<a: int64>", "struct<a: int64>"),
+        ("STRUCT(a INTEGER)", "struct<a: int32>"),
+        ("INTEGER[]", "array<int32>"),
+        # A malformed nested type is unknown, never DuckDB's reading of Spark's names.
+        ("struct<a:int,>", "unknown"),
+        ("map<string>", "unknown"),
+        ("array<no such>", "unknown"),
+        ("no such type", "unknown"),
+        (None, "unknown"),
+        (3, "unknown"),
+    ],
+)
+def test_a_schema_facets_type_names(name, ibis_type):
+    """Spark's names first, then DuckDB's, then Ibis's, also inside Spark's
+    nested types; anything else is unknown."""
+    got = ol._ibis_type(name)
+    assert got.is_unknown() if ibis_type == "unknown" else str(got) == ibis_type
+
+
+def test_a_spark_jobs_nested_columns_keep_their_widths(tmp_path):
+    """#2448: a Spark job's struct, array and map columns read back with the
+    field types the job wrote, `int` as 32 bits inside them too."""
+    event = _event()
+    event["outputs"][0]["facets"]["schema"]["fields"] = [
+        {"name": "s", "type": "struct<id:int,tags:array<string>>"},
+        {"name": "m", "type": "map<string,int>"},
+        {"name": "xs", "type": "array<short>"},
+    ]
+    path = tmp_path / "spark.json"
+    path.write_text(json.dumps(event), encoding="utf-8")
+    schema = ol.read(path).dataset("file", "/lake/t").schema
+    assert {n: str(t) for n, t in schema.items()} == {
+        "s": "struct<id: int32, tags: array<string>>",
+        "m": "map<string, int32>",
+        "xs": "array<int16>",
+    }
+
+
+def test_dataset_names_follow_the_naming_conventions(tmp_path, monkeypatch):
+    class Iceberg:
+        def __init__(self, identifier, catalog):
+            self.identifier, self.catalog = identifier, catalog
+
+    catalog = type("Catalog", (), {"name": "lake"})()
+    assert ol.dataset_id(Iceberg(("db", "t"), catalog)) == ("iceberg://lake", "db.t")
+    assert ol.dataset_id(Iceberg("db.t", object())) == ("iceberg://catalog", "db.t")
+    monkeypatch.chdir(tmp_path)
+    local = type("Local", (), {"uri": "data/t", "name": "t"})()
+    assert ol.dataset_id(local) == ("file", str((tmp_path / "data" / "t").resolve()))
+    file_uri = type("F", (), {"uri": f"file://{tmp_path}/t", "name": "t"})()
+    assert ol.dataset_id(file_uri) == ("file", str((tmp_path / "t").resolve()))
+    gcs = type("G", (), {"location": "gs://bucket/a/b", "name": "b"})()
+    assert ol.dataset_id(gcs) == ("gs://bucket", "a/b")
+    assert ol.dataset_id(type("N", (), {"name": "orders"})()) == ("sverify", "orders")
+
+
+# -- an HTTP target and a Marquez API, served here -----------------------------------
+
+
+class _Marquez:
+    """What a Marquez server answers, and what it was sent."""
+
+    def __init__(self, dataset: dict, versions: dict | None):
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from threading import Thread
+
+        self.got: list[tuple[str, str, str | None, dict | None]] = []
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, format, *args):  # noqa: A002 - the parent's name
+                pass
+
+            def _send(self, code, body):
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(body).encode())
+
+            def do_GET(self):
+                outer.got.append(("GET", self.path, self.headers.get("Authorization"), None))
+                if self.path.endswith("/versions?limit=1"):
+                    if versions is None:
+                        return self._send(500, {})
+                    return self._send(200, versions)
+                return self._send(200, dataset)
+
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                outer.got.append(("POST", self.path, self.headers.get("Authorization"), body))
+                return self._send(201, {})
+
+        self.server = HTTPServer(("127.0.0.1", 0), Handler)
+        Thread(target=self.server.serve_forever, daemon=True).start()
+        self.url = f"http://127.0.0.1:{self.server.server_port}"
+
+    def close(self):
+        self.server.shutdown()
+
+
+@pytest.fixture
+def marquez_server():
+    servers = []
+
+    def start(dataset=None, versions=None):
+        s = _Marquez(dataset or {}, versions)
+        servers.append(s)
+        return s
+
+    yield start
+    for s in servers:
+        s.close()
+
+
+def test_an_http_target_posts_each_event_with_its_bearer_token(
+    tmp_path, monkeypatch, marquez_server
+):
+    from sverify.io import Secret
+
+    server = marquez_server()
+    monkeypatch.setenv("SV_TEST_LINEAGE_TOKEN", "sv-test-token")
+    p = orders().pipe(paid).write(DeltaSink(str(tmp_path / "paid")))
+    p.refresh(lineage=ol.Lineage(server.url + "/", api_key=Secret("env:SV_TEST_LINEAGE_TOKEN")))
+    assert [(m, path, auth) for m, path, auth, _ in server.got] == [
+        ("POST", "/api/v1/lineage", "Bearer sv-test-token")
+    ] * 2
+    assert [b["eventType"] for *_, b in server.got] == ["START", "COMPLETE"]
+    # OPENLINEAGE_API_KEY when no key is given, and no header without either.
+    monkeypatch.setenv("OPENLINEAGE_API_KEY", "sv-test-env-token")
+    ol.Lineage(server.url).emit({"job": {"name": "x"}})
+    monkeypatch.delenv("OPENLINEAGE_API_KEY")
+    ol.Lineage(server.url).emit({"job": {"name": "x"}})
+    assert [auth for _, _, auth, _ in server.got[2:]] == ["Bearer sv-test-env-token", None]
+
+
+def test_marquez_reads_a_dataset_its_version_and_its_writer(marquez_server, monkeypatch):
+    dataset = {
+        "fields": [{"name": "id", "type": "BIGINT"}, {"name": "amount"}],
+        "facets": {
+            "version": {"datasetVersion": "7"},
+            "sverify_contract": {"_producer": "https://example/sverify", "ensures": []},
+            "dataQualityAssertions": {
+                "assertions": [{"assertion": "not_null", "success": True, "column": "id"}]
+            },
+        },
+    }
+    versions = {
+        "versions": [
+            {
+                "createdByRun": {
+                    "id": "run-7",
+                    "jobVersion": {"namespace": "upstream", "name": "paid"},
+                }
+            }
+        ]
+    }
+    server = marquez_server(dataset, versions)
+    monkeypatch.setenv("OPENLINEAGE_API_KEY", "sv-test-token")
+    up = ol.marquez(server.url, "s3://bucket", "marts/paid")
+    # The namespace and name are one path segment each.
+    assert server.got[0][1] == "/api/v1/namespaces/s3%3A%2F%2Fbucket/datasets/marts%2Fpaid"
+    assert server.got[0][2] == "Bearer sv-test-token"
+    assert up.fields == [{"name": "id", "type": "BIGINT"}, {"name": "amount", "type": None}]
+    assert str(up.schema["amount"]) == "unknown" and up.version == "7"
+    assert up.producer == {
+        "job": "upstream/paid",
+        "run": "run-7",
+        "producer": "https://example/sverify",
+    }
+    assert [(a.assertion, a.column, a.job) for a in up.assertions] == [
+        ("not_null", "id", "upstream/paid")
+    ]
+    # No plan in the facet: evidence only.
+    assert not up.verified and "no plan" in (up.why or "")
+
+
+def test_marquez_without_versions_or_fields(marquez_server):
+    """The producer is a courtesy: a versions endpoint that fails leaves it
+    empty. Without `fields`, the schema facet's fields are read."""
+    dataset = {"facets": {"schema": {"fields": [{"name": "a", "type": "long"}]}}}
+    server = marquez_server(dataset, None)
+    up = ol.marquez(server.url, "n", "t", api_key="sv-test-token")
+    assert up.producer == {} and up.contract is None and up.version is None
+    assert str(up.schema["a"]) == "int64"
+    assert server.got[0][2] == "Bearer sv-test-token"
+
+
+def test_a_facet_whose_plan_the_checker_rejects_is_evidence(tmp_path):
+    log, sink = _upstream(tmp_path)
+    lines = events(log)
+    facet = lines[-1]["outputs"][0]["facets"]["sverify_contract"]
+    facet["substrait"] = {"relations": "not a plan"}
+    up = ol.read(lines).dataset(sink)
+    assert not up.verified and up.requires == []
+    assert (up.why or "").startswith("the checker rejects the exported plan")
+    assert any("(_.amount > 10)" in a.assertion for a in up.assertions)
+    # A not_null claim is evidence too.
+    assert any(a.assertion.endswith("not_null (proved)") for a in up.assertions)
+
+
+def test_runs_are_off_without_lineage(tmp_path):
+    assert ol.runs(None, []) is None and ol.runs(False, []) is None
+    log = tmp_path / "events.jsonl"
+    r = ol.runs(str(log), [])
+    assert r is not None and isinstance(r.lineage._transport, ol._File)

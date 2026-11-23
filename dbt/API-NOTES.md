@@ -24,7 +24,7 @@ Closed in substrait-lean#685:
 |---|---|
 | 1 | `sverify.errors.Unsupported(ValueError)`, the base of every refusal (the lift's, the producer's, the SQL writer's, the Polars translator's); `sverify.engines.Unsupported` was the same class until 1.0 removed that name (#881) |
 | 4 | `CheckedCondition.reason -> Literal["observation", "not_a_key", "ties", "always_false", "may_be_false", "may_be_null", "not_proved_kind", "unknown"] \| None` |
-| 5 | `Report.needs -> list[Needed]`, `Needed(table, column, op, value, sql, label, code, issue)`, `code` being the Python for `requires` (`_.qty != 0`) for an editor's quick fix (`sverify.contracts.Needed`) |
+| 5 | `Report.needs -> list[Needed]`, `Needed(table, column, op, value, sql, label, code, issue)`, `code` being the Python for `requires` (`_.qty != 0`) for an editor's quick fix (`sverify.report.Needed`) |
 | 13 | `verify(tables={"t": {"id": "BIGINT", "s": "VARCHAR NOT NULL"}})`: DuckDB's type names beside Ibis's (`sverify.contracts.input_schema`) |
 | 16 | The SQL lift reads `x IS [NOT] TRUE` and `x IS [NOT] FALSE` |
 | 19 | `CheckedCondition.condition`: the condition as given in `ensures` |
@@ -34,6 +34,7 @@ Closed since:
 
 | Note | Issue | Addition |
 |---|---|---|
+| 11 | [substrait-lean#704](https://github.com/AlexanderNenninger/substrait-lean/issues/704) | `Report.output` types a column `nullable=False` where the checker proves it never NULL, and `Report.facts: dict[str, ColumnFacts]` holds `nullable`, `lower` and `upper` as data, with the old text as `str()` (ruling 184; no value set yet) |
 | 17 | [substrait-lean#708](https://github.com/AlexanderNenninger/substrait-lean/issues/708) | A finite value set per string column in the range analysis, up to 64 strings |
 
 Filed (larger than substrait-lean#685; the checklist is [substrait-lean#692](https://github.com/AlexanderNenninger/substrait-lean/issues/692)):
@@ -44,12 +45,12 @@ Filed (larger than substrait-lean#685; the checklist is [substrait-lean#692](htt
 | 3 | [substrait-lean#700](https://github.com/AlexanderNenninger/substrait-lean/issues/700) | `Unsupported.construct: str \| None` (`"function md5"`, `"WITH RECURSIVE"`) and `Unsupported.sql: str \| None`, set at each refusal site of the lift and the producer |
 | 6 | [substrait-lean#701](https://github.com/AlexanderNenninger/substrait-lean/issues/701) | `CheckedCondition.needs: tuple[str, ...]`, the needed preconditions its proof used, and `proved` False when it is not empty; needs the checker to report which conditions used which inferred bound |
 | 7, 8, 9 | [substrait-lean#687](https://github.com/AlexanderNenninger/substrait-lean/issues/687), [substrait-lean#702](https://github.com/AlexanderNenninger/substrait-lean/issues/702), [substrait-lean#703](https://github.com/AlexanderNenninger/substrait-lean/issues/703) | `Issue.shown` from the user's SQL only; no domain error and no assumed `SUM` under `semantics="duckdb"` where DuckDB completes the operation or widens the type |
-| 10, 11 | [substrait-lean#703](https://github.com/AlexanderNenninger/substrait-lean/issues/703), [substrait-lean#704](https://github.com/AlexanderNenninger/substrait-lean/issues/704) | `Report.output` with DuckDB's types under `semantics="duckdb"`, `nullable=False` where proved; `Report.column_facts: dict[str, ColumnFacts]` (nullability, bounds, value set) |
+| 10 | [substrait-lean#703](https://github.com/AlexanderNenninger/substrait-lean/issues/703) | `Report.output` with DuckDB's types under `semantics="duckdb"` |
 | 12 | [substrait-lean#705](https://github.com/AlexanderNenninger/substrait-lean/issues/705) | `Report.ensured -> dict[str, list[Condition]]` (keys, NOT NULL, bounds of the result), in the form `requires` takes, to chain `verify` calls |
 | 14 | [substrait-lean#706](https://github.com/AlexanderNenninger/substrait-lean/issues/706) | `tables` keys qualified as DuckDB resolves names (`"shop.main.orders"`) |
 | 15 | [substrait-lean#707](https://github.com/AlexanderNenninger/substrait-lean/issues/707) | `sv.unique(*cols, nulls="distinct")`, a key that lets NULLs repeat (needs a key kind in Lean's `Rel.keys`) |
 | 18 | [substrait-lean#441](https://github.com/AlexanderNenninger/substrait-lean/issues/441) | Exact signs through double products, quotients and sums of non-negatives (Lean's float bounds) |
-| 20 | [substrait-lean#709](https://github.com/AlexanderNenninger/substrait-lean/issues/709) | `sverify.sql_schema(query, tables, semantics="reference") -> ibis.Schema`, the lift's output schema without a proof (a new top-level name) |
+| 20 | [substrait-lean#709](https://github.com/AlexanderNenninger/substrait-lean/issues/709) | `sverify.sql_schema(query, tables, semantics="portable") -> ibis.Schema`, the lift's output schema without a proof (a new top-level name) |
 | 21 | [substrait-lean#710](https://github.com/AlexanderNenninger/substrait-lean/issues/710) | `Report.engine_version`, and a warning from `run` when the installed engine is another |
 | — | [substrait-lean#688](https://github.com/AlexanderNenninger/substrait-lean/issues/688) | `CheckedCondition.suggested` as `Needed`-like records too: sverify-dbt still parses their SQL to write a dbt test (`mapping.as_dbt_test`) |
 
@@ -240,9 +241,12 @@ strings only.
 
 Sverify-dbt proves `c IS NOT NULL` as a condition instead of reading it.
 
-Proposed: `Report.output` types with `nullable=False` where the checker
-proves the column never NULL, and the facts as data (`Report.column_facts`:
-nullability, integer bounds, the set of a string's values).
+Closed by [substrait-lean#704](https://github.com/AlexanderNenninger/substrait-lean/issues/704)
+(ruling 184): `Report.output` types a column `nullable=False` where the
+checker proves it never NULL, and `report.facts["c"]` is a `ColumnFacts`
+(`nullable`, `lower`, `upper`), whose `str()` is the text above. A string's
+value set is not part of it yet. Sverify-dbt can read
+`report.facts[c].nullable` in place of its added `c IS NOT NULL`.
 
 ### 12. Facts proved of one model do not reach the next
 
@@ -432,3 +436,16 @@ would give suggestions for more kinds of postcondition.
 ### sverify-dbt reads sverify's finding codes and budgets from `sverify.cli`
 
 `--format github|sarif|junit`, `--timeout` and `--memory-limit` (#891) use `sverify.cli._explain` (the text and level of a finding code) and `sverify.cli._limits` (`Budget`, `timeout_from`, `memory_limit_from`), both private. The `==` pin keeps them working. Two more names are not public: `sverify._duckdb.memory_limit_error` (DuckDB out of memory as a `MemoryLimitError`) and Ibis's `DuckDBType.to_string`, which turns a type of `Report.output` into DuckDB's name for it. `tests/test_public_api.py` lists every such name and fails on a new one. Proposed: a public `sverify.limits`, `sverify.explain`, `MemoryLimitError` raised for DuckDB's out-of-memory error `Report.output_types(dialect="duckdb")` and a public exit-status mapping (`EXIT_STATUS` in `sverify_dbt/result.py` repeats the table of `sverify.cli`'s `_main.py`), so that a package on sverify's API needs no underscore module.
+
+### sverify's 1.0 names (#2345, ruling 263)
+
+sverify-dbt reads one name the 1.0 naming sweep changed: `sverify.types.CheckedCondition`, the type of `Report.ensures`' items, is `sverify.types.Postcondition`, with the same fields (`reason`, `why`, `needs`, `condition`, `proved`). `check.py`, `mapping.py` and `result.py` follow. The other renames (`Lenses`, a route's `taken` and `why`, `SinkWrite.inserts`, the sink record's `semantics`) are not read here.
+
+### sverify-dbt's own 1.0 names (#891 2.6)
+
+sverify-dbt's result types moved before 1.0 freezes them:
+
+- A status is `sverify_dbt.result.Status`, snake_case: `"pending"`, `"proved"`, `"not_proved"` or `"not_checked"`.
+- `sverify_dbt.Needed` is `NeededTest`, with `why` where it said `because`. A `Needed` in the table above (rows 5 and 55) is sverify's, `sverify.types.Needed`. `Suggestion.because` is `Suggestion.why` too: `why` is words (ruling 264).
+- `TestResult`, `NeededTest`, `ContractIssue`, `ModelResult`, `CheckResult` and `Suggestion` take keyword arguments only.
+- `CheckResult.tests` and `.relations`, the manifest's nodes, are internal: `_tests` and `_relations`.

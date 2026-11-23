@@ -210,11 +210,7 @@ def _div(lf: _Lift, node: sge.Div, sub: Sub, scope: list[Column]) -> E:
     # DuckDB's `/` divides as doubles (F1): integers as BIGINTs, decimals as
     # doubles; by zero it gives ±inf or NaN.
     ints = all(x.type.is_integer() or x.type.is_null() for x in (a, b))
-    if g := _generated(lf, "BIGINT / BIGINT" if ints else "DOUBLE / DOUBLE", [a, b]):
-        return g
-    opt = _option("on_division_by_zero", lf.profile.float_division_by_zero)
-    args = [lf.to(a, dt.float64).json, lf.to(b, dt.float64).json]
-    return E(_fn("divide", args, dt.float64, [opt]), dt.float64)
+    return _generated(lf, "BIGINT / BIGINT" if ints else "DOUBLE / DOUBLE", [a, b])
 
 
 def _int_div(lf: _Lift, node: sge.IntDiv, sub: Sub, scope: list[Column]) -> E:
@@ -237,12 +233,7 @@ def _mod(lf: _Lift, node: sge.Mod, sub: Sub, scope: list[Column]) -> E:
     t = lf.common([a, b], "%")
     if t.is_float64():
         # DuckDB's: NaN by zero or of an infinity.
-        if g := _generated(lf, "DOUBLE % DOUBLE", [a, b]):
-            return g
-        # sverify's own remainder of doubles, C's `fmod` (#256): Substrait's
-        # `modulus` has no double impl.
-        opt = _option("on_division_by_zero", "ERROR")
-        return E(_fn("sverify_fmod", [lf.to(a, t).json, lf.to(b, t).json], t, [opt]), t)
+        return _generated(lf, "DOUBLE % DOUBLE", [a, b])
     elif not t.is_integer():
         raise SqlUnsupported(f"% of {a.type} and {b.type} is not supported yet", construct="MODULO")
     # The remainder takes the dividend's sign (`division_type` TRUNCATE, #209
@@ -388,11 +379,23 @@ def _is(lf: _Lift, node: sge.Is, sub: Sub, scope: list[Column]) -> E:
 def _between(lf: _Lift, node: sge.Between, sub: Sub, scope: list[Column]) -> E:
     if node.args.get("symmetric"):
         raise SqlUnsupported("BETWEEN SYMMETRIC is not supported", construct="BETWEEN SYMMETRIC")
-    es = [sub(node.this), sub(node.args["low"]), sub(node.args["high"])]
+    # The operand and the lower bound are evaluated on every row, so a nested
+    # expression in them may be bound below the SELECT list (`_Lift.share`); the
+    # upper bound is evaluated only where the lower bound's comparison does not
+    # decide, so nothing under it is bound.
+    es = [sub(node.this), sub(node.args["low"])]
+    saved, lf.shared = lf.shared, None
+    try:
+        es.append(sub(node.args["high"]))
+    finally:
+        lf.shared = saved
     if any(e.type.is_array() for e in es):
         _list_order(lf, node, [node.this, node.args["low"], node.args["high"]])
     x, lo, hi = _operands(lf, es, "BETWEEN")
-    return E(between(x, lo, hi, typed=True), dt.boolean)
+    # The operand is named by both bounds and every row evaluates it (the lower
+    # bound's comparison is the first of the `AND`): it is bound to a column
+    # once, so a `BETWEEN` of a `BETWEEN` stays linear in its depth (#2338).
+    return E(between(lf.share(x, calls=True), lo, hi, typed=True), dt.boolean)
 
 
 def _in(lf: _Lift, node: sge.In, sub: Sub, scope: list[Column]) -> E:
@@ -468,7 +471,13 @@ def _case(lf: _Lift, node: sge.Case, sub: Sub, scope: list[Column]) -> E:
 
 def _if(lf: _Lift, node: sge.If, sub: Sub, scope: list[Column]) -> E:
     """DuckDB's `if(c, a, b)`, another spelling of `CASE WHEN c THEN a ELSE b END`
-    (#328)."""
+    (#328). DuckDB's `if` needs all three arguments."""
+    if node.args.get("false") is None:
+        raise SqlUnsupported(
+            f"{_shown(node)}: DuckDB's if takes three arguments",
+            hint="write if(condition, then, else), or CASE WHEN condition THEN then END",
+            construct="function if",
+        )
     case = sge.Case(
         ifs=[sge.If(this=node.this, true=node.args["true"])], default=node.args.get("false")
     )
@@ -533,9 +542,7 @@ def _log(lf: _Lift, node: sge.Log, sub: Sub, scope: list[Column]) -> E:
     # are SQLGlot's `Log` with the base set.
     if node.expression is None:
         (x,) = _doubles(lf, [sub(node.this)], "log")
-        if g := _generated(lf, "log(DOUBLE)", [E(x, dt.float64)]):
-            return g
-        return _elementary_call(lf, "log10", [x])
+        return _generated(lf, "log(DOUBLE)", [E(x, dt.float64)])
     base, x = node.this, node.expression
     if isinstance(base, sge.Literal) and base.this in ("2", "10"):
         return _elementary_call(lf, f"log{base.this}", _doubles(lf, [sub(x)], "log"))
@@ -558,9 +565,7 @@ def _angle(factor: float) -> Callable[..., E]:
     def rule(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
         (x,) = _doubles(lf, [sub(node.this)], type(node).__name__.lower())
         k = E(literal(factor, dt.float64), dt.float64, factor)
-        if g := _generated(lf, "DOUBLE * DOUBLE", [E(x, dt.float64), k]):
-            return g
-        return E(_fn("multiply", [x, k.json], dt.float64, _overflow(lf, dt.float64)), dt.float64)
+        return _generated(lf, "DOUBLE * DOUBLE", [E(x, dt.float64), k])
 
     return rule
 
@@ -616,12 +621,11 @@ def _extremum(name: str) -> Callable[..., E]:
         if t.is_array():
             _list_order(lf, node, [node.this, *node.expressions])
         sql = "BIGINT" if t.is_int64() else "DOUBLE" if t.is_float64() else None
-        if sql is not None and lf.profile is DUCKDB:
+        if sql is not None:
             # Of BIGINTs or DOUBLEs: the generated lift's, pairwise.
             g = es[0]
             for e in es[1:]:
                 g = _generated(lf, f"{name}({sql}, {sql})", [lf.to(g, t), lf.to(e, t)])
-                assert g is not None
             return g
         # Other types: pending generation (#268).
         return E(_fn(f"{name}_skip_null", [lf.to(e, t).json for e in es], t), t)
@@ -650,19 +654,7 @@ def _sign(lf: _Lift, node: sge.Sign, sub: Sub, scope: list[Column]) -> E:
     if not (_numeric(a.type) or a.type.is_null()) or a.type.is_decimal():
         raise SqlUnsupported(f"sign of a {a.type} is not supported yet", construct="function sign")
     sql = "DOUBLE" if a.type.is_float64() else "BIGINT"
-    if g := _generated(lf, f"sign({sql})", [a]):
-        return g
-    t = dt.int64 if a.type.is_null() else a.type
-    x = lf.to(a, t).json
-    i8 = dt.int8
-    ifs = [
-        (_fn("lt", [x, literal(0, t)], dt.boolean), literal(-1, i8)),
-        (_fn("gt", [x, literal(0, t)], dt.boolean), literal(1, i8)),
-    ]
-    if t.is_float64():
-        ifs.insert(0, (_fn("is_nan", [x], dt.boolean), literal(0, i8)))
-    null = _fn("is_null", [x], dt.boolean)
-    return E(if_then([(null, literal(None, i8)), *ifs], literal(0, i8)), i8)
+    return _generated(lf, f"sign({sql})", [a])
 
 
 def _isnan(lf: _Lift, node: sge.IsNan, sub: Sub, scope: list[Column]) -> E:

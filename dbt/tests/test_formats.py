@@ -11,27 +11,39 @@ import sverify
 
 from sverify_dbt import formats
 from sverify_dbt.cli import BUDGET, main
-from sverify_dbt.result import CheckResult, ContractIssue, ModelResult, TestResult
+from sverify_dbt.result import CheckResult, ContractIssue, ModelResult, Status, TestResult
 
 
 def _result() -> CheckResult:
     def t(
-        label: str, status: str, why: str | None = None, counterexample: str | None = None
+        label: str, status: Status, why: str | None = None, counterexample: str | None = None
     ) -> TestResult:
-        return TestResult(None, None, label, "test", status, why, counterexample)
+        return TestResult(
+            test=None,
+            name=None,
+            label=label,
+            kind="test",
+            status=status,
+            why=why,
+            counterexample=counterexample,
+        )
 
-    ok = ModelResult("ok", "model.p.ok", "models/ok.sql", "ref('ok')")
+    ok = ModelResult(name="ok", unique_id="model.p.ok", path="models/ok.sql", ref="ref('ok')")
     ok.tests = [t("unique(id)", "proved")]
-    bad = ModelResult("bad", "model.p.bad", "models/bad.sql", "ref('bad')")
+    bad = ModelResult(name="bad", unique_id="model.p.bad", path="models/bad.sql", ref="ref('bad')")
     bad.tests = [
-        t("not_null(x)", "not proved", why="a row may be NULL", counterexample="x = NULL"),
-        t("unique(y)", "not checked", why="the model was refused"),
+        t("not_null(x)", "not_proved", why="a row may be NULL", counterexample="x = NULL"),
+        t("unique(y)", "not_checked", why="the model was refused"),
     ]
-    bad.contract = [ContractIssue("z", "declared int, found text")]
+    bad.contract = [ContractIssue(column="z", problem="declared int, found text")]
     refused = ModelResult(
-        "rec", "model.p.rec", "models/rec.sql", "ref('rec')", refused="no WITH RECURSIVE"
+        name="rec",
+        unique_id="model.p.rec",
+        path="models/rec.sql",
+        ref="ref('rec')",
+        refused="no WITH RECURSIVE",
     )
-    return CheckResult("p", "/p", [ok, bad, refused], {})
+    return CheckResult(project="p", root="/p", models=[ok, bad, refused])
 
 
 def test_github_has_one_annotation_per_finding() -> None:
@@ -96,7 +108,7 @@ def test_json_is_sverifys_envelope() -> None:
     doc = _result().to_dict(1)
     jsonschema.validate(doc, schema)
     assert (doc["format"], doc["command"], doc["exit"], doc["status"]) == (
-        1,
+        2,
         "check",
         1,
         "not_proved",

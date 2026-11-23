@@ -274,7 +274,7 @@ def test_duckdb_writes_both_statements_with_the_ordinal_and_neither_warns():
     con = _con([1, 1, 2, 2, 3], [10.0, 20.0, 30.0, 40.0, 50.0])
     with warnings.catch_warnings():
         warnings.simplefilter("error", InferredWarning)
-        assert r.check_margins(con, "duckdb", "duckdb") == 0
+        assert r._check_margins(con, "duckdb", "duckdb") == 0
 
 
 def test_a_margin_site_over_a_limit_is_refused_where_the_runner_leaves_ties_open(monkeypatch):
@@ -286,11 +286,11 @@ def test_a_margin_site_over_a_limit_is_refused_where_the_runner_leaves_ties_open
     r = _open_site("spark")
     con = _con([1], [1.0])
     with pytest.raises(PreconditionError, match=r"each evaluate a LIMIT.*reproducible="):
-        r.check_margins(con, None, "spark")
+        r._check_margins(con, None, "spark")
     monkeypatch.setattr("sverify.report.run_plan", lambda *a, **k: pa.table({"k": [0]}))
     r._on_inferred = "warn"
     with pytest.warns(InferredWarning, match="may miss groups"):
-        assert r.check_margins(con, None, "spark") == 0
+        assert r._check_margins(con, None, "spark") == 0
 
 
 def test_a_report_read_back_from_json_keeps_its_run_time_checks(having):

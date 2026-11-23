@@ -9,8 +9,8 @@ result is sorted, the discharged checks, all come from the answer. What the
 caller adds is the user's side: the conditions as written, the issues and
 facts in the user's terms, the schemas, the hints.
 
-`sverify.verify` (`contracts.py`) and `sverify.from_substrait`
-(`substrait_export.recheck`) build their reports here.
+`sverify.verify` (`contracts.py`) and `Report.from_substrait`
+(`substrait_export._recheck`) build their reports here.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def verdict(
     from sverify.report import Report, black_boxes_from_json, class_places, tie_places
     from sverify.routes import probed_version
 
-    semantics = context.get("semantics", "reference")
+    semantics = context.get("semantics", "portable")
     return Report(
         issues=list(issues),
         # D48: the report's `deterministic` is the class level; a checker
@@ -60,6 +60,7 @@ def verdict(
         _exact=out["deterministic"],
         _class_places=class_places(out),
         _windows_total=out.get("windows_total", out["deterministic"]),
+        _table_ignores=[(t["opened"], t["ignored"]) for t in out.get("table_ignores", [])],
         _tie_places=tie_places(out),
         _guard_free=out["guard_free"],
         _unchecked=out.get("unchecked"),

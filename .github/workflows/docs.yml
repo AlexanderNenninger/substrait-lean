@@ -16,8 +16,8 @@ on:
     tags: ["v*"]
   pull_request:
     paths:
-      - python/src/**
-      - python/tools/**
+      # Not python/src/** or python/tools/**: the docs' build on main reads
+      # them, and a break there shows on main, not on every code pull request.
       - python/README.md
       - python/great-docs.yml
       - python/pyproject.toml
@@ -54,6 +54,10 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: python/uv.lock
+          # Pruned: the cache keeps the wheels uv built and not the rest
+          # (455 MB against 2.1 GB, which crowded the Lean cache out).
+          prune-cache: true
+          cache-suffix: pruned
       # Quarto's package from the cache, downloaded only on a miss. GitHub's
       # release download URL times out (504) often enough to fail a run, while
       # the API's asset endpoint, which `gh release download` uses, still

@@ -74,7 +74,7 @@ runs proved sound against the reference (`Engine.duckdb_sound`,
 `Engine.polars_sound`, `Engine.spark_sound`).
 
 SQL strings go through SQLGlot and sverify's own lift: DuckDB's SQL
-with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`),
+with `sv.sql(query, semantics="duckdb" | "portable")` (`sverify.sql_lift`),
 whose two profiles are generated Lean modules
 (`engines/duckdb/Sverify/DuckDB/Lift/Duckdb` and `Reference`). The reference is
 Lean's reference profile, and DuckDB is the default oracle.
@@ -175,7 +175,7 @@ Lean's reference profile, and DuckDB is the default oracle.
 * The lift is generated too: the lowering search run backwards.
   `engines/duckdb/Sverify/DuckDB/SQL.lean` states what DuckDB's SQL functions mean
   (`DuckFn`, at one signature each) under `semantics="duckdb"` and
-  `"reference"`: `/` of integers divides as doubles, `%` of doubles is C's
+  `"portable"`: `/` of integers divides as doubles, `%` of doubles is C's
   `fmod`, `log` is base 10, and with DuckDB's semantics `±∞`, NaN where
   DuckDB gives them. It is trusted, like a profile, and tested against the
   engine (oracle A). `generate_lift` (`engines/duckdb/Sverify/DuckDB/LiftSearch.lean`)
@@ -271,7 +271,7 @@ the quantile's `method`. The others are shims with a cost:
 
 - truncating division and modulus of negative integers (`//` floors,
   int-divide, int-modulus), and the sign of a double modulus (double-modulus);
-- an empty `SUM` (0, [sum-float](../engines/polars/facts/polars-sum-float.json)),
+- an empty `SUM` (0, [sum-float-streaming](../engines/polars/facts/polars-sum-float-streaming.json)),
   `avg` of integers ([avg-int](../engines/polars/facts/polars-avg-int.json)),
   `CORR` of one pair ([corr](../engines/polars/facts/polars-corr.json)),
   `mode`'s list ([mode](../engines/polars/facts/polars-mode.json)),
@@ -521,7 +521,7 @@ Every field but `engine` is optional:
 | `title` | the engine's name as prose and generated tables write it (`DuckDB`) |
 | `run_tables` | runs a written plan over Arrow tables by name: `run_tables(plan_json, tables, *, guard_free=False, finite=True)`; `sverify.engines.run_sharded` runs its shards with it |
 | `guard_free_theorem` | the theorem that covers `run_tables(..., guard_free=True)`, the run without the checks a `guard_free` contract report discharged |
-| `sql` | `SqlFrontEnd(read, lift)`: the dialect's SQLGlot name and `lift(query, schemas, semantics)`, the plan of its SQL; `sverify.sql(dialect=read)` and `sverify check --dialect` read it. The dialect's own semantics is the engine's name, accepted where the plugin brings the checker's profile; the lift offers or refuses any other by name, and never reads a query as another dialect |
+| `sql` | `SQLFrontEnd(read, lift)`: the dialect's SQLGlot name and `lift(query, schemas, semantics)`, the plan of its SQL; `sverify.sql(dialect=read)` and `sverify check --dialect` read it. The dialect's own semantics is the engine's name, accepted where the plugin brings the checker's profile; the lift offers or refuses any other by name, and never reads a query as another dialect |
 | `fallbacks` | the nodes of a written plan the engine runs outside its chosen executor (Polars's in-memory nodes of a streaming plan), which a route records and `streaming="require"` refuses |
 
 Entries for one engine are merged field by field, so one package can add a

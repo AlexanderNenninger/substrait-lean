@@ -95,7 +95,7 @@ first.to_sql("snowflake")
 * `report.run(con, engine, route="auto")` runs a proved plan on an
   engine by a route (`report.routes` records it, with its class), and
   `refresh(engine=..., route="auto")` does the same for each node.
-  `sv.equivalent(...)` in `ensures` names the observation, and
+  `sv.equivalent(...)` in `ensures` names the lenses, and
   `reproducible=` on a sink what a rerun must reproduce.
 * `sverify.engines` has the engines, SQL dialects and plans
   (`run_sharded` runs a plan per shard and combines the results, with a
@@ -104,7 +104,7 @@ first.to_sql("snowflake")
 Refused for now: correlated scalar subqueries, unbound parameters
 (`sv.verify(expr, params={p: 10})` checks an `ibis.param` with its value),
 `sample`, `random()` and `now()`, among the operations
-[the Ibis coverage table](../README.md#ibis-coverage)
+[the Ibis coverage table](coverage.md)
 marks ✗. The repository has
 [a how-to page](tasks.md), [getting started](https://alexandernenninger.github.io/substrait-lean/examples/examples.html),
 the Ibis coverage table in its README, and

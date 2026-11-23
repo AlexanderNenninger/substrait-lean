@@ -21,7 +21,7 @@ import sverify as sv
 from _arrow_store import ArrowStore
 from sverify import _checker, _engine_settings, profiles, routes
 from sverify.engines.plan import to_sql, written_plan
-from sverify.profiles import ProfilePlugin, Setting, SqlFrontEnd
+from sverify.profiles import ProfilePlugin, Setting, SQLFrontEnd
 from sverify.routes import EngineSettingsError, EngineVersionError
 
 
@@ -121,11 +121,11 @@ def _toy_lift(query, schemas, semantics):
     """A toy dialect that reads DuckDB's text, as an engine's package would read its own."""
     from sverify.sql_lift import lift
 
-    return lift(query, schemas, "reference" if semantics == "toy" else semantics)
+    return lift(query, schemas, "portable" if semantics == "toy" else semantics)
 
 
-TOY = ProfilePlugin(engine="toy", profile=True, sql=SqlFrontEnd("toy", _toy_lift))
-NO_PROFILE = ProfilePlugin(engine="bare", profile=False, sql=SqlFrontEnd("bare", _toy_lift))
+TOY = ProfilePlugin(engine="toy", profile=True, sql=SQLFrontEnd("toy", _toy_lift))
+NO_PROFILE = ProfilePlugin(engine="bare", profile=False, sql=SQLFrontEnd("bare", _toy_lift))
 
 
 @pytest.fixture

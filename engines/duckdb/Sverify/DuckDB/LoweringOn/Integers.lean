@@ -57,7 +57,8 @@ theorem Substrait.duckdbOn.fit_silent_i8_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fit_silent_i8 : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fit Substrait.OverflowMode.silent Substrait.IntWidth.i8) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.un (Substrait.UnFn.isNum Substrait.NumKind.int) (Substrait.Expr.field 0))
   (Substrait.Expr.bin Substrait.BinFn.dsub
     (Substrait.Expr.bin Substrait.BinFn.imod
@@ -69,7 +70,8 @@ abbrev Substrait.duckdbOn.fit_silent_i8 : Substrait.UnEntry (Substrait.Profile.d
         (Substrait.Expr.lit (Substrait.Value.int 256)))
       (Substrait.Expr.lit (Substrait.Value.int 256)))
     (Substrait.Expr.lit (Substrait.Value.int 128)))
-  (Substrait.Expr.field 0), by simp [Substrait.Expr.must], Substrait.duckdbOn.fit_silent_i8_agree⟩
+  (Substrait.Expr.field 0))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fit_silent_i8_agree
 
 set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.fit_silent_i16_agree : ∀ (x : Substrait.Value),
@@ -95,7 +97,8 @@ theorem Substrait.duckdbOn.fit_silent_i16_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fit_silent_i16 : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fit Substrait.OverflowMode.silent Substrait.IntWidth.i16) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.un (Substrait.UnFn.isNum Substrait.NumKind.int) (Substrait.Expr.field 0))
   (Substrait.Expr.bin Substrait.BinFn.dsub
     (Substrait.Expr.bin Substrait.BinFn.imod
@@ -107,7 +110,8 @@ abbrev Substrait.duckdbOn.fit_silent_i16 : Substrait.UnEntry (Substrait.Profile.
         (Substrait.Expr.lit (Substrait.Value.int 65536)))
       (Substrait.Expr.lit (Substrait.Value.int 65536)))
     (Substrait.Expr.lit (Substrait.Value.int 32768)))
-  (Substrait.Expr.field 0), by simp [Substrait.Expr.must], Substrait.duckdbOn.fit_silent_i16_agree⟩
+  (Substrait.Expr.field 0))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fit_silent_i16_agree
 
 set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.fit_silent_i32_agree : ∀ (x : Substrait.Value),
@@ -133,7 +137,8 @@ theorem Substrait.duckdbOn.fit_silent_i32_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fit_silent_i32 : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fit Substrait.OverflowMode.silent Substrait.IntWidth.i32) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.un (Substrait.UnFn.isNum Substrait.NumKind.int) (Substrait.Expr.field 0))
   (Substrait.Expr.bin Substrait.BinFn.dsub
     (Substrait.Expr.bin Substrait.BinFn.imod
@@ -145,7 +150,8 @@ abbrev Substrait.duckdbOn.fit_silent_i32 : Substrait.UnEntry (Substrait.Profile.
         (Substrait.Expr.lit (Substrait.Value.int 4294967296)))
       (Substrait.Expr.lit (Substrait.Value.int 4294967296)))
     (Substrait.Expr.lit (Substrait.Value.int 2147483648)))
-  (Substrait.Expr.field 0), by simp [Substrait.Expr.must], Substrait.duckdbOn.fit_silent_i32_agree⟩
+  (Substrait.Expr.field 0))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fit_silent_i32_agree
 
 set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.fit_silent_i64_agree : ∀ (x : Substrait.Value),
@@ -171,7 +177,8 @@ theorem Substrait.duckdbOn.fit_silent_i64_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fit_silent_i64 : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fit Substrait.OverflowMode.silent Substrait.IntWidth.i64) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.un (Substrait.UnFn.isNum Substrait.NumKind.int) (Substrait.Expr.field 0))
   (Substrait.Expr.bin Substrait.BinFn.dsub
     (Substrait.Expr.bin Substrait.BinFn.imod
@@ -183,7 +190,8 @@ abbrev Substrait.duckdbOn.fit_silent_i64 : Substrait.UnEntry (Substrait.Profile.
         (Substrait.Expr.lit (Substrait.Value.int 18446744073709551616)))
       (Substrait.Expr.lit (Substrait.Value.int 18446744073709551616)))
     (Substrait.Expr.lit (Substrait.Value.int 9223372036854775808)))
-  (Substrait.Expr.field 0), by simp [Substrait.Expr.must], Substrait.duckdbOn.fit_silent_i64_agree⟩
+  (Substrait.Expr.field 0))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fit_silent_i64_agree
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fit_saturate_i8_agree : ∀ (x : Substrait.Value),
@@ -204,14 +212,16 @@ theorem Substrait.duckdbOn.fit_saturate_i8_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fit_saturate_i8 : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fit Substrait.OverflowMode.saturate Substrait.IntWidth.i8) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
     (Substrait.Expr.lit (Substrait.Value.int (-128))))
   (Substrait.Expr.lit (Substrait.Value.int (-128)))
   (Substrait.Expr.ifThen
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.int 127))
       (Substrait.Expr.field 0))
-    (Substrait.Expr.lit (Substrait.Value.int 127)) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fit_saturate_i8_agree⟩
+    (Substrait.Expr.lit (Substrait.Value.int 127)) (Substrait.Expr.field 0)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fit_saturate_i8_agree
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fit_saturate_i16_agree : ∀ (x : Substrait.Value),
@@ -232,14 +242,16 @@ theorem Substrait.duckdbOn.fit_saturate_i16_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fit_saturate_i16 : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fit Substrait.OverflowMode.saturate Substrait.IntWidth.i16) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
     (Substrait.Expr.lit (Substrait.Value.int (-32768))))
   (Substrait.Expr.lit (Substrait.Value.int (-32768)))
   (Substrait.Expr.ifThen
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.int 32767))
       (Substrait.Expr.field 0))
-    (Substrait.Expr.lit (Substrait.Value.int 32767)) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fit_saturate_i16_agree⟩
+    (Substrait.Expr.lit (Substrait.Value.int 32767)) (Substrait.Expr.field 0)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fit_saturate_i16_agree
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fit_saturate_i32_agree : ∀ (x : Substrait.Value),
@@ -260,14 +272,16 @@ theorem Substrait.duckdbOn.fit_saturate_i32_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fit_saturate_i32 : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fit Substrait.OverflowMode.saturate Substrait.IntWidth.i32) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
     (Substrait.Expr.lit (Substrait.Value.int (-2147483648))))
   (Substrait.Expr.lit (Substrait.Value.int (-2147483648)))
   (Substrait.Expr.ifThen
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.lit (Substrait.Value.int 2147483647))
       (Substrait.Expr.field 0))
-    (Substrait.Expr.lit (Substrait.Value.int 2147483647)) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fit_saturate_i32_agree⟩
+    (Substrait.Expr.lit (Substrait.Value.int 2147483647)) (Substrait.Expr.field 0)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fit_saturate_i32_agree
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fit_saturate_i64_agree : ∀ (x : Substrait.Value),
@@ -289,14 +303,16 @@ theorem Substrait.duckdbOn.fit_saturate_i64_agree : ∀ (x : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fit_saturate_i64 : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   (Substrait.UnFn.fit Substrait.OverflowMode.saturate Substrait.IntWidth.i64) :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.UnEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.lt
     (Substrait.Expr.lit (Substrait.Value.int 9223372036854775807)) (Substrait.Expr.field 0))
   (Substrait.Expr.lit (Substrait.Value.int 9223372036854775807))
   (Substrait.Expr.ifThen
     (Substrait.Expr.bin Substrait.BinFn.lt (Substrait.Expr.field 0)
       (Substrait.Expr.lit (Substrait.Value.int (-9223372036854775808))))
-    (Substrait.Expr.lit (Substrait.Value.int (-9223372036854775808))) (Substrait.Expr.field 0)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fit_saturate_i64_agree⟩
+    (Substrait.Expr.lit (Substrait.Value.int (-9223372036854775808))) (Substrait.Expr.field 0)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fit_saturate_i64_agree
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.idiv_agree : ∀ (x y : Substrait.Value),
@@ -315,12 +331,14 @@ theorem Substrait.duckdbOn.idiv_agree : ∀ (x y : Substrait.Value),
 
 abbrev Substrait.duckdbOn.idiv : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   Substrait.BinFn.idiv :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.BinEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.and
     (Substrait.Expr.un (Substrait.UnFn.isNum Substrait.NumKind.int) (Substrait.Expr.field 0))
     (Substrait.Expr.un Substrait.UnFn.isNull (Substrait.Expr.field 0)))
   (Substrait.Expr.un (Substrait.UnFn.raise "division by zero") (Substrait.Expr.field 1))
-  (Substrait.Expr.bin Substrait.BinFn.idiv (Substrait.Expr.field 0) (Substrait.Expr.field 1)), by simp [Substrait.Expr.must], Substrait.duckdbOn.idiv_agree⟩
+  (Substrait.Expr.bin Substrait.BinFn.idiv (Substrait.Expr.field 0) (Substrait.Expr.field 1)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.idiv_agree
 
 set_option maxHeartbeats 3200000 in
 theorem Substrait.duckdbOn.imod_agree : ∀ (x y : Substrait.Value),
@@ -351,7 +369,8 @@ theorem Substrait.duckdbOn.imod_agree : ∀ (x y : Substrait.Value),
 
 abbrev Substrait.duckdbOn.imod : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   Substrait.BinFn.imod :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.BinEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.and
     (Substrait.Expr.bin Substrait.BinFn.or
       (Substrait.Expr.un (Substrait.UnFn.isNum Substrait.NumKind.int) (Substrait.Expr.field 0))
@@ -365,5 +384,6 @@ abbrev Substrait.duckdbOn.imod : Substrait.BinEntry (Substrait.Profile.duckdb (S
         (Substrait.Expr.lit (Substrait.Value.int (-1))))
       (Substrait.Expr.un (Substrait.UnFn.isNum Substrait.NumKind.int) (Substrait.Expr.field 0)))
     (Substrait.Expr.lit (Substrait.Value.int 0))
-    (Substrait.Expr.bin Substrait.BinFn.imod (Substrait.Expr.field 0) (Substrait.Expr.field 1))), by simp [Substrait.Expr.must], Substrait.duckdbOn.imod_agree⟩
+    (Substrait.Expr.bin Substrait.BinFn.imod (Substrait.Expr.field 0) (Substrait.Expr.field 1))))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.imod_agree
 

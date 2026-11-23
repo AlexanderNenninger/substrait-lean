@@ -20,6 +20,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,23 @@ class Case:
     also: list[str] = field(default_factory=list)
     """The other classes with the same project."""
 
+    @property
+    def has_tests(self) -> bool:
+        """Whether the project can hold a test or an enforced contract: a file
+        under `tests/`, a YAML file or project config that says `tests`,
+        `data_tests`, `unit_tests` or `enforced`, or a file under a
+        `test-paths` the config sets. A project without one has nothing to
+        build and check."""
+        paths = self.config.get("test-paths") or ["tests"]
+        if any(rel.startswith(f"{p.rstrip('/')}/") for rel in self.files for p in paths):
+            return True
+        texts = [t for rel, t in self.files.items() if rel.endswith((".yml", ".yaml"))]
+        texts.append(json.dumps(self.config, default=str))
+        return any(_TESTS_KEY.search(t) for t in texts)
+
+
+_TESTS_KEY = re.compile(r"\b((data_|unit_)?tests|enforced)\b")
+
 
 def _function(value: Any) -> Any:
     """The function under a pytest fixture, across pytest's versions."""
@@ -65,14 +83,26 @@ def _is_fixture(value: Any) -> bool:
     return hasattr(value, "_get_wrapped_function") or hasattr(value, "_pytestfixturefunction")
 
 
-def _evaluate(cls: type, name: str) -> Any:
-    """The value of the class's fixture `name`, called on a fresh instance."""
+def _evaluate(cls: type, name: str, seen: tuple[str, ...] = ()) -> Any:
+    """The value of the class's fixture `name`, called on a fresh instance.
+    A parameter is one of pytest's fixtures with a stand-in, `test_data_dir`
+    (the `data` directory beside the test module, as dbt's fixture gives it)
+    or another fixture of the class, evaluated the same way."""
     fn = _function(inspect.getattr_static(cls, name))
-    params = list(inspect.signature(fn).parameters)[1:]
-    missing = [p for p in params if p not in _STAND_INS]
+    args: dict[str, Any] = {}
+    missing = []
+    for p in list(inspect.signature(fn).parameters)[1:]:
+        if p in _STAND_INS:
+            args[p] = _STAND_INS[p]
+        elif p == "test_data_dir":
+            args[p] = str(Path(inspect.getfile(cls)).parent / "data")
+        elif p not in seen and _is_fixture(inspect.getattr_static(cls, p, None)):
+            args[p] = _evaluate(cls, p, (*seen, name))
+        else:
+            missing.append(p)
     if missing:
         raise LookupError(f"{name} needs the pytest fixture {', '.join(missing)}")
-    return fn(cls(), **{p: _STAND_INS[p] for p in params})
+    return fn(cls(), **args)
 
 
 def _files(fixtures: dict[str, Any]) -> dict[str, str]:
@@ -116,6 +146,10 @@ def projects(root: Path, package: str) -> tuple[list[Case], dict[str, str]]:
             label = f"{module}.{name}"
             try:
                 fixtures = {f: _evaluate(cls, f) for f in ours}
+            except NotImplementedError:
+                # A base whose subclasses (in an adapter's own suite) give the files.
+                unextracted[label] = "abstract: a subclass provides the project"
+                continue
             except Exception as e:  # noqa: BLE001 - a fixture that does not evaluate
                 unextracted[label] = f"{type(e).__name__}: {str(e).splitlines()[0][:100]}"
                 continue

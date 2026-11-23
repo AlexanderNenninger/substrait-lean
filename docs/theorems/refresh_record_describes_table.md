@@ -47,12 +47,13 @@ theorem Refresh.record_describes_table {s : World} (h : Reachable s) (hk : kept 
 
 ## What it does not cover
 
-- A source that is not durable. The model's source has one counter, its
-  version names its contents and only grows. A source that cannot restore
-  (`from_frame`), one whose versions count a process's reads, and a source
-  dropped and created again with lower versions are outside the Lean model;
-  the TLA+ model ([models/refresh](../../models/refresh/README.md)) checks
-  the first at small scopes.
+- A source dropped and created again with lower versions (`table_ids`,
+  #516). This card's model has a durable source: one counter, whose version
+  names its contents and only grows. A source that cannot restore
+  (`from_frame`) has the twin theorem `RefreshSnap.record_describes_table`
+  ([`RefreshSnapshot.lean`](../../analysis/Sverify/Analysis/RefreshSnapshot.lean)),
+  where the contract's digest of the contents says whether the sink holds
+  this state.
 - Writers that decide otherwise. The theorem is about writers that decide as
   `Refresh.next` does; `python/tests/test_refresh_next.py` runs each of its
   cases against `Sink._commit`.
