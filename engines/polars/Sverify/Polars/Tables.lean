@@ -130,12 +130,13 @@ def Profile.polars.obs : ObsTable := [
     "Each Float64 addition rounds to nearest, ties to even (polars-fp-ieee); streaming sums are sequential or pairwise trees of any shape, in-memory group sums Kahan's (polars-sum-float), and mean divides the f64 sum once: StdModel.Summed (a tree or Kahan's sum) and fl(s / n), which epsilon_sum_cr and epsilon_avg_cr bound for any rounding to nearest. Float32 sums run in single precision, which no bound covers: the checker marks their bound unproved (Epsilon.hasFp32)."),
   (none, "window_sum_algo", (ObsRow.approxWithin "plan"
     ["polars-window-agg", "polars-cum-sum-float", "polars-fp-ieee"]).tracking 900),
-  -- This row holds for `COVAR_*` and `CORR` (`agg.stat`): `COVAR_*` is proved
-  -- within `StatTol.sg` (`core_cov_polars`), `CORR` (`PearsonState`) not yet, so
-  -- the row stays tested until both are (ruling 271, #1808). `VAR_*` and
-  -- `STDDEV_*` read the `agg.var` row below.
+  -- This row holds for `COVAR_*` and `CORR` (`agg.stat`): `float-bounds` proves
+  -- `COVAR_*` within `StatTol.sg` (`core_cov_polars`) and `PearsonState`'s `CORR`,
+  -- `dp_xy / √(dp_xx · dp_yy)`, within `corrErr` (`core_corr_polars`), for two-pass
+  -- blocks, single pairs and Schubert and Gertz's merge in any tree (ruling 271,
+  -- #1808). `VAR_*` and `STDDEV_*` read the `agg.var` row below.
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["polars-var-std-streaming", "polars-cov", "polars-corr", "polars-var-bound"] with
-    rerun := some { floats := .within "plan" } }).tracking 1808),
+    rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_cov_polars"),
   -- Two-pass blocks, Welford's update and Schubert and Gertz's merge in any
   -- tree meet `StatProps`: `float-bounds` proves `VAR_*` within `varTol`
   -- (`core_var_polars`, #1808), the fuzz (polars-var-bound) two orders of
