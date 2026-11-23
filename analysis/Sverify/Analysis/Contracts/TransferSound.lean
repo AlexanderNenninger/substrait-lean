@@ -359,6 +359,9 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case fround =>
     exact monoAbs_sound FloatCode.round_mono (fun v => by cases v <;> hf_tac) h
       (fun _ => FloatCode.canon_round (FloatCode.canon_idem _))
+  case froundEven =>
+    exact monoAbs_sound FloatCode.roundEven_mono (fun v => by cases v <;> hf_tac) h
+      (fun _ => FloatCode.canon_roundEven (FloatCode.canon_idem _))
   case ftoi => exact ftoiAbs_sound h
   case narrow n | narrowOrNull n => exact narrowAbs_sound (fun v => by cases v <;> hf_tac) h
   case ftoiOrNull =>

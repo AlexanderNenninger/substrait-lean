@@ -307,7 +307,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .lit v => litKind v
   | .field i => cols.getD i .other
   | .un .neg a => a.kind cols
-  | .un .itof _ | .un .fneg _ | .un .ffloor _ | .un .fceil _ | .un .fround _
+  | .un .itof _ | .un .fneg _ | .un .ffloor _ | .un .fceil _ | .un .fround _ | .un .froundEven _
   | .un (.froundTo _) _ => .float
   | .un .ftoi _ | .un (.narrow _) _ | .un (.fit _ _) _ | .un .ftoiOrNull _
   | .un (.narrowOrNull _) _ => .int
@@ -548,15 +548,15 @@ def intBits (ty : Json) : Nat :=
 /-! ## Integer widths
 
 The model's integers are unbounded; 64-bit arithmetic wraps around in
-DataFusion, which `analysis/Sverify/Analysis/Safety.lean` reports. Narrower integers wrap
+Polars and in Spark without ANSI mode (`Guards.lean`), and
+`analysis/Sverify/Analysis/Safety.lean` reports it. Narrower integers wrap
 at their own width, so the parser tracks the width of integer expressions and
-marks arithmetic on narrower ones with `UnFn.wrap`. DataFusion computes at the
+marks arithmetic on narrower ones with `UnFn.wrap`. An engine computes at the
 widest operand type (`INT + BIGINT` is a `BIGINT`), and an integer literal has
 its own type (SQL's `1` is a `BIGINT`, Calcite's an `INT`). Unsigned integers
 (a type variation in Substrait) are refused. -/
 
-/-- Is this an integer type with a type variation (DataFusion's unsigned
-integers)? -/
+/-- Is this an integer type with a type variation (an unsigned integer)? -/
 def unsignedType (ty : Json) : Bool :=
   intTags.any fun (k, _) =>
     ((field? ty k).bind (field? · "typeVariationReference")).any (·.getNat?.toOption != some 0)
@@ -632,9 +632,10 @@ def projectBitsKey (es : List Expr) : String :=
   s!"$projectBits {es.length}:" ++ String.join (es.map projectKey.exprKey)
 
 /-- The widths of a projection's columns: the declared one where the source
-plan recorded one, `colBits` elsewhere. A plan without such an entry never
-prints its expressions (as `declaredProjectKinds`). -/
-def declaredProjectBits (tables : Tables) (bs : List Nat) (es : List Expr) : List Nat :=
+plan recorded one, `eb` (`colBits`, or `outBits`) elsewhere. A plan without such an
+entry never prints its expressions (as `declaredProjectKinds`). -/
+def declaredProjectBits (tables : Tables) (eb : List Nat → Expr → Nat) (bs : List Nat)
+    (es : List Expr) : List Nat :=
   let declared : List Json :=
     if tables.any (·.1.startsWith "$projectBits ") then
       match tables.lookup (projectBitsKey es) with
@@ -642,23 +643,26 @@ def declaredProjectBits (tables : Tables) (bs : List Nat) (es : List Expr) : Lis
           (·.getObjValAs? (Array Json) "types" |>.toOption)).map Array.toList |>.getD []
       | none => []
     else []
-  es.zipIdx.map fun (e, i) => ((declared[i]?).bind intTagBits?).getD (e.colBits bs)
+  es.zipIdx.map fun (e, i) => ((declared[i]?).bind intTagBits?).getD (eb bs e)
 
 /-- The width of each column of a relation's rows as the parser tracks it. -/
 def _root_.Substrait.Rel.bits (tables : Tables) (r : Rel) : List Nat :=
-  r.bitsBy Expr.colBits tables (declaredProjectBits tables)
+  r.bitsBy Expr.colBits tables (declaredProjectBits tables Expr.colBits)
 
 /-- An expression's width in the plan the writer writes: a column keeps its declared width,
-every computed integer is 64 bits (the model's integers are 64-bit and the written plan types
-them so). -/
+a cast to an integer type has the width it names (ruling 114, #1772: the model checks its range,
+and `Report.run` casts the result to it), and every other computed integer is 64 bits (the
+model's integers are 64-bit and the written plan types them so). -/
 def _root_.Substrait.Expr.outBits (cols : List Nat) : Expr → Nat
   | .field i => cols.getD i 64
+  | .un (.narrow n) _ | .un (.narrowOrNull n) _ => n
   | _ => 64
 
 /-- The width of each column of the result as the written plan and its run give it
-(`Report.output`'s integers, #1484). -/
+(`Report.output`'s integers, #1484): a projected cast or literal keeps the width the source
+plan declares for it, `CAST(b AS BIGINT)` of a `SMALLINT` included (ruling 114, #1772). -/
 def _root_.Substrait.Rel.outBits (tables : Tables) (r : Rel) : List Nat :=
-  r.bitsBy Expr.outBits tables
+  r.bitsBy Expr.outBits tables (declaredProjectBits tables Expr.outBits)
 
 /-- Does the expression read a column of the row, past `k` lambda
 parameters? -/
@@ -1259,7 +1263,7 @@ private def optionAcceptsBefore (base : String) (float : Bool) : String → Opti
     if doubleFns.contains base then some (some ["TIE_TO_EVEN"])
     else if !float then none
     -- `ROUND` rounds halves away from zero (`core/Sverify/Core/Rounding.lean`).
-    else if base == "round" then some (some ["TIE_AWAY_FROM_ZERO"])
+    else if base == "round" then some (some ["TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN"])
     -- Native doubles round to nearest, ties to even.
     else if ["add", "subtract", "multiply", "divide", "power", "sum", "avg", "variance",
         "std_dev"].contains base then
@@ -2176,6 +2180,15 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
       | "modulus", [a, b] =>
         let floor := divisionTypeMode fopts == "FLOOR"
         return divByZero mode true (if floor then Expr.floorFmodOf else .bin .fmod) a b
+      -- D55: `rounding: TIE_TO_EVEN` at zero digits is half-to-even; the model has no
+      -- other digits for it.
+      | "round", [a] | "round", [a, .lit (.int 0)] =>
+        return if optionPref "rounding" "TIE_AWAY_FROM_ZERO" fopts == "TIE_TO_EVEN"
+          then .un .froundEven a else .un .fround a
+      | "round", _ =>
+        if optionPref "rounding" "TIE_AWAY_FROM_ZERO" fopts == "TIE_TO_EVEN" then
+          throw "round: rounding TIE_TO_EVEN is only modelled at zero digits"
+        else mkFloatCall (baseName name) args
       | _, _ => mkFloatCall (baseName name) args
     else
       let mode := divByZeroMode fopts

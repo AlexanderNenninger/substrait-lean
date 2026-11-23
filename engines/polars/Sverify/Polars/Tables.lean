@@ -65,7 +65,9 @@ def Profile.polars.table : ProfileTable where
     -- the frame's own values. Evidence: the differential test
     -- (`test_polars_windows.py`); the lowering lemma under #271 later.
     (none, "window_sum_algo", .oneOf ["RUNNING_ADD", "TREE"]),
-    (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
+    -- Two-pass blocks of at most 128 values with Schubert and Gertz's merge
+    -- (polars-var-std-streaming), for `VAR_*` and `COVAR_*` alike (ruling 271).
+    (none, "stat_algo", .oneOf ["SCHUBERT_GERTZ"]),
     -- Streaming falls back to the in-memory engine; the translation asks for
     -- `linear` (polars-quantile).
     (none, "quantile_interp", .oneOf ["LINEAR_DIFF"]),
@@ -94,9 +96,11 @@ def Profile.polars.obs : ObsTable := [
   (none, "on_division_by_zero", (ObsRow.native ["polars-int-divide", "polars-int-modulus"]).proved "Rel.polars_sound"),
   (some "fp.div", "on_division_by_zero", (ObsRow.native ["polars-double-divide"]).proved "Rel.polars_sound"),
   (none, "on_domain_error", (ObsRow.native ["polars-double-divide"]).proved "Rel.polars_sound"),
-  (none, "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Polars.int_mod_trunc"),
-  (some "int.div", "division_type", (ObsRow.shimmed "int_div_trunc" ["polars-int-divide"]).proved "Polars.int_div_trunc"),
-  (some "int.mod", "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Polars.int_mod_trunc"),
+  -- The truncating `//` and `%` are the generated lowering's templates
+  -- (`Polars.idivTemplate`, `Polars.imodTemplate`, #271).
+  (none, "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Lowering.polars_exact"),
+  (some "int.div", "division_type", (ObsRow.shimmed "int_div_trunc" ["polars-int-divide"]).proved "Lowering.polars_exact"),
+  (some "int.mod", "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Lowering.polars_exact"),
   (none, "min_mod_neg_one", (ObsRow.native ["polars-int-modulus"]).proved "Rel.polars_sound"),
   -- `rounding`, `pow_one_inf`, `negative_start` and `case_sensitivity`: Polars's
   -- choice is the reference's (`Profile.polars` states no case), so the generated
@@ -106,9 +110,11 @@ def Profile.polars.obs : ObsTable := [
   -- Up to one zero; the shim `one_zero` makes it exact.
   (none, "zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-zero-sign-streaming", "polars-zero-order"]
     with shim := some "one_zero" }).proved "Shim.one_zero"),
-  -- `round` and `ceil` emit IEEE's `-0.0`; the shim `one_zero` makes it exact.
+  -- `round` and `ceil` emit IEEE's `-0.0`: the reference's up to one zero, or
+  -- exactly through the generated lowering's template (`Lowering.zeroTemplate`).
   (none, "round_zero_sign", ({ ObsRow.upTo { zeros := .canon } ["polars-round",
-    "polars-round-digits"] with shim := some "one_zero" }).tracking 271),
+    "polars-round-digits"] with shim := some "round: 0.0 for a negative value that rounds to zero" }).proved
+    "Lowering.polars_exact"),
   (none, "pow_one_inf", (ObsRow.native ["polars-pow-one-inf"]).proved "Lowering.polars_exact"),
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["polars-nan-sign"]).tracking 271),
   (none, "nan_order", (ObsRow.native ["polars-nan-order"]).tracking 271),
@@ -128,9 +134,10 @@ def Profile.polars.obs : ObsTable := [
     "Each Float64 addition rounds to nearest, ties to even (polars-fp-ieee); streaming sums are sequential or pairwise trees of any shape, in-memory group sums Kahan's (polars-sum-float), and mean divides the f64 sum once: StdModel.Summed (a tree or Kahan's sum) and fl(s / n), which epsilon_sum_cr and epsilon_avg_cr bound for any rounding to nearest. Float32 sums run in single precision, which no bound covers: the checker marks their bound unproved (Epsilon.hasFp32)."),
   (none, "window_sum_algo", (ObsRow.approxWithin "plan"
     ["polars-window-agg", "polars-cum-sum-float", "polars-fp-ieee"]).tracking 900),
-  -- This row now holds for `COVAR_*` and `CORR` (`agg.stat`): Polars's `CovState`
-  -- has no theorem yet, a fuzzed bound on the co-moment (polars-var-bound;
-  -- #1808, its proof #2114). `VAR_*` and `STDDEV_*` read the `agg.var` row below.
+  -- This row holds for `COVAR_*` and `CORR` (`agg.stat`): `COVAR_*` is proved
+  -- within `StatTol.sg` (`core_cov_polars`), `CORR` (`PearsonState`) not yet, so
+  -- the row stays tested until both are (ruling 271, #1808). `VAR_*` and
+  -- `STDDEV_*` read the `agg.var` row below.
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["polars-var-std-streaming", "polars-cov", "polars-corr", "polars-var-bound"] with
     rerun := some { floats := .within "plan" } }).tracking 1808),
   -- Two-pass blocks, Welford's update and Schubert and Gertz's merge in any
@@ -195,7 +202,7 @@ def Profile.polars.obs : ObsTable := [
   -- (polars-scalar-divisor).
   (some "fp.mod", "division_type", ({ ObsRow.native ["polars-double-modulus", "polars-scalar-divisor"] with
     cls := .refused
-    note := "`%` of doubles floors the quotient, so the reference's truncating `fmod` has no exact form on Polars: refused under the reference. Under `semantics=\"polars\"` (`division_type: FLOOR`, D41) it runs as `x - y * floor(x / y)` over the calls of the written plan (`Profile.polars_fmod`), on the translated route." }).tracking 271),
+    note := "`%` of doubles floors the quotient, so the reference's truncating `fmod` has no exact form on Polars: refused under the reference, and Polars's lowering refuses it (`Lowering.polars_no_fmod`: no lowered plan calls it). Under `semantics=\"polars\"` (`division_type: FLOOR`, D41) it runs as `x - y * floor(x / y)` over the calls of the written plan (`Profile.polars_fmod`), on the translated route." }).tracking 271),
   (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
     ["polars-zero-sign-streaming", "polars-zero-add"] with shim := some "one_zero" }).proved "Shim.one_zero"),
   (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Shim.makes_infinite"),
@@ -218,10 +225,12 @@ def Profile.polars.obs : ObsTable := [
 
 /-- What each shim Polars's rows name costs at run time. They are
 `engines/polars/src/sverify_polars/shims.py`'s `SHIMS`, named as their lemmas
-`Polars.<name>`, which `tests/test_realizability.py` checks against these. -/
+`Polars.<name>`, which `tests/test_realizability.py` checks against these, and
+the generated lowering's templates (`sverify_polars.lowering`). -/
 def Profile.polars.shimCosts : List (String × ShimCost) :=
   [("null_order", .argument), ("round_half_away", .argument),
    ("int_div_trunc", .expression), ("int_mod_trunc", .expression),
+   ("round: 0.0 for a negative value that rounds to zero", .expression),
    ("sum_empty_null", .expression), ("avg_int_declared", .expression),
    ("one_zero", .expression), ("strpos_chars", .expression),
    ("substring_wrap", .expression),

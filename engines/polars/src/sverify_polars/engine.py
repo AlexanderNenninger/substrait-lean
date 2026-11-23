@@ -80,7 +80,17 @@ try:
 except ImportError as e:
     raise ImportError("the Polars engine needs polars: pip install 'sverify[polars]'") from e
 
-from sverify_polars import shims
+from sverify_polars import lowering, shims
+
+
+def lowered(fn: str, *xs: pl.Expr) -> pl.Expr:
+    """`fn` as the generated table writes it (`sverify_polars.lowering`):
+    the functions Polars computes its own way."""
+    e = lowering.render(fn, xs)
+    if e is None:
+        raise AssertionError(f"the Polars lowering table has no entry for {fn}")
+    return e
+
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
 US = pl.Datetime("us")
@@ -977,6 +987,14 @@ def _floors(f: dict) -> bool:
     )
 
 
+def _rounds_to_even(f: dict) -> bool:
+    """Does the call state `rounding` = `TIE_TO_EVEN` (`UnFn.froundEven`, D55)?"""
+    return any(
+        o.get("name") == "rounding" and (o.get("preference") or [None])[0] == "TIE_TO_EVEN"
+        for o in f.get("options", [])
+    )
+
+
 class Exprs:
     """Translates expressions over input columns of the given dtypes, or, with
     `param`, a lambda's body over its parameter of that dtype (#94)."""
@@ -1043,6 +1061,13 @@ class Exprs:
                 # Wrap-around and clamping run on DuckDB only so far (#241).
                 if o.get("name") == "overflow" and prefs[0] != "ERROR":
                     raise Unsupported(f"overflow = {prefs}")
+            if name == "round" and len(arg_js) in (1, 2) and _rounds_to_even(f):
+                # D55: `rounding: TIE_TO_EVEN` at zero digits is Polars's own `round(0)`.
+                if len(arg_js) == 2 and self.constant(arg_js[1], "ROUND digits") != 0:
+                    raise Unsupported(
+                        "ROUND to digits with TIE_TO_EVEN: the model has zero digits only"
+                    )
+                return self.round_even(self(arg_js[0]))
             if name in ("divide", "modulus") and len(arg_js) == 2 and _floors(f):
                 return self.floor_divide(name, self(arg_js[0]), self(arg_js[1]))
             if name == "sverify_raise" and len(arg_js) == 2:
@@ -1522,13 +1547,15 @@ class Exprs:
                 return Val(first_code_point(e), pl.Int64, a.issues)
         if t == pl.Float64:
             # Exact on doubles; ROUND's halves go away from zero (`roundMag`).
-            # Values stay raw (D31): a zero result keeps its sign.
+            # Values stay raw (D31): a zero result keeps its sign. `ceil` and
+            # `round` are the generated table's: `0.0` where Polars's own give
+            # IEEE's `-0.0` (`round_zero_sign`).
             if name == "floor":
                 return Val(e.floor(), t, a.issues)
             if name == "ceil":
-                return Val(e.ceil(), t, a.issues)
+                return Val(lowered("Substrait.UnFn.fceil", e), t, a.issues)
             if name == "round":
-                return Val(shims.round_half_away(e), t, a.issues)
+                return Val(lowered("Substrait.UnFn.fround", e), t, a.issues)
             # `|x|`, which a split double's partial rows report (#428).
             if name == "abs":
                 # The reference's `if x < 0 then -x else x`: `abs(-0.0)` is `-0.0`, as it is
@@ -1663,14 +1690,16 @@ class Exprs:
                 raise Unsupported(f"{name} of {ta} and {tb}")
             if name == "power":
                 return ipow(a, b)
-            # Native `//` and `%` floor; the shims truncate. A zero divisor
-            # gives NULL in Polars and `MIN / -1` wraps: the guards raise.
+            # Native `//` and `%` floor; the generated table's templates
+            # truncate (`Polars.idivTemplate`, `Polars.imodTemplate`). A zero
+            # divisor gives NULL in Polars and `MIN / -1` wraps: the guards raise.
             x, y = a.expr.cast(pl.Int64), b.expr.cast(pl.Int64)
             by_zero = issue(shims.zero_divisor(x, y), DivisionByZero, f"{name} by zero")
             if name == "modulus":
-                return Val(shims.int_mod_trunc(x, y), pl.Int64, (*issues(a, b), by_zero))
+                return Val(lowered("imod", x, y).cast(pl.Int64), pl.Int64, (*issues(a, b), by_zero))
             wraps = issue(shims.div_overflows(x, y), Overflow, "division leaves 64 bits")
-            return Val(shims.int_div_trunc(x, y), pl.Int64, (*issues(a, b), wraps, by_zero))
+            q = lowered("idiv", x, y).cast(pl.Int64)
+            return Val(q, pl.Int64, (*issues(a, b), wraps, by_zero))
         strings = ("str_concat", "strpos", "starts_with", "ends_with", "like", "substring",
                    "btrim", "ltrim", "rtrim", "repeat", "levenshtein", "ilike")  # fmt: skip
         if name in strings:
@@ -1799,6 +1828,15 @@ class Exprs:
             return Val(pl.lit(None, pl.Boolean), pl.Boolean, a.issues)
         regex = like_regex(p, fold=name == "ilike")
         return Val(a.expr.str.contains(regex), pl.Boolean, a.issues)
+
+    @staticmethod
+    def round_even(a: Val) -> Val:
+        """`ROUND(x, 0)` with `rounding: TIE_TO_EVEN` (`UnFn.froundEven`, D55):
+        Polars's own `round(0)`, which rounds halves to even (polars-round).
+        NaN and `±∞` stay."""
+        if a.dtype != pl.Float64:
+            raise Unsupported(f"round of {a.dtype}")
+        return Val(a.expr.round(0), pl.Float64, a.issues)
 
     @staticmethod
     def round_to(a: Val, digits: dict) -> Val:

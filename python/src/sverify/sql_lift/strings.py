@@ -399,6 +399,12 @@ def _right(lf: _Lift, node: sge.Right, sub: Sub, scope: list[Column]) -> E:
     return E(substring_left([s_, start]), dt.string)
 
 
+#: The longest `lpad` or `rpad` the lift writes, in characters: its fill is a
+#: constant of `n` characters, and `lpad('', 1100000000, '😀')` (DuckDB's
+#: test_pad.test, which DuckDB refuses) built 4.4 GB of it (#2135).
+PAD_MAX = 2**20
+
+
 def _pad(lf: _Lift, node: sge.Pad, sub: Sub, scope: list[Column]) -> E:
     """`lpad(s, n, p)`, `rpad(s, n, p)`: the first `n` characters of `s`, or
     `s` filled to `n` characters with `p` repeated and cut, as DuckDB pads.
@@ -422,11 +428,20 @@ def _pad(lf: _Lift, node: sge.Pad, sub: Sub, scope: list[Column]) -> E:
             f"{what} with an empty fill: DuckDB raises where the string is shorter",
             construct=f"function {what}",
         )
+    if n > PAD_MAX:
+        raise SqlUnsupported(
+            f"{what} to more than {PAD_MAX} characters: the lift writes the fill as a "
+            "constant of that many characters",
+            construct=f"function {what}",
+            hint=f"write a width of at most {PAD_MAX}, or pad in the engine's SQL after the "
+            "checked plan",
+        )
     size = call("character_length", [s_])
     cut = call("substring", [s_, literal(1, dt.int64), literal(n, dt.int64)])
     # The fill is the first `n - size` characters of `p` repeated: those of
     # a constant from the left of its beginning.
-    filler = literal((p * n)[:n], dt.string)
+    # `p` repeated only as often as `n` needs: at most `n + len(p)` characters.
+    filler = literal((p * -(-n // len(p)))[:n], dt.string)
     start = call("subtract", [literal(1, dt.int64), size])
     part = substring_left([filler, start, literal(n, dt.int64)])
     padded = call("str_concat", [part, s_] if left else [s_, part])

@@ -42,6 +42,7 @@ def Substrait.sparkOn : Substrait.Lowering (Substrait.Profile.spark) :=
     | Substrait.UnFn.ffloor  => some (Substrait.sparkOn.ffloor )
     | Substrait.UnFn.fceil  => some (Substrait.sparkOn.fceil )
     | Substrait.UnFn.fround  => some (Substrait.sparkOn.fround )
+    | Substrait.UnFn.froundEven  => some (Substrait.sparkOn.froundEven )
     | Substrait.UnFn.froundTo a0 => some (Substrait.sparkOn.froundTo a0)
     | Substrait.UnFn.ftoi  => some (Substrait.sparkOn.ftoi )
     | Substrait.UnFn.narrow a0 => some (Substrait.sparkOn.narrow a0)
@@ -160,6 +161,7 @@ def Substrait.sparkOn.coverage : List (String × String × Nat) := [
   ("UnFn.ffloor", "hand-built entry: Substrait.Spark.ffloorEntry", 0),
   ("UnFn.fceil", "hand-built entry: Substrait.Spark.fceilEntry", 0),
   ("UnFn.fround", "native", 0),
+  ("UnFn.froundEven", "native", 0),
   ("UnFn.froundTo", "native", 0),
   ("UnFn.ftoi", "native", 0),
   ("UnFn.narrow", "native", 0),

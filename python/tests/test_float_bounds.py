@@ -422,7 +422,8 @@ def test_statistics_have_proved_bounds_but_corr() -> None:
     `epsilon_stddev_cr`, `epsilon_cov_cr`),
     proved on the engines whose algorithm a theorem covers (DuckDB's and
     Spark's `core_var_chan`, Polars's `VAR_*` and `STDDEV_*` by
-    `core_var_polars`; Polars's `COVAR_*` is tested). `CORR` has no bound: a
+    `core_var_polars`; Polars's `COVAR_*` is proved by `core_cov_polars` but
+    shares its row with `CORR`, so it stays tested). `CORR` has no bound: a
     stated tolerance on it is refused, naming #918."""
     con = sv.connect()
     con.put(
@@ -445,7 +446,8 @@ def test_statistics_have_proved_bounds_but_corr() -> None:
 
     for col in ("v", "s", "c"):
         assert proved._epsilon[col]["bounds"]["abs"]["value"] > 0
-    # Polars's `VAR_*` and `STDDEV_*` are proved, its `COVAR_*` not yet (#1808).
+    # Polars's `VAR_*` and `STDDEV_*` are proved; its `COVAR_*` row, shared with
+    # `CORR`, stays tested until Polars's `CORR` is proved (#1808, ruling 271).
     for col in ("v", "s"):
         assert proved_on(engines, col) == ["duckdb", "polars", "spark"]
     assert proved_on(engines, "c") == ["duckdb", "spark"]
