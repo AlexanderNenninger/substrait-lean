@@ -172,6 +172,10 @@ def Rel.cover (cat : Catalog) : Rel → Nat → Option (String × Nat)
   | .project r _, j => if j < r.arity cat then r.cover cat j else none
   | .emit r m, j => m[j]?.bind (r.cover cat)
   | .orderBy r _, j | .distinct r, j => r.cover cat j
+  -- A group key column: every value of the input column is a group.
+  | .aggregate r gs _, j => match gs[j]? with
+    | some (.field j') => r.cover cat j'
+    | _ => none
   | _, _ => none
 
 /-- The columns `on` equates, the left one first and the right one relative
@@ -638,8 +642,42 @@ theorem Rel.cover_sound {cat : Catalog} (hcat : cat.WF) : ∀ {r : Rel}, r.WF ca
       obtain ⟨z, hz, he⟩ := cover_sound hcat (r := r) hwf h y hy hn
       refine ⟨_, classRep_mem_canonReps hz, ?_⟩
       rw [getD_canonV_of_canon (classRep_canon (c := Row.canon) _ _), he]
+  | .aggregate r gs ms, hwf => fun h y hy hn => by
+      rename_i j _ _
+      simp only [cover] at h
+      cases hg : gs[j]? with
+      | none => simp [hg] at h
+      | some e =>
+        cases e with
+        | field j' =>
+          simp only [hg] at h
+          obtain ⟨z, hz, he⟩ := cover_sound hcat hwf.1 h y hy hn
+          have hne : gs.isEmpty = false := by
+            cases gs with
+            | nil => simp at hg
+            | cons _ _ => rfl
+          have hj : j < (groupKey gs z).length := by
+            simp only [groupKey, List.length_map]
+            exact (List.getElem?_eq_some_iff.mp hg).1
+          have hk := classRep_canon (c := Row.canon) (le := Row.leRaw)
+            ((r.eval cat).map (groupKey gs)) (groupKey gs z)
+          refine ⟨classRep Row.canon Row.leRaw ((r.eval cat).map (groupKey gs)) (groupKey gs z) ++
+            ms.map (·.eval (groupRows gs (r.eval cat) (classRep Row.canon Row.leRaw
+              ((r.eval cat).map (groupKey gs)) (groupKey gs z)))), ?_, ?_⟩
+          · simp only [eval, aggregateEval, hne, Bool.false_eq_true, ↓reduceIte, distinctRows]
+            exact List.mem_map.mpr ⟨_, classRep_mem_canonReps (List.mem_map_of_mem hz), rfl⟩
+          · have hkl : j < (classRep Row.canon Row.leRaw ((r.eval cat).map (groupKey gs))
+                (groupKey gs z)).length := by
+              have := congrArg List.length hk
+              simp only [Row.canon, List.length_map] at this
+              rw [this]; exact hj
+            rw [getD_append_left' hkl, getD_canonV_of_canon hk j]
+            simp only [groupKey, List.getD_eq_getElem?_getD, List.getElem?_map, hg,
+              Option.map_some, Option.getD_some, Expr.eval]
+            exact he
+        | _ => simp [hg] at h
   | .values _ _, _ | .filter _ _, _ | .cross _ _, _ | .join _ _ _ _, _ | .fetch _ _ _, _
-  | .unionAll _ _, _ | .window _ _ _ _, _ | .semi _ _ _ _, _ | .aggregate _ _ _, _
+  | .unionAll _ _, _ | .window _ _ _ _, _ | .semi _ _ _ _, _
   | .unnest _ _, _ => fun h => by simp [cover] at h
 
 theorem eq_self_isTrue {v : Value} (h : v ≠ .null) : (BinFn.apply .eq v v).isTrue = true := by
