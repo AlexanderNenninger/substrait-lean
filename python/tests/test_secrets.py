@@ -771,3 +771,20 @@ def test_a_field_is_read_with_one_lookup():
     r = Resolver(backends={"bao": Counted()}, cache_seconds=0)
     assert r.fields("bao:kv/lake#key") == {"key": VALUE}
     assert calls == ["kv/lake"]
+
+
+def test_a_backend_of_your_own_serves_bare_names():
+    """#2430: a backend under a scheme of its own reads bare names, as the
+    `default`. A reference names a built-in scheme only, in a `Secret` and in
+    `names` alike."""
+
+    class Kv:
+        def get(self, path):
+            return {"key": f"{path}-value"}
+
+    r = Resolver(default="kv", backends={"kv": Kv()})
+    assert r.value("lake") == "lake-value" and r.reference("lake") == "kv:lake"
+    with pytest.raises(SecretError, match="neither"):
+        Secret("kv:lake")
+    with pytest.raises(ValueError, match="names.lake: 'kv:lake' is not a reference"):
+        Resolver(default="kv", backends={"kv": Kv()}, names={"lake": "kv:lake"})
