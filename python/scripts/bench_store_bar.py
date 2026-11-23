@@ -161,7 +161,7 @@ def dir_bytes(path: str) -> int:
 def rss_now() -> int:
     """The resident set now, in bytes (Linux; 0 elsewhere)."""
     try:
-        with open("/proc/self/statm") as f:
+        with open("/proc/self/statm", encoding="utf-8") as f:
             return int(f.read().split()[1]) * os.sysconf("SC_PAGE_SIZE")
     except OSError:
         return 0
