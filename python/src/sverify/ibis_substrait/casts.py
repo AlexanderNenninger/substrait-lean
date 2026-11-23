@@ -71,7 +71,8 @@ def _from_seconds(x: Exprs, op: Any, try_: bool, to: dt.DataType) -> Json | None
             )
         if nanos:
             raise Unsupported(
-                f"{cast} to {op.to} is not supported; nanosecond casts wait on #2318",
+                f"{cast} to {op.to} is not supported; cast to `timestamp` instead "
+                "(microseconds; nanosecond casts wait on #2318)",
                 construct=construct,
             )
         if t.is_integer():
