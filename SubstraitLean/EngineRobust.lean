@@ -185,7 +185,8 @@ def robust (es : List EngineProfile) (input : Json) : Except String Json := do
     | some j => match j.getNum?.toOption with
       | some f => if f.mantissa < 0 then { a with int := a.int.map fun _ => Bound.top }
         else engineVal (scaledOf f) (!covs.contains n) a
-      | none => a
+      -- Not a number: nothing is known of the distance.
+      | none => { a with int := a.int.map fun _ => Bound.top }
     | none => a
   -- Each postcondition's columns as expressions over the transformation's
   -- output (`Post.plan`).
