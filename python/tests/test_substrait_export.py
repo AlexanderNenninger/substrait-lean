@@ -494,7 +494,8 @@ def _evaluate(plan: dict, e: dict, row: tuple):
         for x in plan["extensions"]
     }
     if "selection" in e:
-        return row[e["selection"]["directReference"]["structField"]["field"]]
+        # Substrait's JSON leaves out a field of 0.
+        return row[e["selection"]["directReference"]["structField"].get("field", 0)]
     if "literal" in e:
         return None if "null" in e["literal"] else float(e["literal"]["fp64"])
     if "ifThen" in e:
@@ -901,3 +902,4 @@ def test_st6_shim_passes_nan_and_infinities_to_the_cast() -> None:
         assert y != y if x != x else y == x
         with pytest.raises(duckdb.Error):
             duckdb.execute("SELECT CAST(?::DOUBLE AS BIGINT)", [y]).fetchall()
+

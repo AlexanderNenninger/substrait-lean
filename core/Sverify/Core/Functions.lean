@@ -464,7 +464,7 @@ def read? (rows : List FnRow) (path : Reads) (name : String) : List Expr → Opt
     else none
   | _ => none
 
-theorem casts_anchor : casts.all (·.anchor == 0) = true := by decide +kernel
+theorem casts_anchor : ∀ r ∈ casts, r.anchor = 0 := by decide
 
 theorem anchorOf_mem (c : Ctor) : anchorOf c = 0 ∨ ∃ r ∈ all, r.anchor = anchorOf c := by
   unfold anchorOf
@@ -473,7 +473,7 @@ theorem anchorOf_mem (c : Ctor) : anchorOf c = 0 ∨ ∃ r ∈ all, r.anchor = a
   | some r =>
     rcases List.mem_append.mp (List.mem_of_find?_eq_some h) with hr | hr
     · exact Or.inr ⟨r, hr, rfl⟩
-    · exact Or.inl (by simpa using List.all_eq_true.mp casts_anchor r hr)
+    · exact Or.inl (casts_anchor r hr)
 
 theorem anchorNamed_mem (name : String) :
     anchorNamed name = 0 ∨ ∃ r ∈ all, r.anchor = anchorNamed name := by
