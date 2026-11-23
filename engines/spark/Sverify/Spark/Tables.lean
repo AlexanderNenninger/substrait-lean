@@ -101,8 +101,8 @@ def Profile.spark.obs : ObsTable := [
   -- partitions; MIN and MAX keep whichever zero came first, a member of the class.
   (none, "zero_sign", (ObsRow.native ["spark-zero-sign", "spark-zero-order"]).tracking 271),
   -- `atan2` of a zero: `π` where the reference gives `-π`, a difference in value that
-  -- `zeros := .canon` does not describe: refused (the writer refuses it too,
-  -- `BinFn.sparkWritten`). `power` and `atan2` are refused at `rounding` too, so neither
+  -- `zeros := .canon` does not describe: refused (the lowering refuses it too,
+  -- `Lowering.spark_refuses`). `power` and `atan2` are refused at `rounding` too, so neither
   -- inherits the unary functions' row (ruling 163).
   -- The unary functions keep a zero's sign (spark-unary-zero-sign).
   (some "fp.elem", "zero_sign", (ObsRow.native ["spark-unary-zero-sign"]).tracking 271),

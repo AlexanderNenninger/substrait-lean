@@ -41,8 +41,8 @@ def Engine.dummy : Engine :=
     name := "dummy", table := { Profile.spark.table with name := "dummy", version := "0.1.0" },
     within := Engine.spark.within }
 
-/-- Its run is sound under guard elimination's side condition, as Spark's is. -/
-theorem Engine.dummy_sound : Engine.dummy.Sound Engine.GuardFreeSide := Engine.spark_sound
+/-- Its run is sound under Spark's side condition, as Spark's is. -/
+theorem Engine.dummy_sound : Engine.dummy.Sound Engine.SparkSide := Engine.spark_sound
 
 end
 

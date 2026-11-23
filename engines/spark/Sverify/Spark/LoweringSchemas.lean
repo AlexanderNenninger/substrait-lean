@@ -22,8 +22,8 @@ The constructs the lowering search does not reach on `Profile.spark`, for
   exact, ruling 249).
 
 `power` and `atan2` of doubles are Java's, within an ulp of C's: no exact
-template, so the table has no entry for them (`refusing`), as the writer
-refuses them today (`BinFn.sparkWritten`).
+template, so the table has no entry for them (`refusing`,
+`Lowering.spark_refuses`), and a plan with them does not run on Spark.
 -/
 
 namespace Substrait.LoweringSearch
