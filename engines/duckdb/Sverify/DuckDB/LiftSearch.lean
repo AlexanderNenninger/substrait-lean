@@ -456,13 +456,13 @@ def liftTac (n : Nat) (extra : Array Name) : TermElabM Syntax := do
       | (simp_all [Outcome.Agree, Issue.isError] <;> (lift_codes; omega))
       | (simp_all [$fin,*] <;> (lift_codes; omega))))
 
-/-- The generated module a function's entry goes to (`writing`): entries of an
-area check in parallel, each in a process of its own. -/
 /-- The sink's key for an area's `#guard`s, which go after all its entries. -/
 def guardsSuffix : String := "/guards"
 
 def guardsOf (area : String) : String := area ++ guardsSuffix
 
+/-- The generated module a function's entry goes to (`writing`): entries of an
+area check in parallel, each in a process of its own. -/
 def areaOf (c : Name) : String :=
   match c.componentsRev.head!.toString with
   | "divInt" | "divDouble" | "modDouble" | "power" => "Arith"
