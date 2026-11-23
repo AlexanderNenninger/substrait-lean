@@ -47,12 +47,11 @@ def Profile.polars.table : ProfileTable where
     -- Left open until the scope narrows to list arguments (ruling 171): a refused row for the
     -- facts' LEAST (spark-list-order, polars-list-order) would refuse every MIN and MAX, integer ones too.
     (none, "list_null_order", .loose ["NULL", "GREATEST", "LEAST"]),
-    -- Streaming: grouped, `+=` per value with pipelines merged by `+`;
-    -- ungrouped, morsel sums added in scheduling order. In memory (not the
-    -- target): pairwise, Kahan over groups.
-    -- `COMPENSATED`: in memory, Kahan's sum over groups (polars-sum-float, #633).
-    -- Sverify runs the streaming engine only; dropping it is #2411.
-    (none, "sum_order", .oneOf ["SEQUENTIAL", "ANY", "COMPENSATED"]),
+    -- Streaming, the engine sverify runs (polars-sum-float-streaming): grouped,
+    -- `+=` per value with pipelines merged by `+`; ungrouped, pairwise morsel
+    -- sums added in scheduling order. No Kahan: that is the in-memory engine's
+    -- (polars-sum-float), which sverify refuses.
+    (none, "sum_order", .oneOf ["SEQUENTIAL", "ANY"]),
     -- What Polars computes for the operations the lowering emits
     -- (polars-window-agg): a frame from UNBOUNDED PRECEDING reads
     -- `cum_sum().over(partition)` at its last row, a sequential `+=` from 0.0
@@ -119,19 +118,17 @@ def Profile.polars.obs : ObsTable := [
   (none, "nan_kind", (ObsRow.upTo { zeros := .canon } ["polars-nan-sign"]).tracking 271),
   (none, "nan_order", (ObsRow.native ["polars-nan-order"]).tracking 271),
   (none, "nan_equality", (ObsRow.native ["polars-nan-equality"]).tracking 271),
-  -- Pairwise is a tree sum, one of the reference's; Kahan's compensated sum
-  -- (groups) is not, so within #85's bound, which `float-bounds` proves for
-  -- both (`StdModel.epsilon_sum_cr`, `Rnd.kahan_near`).
+  -- Streaming sums are trees: sequential per group, pairwise per morsel, of
+  -- any shape overall, within #85's bound (`StdModel.epsilon_sum_cr`).
   -- Run to run the order varies (morsels, pipelines), within the plan's bound,
   -- whatever the input's size: a grouped sum of [1e16, 1, 1, -1e16] gave 2.0,
   -- 1.0 and 0.0 over 200 runs on 10 threads (always 0.0 with
   -- POLARS_MAX_THREADS ≤ 2).
-  (none, "sum_order", ObsRow.fsumOrder ["polars-sum-float", "polars-mean-float"]
-    ["polars-sum-float", "polars-sum-float-streaming", "polars-exec-row-order"]),
+  (none, "sum_order", ObsRow.fsumOrder ["polars-sum-float-streaming", "polars-mean-float-streaming"]
+    ["polars-sum-float-streaming", "polars-exec-row-order"]),
   (some "agg.fsum", "rounding", ObsRow.fsumRounding
-    ["polars-fp-ieee", "polars-sum-float-streaming", "polars-mean-float-streaming",
-      "polars-sum-float", "polars-mean-float"]
-    "Each Float64 addition rounds to nearest, ties to even (polars-fp-ieee); streaming sums are sequential or pairwise trees of any shape, in-memory group sums Kahan's (polars-sum-float), and mean divides the f64 sum once: StdModel.Summed (a tree or Kahan's sum) and fl(s / n), which epsilon_sum_cr and epsilon_avg_cr bound for any rounding to nearest. Float32 sums run in single precision, which no bound covers: the checker marks their bound unproved (Epsilon.hasFp32)."),
+    ["polars-fp-ieee", "polars-sum-float-streaming", "polars-mean-float-streaming"]
+    "Each Float64 addition rounds to nearest, ties to even (polars-fp-ieee); streaming sums are sequential or pairwise trees of any shape, and mean divides the f64 sum once: StdModel.Summed and fl(s / n), which epsilon_sum_cr and epsilon_avg_cr bound for any rounding to nearest. Float32 sums run in single precision, which no bound covers: the checker marks their bound unproved (Epsilon.hasFp32)."),
   (none, "window_sum_algo", (ObsRow.approxWithin "plan"
     ["polars-window-agg", "polars-cum-sum-float", "polars-fp-ieee"]).tracking 900),
   -- This row holds for `COVAR_*` and `CORR` (`agg.stat`): `COVAR_*` is proved

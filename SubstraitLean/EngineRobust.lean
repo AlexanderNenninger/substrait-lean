@@ -123,9 +123,9 @@ def signKeptOn (es : List EngineProfile) : List String :=
   es.filterMap fun e =>
     if (e.table.allows "agg.fsum" "sum_order" []).all (signKept.contains ·) then some e.name else none
 
--- Polars's in-memory `sum` is Kahan's (polars-sum-float); its table still
--- allows `COMPENSATED`, which #2411 drops.
-#guard signKeptOn builtinEngines == ["duckdb", "spark"]
+-- Every built-in engine's sums are trees (Polars's streaming sums,
+-- polars-sum-float-streaming; Kahan's is the in-memory engine's, #2411).
+#guard signKeptOn builtinEngines == ["duckdb", "polars", "spark"]
 
 variable [Boxes.Ambient]
 /-- `"robust"` of a `--contract` request: per postcondition, in the order of
