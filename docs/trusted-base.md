@@ -130,9 +130,11 @@ Sverify's words claim no more than these theorems give
   relational behaviour are [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271).
 - The report's `ε` (`SubstraitLean/Epsilon.lean`, `robust`, `rows_exact`,
   `margin_checks`) has no theorem that it bounds an engine's doubles. The
-  bounds hold over the reals in `float-bounds/`; the link from them to the
-  core's codes is [#1196](https://github.com/AlexanderNenninger/substrait-lean/issues/1196), and `contract_sound_runs` for double
-  aggregates beyond a root `SUM` or `AVG` is [#929](https://github.com/AlexanderNenninger/substrait-lean/issues/929).
+  bounds hold over the reals in `float-bounds/`, which `StdModel` links to the
+  core's codes (#1196). The missing theorem is `epsilon_sound`: each column's
+  `ε` is at most the bound the theorems prove for it. It and
+  `contract_sound_runs` for double aggregates beyond a root `SUM` or `AVG` are
+  [#929](https://github.com/AlexanderNenninger/substrait-lean/issues/929).
 - Under `semantics="portable"`, the default for SQL, the lift from SQL is
   tested Python. The generated `liftReference` entries are unused, and no
   theorem states that the reference's reading is DuckDB's value wherever the
@@ -159,6 +161,40 @@ Sverify's words claim no more than these theorems give
   `UnFn.apply_dkind_precision`).
 - DuckDB's implicit coercions are its facts and the lift's tests.
 - `Report.output` is Ibis's schema, and integer widths live in the parser.
+- A generated lift or lowering entry proves that its template agrees with
+  the engine's model (`DuckFn.eval .duckdb f`, the profiles), written from the
+  same facts. A wrong fact gives a proof of a wrong entry. What ties an entry
+  to the engine is the fact's evidence and the replays; a check that every
+  entry has a probe for each branch of its template is [#2527](https://github.com/AlexanderNenninger/substrait-lean/issues/2527).
+- The frontends (the Ibis producer, `sql_lift/`, the request builder) are
+  trusted to give the plan the user meant, and nothing validates their plan
+  at verify time. A translation validation that runs the source on DuckDB and
+  the plan through the checker's evaluator, or `substrait-validator` on the
+  input, is [#2528](https://github.com/AlexanderNenninger/substrait-lean/issues/2528).
+- The parser is trusted for meaning. What is proved is its round trip with
+  the writer, `parse (write r) = r` (`Write.roundtrips`). Reading a plan, it
+  rewrites: a comparison is swapped to `<` (`tests/fixtures/filter_project.expected`),
+  `not_equal` becomes `NOT (=)` (`df_float_timestamp.expected`), a boolean
+  `CASE` evaluates its branches eagerly (`case_eager.expected`), decimals of
+  two scales meet at the larger one (`decimal_compare_scales.expected`), and
+  defaults such as `common.direct` are dropped. So `write (parse j)` matched
+  `j` on 0 of the 22 fixtures measured (2026-11-23), even after names were resolved, and a
+  syntactic round trip on input says nothing about meaning (ruling 280). The
+  bridge is semantic, running `j` and `parse j` side by side or validating
+  `j`: [#2528](https://github.com/AlexanderNenninger/substrait-lean/issues/2528).
+- `Engine.contract_sound` and `Engine.contract_sound_runs` take 15 and 13
+  hypotheses, some of them the checker's own Booleans (`robustB`, `narrow sh`).
+  `Statements.lean` states them over named predicates, and no `example`
+  instantiates every hypothesis of each theorem: [#2530](https://github.com/AlexanderNenninger/substrait-lean/issues/2530).
+- The plans that maintain an incremental view (below, the Python glue) are
+  built in Python and not derived or checked by the checker, so
+  `touched_sound` holds of the plans its statement names, and nothing checks
+  that Python built those: [#2531](https://github.com/AlexanderNenninger/substrait-lean/issues/2531).
+- A black box's laws hold of the model by the clamp (`Scalar.call` keeps the
+  sample where a law breaks), and of DuckDB by tests
+  (`python/tests/test_black_box.py`); the checker refuses the rows where the
+  clamp applies. A theorem that the clamp never fires on accepted rows is
+  [#2532](https://github.com/AlexanderNenninger/substrait-lean/issues/2532).
 
 ## The trusted parts in detail
 
