@@ -48,7 +48,7 @@ Rows per evidence level:
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
 | DuckDB | 25 | 1 | 16 | 2 | 0 | 0 | 15 |
-| Polars | 35 | 1 | 12 | 0 | 0 | 0 | 17 |
+| Polars | 36 | 0 | 12 | 0 | 0 | 0 | 17 |
 | Spark | 18 | 16 | 14 | 0 | 0 | 0 | 16 |
 
 ## Shims
@@ -202,7 +202,7 @@ Rows per evidence level:
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | choose | `EXACT` | `SEQUENTIAL`, `ANY` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-sum-float-streaming](../engines/polars/facts/polars-sum-float-streaming.json), [polars-mean-float-streaming](../engines/polars/facts/polars-mean-float-streaming.json) |
-| every | `stat_algo` | choose | `EXACT` | `SCHUBERT_GERTZ` | observed: within the plan's bound | fuzz | tested: [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-cov](../engines/polars/facts/polars-cov.json), [polars-corr](../engines/polars/facts/polars-corr.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json) |
+| every | `stat_algo` | choose | `EXACT` | `SCHUBERT_GERTZ` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.core_cov_polars`; [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-cov](../engines/polars/facts/polars-cov.json), [polars-corr](../engines/polars/facts/polars-corr.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json) |
 | agg.var | `stat_algo` | choose | `EXACT` | `SCHUBERT_GERTZ` | shim `nan_through` (expression) | proof | proved `FloatBounds.StdModel.core_var_polars`; [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json), [polars-var-pop-one-nan](../engines/polars/facts/polars-var-pop-one-nan.json) |
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `RUNNING_ADD`, `TREE` | observed: within the plan's bound | probe | tested: [polars-window-agg](../engines/polars/facts/polars-window-agg.json), [polars-cum-sum-float](../engines/polars/facts/polars-cum-sum-float.json), [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
