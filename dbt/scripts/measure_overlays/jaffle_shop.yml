@@ -50,3 +50,16 @@ models:
     columns:
       - name: customer_id
         tests: [not_null]
+      - name: order_id
+        tests:
+          # Every order has a payment, which dbt's own test confirms on the
+          # data: with it, `orders` left-joins the per-order payment sums and
+          # each amount column is as non-NULL as the sums are (#2512).
+          - relationships:
+              to: ref('stg_payments')
+              field: order_id
+
+  - name: stg_payments
+    columns:
+      - name: amount
+        tests: [not_null]

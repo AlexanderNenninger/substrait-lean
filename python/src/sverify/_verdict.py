@@ -66,6 +66,7 @@ def verdict(
         _unchecked=out.get("unchecked"),
         _optimized=out.get("optimized"),
         _rewrites=out.get("rewrites", []),
+        _fk_joins=_fk_joins(out.get("fk_joins"), request.get("columns") or {}),
         _assumed_check=_assumed_check(out.get("assumed_check"), out["issues"]),
         _run_plan=out.get("run_plan"),
         _run_gate=out.get("run_gate"),
@@ -90,6 +91,20 @@ def verdict(
         engine_version=probed_version(semantics),
         **context,
     )
+
+
+def _fk_joins(
+    joins: Sequence[Mapping[str, Any]] | None, columns: Mapping[str, Sequence[str]]
+) -> list[tuple[str, str, str, str, bool]]:
+    """The checker's left joins on a foreign key as (table, column, referenced
+    table, column, declared), the columns by name."""
+    out = []
+    for j in joins or []:
+        t, s = j["table"], j["to_table"]
+        c, p = columns.get(t, ()), columns.get(s, ())
+        if j["column"] < len(c) and j["to_column"] < len(p):
+            out.append((t, c[j["column"]], s, p[j["to_column"]], bool(j["declared"])))
+    return out
 
 
 def split_assumed(report: Report) -> Report:
