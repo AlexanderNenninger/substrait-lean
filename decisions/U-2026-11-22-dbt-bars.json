@@ -16,5 +16,5 @@
     "U-2026-11-23-dbt-gate-without-range"
   ],
   "source": "https://github.com/AlexanderNenninger/substrait-lean/issues/1487#issuecomment-7084918796",
-  "note": "Sets the bar the 2026-11-22 gate ruling left to the maintainer. The measurement at the time: 5 of jaffle_shop's 20 tests proved. BigQuery and other warehouse dialects are out of scope until a lift exists (Snowflake and Spark: #866)."
+  "note": "Sets the bar the 2026-11-22 gate ruling left to the maintainer. The measurement at the time: 5 of jaffle_shop's 20 tests proved. BigQuery and other warehouse dialects are out of scope until a lift exists (Snowflake and Spark: #866). Paraphrased from the coordinator's relay on #1487; the maintainer's own words aren't quoted there."
 }
