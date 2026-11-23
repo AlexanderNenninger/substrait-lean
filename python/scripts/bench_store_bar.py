@@ -15,7 +15,12 @@ process of its own, twice:
   built, such as a state held as Arrow; a source built from NumPy is
   outside it), the state location's files (`_parts.state_dir`, where
   Polars and Spark keep their parts), DuckDB's own memory
-  (`duckdb_memory()`), and the resident set now;
+  (`duckdb_memory()`), the resident set's growth since before the sources
+  were built (after a garbage collection and `malloc_trim`, so freed heap
+  is not counted), and the residual of that growth the parts above leave
+  unexplained. The timed run builds no Parquet of its own, and drops each
+  batch once the source has it. The residual includes the engines' own
+  libraries, loaded at the first refresh, a constant: compare it across N;
 * sized: after each refresh, the view's state (`arrow_of(view.state)`): its
   rows, and its size as Parquet, against the Parquet size of the rows read
   so far. The worst of the four ratios and the last one are printed.
@@ -33,6 +38,8 @@ The pipelines (#1329, "The bar for 1.0"):
 """
 
 import contextlib
+import ctypes
+import gc
 import io
 import multiprocessing as mp
 import os
@@ -123,6 +130,7 @@ def parquet_bytes(t: pa.Table) -> int:
 
 def case(name: str, engine: str, n: int, sized: bool, out: mp.Queue) -> None:
     k = n // 4
+    base = rss_trimmed()
     src = StaticSource(orders(k, 0), name="orders")
     sources = [src]
     transform = PIPELINES[name]
@@ -131,14 +139,18 @@ def case(name: str, engine: str, n: int, sized: bool, out: mp.Queue) -> None:
         node = transform(src, sources[1])
     else:
         node = src.pipe(transform)
-    data = parquet_bytes(orders(k, 0))
+    # The sized run alone measures the data, so the timed run builds no
+    # buffers of its own beyond the batches the source keeps.
+    data = parquet_bytes(orders(k, 0)) if sized else 0
     times: list[float] = []
     sizes: list[tuple[int, int, int]] = []
     for i in range(4):
         if i:
             batch = orders(k, i * k)
-            data += parquet_bytes(batch)
+            if sized:
+                data += parquet_bytes(batch)
             src.apply(Changes(inserts=batch))
+            del batch
         t = time.perf_counter()
         node.refresh(engine=engine)
         times.append(time.perf_counter() - t)
@@ -146,7 +158,8 @@ def case(name: str, engine: str, n: int, sized: bool, out: mp.Queue) -> None:
             assert node._stage is not None
             state = arrow_of(node._stage.view.state)
             sizes.append((state.num_rows, parquet_bytes(state), data))
-    out.put((times, resource.getrusage(resource.RUSAGE_SELF).ru_maxrss, sizes, memory(sources)))
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    out.put((times, peak, sizes, memory(sources, base)))
 
 
 def dir_bytes(path: str) -> int:
@@ -158,6 +171,16 @@ def dir_bytes(path: str) -> int:
     return total
 
 
+def rss_trimmed() -> int:
+    """The resident set after a garbage collection and, on glibc, after
+    handing freed heap back to the system (`malloc_trim`): what the process
+    still holds, not its allocator's high-water mark."""
+    gc.collect()
+    with contextlib.suppress(OSError, AttributeError):
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    return rss_now()
+
+
 def rss_now() -> int:
     """The resident set now, in bytes (Linux; 0 elsewhere)."""
     try:
@@ -167,9 +190,12 @@ def rss_now() -> int:
         return 0
 
 
-def memory(sources: list) -> dict[str, int]:
-    """Where the driver's memory is, after the last refresh."""
+def memory(sources: list, base: int) -> dict[str, int | None]:
+    """Where the driver's memory is after the last refresh, against `base`,
+    the resident set before the case built its sources: the growth, and the
+    residual that the sources, the Arrow pool and DuckDB leave unexplained."""
     source = sum(s.table.nbytes for s in sources)
+    rss = rss_trimmed()
     try:
         row = (
             _duckdb.cursor()
@@ -179,12 +205,16 @@ def memory(sources: list) -> dict[str, int]:
         duck = row[0] if row else 0
     except Exception:
         duck = 0
+    arrow = pa.total_allocated_bytes()
+    duck = int(duck)
+    growth = rss - base if rss and base else None
     return {
         "source": source,
-        "arrow": pa.total_allocated_bytes(),
-        "files": dir_bytes(_parts.state_dir()) if "://" not in _parts.state_dir() else -1,
-        "duckdb": int(duck),
-        "rss": rss_now(),
+        "arrow": arrow,
+        "files": dir_bytes(_parts.state_dir()) if "://" not in _parts.state_dir() else None,
+        "duckdb": duck,
+        "growth": growth,
+        "residual": None if growth is None else growth - source - arrow - duck,
     }
 
 
@@ -213,9 +243,9 @@ def main(argv: list[str]) -> None:
     print(
         "| pipeline | engine | N | state rows (last) | state / data: worst, last "
         "| refresh s (each of 4) | driver peak MB | source MB | Arrow pool MB "
-        "| state files MB | DuckDB MB | RSS now MB |"
+        "| state files MB | DuckDB MB | RSS growth MB | residual MB |"
     )
-    print("|---|---|---|---|---|---|---|---|---|---|---|---|")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for n in sizes:
         for name in PIPELINES:
             for engine in engines:
@@ -226,14 +256,15 @@ def main(argv: list[str]) -> None:
                     print(f"| {name} | {engine} | {n:,} | {why} |")
                     continue
                 times, rss, _, mem = timed
-                m = {k: (f"{v / 2**20:.0f}" if v >= 0 else "remote") for k, v in mem.items()}
+                m = {k: ("n/a" if v is None else f"{v / 2**20:.0f}") for k, v in mem.items()}
                 mb = rss / (1024**2 if sys.platform == "darwin" else 1024)  # bytes, or KB
                 ratios = [b / d for _, b, d in sized[2]]
                 rows = sized[2][-1][0]
                 print(
                     f"| {name} | {engine} | {n:,} | {rows:,} | {max(ratios):.4f}, {ratios[-1]:.4f} "
                     f"| {', '.join(f'{t:.2f}' for t in times)} | {mb:.0f} | {m['source']} "
-                    f"| {m['arrow']} | {m['files']} | {m['duckdb']} | {m['rss']} |",
+                    f"| {m['arrow']} | {m['files']} | {m['duckdb']} | {m['growth']} "
+                    f"| {m['residual']} |",
                     flush=True,
                 )
 
