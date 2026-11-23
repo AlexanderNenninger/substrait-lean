@@ -816,6 +816,10 @@ def test_st8_holds_or_refuses_by_the_decimal_calls() -> None:
     assert st8(typer, b) is not None
     typer, b = _typed(d.select(r=_.e.cast("decimal(12,1)")))
     assert st8(typer, b) is None
+    # A cast to a decimal whose input has no known type may reduce its scale: refused.
+    typer, b = _typed(d.select(u=_.d.cast("decimal(12,4)")))
+    typer.casts = [(cast, None) for cast, _t in typer.casts]  # pyrefly: ignore
+    assert st8(typer, b) is None
 
 
 # -- ST-6: a cast of a double to an integer (#2438) ------------------------------------
@@ -1020,6 +1024,23 @@ def test_st4_annotate_ships_the_order_of_a_double_max() -> None:
 def test_st4_refuse_names_the_gap_of_a_double_max() -> None:
     with pytest.raises(ExportError, match=re.escape("(ST-4, upstream/bugs/ST-4.json)")):
         _max_report().to_substrait(shims="refuse")
+
+
+def test_st4_refuses_a_max_whose_argument_type_is_unknown() -> None:
+    """An argument the typer could not type may be a double: st4 refuses
+    rather than report the `MAX` as rewritten (reviewer 2)."""
+    import dataclasses
+
+    from sverify._substrait_shims import st4
+
+    i = ibis.table({"g": "int64", "n": "int64"}, name="i")
+    typer, b = _typed(i.group_by("g").agg(m=_.n.max()))
+    assert st4(typer, b) is not None
+    typer.calls = [
+        dataclasses.replace(c, args=tuple(None for _a in c.args)) if c.name == "max" else c  # pyrefly: ignore
+        for c in typer.calls
+    ]
+    assert st4(typer, b) is None
 
 
 def test_st4_refuses_a_double_max_without_nan() -> None:

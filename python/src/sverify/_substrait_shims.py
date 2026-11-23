@@ -114,9 +114,12 @@ def st4(typer: _Typer, b: Builder) -> Json | None:
     """Comparisons, keys and sorts of doubles, with NaN equal to NaN and
     greatest, and one zero (ST-4). A `MIN`, `MAX` or quantile of doubles, an
     aggregate's or a window's, is not rewritten, so the shim does not hold
-    there (ruling 273)."""
+    there (ruling 273). An argument of unknown type may be a double, so it
+    counts as one; the typer types every argument today."""
     if any(
-        c.holder is None and c.name in _ORDER_MEASURES and any(_is_double(a) for a in c.args)
+        c.holder is None
+        and c.name in _ORDER_MEASURES
+        and any(a is None or _is_double(a) for a in c.args)
         for c in typer.calls
     ):
         return None
@@ -372,12 +375,11 @@ def st8(typer: _Typer, b: Builder) -> Json | None:
     brings a decimal to a smaller one (ST-8, ruling 273)."""
     for cast, t in typer.casts:
         target = cast["type"].get("decimal")
-        if (
-            target is not None
-            and t is not None
-            and t.name == "decimal"
-            and int(target.get("scale", 0)) < t.params[1]
-        ):
+        if target is None:
+            continue
+        # The typer types every cast's input (`_Typer.expr` returns a `Ty` or raises);
+        # an input of unknown type could be a decimal of a larger scale, so it refuses.
+        if t is None or (t.name == "decimal" and int(target.get("scale", 0)) < t.params[1]):
             return None
     for c in typer.calls:
         ds = [a for a in c.args if not isinstance(a, str) and a.name == "decimal"]
