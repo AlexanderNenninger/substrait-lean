@@ -30,54 +30,60 @@ theorem Measure.mem_mapExpr_exprs {f : Expr → Expr} (hf : ∀ i, f (.field i) 
 where the original does.** With `q`'s functions giving `Rel.eval`'s rows
 where `q` does not raise, the rows each translated expression is evaluated on
 are rows the original one is evaluated on. `f` need only be exact on the
-plan's own expressions (`Q`), as for a partial table (`Rel.evalI_mapExprs_on`). -/
-theorem Rel.raises_mapExprs_on {p q : Profile} {f : Expr → Expr} {Q : Expr → Prop}
-    (hx : ∀ e, Q e → Expr.Exact p (f e) e) (hf : ∀ i, f (.field i) = .field i)
-    (hr : ∀ e row, Q e → (f e).RaisesOn p row → e.RaisesOn q row) {cat : Catalog}
+plan's own expressions (`Q`), as for a partial table, and only on the rows
+they are evaluated on (`R`, `Rel.ExprRows`), as for entries stated on doubles
+(`Rel.evalI_mapExprs_rows`). -/
+theorem Rel.raises_mapExprs_rows {p q : Profile} {f : Expr → Expr} {Q : Expr → Prop}
+    {R : Row → Prop} (hx : ∀ e, Q e → ∀ row, R row → Expr.ExactAt p (f e) e row)
+    (hf : ∀ i, f (.field i) = .field i)
+    (hr : ∀ e row, Q e → R row → (f e).RaisesOn p row → e.RaisesOn q row) {cat : Catalog}
     (hq : ∀ r : Rel, ¬r.Raises q cat → r.eval cat q.impl = r.eval cat) :
-    ∀ {r : Rel}, (∀ e ∈ r.mappedExprs, Q e) → (r.mapExprs f).Raises p cat → r.Raises q cat
-  | .read _, _, h | .values _ _, _, h => h.elim
-  | .filter r c, hQ, h => by
+    ∀ {r : Rel}, r.ExprRows R cat → (∀ e ∈ r.mappedExprs, Q e) → (r.mapExprs f).Raises p cat →
+      r.Raises q cat
+  | .read _, _, _, h | .values _ _, _, _, h => h.elim
+  | .filter r c, hR, hQ, h => by
     have hQr : ∀ e ∈ r.mappedExprs, Q e := fun e he => hQ e (List.mem_cons_of_mem _ he)
     simp only [mapExprs, Raises] at h ⊢
-    have ih := raises_mapExprs_on hx hf hr hq hQr
+    have ih := raises_mapExprs_rows hx hf hr hq hR.1 hQr
     by_cases h0 : r.Raises q cat
     · exact .inl h0
     · refine .inr ?_
       rcases h with h | ⟨row, hrow, hc⟩
       · exact absurd (ih h) h0
-      · rw [evalI_mapExprs_on hx hf hQr (fun h' => h0 (ih h'))] at hrow
-        exact ⟨row, by rw [hq r h0]; exact hrow, hr c row (hQ c (List.mem_cons_self ..)) hc⟩
-  | .project r es, hQ, h => by
+      · rw [evalI_mapExprs_rows hx hf hR.1 hQr (fun h' => h0 (ih h'))] at hrow
+        exact ⟨row, by rw [hq r h0]; exact hrow,
+          hr c row (hQ c (List.mem_cons_self ..)) (hR.2 row hrow) hc⟩
+  | .project r es, hR, hQ, h => by
     have hQr : ∀ e ∈ r.mappedExprs, Q e := fun e he => hQ e (List.mem_append_right _ he)
     simp only [mapExprs, Raises] at h ⊢
-    have ih := raises_mapExprs_on hx hf hr hq hQr
+    have ih := raises_mapExprs_rows hx hf hr hq hR.1 hQr
     by_cases h0 : r.Raises q cat
     · exact .inl h0
     · refine .inr ?_
       rcases h with h | ⟨row, hrow, e', he', hc⟩
       · exact absurd (ih h) h0
-      · rw [evalI_mapExprs_on hx hf hQr (fun h' => h0 (ih h'))] at hrow
+      · rw [evalI_mapExprs_rows hx hf hR.1 hQr (fun h' => h0 (ih h'))] at hrow
         obtain ⟨e, he, rfl⟩ := List.mem_map.mp he'
         exact ⟨row, by rw [hq r h0]; exact hrow, e, he,
-          hr e row (hQ e (List.mem_append_left _ he)) hc⟩
-  | .emit r _, hQ, h | .orderBy r _, hQ, h | .distinct r, hQ, h | .unnest r _, hQ, h
-  | .window r _ _ _, hQ, h | .fetch r _ _, hQ, h => by
+          hr e row (hQ e (List.mem_append_left _ he)) (hR.2 row hrow) hc⟩
+  | .emit r _, hR, hQ, h | .orderBy r _, hR, hQ, h | .distinct r, hR, hQ, h
+  | .unnest r _, hR, hQ, h | .window r _ _ _, hR, hQ, h | .fetch r _ _, hR, hQ, h => by
     simp only [mapExprs, Raises] at h ⊢
-    exact raises_mapExprs_on hx hf hr hq (fun e he => hQ e he) h
-  | .cross a b, hQ, h | .unionAll a b, hQ, h => by
+    exact raises_mapExprs_rows hx hf hr hq hR (fun e he => hQ e he) h
+  | .cross a b, hR, hQ, h | .unionAll a b, hR, hQ, h => by
     have hQa : ∀ e ∈ a.mappedExprs, Q e := fun e he => hQ e (List.mem_append_left _ he)
     have hQb : ∀ e ∈ b.mappedExprs, Q e := fun e he => hQ e (List.mem_append_right _ he)
     simp only [mapExprs, Raises] at h ⊢
-    exact h.imp (raises_mapExprs_on hx hf hr hq hQa) (raises_mapExprs_on hx hf hr hq hQb)
-  | .join a b _ on, hQ, h | .semi a b _ on, hQ, h => by
+    exact h.imp (raises_mapExprs_rows hx hf hr hq hR.1 hQa)
+      (raises_mapExprs_rows hx hf hr hq hR.2 hQb)
+  | .join a b _ on, hR, hQ, h | .semi a b _ on, hR, hQ, h => by
     have hQa : ∀ e ∈ a.mappedExprs, Q e := fun e he =>
       hQ e (List.mem_cons_of_mem _ (List.mem_append_left _ he))
     have hQb : ∀ e ∈ b.mappedExprs, Q e := fun e he =>
       hQ e (List.mem_cons_of_mem _ (List.mem_append_right _ he))
     simp only [mapExprs, Raises] at h ⊢
-    have iha := raises_mapExprs_on hx hf hr hq hQa
-    have ihb := raises_mapExprs_on hx hf hr hq hQb
+    have iha := raises_mapExprs_rows hx hf hr hq hR.1 hQa
+    have ihb := raises_mapExprs_rows hx hf hr hq hR.2.1 hQb
     by_cases ha : a.Raises q cat
     · exact .inl ha
     · by_cases hb : b.Raises q cat
@@ -86,30 +92,41 @@ theorem Rel.raises_mapExprs_on {p q : Profile} {f : Expr → Expr} {Q : Expr →
         rcases h with h | h | ⟨x, hx', y, hy, hc⟩
         · exact absurd (iha h) ha
         · exact absurd (ihb h) hb
-        · rw [evalI_mapExprs_on hx hf hQa (fun h' => ha (iha h'))] at hx'
-          rw [evalI_mapExprs_on hx hf hQb (fun h' => hb (ihb h'))] at hy
+        · rw [evalI_mapExprs_rows hx hf hR.1 hQa (fun h' => ha (iha h'))] at hx'
+          rw [evalI_mapExprs_rows hx hf hR.2.1 hQb (fun h' => hb (ihb h'))] at hy
           exact ⟨x, by rw [hq a ha]; exact hx', y, by rw [hq b hb]; exact hy,
-            hr on _ (hQ on (List.mem_cons_self ..)) hc⟩
-  | .aggregate r gs ms, hQ, h => by
+            hr on _ (hQ on (List.mem_cons_self ..)) (hR.2.2 x hx' y hy) hc⟩
+  | .aggregate r gs ms, hR, hQ, h => by
     have hQr : ∀ e ∈ r.mappedExprs, Q e := fun e he => hQ e (List.mem_append_right _ he)
     simp only [mapExprs, Raises] at h ⊢
-    have ih := raises_mapExprs_on hx hf hr hq hQr
+    have ih := raises_mapExprs_rows hx hf hr hq hR.1 hQr
     by_cases h0 : r.Raises q cat
     · exact .inl h0
     · refine .inr ?_
       rcases h with h | ⟨row, hrow, e', he', hc⟩
       · exact absurd (ih h) h0
-      · rw [evalI_mapExprs_on hx hf hQr (fun h' => h0 (ih h'))] at hrow
+      · rw [evalI_mapExprs_rows hx hf hR.1 hQr (fun h' => h0 (ih h'))] at hrow
+        have hRr := hR.2 row hrow
         refine ⟨row, by rw [hq r h0]; exact hrow, ?_⟩
         simp only [List.mem_append, List.mem_flatMap, List.mem_map] at he'
         rcases he' with ⟨e, he, rfl⟩ | ⟨m', hm', he'⟩
         · exact ⟨e, List.mem_append_left _ he,
-            hr e row (hQ e (List.mem_append_left _ (List.mem_append_left _ he))) hc⟩
+            hr e row (hQ e (List.mem_append_left _ (List.mem_append_left _ he))) hRr hc⟩
         · obtain ⟨m, hm, rfl⟩ := hm'
           obtain ⟨e, he, rfl⟩ := Measure.mem_mapExpr_exprs hf he'
           have hme : e ∈ ms.flatMap Measure.exprs := List.mem_flatMap.mpr ⟨m, hm, he⟩
           exact ⟨e, List.mem_append_right _ hme,
-            hr e row (hQ e (List.mem_append_left _ (List.mem_append_right _ hme))) hc⟩
+            hr e row (hQ e (List.mem_append_left _ (List.mem_append_right _ hme))) hRr hc⟩
+
+/-- `Rel.raises_mapExprs_rows` on every row: `f` exact on the plan's own
+expressions. -/
+theorem Rel.raises_mapExprs_on {p q : Profile} {f : Expr → Expr} {Q : Expr → Prop}
+    (hx : ∀ e, Q e → Expr.Exact p (f e) e) (hf : ∀ i, f (.field i) = .field i)
+    (hr : ∀ e row, Q e → (f e).RaisesOn p row → e.RaisesOn q row) {cat : Catalog}
+    (hq : ∀ r : Rel, ¬r.Raises q cat → r.eval cat q.impl = r.eval cat) {r : Rel}
+    (hQ : ∀ e ∈ r.mappedExprs, Q e) (h : (r.mapExprs f).Raises p cat) : r.Raises q cat :=
+  raises_mapExprs_rows (R := fun _ => True) (fun e he row _ v hv => hx e he row v hv) hf
+    (fun e row he _ => hr e row he) hq (Rel.exprRows_true cat r) hQ h
 
 theorem Rel.raises_mapExprs {p q : Profile} {f : Expr → Expr} (hx : ∀ e, Expr.Exact p (f e) e)
     (hf : ∀ i, f (.field i) = .field i)
@@ -164,6 +181,63 @@ theorem Lowering.lowerRel?_raises {p : Profile} {L : Lowering p} (hX : L.AllExac
       (fun e row he => L.lowerE_raises_of he (exactOn_of_allExact hX e) row
         (.inl (dblFree_of_noneOnDbl hN e)))
       (fun _ h => Rel.evalI_reference h) (fun e he => List.all_eq_true.mp hall e he) h
+  · cases hr
+
+/-- Every expression of the plan is lowered by exact entries (`Lowering.exactOn`):
+decidable, and for Spark's table false exactly where the plan calls IEEE
+division, whose entry is one-sided (ruling 277). -/
+def Rel.ExactOnB {p : Profile} (r : Rel) (L : Lowering p) : Bool := r.mappedExprs.all L.exactOn
+
+theorem Rel.exactOn_of_exactOnB {p : Profile} {L : Lowering p} {r : Rel}
+    (h : r.ExactOnB L = true) : ∀ e ∈ r.mappedExprs, L.exactOn e = true :=
+  List.all_eq_true.mp h
+
+/-- `Rel.ConstsDbl` as a check: the checker runs it on every plan (ruling 277 Q2). -/
+def Rel.constsDblB (r : Rel) : Bool := r.litDbl && r.mappedExprs.all Expr.litDbl
+
+omit [Boxes.Ambient] in
+/-- The first constant of an expression that is not a double's code: the
+checker's error names it. -/
+def Expr.nonDblLit? : Expr → Option Value
+  | .lit v => if v.dbl then none else some v
+  | .field _ => none
+  | .un _ a => a.nonDblLit?
+  | .bin _ a b => a.nonDblLit? <|> b.nonDblLit?
+  | .ifThen c t e => c.nonDblLit? <|> t.nonDblLit? <|> e.nonDblLit?
+  | .hof _ l b => l.nonDblLit? <|> b.nonDblLit?
+
+omit [Boxes.Ambient] in
+/-- Where `Rel.constsDblB` fails, the constant that fails it, as text. -/
+def Rel.nonDblLit (r : Rel) : String :=
+  if !r.litDbl then "a VALUES row or a window default"
+  else ((r.mappedExprs.findSome? Expr.nonDblLit?).map reprStr).getD "none"
+
+omit [Boxes.Ambient] in
+theorem Rel.constsDbl_of_constsDblB {r : Rel} (h : r.constsDblB = true) : r.ConstsDbl := by
+  simp only [Rel.constsDblB, Bool.and_eq_true, List.all_eq_true] at h
+  exact h
+
+/-- **A plan the partial table lowers raises only where the reference may, on
+doubles**: `Lowering.lowerRel?_raises` for a table whose entries need not all
+be exact or stated on every value. The plan's own expressions are exact
+(`exactOn`), and on a catalog of doubles a plan with doubles for constants is
+evaluated on rows of doubles only (`Rel.exprRows_dbl`), where every entry
+agrees (ruling 277). -/
+theorem Lowering.lowerRel?_raises_dbl {p : Profile} {L : Lowering p} {cat : Catalog}
+    (hcat : cat.Dbl) {r r' : Rel} (hc : r.ConstsDbl)
+    (hx : ∀ e ∈ r.mappedExprs, L.exactOn e = true) (hr : L.lowerRel? r = .ok r')
+    (h : r'.Raises p cat) : r.Raises Profile.reference cat := by
+  unfold lowerRel? at hr
+  split at hr
+  · rename_i hall
+    cases hr
+    exact Rel.raises_mapExprs_rows
+      (Q := fun e => (L.lower e).isSome = true ∧ e.litDbl = true ∧ L.exactOn e = true)
+      (R := Row.Dbl) (fun _ he _ hrow => L.lowerE_exactAt_of he.1 (.inr ⟨hrow, he.2.1⟩))
+      (fun _ => rfl)
+      (fun e row he hrow => L.lowerE_raises_of he.1 he.2.2 row (.inr ⟨hrow, he.2.1⟩))
+      (fun _ h => Rel.evalI_reference h) (Rel.exprRows_dbl hcat r hc.1)
+      (fun e he => ⟨List.all_eq_true.mp hall e he, hc.2 e he, hx e he⟩) h
   · cases hr
 
 omit [Boxes.Ambient] in

@@ -572,8 +572,13 @@ single pairs and merges does (`cInvC_pcrun`). The invariant's bound over any
 constants (`covRel_of_cInvC`) gives the co-moment within `106 n u (…)`
 (`plCov_rel`, DuckDB's `70`), and `COVAR_*` within `covTolK 107`
 (`core_cov_polars`, `StatTol.sg` in `StatProps.lean`, ruling 271). Its `CORR`
-(`PearsonState`) has no theorem yet, and the `agg.stat` row, which both
-read, stays tested until it does
+([`CorrSG.lean`](../float-bounds/FloatBounds/CorrSG.lean)) keeps one
+`PearsonState`, whose two sides and co-moment are, term for term, the
+variance's and the covariance's states over the same means (`PRRun.proj`).
+`dp_xy / √(dp_xx · dp_yy)` takes three roundings, fewer than DuckDB's
+formula, and stays within `1 + 3E/L + 8u` at Chan's `corrErr`
+(`corr_pl_le`, `core_corr_polars`). The `agg.stat` row cites
+`core_cov_polars` and is proved
 ([#1808](https://github.com/AlexanderNenninger/substrait-lean/issues/1808)).
 
 `Epsilon.statEps` reports these bounds per column: a `VAR_*`'s and a

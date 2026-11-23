@@ -244,7 +244,7 @@ def ordersProved (es : List EngineProfile) : Bool :=
   es.all fun e => (e.table.allows "agg.fsum" "sum_order" []).all (provedOrders.contains ·)
 
 /-- The `stat_algo` behaviours `core_var_chan`, `core_cov_chan`,
-`core_var_polars` and `core_cov_polars` cover: the reference's own, Welford's
+`core_var_polars`, `core_cov_polars` and `core_corr_polars` cover: the reference's own, Welford's
 update with Chan's merge, and two-pass blocks with Schubert and Gertz's merge. -/
 def provedStatAlgos : List String := ["EXACT", "WELFORD_CHAN", "SCHUBERT_GERTZ"]
 
@@ -277,11 +277,10 @@ def statTolOn (group : String) (es : List EngineProfile) : Stat.StatTol :=
   if es.any fun e => (e.table.allows group "stat_algo" []).contains "SCHUBERT_GERTZ" then .sg
   else .chan
 
--- Every engine's `VAR_*` and `STDDEV_*` is proved. Polars's `COVAR_*` is too
--- (`core_cov_polars`), but its `agg.stat` row, which `CORR` shares, stays tested
--- until Polars's `CORR` is proved (ruling 271, #1808).
+-- Every engine's statistics are proved: Polars's `COVAR_*` and `CORR` at
+-- `StatTol.sg` (`core_cov_polars`, `core_corr_polars`, ruling 271, #1808).
 #guard statsProvedOn "agg.var" builtinEngines == ["duckdb", "polars", "spark"]
-#guard statsProvedOn "agg.stat" builtinEngines == ["duckdb", "spark"]
+#guard statsProvedOn "agg.stat" builtinEngines == ["duckdb", "polars", "spark"]
 #guard (statTolOn "agg.stat" builtinEngines).cov == 107
 #guard (statTolOn "agg.stat" (builtinEngines.filter (·.name != "polars"))).cov == 71
 
