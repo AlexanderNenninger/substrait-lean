@@ -166,6 +166,10 @@ value. The abstraction reads a list's elements and a struct's fields
 ([Abstract values](#abstract-values)): an element or a field is described by
 its list's or struct's description, and a cardinality by its length.
 
+## Struct casts
+
+Sverify refuses a cast to a type that holds a struct, a struct or a list of structs (`casts of structs are not supported`). The core cannot build a struct from expressions, and the three engines pair a struct cast's fields differently: DuckDB and Polars by name, Spark by position (`duckdb-struct-cast-by-name`, [Polars](../engines/polars/facts/polars-struct-cast-by-name.json), [Spark](../engines/spark/facts/spark-struct-cast-by-position.json)). To change a struct's field types, cast its fields and read them with `s.a`, or build the struct in SQL, `{'a': CAST(s.a AS BIGINT), 'b': s.b}`. Pairing a cast by name is planned after 1.0 ([#2475](https://github.com/AlexanderNenninger/substrait-lean/issues/2475)); the design is ruling 269 (pair by name when the frontend reads the plan, then write positional Substrait).
+
 ## Lambdas
 
 `Expr.hof f l body` is a higher-order function of the list `l`
