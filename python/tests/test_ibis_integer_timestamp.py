@@ -68,15 +68,29 @@ def test_a_double_cast_to_a_timestamp_rounds_its_microseconds_half_to_even(engin
     con = sv.connect()
     con.put("t", pa.table({"x": pa.array(SECONDS, pa.float64())}))
     t = con.table("t")
-    report = sv.verify(t.select(ts=t.x.cast(to)), on_inferred="ignore")
+    # A double past ±9.2e12 seconds leaves 64 bits of microseconds: bound it.
+    report = sv.verify(
+        t.select(ts=t.x.cast(to)), requires={"t": ['"x" IS NULL OR "x" BETWEEN -1e10 AND 1e10']}
+    )
     assert report.verdict == sv.Verdict.PROVED
     ours = report.run(con, engine).column("ts").to_pylist()
+    epoch = dt.datetime(1970, 1, 1)
+    if to == "timestamp(3)":
+        # Floored to the millisecond, as every cast to one (D61). Ibis's DuckDB backend
+        # keeps the microseconds of `to_timestamp`, so it is not the oracle here.
+        assert ours[0] == dt.datetime(2023, 11, 4, 14, 47, 18, 500000)
+        assert ours[1:6] == [
+            epoch,
+            epoch,
+            epoch - dt.timedelta(milliseconds=1),
+            epoch.replace(microsecond=123000),
+            epoch,
+        ]
+        return
     theirs = ibis.duckdb.connect().execute(ibis.memtable(con.get("t")).x.cast(to).name("ts"))
     assert ours == [None if v is pd.NaT else v.to_pydatetime() for v in theirs]
-    if to != "timestamp(3)":
-        epoch = dt.datetime(1970, 1, 1)
-        micros = [2, 2, -2, 123457, 0]  # 2.5 and 1.5 round to 2, -1.5 to -2
-        assert ours[1:6] == [epoch + dt.timedelta(microseconds=us) for us in micros]
+    micros = [2, 2, -2, 123457, 0]  # 2.5 and 1.5 round to 2, -1.5 to -2
+    assert ours[1:6] == [epoch + dt.timedelta(microseconds=us) for us in micros]
 
 
 @pytest.mark.parametrize(
