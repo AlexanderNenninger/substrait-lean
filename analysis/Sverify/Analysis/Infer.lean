@@ -679,4 +679,12 @@ have exact bounds. -/
 def mergedNes (bs : List (Issue × Expr × Bounds)) : List (String × Nat × Int) :=
   (bs.filterMap fun (_, _, b) => if b.split || b.why.isSome then none else some b.nes).flatten.eraseDups
 
+-- The aggregates whose overflow to `±∞` the inferred precondition covers
+-- (`AggFn.infAgg`) are the ones whose function group lists `float_overflow`
+-- (`Functions.groups`), so an engine's table can state what it gives there (#1601).
+#guard [AggFn.count, .sum, .fsum, .avg, .min, .max, .iavg, .var false false, .var true true,
+  .cov false, .cov true, .corr].all fun f =>
+    f.infAgg == ((Functions.rowOf (.agg f)).map fun r =>
+      ((Functions.groups.lookup r.group).getD []).contains "float_overflow").getD false
+
 end Substrait.Infer

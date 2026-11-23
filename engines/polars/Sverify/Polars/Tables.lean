@@ -204,6 +204,12 @@ def Profile.polars.obs : ObsTable := [
   (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
     ["polars-zero-sign-streaming", "polars-zero-add"] with shim := some "one_zero" }).proved "Shim.one_zero"),
   (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Shim.makes_infinite"),
+  -- A variance or covariance whose correctly rounded value overflows is `+inf`
+  -- (polars-nonfinite-aggregates, #1601); the guard flags it (`Polars.agg_makes_infinite`).
+  (some "agg.var", "float_overflow", (ObsRow.native ["polars-nonfinite-aggregates"]).proved
+    "Polars.agg_makes_infinite"),
+  (some "agg.stat", "float_overflow", (ObsRow.native ["polars-nonfinite-aggregates"]).proved
+    "Polars.agg_makes_infinite"),
   (none, "negative_start", (ObsRow.native ["polars-substring"]).proved "Lowering.polars_exact"),
   (none, "case_sensitivity", (ObsRow.native ["polars-match-functions"]).proved "Lowering.polars_exact"),
   (some "str.sub", "string_positions", (ObsRow.shimmed "substring_wrap" ["polars-substring"]).proved "Polars.substring_wrap"),
