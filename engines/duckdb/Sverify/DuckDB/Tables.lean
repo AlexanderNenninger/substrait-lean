@@ -48,6 +48,12 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     (none, "min_mod_neg_one", .oneOf ["ERROR"]),
     (none, "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
     (some "fp.round", "rounding", .asked ["TIE_AWAY_FROM_ZERO"] ["TIE_AWAY_FROM_ZERO"]),
+    -- `float_to_int` (ruling 273): a cast's conversion is the engine's own;
+    -- elsewhere (`fp.round`, `fp.floor`) it stays uncharacterized.
+    (none, "float_to_int", .loose ["TRUNCATE", "TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN"]),
+    -- `CAST` of a double rounds half to even, of a decimal half away from zero
+    -- (duckdb-R9): `cast.num` holds both.
+    (some "cast.num", "float_to_int", .oneOf ["TIE_TO_EVEN", "TIE_AWAY_FROM_ZERO"]),
     (none, "nan_creation", .oneOf ["NAN"]),
     (none, "float_overflow", .oneOf ["INFINITY"]),
     (none, "zero_sign", .oneOf ["ONE_ZERO"]),
@@ -174,6 +180,10 @@ def Profile.duckdb.obs : ObsTable := [
     rerun := some { rows := .tiesPermuted },
     rerunEvidence := .probed ["duckdb-mode-ties", "duckdb-exec-row-order"] }).tracking 1985),
   (some "fp.round", "rounding", (ObsRow.native ["duckdb-R15-round"]).proved "Lowering.duckdb_exact"),
+  -- A double or decimal to integer cast: DuckDB's `CAST` rounds, so the
+  -- lowering writes `trunc` first (duckdb-R9, ruling 273).
+  (some "cast.num", "float_to_int", (ObsRow.shimmed "trunc before the cast" ["duckdb-R9"]).proved
+    "Lowering.duckdb_exact"),
   (none, "float_overflow", (ObsRow.native ["duckdb-R15-double-arith"]).tracking 1985),
   -- A variance or covariance whose correctly rounded value overflows is `+inf`
   -- (duckdb-double-overflow, #1601).
@@ -223,7 +233,7 @@ def Profile.duckdb.shimCosts : List (String × ShimCost) :=
   [("MIN % -1 written out", .expression), ("round: 0.0 for a negative value that rounds to zero", .expression),
    ("ORDER BY the keys", .sort), ("nan_through", .expression), ("quantile_guard", .expression),
    ("null_order", .argument), ("list_lt", .expression), ("log(b, x) domain guard", .expression),
-   ("integer power as checked products", .expression)]
+   ("integer power as checked products", .expression), ("trunc before the cast", .expression)]
 
 /-- The table's test against the core (`ProfileTable.leB`), decided once in
 the kernel for every setting. -/

@@ -206,11 +206,14 @@ def test_a5_avg_of_int32_and_rounding_ties(con) -> None:
     assert sorted(run_both(rounded, ties)["polars"].column("r").to_pylist()) == [-2, 1, 3]
     assert sorted(run_both(mean, ties)["polars"].column("a").to_pylist()) == [1.5, 3.0]
     # DuckDB's `round(-0.4)` is `-0.0` (`round_zero_sign`): the default
-    # observation reads one zero, so DuckDB runs it as written; an
-    # observation that reads the signs gets the written plan's proved
-    # template, which gives the reference's `0.0`. Polars shims the
-    # rounding mode either way.
-    assert route_of(rounded, "duckdb").cls == "observed"
+    # observation reads one zero. `round()` of a double gives an integer, a
+    # cast that DuckDB's writer always writes as `CAST(trunc(x) AS BIGINT)`,
+    # the shim of `cast.num`'s `float_to_int` (duckdb-R9, ruling 273), so the
+    # route names it. An observation that reads the signs gets the written
+    # plan's proved template, which gives the reference's `0.0`. Polars shims
+    # the rounding mode either way.
+    assert route_of(rounded, "duckdb").cls == "shim"
+    assert route_of(rounded, "duckdb").shims == ("cast.num's float_to_int: trunc before the cast",)
     assert route_of(rounded, "polars").cls == "shim"
     signed = sv.verify(
         tt.select("k", r=tt.x.round()),
