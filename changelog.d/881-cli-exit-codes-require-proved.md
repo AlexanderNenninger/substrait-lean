@@ -1,10 +1,10 @@
 ### Breaking: two more exit codes; `check --require-proved`; relaxations in the JSON (#881 S1, S2, 1.3)
 
 - `sverify` exits 3 only for a construct outside the model. A proved node with
-  no route to the engine (`refresh`) exits 7, `status` `"refused"`. A refresh
-  that held a node exits 8, `status` `"held"`; 5 stays for rows quarantined.
-  `cli.schema.json` allows `exit` up to 8, and `templates/pipelines/scripts/lake.py`
-  ranks the new codes with the ones they came from.
+  no route to the engine (`refresh`) exits 4, `status` `"refused"`. A refresh
+  that held a node exits 7, `status` `"held"`; 6 is for rows quarantined.
+  `cli.schema.json` allows `exit` up to 8, and the codes run from the best to the
+  worst (#2458).
 - `sverify check --require-proved` exits 1 for a node whose unproved
   postconditions are only checked on the data (`on_unproved="check"`), with a
   `checked_only` finding that `sverify explain` describes. The pipeline

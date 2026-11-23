@@ -1,0 +1,148 @@
+{
+ "extensions": [
+  {
+   "extensionFunction": {
+    "functionAnchor": 1,
+    "name": "not_equal"
+   }
+  },
+  {
+   "extensionFunction": {
+    "functionAnchor": 2,
+    "name": "gt"
+   }
+  }
+ ],
+ "relations": [
+  {
+   "root": {
+    "input": {
+     "project": {
+      "common": {
+       "emit": {
+        "outputMapping": [
+         2
+        ]
+       }
+      },
+      "input": {
+       "read": {
+        "baseSchema": {
+         "names": [
+          "a",
+          "b"
+         ],
+         "struct": {
+          "types": [
+           {
+            "i64": {
+             "nullability": "NULLABILITY_NULLABLE"
+            }
+           },
+           {
+            "i64": {
+             "nullability": "NULLABILITY_NULLABLE"
+            }
+           }
+          ],
+          "nullability": "NULLABILITY_REQUIRED"
+         }
+        },
+        "namedTable": {
+         "names": [
+          "t"
+         ]
+        }
+       }
+      },
+      "expressions": [
+       {
+        "ifThen": {
+         "ifs": [
+          {
+           "if": {
+            "scalarFunction": {
+             "functionReference": 1,
+             "arguments": [
+              {
+               "value": {
+                "selection": {
+                 "directReference": {
+                  "structField": {
+                   "field": 1
+                  }
+                 },
+                 "rootReference": {}
+                }
+               }
+              },
+              {
+               "value": {
+                "cast": {
+                 "type": {
+                  "i64": {
+                   "nullability": "NULLABILITY_NULLABLE"
+                  }
+                 },
+                 "input": {
+                  "literal": {
+                   "i8": 0
+                  }
+                 },
+                 "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+                }
+               }
+              }
+             ]
+            }
+           },
+           "then": {
+            "scalarFunction": {
+             "functionReference": 2,
+             "arguments": [
+              {
+               "value": {
+                "selection": {
+                 "directReference": {
+                  "structField": {
+                   "field": 0
+                  }
+                 },
+                 "rootReference": {}
+                }
+               }
+              },
+              {
+               "value": {
+                "selection": {
+                 "directReference": {
+                  "structField": {
+                   "field": 1
+                  }
+                 },
+                 "rootReference": {}
+                }
+               }
+              }
+             ]
+            }
+           }
+          }
+         ],
+         "else": {
+          "literal": {
+           "boolean": false
+          }
+         }
+        }
+       }
+      ]
+     }
+    },
+    "names": [
+     "x"
+    ]
+   }
+  }
+ ]
+}

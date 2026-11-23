@@ -733,6 +733,82 @@ def rowsExact (es : List EngineProfile) (engine : String) (cat : Catalog) (A : S
     (F : String → List Fact) (T : WindowKeys) (r : Rel) : Bool :=
   (rowSites es engine cat A F T r).all (·.1)
 
+/-- The subexpressions of an expression (a lambda's body aside: its column is not the row's). -/
+def subExprs : Expr → List Expr
+  | e@(.lit _) | e@(.field _) => [e]
+  | e@(.un _ a) => e :: subExprs a
+  | e@(.bin _ a b) => e :: (subExprs a ++ subExprs b)
+  | e@(.ifThen c t f) => e :: (subExprs c ++ subExprs t ++ subExprs f)
+  | e@(.hof _ l _) => e :: subExprs l
+
+/-! ### Functions that jump (ruling 275, #1849)
+
+A function that is discontinuous in a double maps a double within `ε > 0` of the
+reference's to a value that need not be near the reference's: `floor(x / 49.0)` is
+`0` on Polars, whose reciprocal quotient lands one ulp below `1`. Such a value
+decides an output as a filter decides rows, so the threshold rule (#568) holds for
+it wherever it sits: a projection, a `CASE`, a measure's argument or a window
+function's. A filter, join condition, grouping key and measure filter are
+`rowSites`' already. -/
+
+/-- Does `e` jump in its double argument: floor, ceil and the roundings of a double,
+and every function from a double to another kind (a comparison, a cast to an
+integer, a decimal or text) but `IS NULL`, which has the same outcome on every
+double of an ε-neighbourhood? Closed by default: a new function of a double to
+another kind counts until a lemma says otherwise. -/
+def jumps (cols : List Kind) : Expr → Bool
+  | .un .isNull _ => false
+  | .un .ffloor a | .un .fceil a | .un .fround a | .un .froundEven a | .un (.froundTo _) a =>
+    a.kind cols == .float
+  | e@(.un _ a) => a.kind cols == .float && e.kind cols != .float
+  | e@(.bin _ a b) => (a.kind cols == .float || b.kind cols == .float) && e.kind cols != .float
+  | _ => false
+
+/-- Does every function of `e` that jumps (`jumps`) read a double that is exact on
+`engine`, or one a precondition keeps away from the threshold (`rule_threshold`:
+`exprEps` gives it no error)? A lambda's body reads its list's elements: one that
+holds a function that jumps needs an exact list. -/
+def jumpsExact (es : List EngineProfile) (engine : String) (cols : List Kind) (env : List AVal)
+    (cs : List (Option (Rat × Bool))) (e : Expr) : Bool :=
+  (subExprs e).all fun x =>
+    let exact (y : Expr) := (exprEps es engine env cs y).any (·.1 == 0)
+    match x with
+    | .hof _ l body => exact l || !(subExprs body).any fun
+        | .un _ _ | .bin .lt _ _ | .bin .eq _ _ => true
+        | _ => false
+    | _ => !jumps cols x || exact x
+
+/-- Every expression that computes a value of the plan, with its input columns'
+kinds, description and errors on `engine`: projections, measures' arguments and
+window functions' aggregates. `none` for the errors where `colEps` gives none. -/
+def valueSites (es : List EngineProfile) (engine : String) (schemas : Write.Schemas) (cat : Catalog)
+    (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) :
+    Rel → List (List Expr × List Kind × List AVal × Option (List (Option (Rat × Bool))))
+  | .read _ | .values _ _ => []
+  | .filter r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ =>
+    valueSites es engine schemas cat A F T r
+  | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ =>
+    valueSites es engine schemas cat A F T a ++ valueSites es engine schemas cat A F T b
+  | .project r xs => site r xs :: valueSites es engine schemas cat A F T r
+  | .aggregate r _ ms => site r (ms.map (·.arg)) :: valueSites es engine schemas cat A F T r
+  | .window r _ _ fns =>
+    site r (fns.filterMap fun | .agg m _ _ => some m.arg | _ => none) ::
+      valueSites es engine schemas cat A F T r
+where
+  site (r : Rel) (xs : List Expr) :=
+    (xs, (Write.relKinds schemas cat r).map Write.WKind.toKind, r.aeval cat A F T,
+      colEps es engine cat A F T r)
+
+/-- Does every value of the plan that a function that jumps computes come out the
+same on `engine` as on the reference (`jumpsExact`)? A site whose columns have no
+errors here (`colEps` gives none) passes only without such a function. -/
+def valuesExact (es : List EngineProfile) (engine : String) (schemas : Write.Schemas) (cat : Catalog)
+    (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) (r : Rel) : Bool :=
+  (valueSites es engine schemas cat A F T r).all fun (xs, kinds, env, cs) =>
+    xs.all fun x => match cs with
+      | some cs => jumpsExact es engine kinds env cs x
+      | none => !(subExprs x).any (jumps kinds)
+
 /-- Does the plan read or write a single-precision column? Polars sums
 `Float32` in single precision (polars-sum-float-streaming), which no bound here covers. -/
 def hasFp32 (tj : Json) : Bool := (tj.compress.splitOn "\"fp32\"").length > 1
@@ -836,11 +912,14 @@ def epsilonByEngine (es : List EngineProfile) (input : Json) : Except String Jso
             ("proved", Json.mkObj [("abs", toJson false)])]))
 
 /-- `"rows_exact"` of a `--contract` request: per engine, whether the plan
-keeps the same rows and groups under each column's `ε` (`rowsExact`). Where
-it may not, a route needs a shim or a precondition on the threshold. -/
+keeps the same rows and groups under each column's `ε` (`rowsExact`), and
+computes the same values where a function jumps (`valuesExact`, ruling 275).
+Where it may not, a route needs a shim or a precondition on the threshold. -/
 def rowsExactByEngine (es : List EngineProfile) (input : Json) : Except String Json := do
-  let some ⟨_, _, cat, A, F, _, root, T⟩ ← inputs? input | return Json.mkObj []
-  return Json.mkObj <| es.map fun e => (e.name, toJson (rowsExact es e.name cat A F T root))
+  let some ⟨_, plan, cat, A, F, _, root, T⟩ ← inputs? input | return Json.mkObj []
+  let schemas := Write.planSchemas plan
+  return Json.mkObj <| es.map fun e => (e.name, toJson
+    (rowsExact es e.name cat A F T root && valuesExact es e.name schemas cat A F T root))
 
 /-- `"margin_checks"` of a `--contract` request (#929): the margin check of
 each threshold filter on a double `SUM` that no static bound decides, as a
@@ -1174,14 +1253,6 @@ def aggNodes : Rel → List (Rel × List Expr × List Measure)
     (r, [], fns.filterMap fun | .agg m _ _ => some m | _ => none) :: aggNodes r
   | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ => aggNodes a ++ aggNodes b
   | .aggregate r gs ms => (r, gs, ms) :: aggNodes r
-
-/-- The subexpressions of an expression (a lambda's body aside: its column is not the row's). -/
-def subExprs : Expr → List Expr
-  | e@(.lit _) | e@(.field _) => [e]
-  | e@(.un _ a) => e :: subExprs a
-  | e@(.bin _ a b) => e :: (subExprs a ++ subExprs b)
-  | e@(.ifThen c t f) => e :: (subExprs c ++ subExprs t ++ subExprs f)
-  | e@(.hof _ l _) => e :: subExprs l
 
 /-- Does a comparison (`cmp`) compare doubles? -/
 def cmpDouble (cols : List Kind) : Expr → Bool

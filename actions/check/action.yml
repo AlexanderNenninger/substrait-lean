@@ -33,7 +33,7 @@ inputs:
     default: sverify.sarif
 outputs:
   exit-code:
-    description: The worst exit code of the targets (0 proved, 1 not proved, 2 usage, 3 unsupported, then the budget, refusal, quarantine, hold and error codes `sverify check --help` lists for the installed version).
+    description: The worst exit code of the targets (0 proved, 1 not proved, 2 usage, 3 unsupported, then the refusal, budget, quarantine, hold and error codes (4 to 8) `sverify check --help` lists for the installed version).
     value: ${{ steps.check.outputs.exit-code }}
   sarif-file:
     description: The SARIF file.

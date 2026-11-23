@@ -428,8 +428,12 @@ def groups : List (String × List String) := [
   ("list.order", ["list_null_order"]), ("list.plain", []),
   ("agg.isum", ["overflow", "avg_int_result", "empty_group_aggregates"]),
   ("agg.fsum", ["sum_order", "rounding", "nan_creation", "empty_group_aggregates", "float_overflow"]),
-  ("agg.var", ["distribution", "rounding", "stat_algo", "nan_creation", "stat_degenerate"]),
-  ("agg.stat", ["stat_algo", "nan_creation", "stat_degenerate"]),
+  -- `float_overflow`: a variance or covariance of finite doubles whose correctly
+  -- rounded value overflows (`AggFn.infAgg`, #1601). `CORR`'s exact value is
+  -- finite, so its calls never fall in the option's scope.
+  ("agg.var", ["distribution", "rounding", "stat_algo", "nan_creation", "stat_degenerate",
+    "float_overflow"]),
+  ("agg.stat", ["stat_algo", "nan_creation", "stat_degenerate", "float_overflow"]),
   ("agg.order", ["nan_order", "zero_sign", "list_null_order"]),
   ("agg.quant", ["quantile_interp", "nan_creation", "nan_order"]), ("agg.pick", ["tie_pick"]),
   ("agg.seq", ["tie_order"]), ("agg.plain", []),

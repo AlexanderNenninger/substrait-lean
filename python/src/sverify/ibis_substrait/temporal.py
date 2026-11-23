@@ -284,17 +284,20 @@ def _from_parts(build: Callable[..., Any], dtype: Any, what: str) -> Callable[[E
 _UNIX_MICROS = {"s": 1_000_000, "ms": 1_000, "us": 1}
 
 
+def from_unix(x: Exprs, arg: Any, unit: str, to: dt.DataType = dt.timestamp) -> Json:
+    """The integer `arg`, a count of `unit` (s, ms or us) since 1970-01-01, as
+    the timestamp `to`: Substrait's cast reads microseconds."""
+    us, k = x(arg, dt.int64), _UNIX_MICROS[unit]
+    return cast_json(us if k == 1 else call("multiply", [us, literal(k, dt.int64)]), to)
+
+
 def _from_unix(x: Exprs, op: Any) -> Json:
-    k = _UNIX_MICROS.get(op.unit.short)
-    if k is None:
+    if op.unit.short not in _UNIX_MICROS:
         raise ProducerUnsupported(
             f"timestamps from {op.unit.plural} are not supported",
             construct="function to_timestamp",
         )
-    us = x(op.arg, dt.int64)
-    if k != 1:
-        us = call("multiply", [us, literal(k, dt.int64)])
-    return cast_json(us, dt.timestamp)
+    return from_unix(x, op.arg, op.unit.short)
 
 
 def _strftime(x: Exprs, op: Any) -> Json:

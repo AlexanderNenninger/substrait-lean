@@ -310,8 +310,9 @@ omit [Boxes.Ambient] in
 theorem Rel.cover_congr (h : ∀ t, (c t).arity = (cat t).arity) :
     ∀ (r : Rel) (j : Nat), r.cover c j = r.cover cat j
   | .read _, _ | .values _ _, _ | .unnest _ _, _ | .filter _ _, _ | .fetch _ _ _, _
-  | .semi _ _ _ _, _ | .window _ _ _ _, _ | .cross _ _, _ | .join _ _ _ _, _ | .unionAll _ _, _
-  | .aggregate _ _ _, _ => rfl
+  | .semi _ _ _ _, _ | .window _ _ _ _, _ | .cross _ _, _ | .join _ _ _ _, _ | .unionAll _ _, _ =>
+    rfl
+  | .aggregate r gs _, j => by simp only [cover, cover_congr h r]
   | .orderBy r _, j | .distinct r, j => cover_congr h r j
   | .project r _, j => by simp only [cover, arity_congr h r, cover_congr h r]
   | .emit r _, j => by

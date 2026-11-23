@@ -1,8 +1,8 @@
 /-
 The refresh protocol of one stored node as a transition system (#933, step 2).
 
-`models/refresh/Refresh.tla` explores the protocol with TLC at small scopes;
-this module states the protocol sverify runs since #963, #964 and #966 (the
+A TLA+ model checked the protocol with TLC at small scopes and found the
+findings of `docs/refresh-findings.md`; this module states the protocol sverify runs since #963, #964 and #966 (the
 model's `FixLast`, `FixCas` and `FixForeign`) for a durable source, and proves
 its safety for every scope: any number of writers, crashes, zombie writes,
 lost acknowledgements, foreign commits and deploys.
@@ -32,7 +32,7 @@ What it assumes, and so what the theorems do not cover:
   `Tbl.rows p v` is the state of plan `p` at version `v`. A source that cannot
   restore (`from_frame`), whose versions count one process's reads (#965),
   and a source recreated with lower versions (`table_ids`, #516, #1025) are
-  outside the model; the TLA+ model checks the first at small scopes.
+  outside this model; `RefreshSnapshot.lean` states the first.
 * `Sink._commit` decides as `next` does. `python/tests/test_refresh_next.py`
   checks it case by case.
 -/
@@ -491,7 +491,7 @@ theorem Refresh.conflict_replace_reachable : ∃ s o, Reachable s ∧ (∃ i, (s
 
 /-! ## What a write reads, and the order of the commits
 
-`ReadIsHead` and `Monotone` of `models/refresh/Refresh.tla`, for every scope.
+`ReadIsHead` and `Monotone` of the TLA+ model, for every scope.
 A write in flight remembers the log's length when it read the sink's record
 (`Out.head`). While the log still has that length, it is the log the write
 read: commits only add to it. So the write's change was computed from the
