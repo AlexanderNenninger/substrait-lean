@@ -241,4 +241,12 @@ theorem Engine.duckdb_contract_example :
     (unfold Expr.RaisesOn; decide +kernel)
 
 end Example
+
+-- Every function the generated lowering writes natively reads the reference's
+-- behaviour from the table at each of its options (`nativeOffReference`, ruling
+-- 278's addendum), but `concat`'s `null_handling`, which waits for a ruling.
+#guard letI := Boxes.Ambient.none
+  nativeOffIs (Profile.duckdb.table {}) Lowering.duckdb.nativeUn Lowering.duckdb.nativeBin
+    [("str.concat", "null_handling")]
+
 end Substrait

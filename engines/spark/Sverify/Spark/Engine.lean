@@ -261,4 +261,12 @@ theorem Engine.spark_contract_example :
     subst he; rfl
 
 end Example
+
+-- Every function the generated lowering writes natively reads the reference's
+-- behaviour from the table at each of its options (`nativeOffReference`, ruling
+-- 278's addendum), but `concat`'s `null_handling`, which waits for a ruling.
+#guard letI := Boxes.Ambient.none
+  nativeOffIs Profile.spark.table Lowering.spark.nativeUn Lowering.spark.nativeBin
+    [("str.concat", "null_handling")]
+
 end Substrait
