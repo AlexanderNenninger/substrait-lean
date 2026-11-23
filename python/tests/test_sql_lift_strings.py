@@ -202,3 +202,14 @@ def test_simple_regex_is_leans(p):
     plan = json.dumps(lift("SELECT regexp_extract(s, 'a') AS e FROM t", {"t": SCHEMA_T}).plan)
     code, out, err = run_checker((), plan.replace('"a"', json.dumps(p)))
     assert (code == 0) == simple_regex(p), (p, err or out)
+
+
+def test_a_long_fill_under_the_bound_builds_only_n_characters():
+    """`lpad`'s fill constant is `p` repeated as often as `n` needs, not `n`
+    times (#2135): a 1,000-character fill to `PAD_MAX` characters writes a
+    constant of `PAD_MAX` characters, not of a billion."""
+    from sverify.sql_lift.strings import PAD_MAX
+
+    fill = "ab" * 500
+    plan = json.dumps(lift(f"SELECT lpad(customer, {PAD_MAX}, '{fill}') FROM orders", SCHEMAS).plan)
+    assert PAD_MAX <= len(plan) < 2 * PAD_MAX
