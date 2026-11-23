@@ -2870,6 +2870,14 @@ class Translator:
                 key = _float_key(v) if m.arg.dtype == pl.Float64 else v
                 v = key.unique(maintain_order=True)
             values.append(v)
+        if groups and values and any(m.fn in ("fsum", "avg") for m in ms):
+            # A list per group puts the whole grouping on the in-memory engine
+            # (`ALLOWED_FALLBACKS`), whose double sums are Kahan's
+            # (polars-sum-float), which `sum_order` does not allow (#2411).
+            raise Unsupported(
+                "a double SUM or AVG beside a list in one Polars grouping, which "
+                "Polars runs on the in-memory engine (polars-exec-streaming-fallback)"
+            )
         if groups and multiset:
             # A bag: the groups in any order, each key the class's canonical
             # value (`ordered`), with no row index and no `first()` per group.
