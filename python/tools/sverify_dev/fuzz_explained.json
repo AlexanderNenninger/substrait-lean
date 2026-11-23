@@ -6,6 +6,16 @@
       "shape": "% -\\?",
       "class": "error",
       "fact": "duckdb-R15-int-modulus"
+    },
+    {
+      "kind": "core:types:polars",
+      "shape": "CAST\\(NULL AS \\w+\\)",
+      "issue": 2102
+    },
+    {
+      "kind": "core:types:duckdb",
+      "shape": "CAST\\(NULL AS \\w+\\)",
+      "issue": 2102
     }
   ]
 }
