@@ -64,7 +64,7 @@ theorem Rel.refines_of_perm {cat : Catalog} (hcat : cat.WF) {A : String → List
 
 - The order of the rows. The conclusion is up to the order, so an `ORDER BY`'s
   order is not preserved by this theorem; the exact refinement
-  (`Rel.Refines`) needs the rewrite's allowed results, not only its rows.
+  (`Rel.Refines`) needs the rewrite's allowed results as well as its rows.
 - A plan `q` that leaves a choice open: `hd` is false for it, and its
   refinement needs the exact one (`Rel.Refines`).
 
