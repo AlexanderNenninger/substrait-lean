@@ -134,7 +134,7 @@ def test_shim_counts(table):
     """D9's measure: the shims per engine. A new one is a deliberate edit:
     Spark's `decimal_cast`, the writer's double to decimal (ruling 278)."""
     assert {k: len(e["shims"]) for k, e in table.items()} == {
-        "duckdb": 9,
+        "duckdb": 10,
         "polars": 15,
         "spark": 6,
     }

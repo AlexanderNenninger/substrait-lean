@@ -39,17 +39,17 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Sound by | Under | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 9 | 25 | 1 | 4 | 6 | 0 | 15 | 0 |
-| Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 15 | 13 | 1 | 6 | 10 | 2 | 17 | 7 |
-| Spark | 4.3.0 | `Engine.spark_sound` | `Engine.SparkSide` | 5 | 27 | 1 | 7 | 5 | 5 | 16 | 0 |
+| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 10 | 25 | 1 | 4 | 6 | 0 | 15 | 0 |
+| Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 15 | 14 | 1 | 6 | 10 | 2 | 17 | 7 |
+| Spark | 4.3.0 | `Engine.spark_sound` | `Engine.SparkSide` | 6 | 28 | 1 | 7 | 5 | 5 | 16 | 0 |
 
 Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 25 | 1 | 18 | 2 | 0 | 0 | 15 |
-| Polars | 38 | 0 | 12 | 0 | 0 | 0 | 17 |
-| Spark | 34 | 8 | 8 | 0 | 0 | 0 | 16 |
+| DuckDB | 26 | 1 | 18 | 2 | 0 | 0 | 15 |
+| Polars | 39 | 0 | 12 | 0 | 0 | 0 | 17 |
+| Spark | 35 | 8 | 9 | 0 | 0 | 0 | 16 |
 
 ## Shims
 
@@ -64,6 +64,7 @@ Rows per evidence level:
 | DuckDB | `quantile_guard` | expression | `quantile_interp` |
 | DuckDB | `null_order` | argument | `null_order` |
 | DuckDB | `ORDER BY the keys` | sort | `clustered` |
+| DuckDB | `trunc before the cast` | expression | cast.num: `float_to_int` |
 | Polars | `int_mod_trunc` | expression | `division_type`, int.mod: `division_type` |
 | Polars | `int_div_trunc` | expression | int.div: `division_type` |
 | Polars | `decimal_round_half_away` | expression | `decimal_rescale` |
@@ -81,13 +82,14 @@ Rows per evidence level:
 | Polars | `strpos_chars` | expression | str.match: `string_positions` |
 | Spark | `decimal_negate_sub` | expression | dec.arith: `overflow` |
 | Spark | `int_sum_decimal` | expression | agg.isum: `overflow` |
+| Spark | `decimal_cast` | expression | cast.dec: `decimal_rescale` |
 | Spark | `int_avg_decimal` | expression | `avg_int_result` |
 | Spark | `null_order` | argument | `null_order` |
 | Spark | `sort on the keys` | sort | `clustered` |
 
 ## DuckDB 2.0.0
 
-9 shims (1 argument, 7 expression, 1 sort). Its run is proved sound by `Engine.duckdb_sound`, under `Engine.NoRaiseSide`.
+10 shims (1 argument, 8 expression, 1 sort). Its run is proved sound by `Engine.duckdb_sound`, under `Engine.NoRaiseSide`.
 
 | Group | Option | Reference's tool | Reference | DuckDB | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -144,6 +146,7 @@ Rows per evidence level:
 | every | `clustered` | open | `ADJACENT` | `ADJACENT` | shim `ORDER BY the keys` (sort) | proof | proved `Rel.duckdb_refines` |
 | every | `ntile_spread` | choose | `STANDARD` | `STANDARD` | not characterized | missing |  |
 | every | `float_to_int` | choose | `TRUNCATE` | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | not characterized | missing |  |
+| cast.num | `float_to_int` | choose | `TRUNCATE` | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO` | shim `trunc before the cast` (expression) | proof | proved `Lowering.duckdb_exact`; [duckdb-R9](../engines/duckdb/facts/duckdb-R9.json) |
 | every | `cast_failure` | raise | `THROW_EXCEPTION` | `THROW_EXCEPTION`, `RETURN_NULL` | not characterized | missing |  |
 | every | `distribution` | choose | `SAMPLE` | `SAMPLE`, `POPULATION` | not characterized | missing |  |
 | every | `empty_group_aggregates` | choose | `NULL` | `NULL` | native | probe | tested: [duckdb-sum-double](../engines/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-int](../engines/duckdb/facts/duckdb-avg-int.json) |
@@ -216,6 +219,7 @@ Rows per evidence level:
 | every | `clustered` | open | `ADJACENT` | `ADJACENT` | shim `sort on the keys` (sort) | probe | tested: [polars-clustered](../engines/polars/facts/polars-clustered.json) |
 | every | `ntile_spread` | choose | `STANDARD` | `STANDARD` | not characterized | missing |  |
 | every | `float_to_int` | choose | `TRUNCATE` | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | not characterized | missing |  |
+| cast.num | `float_to_int` | choose | `TRUNCATE` | `TRUNCATE` | native | proof | proved `Rel.polars_sound`; [polars-cast-double-to-int](../engines/polars/facts/polars-cast-double-to-int.json) |
 | every | `cast_failure` | raise | `THROW_EXCEPTION` | `THROW_EXCEPTION`, `RETURN_NULL` | not characterized | missing |  |
 | every | `distribution` | choose | `SAMPLE` | `SAMPLE`, `POPULATION` | not characterized | missing |  |
 | every | `empty_group_aggregates` | choose | `NULL` | `ZERO` | shim `sum_empty_null` (expression) | proof | proved `Shim.sum_empty_null`; [polars-sum-int](../engines/polars/facts/polars-sum-int.json) |
@@ -239,7 +243,7 @@ Refused on Polars, with no expression there:
 
 ## Spark 4.3.0
 
-5 shims (1 argument, 3 expression, 1 sort). Its run is proved sound by `Engine.spark_sound`, under `Engine.SparkSide`.
+6 shims (1 argument, 4 expression, 1 sort). Its run is proved sound by `Engine.spark_sound`, under `Engine.SparkSide`.
 
 | Group | Option | Reference's tool | Reference | Spark | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -257,6 +261,7 @@ Refused on Polars, with no expression there:
 | every | `min_mod_neg_one` | choose | `ZERO` | `ZERO` | native | proof | proved `Rel.spark_sound`; [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | probe | tested: [spark-decimal-arith](../engines/spark/facts/spark-decimal-arith.json) |
+| cast.dec | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | shim `decimal_cast` (expression) | probe | tested: [spark-double-to-decimal](../engines/spark/facts/spark-double-to-decimal.json), [spark-decimal-arith](../engines/spark/facts/spark-decimal-arith.json) |
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | proof | proved `Rel.spark_sound`; [spark-double-arith](../engines/spark/facts/spark-double-arith.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native; stated `TIE_TO_EVEN`: not native | proof | proved `Rel.spark_sound`; [spark-round](../engines/spark/facts/spark-round.json) |
 | fp.atan2 | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | refused | proof | proved `Lowering.spark_refuses`; [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json) |
@@ -301,6 +306,7 @@ Refused on Polars, with no expression there:
 | every | `clustered` | open | `ADJACENT` | `ADJACENT` | shim `sort on the keys` (sort) | probe | tested: [spark-clustered](../engines/spark/facts/spark-clustered.json) |
 | every | `ntile_spread` | choose | `STANDARD` | `STANDARD` | not characterized | missing |  |
 | every | `float_to_int` | choose | `TRUNCATE` | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | not characterized | missing |  |
+| cast.num | `float_to_int` | choose | `TRUNCATE` | `TRUNCATE` | native | proof | proved `Rel.spark_sound`; [spark-cast-double-to-int](../engines/spark/facts/spark-cast-double-to-int.json) |
 | every | `cast_failure` | raise | `THROW_EXCEPTION` | `THROW_EXCEPTION`, `RETURN_NULL` | not characterized | missing |  |
 | every | `distribution` | choose | `SAMPLE` | `SAMPLE`, `POPULATION` | not characterized | missing |  |
 | every | `empty_group_aggregates` | choose | `NULL` | `NULL` | native | fuzz | tested: [spark-sum-int](../engines/spark/facts/spark-sum-int.json), [spark-sum-double](../engines/spark/facts/spark-sum-double.json) |

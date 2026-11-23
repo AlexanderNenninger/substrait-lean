@@ -151,7 +151,9 @@ def options : List OptionSpec := [
   { id := "ntile_spread", substrait := none, core := ["STANDARD"] },
   { id := "float_to_int", substrait := none,
     core := ["TRUNCATE", "TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN"],
-    extra := [("TIE_AWAY_FROM_ZERO", "duckdb-R9")] },
+    -- DuckDB's `CAST` of a double rounds half to even, of a decimal half away
+    -- from zero (duckdb-R9).
+    extra := [("TIE_TO_EVEN", "duckdb-R9"), ("TIE_AWAY_FROM_ZERO", "duckdb-R9")] },
   -- A cast's `failureBehavior`, not a function's option.
   { id := "cast_failure", substrait := none, core := ["THROW_EXCEPTION", "RETURN_NULL"] },
   -- Which variance `variance` and `std_dev` compute (#54): a function's
