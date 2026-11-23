@@ -354,7 +354,7 @@ theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polar
 theorem Lowering.polars_un_tmpl (f : UnFn) (en : UnEntry Profile.polars f)
     (h : Lowering.polars.un f = some en) : Functions.Ctor.bin .fmod ∉ en.tmpl.ctors := by
   cases f <;> simp only [Lowering.polars, polarsOn, Option.some.injEq] at h <;> subst h <;>
-    simp [UnEntry.native, UnEntry.ofAgree, Expr.ctors, Lowering.froundTemplate,
+    simp [UnEntry.native, UnEntry.ofAgree, Expr.ctors, Lowering.froundTemplate, Lowering.froundEvenTemplate,
       Lowering.fceilTemplate, Lowering.zeroTemplate]
 
 theorem Lowering.polars_bin_tmpl (f : BinFn) (en : BinEntry Profile.polars f)
