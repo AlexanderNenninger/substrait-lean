@@ -302,6 +302,88 @@ theorem Profile.polars_zero_divisor (f : BinFn) (hf : f = .idiv ∨ f = .imod) (
     Option.getD_some, Polars.ref_lt_int, bind, Except.bind, Polars.isTrue_bool, decide_eq_true_eq,
     c, ↓reduceIte, hz _ (.inl rfl), hz _ (.inr rfl), ite_self]
 
+/-! ## The truncated remainder from Polars's floored one
+
+`Polars.fmod_of_tmod` below is proved from these, which `Polars.Shims` held
+before the generated lowering (#271) replaced its integer shims. -/
+
+namespace Polars
+
+omit [Boxes.Ambient] in
+/-- `int_div_trunc`: one more than the floored quotient where the remainder is
+not zero and the signs differ. -/
+def intDivTrunc (a b : Int) : Int :=
+  if floorMod a b ≠ 0 ∧ (decide (a < 0) ≠ decide (b < 0)) then floorDiv a b + 1 else floorDiv a b
+
+omit [Boxes.Ambient] in
+/-- `int_mod_trunc`: the divisor taken off where the remainder's sign is not
+the dividend's. -/
+def intModTrunc (a b : Int) : Int :=
+  let r := floorMod a b
+  if r ≠ 0 ∧ (decide (r < 0) ≠ decide (a < 0)) then r - b else r
+
+omit [Boxes.Ambient] in
+theorem fmod_eq_zero_iff {a b : Int} : a.fmod b = 0 ↔ b ∣ a := Int.dvd_iff_fmod_eq_zero.symm
+
+omit [Boxes.Ambient] in
+/-- The floored remainder has the divisor's sign. -/
+theorem fmod_sign (a : Int) {b : Int} : (0 < b → 0 ≤ a.fmod b) ∧ (b < 0 → a.fmod b ≤ 0) := by
+  refine ⟨fun h => Int.fmod_nonneg_of_pos a h, fun h => ?_⟩
+  have := Int.fmod_nonneg_of_pos (-a) (b := -b) (by omega)
+  rw [Int.neg_fmod_neg] at this
+  omega
+
+omit [Boxes.Ambient] in
+/-- **`Polars.int_div_trunc`**: the shimmed quotient is the reference's
+(`Int.tdiv`, `BinFn.idiv`). -/
+theorem int_div_trunc (a : Int) {b : Int} (hb : b ≠ 0) : intDivTrunc a b = a.tdiv b := by
+  unfold intDivTrunc floorDiv floorMod
+  rw [Int.tdiv_eq_fdiv]
+  by_cases hd : b ∣ a
+  · have : a.fmod b = 0 := fmod_eq_zero_iff.mpr hd
+    simp [hd, this]
+  · have : a.fmod b ≠ 0 := fun h => hd (fmod_eq_zero_iff.mp h)
+    simp only [hd, ite_false, ne_eq, this, not_false_eq_true, true_and]
+    have hs : b.sign = if 0 < b then 1 else -1 := by
+      rcases Int.lt_trichotomy b 0 with h | h | h
+      · simp [Int.sign_eq_neg_one_of_neg h, show ¬ 0 < b by omega]
+      · omega
+      · simp [Int.sign_eq_one_of_pos h, h]
+    by_cases ha : 0 ≤ a <;> by_cases hb' : 0 ≤ b <;> simp_all <;> omega
+
+omit [Boxes.Ambient] in
+/-- **`Polars.int_mod_trunc`**: the shimmed remainder is the reference's
+(`Int.tmod`, `BinFn.imod`). -/
+theorem int_mod_trunc (a : Int) {b : Int} (hb : b ≠ 0) : intModTrunc a b = a.tmod b := by
+  have hq := int_div_trunc a hb
+  have h1 := Int.fmod_add_mul_fdiv a b
+  have h2 := Int.tmod_add_mul_tdiv a b
+  unfold intDivTrunc floorDiv floorMod at hq
+  unfold intModTrunc floorMod
+  dsimp only
+  -- The remainders differ by `b` exactly where the quotients differ by one.
+  have hfm : a.fmod b ≠ 0 → (decide (a.fmod b < 0) ≠ decide (a < 0) ↔
+      decide (a < 0) ≠ decide (b < 0)) := by
+    intro hne
+    have hsgn := fmod_sign a (b := b)
+    by_cases hbp : 0 < b <;> simp_all <;> omega
+  by_cases hc : a.fmod b ≠ 0 ∧ (decide (a < 0) ≠ decide (b < 0))
+  · simp only [hc, ne_eq, not_false_eq_true, and_self, ite_true] at hq
+    have hc' : a.fmod b ≠ 0 ∧ (decide (a.fmod b < 0) ≠ decide (a < 0)) :=
+      ⟨hc.1, (hfm hc.1).mpr hc.2⟩
+    simp only [hc', ne_eq, not_false_eq_true, and_self, ite_true]
+    rw [← hq] at h2
+    rw [Int.mul_add] at h2
+    omega
+  · simp only [hc, ite_false] at hq
+    have hc' : ¬ (a.fmod b ≠ 0 ∧ (decide (a.fmod b < 0) ≠ decide (a < 0))) := by
+      rintro ⟨h0, h⟩; exact hc ⟨h0, (hfm h0).mp h⟩
+    simp only [hc', ite_false]
+    rw [← hq] at h2
+    omega
+
+end Polars
+
 omit [Boxes.Ambient] in
 /-- The floored remainder from the truncated one: the divisor added where
 the truncated remainder is not zero and its sign is not the divisor's. -/
