@@ -903,3 +903,36 @@ def test_st6_shim_passes_nan_and_infinities_to_the_cast() -> None:
         with pytest.raises(duckdb.Error):
             duckdb.execute("SELECT CAST(?::DOUBLE AS BIGINT)", [y]).fetchall()
 
+
+# -- #2439: MIN and MAX read `list_null_order` of lists only ------------------------------
+
+MM = ibis.table({"i": "int64", "x": "float64", "s": "string"}, name="mm")
+
+
+def _reads_list_null_order(report: sv.Report) -> bool:
+    return any(d["option"] == "list_null_order" for d in report._depends or [])
+
+
+@pytest.mark.parametrize("col", ["i", "x", "s"])
+@pytest.mark.parametrize("fn", ["min", "max"])
+def test_min_and_max_of_a_value_that_is_no_list_depend_on_no_list_order(fn: str, col: str) -> None:
+    """#2439: `list_null_order` was met by every `MIN` and `MAX`, whatever the
+    argument's type; its scope is a list argument (`optionScope`, whose `#guard`s
+    in `Scopes.lean` cover a list's, since the model refuses `MIN` of a list)."""
+    assert not _reads_list_null_order(_verify(MM.aggregate(m=getattr(MM[col], fn)())))
+
+
+@pytest.mark.parametrize("col", ["i", "x"])
+@pytest.mark.parametrize("fn", ["min", "max"])
+def test_min_and_max_of_numbers_export(fn: str, col: str) -> None:
+    """The default export refused every `MIN` and `MAX` at `list_null_order` (#2439)."""
+    m = read(_verify(MM.aggregate(m=getattr(MM[col], fn)())).to_substrait()).manifest
+    rows = [r for k in ("shims", "assumptions", "unexercised", "up_to") for r in m[k]]
+    assert not [r for r in rows if r.get("option") == "list_null_order"], m
+
+
+def test_max_of_strings_has_no_substrait_impl() -> None:
+    """Substrait's YAMLs have no `min` or `max` of strings: the export refuses for that
+    reason alone, after #2439."""
+    with pytest.raises(ExportError, match=r"no impl of max in Substrait's YAMLs takes \(string\)"):
+        _verify(MM.aggregate(m=MM.s.max())).to_substrait()

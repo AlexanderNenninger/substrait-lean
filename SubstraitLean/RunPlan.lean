@@ -177,9 +177,9 @@ private def nearAll (r : Rel) : Bool :=
 -- comparison transfer at every built-in engine.
 #guard nearAll (.aggregate (.read "t") [.field 0] [{ fn := .count, arg := .field 0 }])
 #guard nearAll (.filter (.read "t") (.bin .lt (.field 0) (.lit (.int 1))))
--- An integer `MAX` transfers at DuckDB only: `MIN` and `MAX` read `list_null_order`, whose
--- scope is every call (`optionScope`, until it narrows to list arguments, ruling 171), and
--- Polars's and Spark's tables leave the reference's `GREATEST` there.
+-- An integer `MAX` transfers at DuckDB only: `MIN` and `MAX` read `list_null_order` by their
+-- group (`Rel.reads` does not see the argument's kind, though the option's scope is a list
+-- argument, #2439), and Polars's and Spark's tables leave the reference's `GREATEST` there.
 #guard (builtinEngines.filter fun e =>
     !transferB (.aggregate (.read "t") [] [{ fn := .max, arg := .field 0 }])
       Profile.reference.table (e.table.refAt floatOnlyOptions)).map (·.name) == ["polars", "spark"]
