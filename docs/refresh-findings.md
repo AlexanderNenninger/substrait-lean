@@ -76,6 +76,6 @@ decision function against `Sink._commit`, so the two cannot drift.
 
 The TLA+ model also checked `Converges` under weak fairness: if the processes
 keep taking their steps, the sink ends up with the deployed plan's state of the
-source. Lean proves what the steps do once taken, and not that they are taken.
+source. Lean proves what the steps do once taken. That the processes take them is an assumption.
 The chaos suite ([`python/tests/chaos/`](../python/tests/chaos/)) exercises that
 half by killing and restarting writers and checking that the sink converges.

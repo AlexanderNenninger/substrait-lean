@@ -661,7 +661,7 @@ theorem inv_reachable {s : World} (h : Reachable s) : Inv s := by
 
 /-! ## What a write reads, and the order of the commits
 
-`ReadIsHead`, `Monotone` and `NoRewriteUnchanged` of `models/refresh/Refresh.tla`,
+`ReadIsHead`, `Monotone` and `NoRewriteUnchanged` of the TLA+ model,
 for a source that cannot restore. While the log still has the length a write
 read, it is the log the write read: its change was computed from the newest
 commit of the node, and its state is above that commit's, of other contents. -/
