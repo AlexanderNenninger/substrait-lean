@@ -74,7 +74,7 @@ means Polars's own expression gives the reference result.
 | `/` on integers | | an integer `divide` | a `Float64` division; a literal divisor takes the reciprocal, as below | [int-true-divide](polars-int-true-divide.json) |
 | `shift_left`, `shift_right` | range (ST-1) | drop bits, raise outside `[0, 63]` | no shift expressions | [int-shift](polars-int-shift.json) |
 | `sum` (`i8`…`i64`) | `overflow` | `ERROR`, at the input's type | `i8`, `i16` widen to `i64`; `i32`, `i64` wrap | [sum-int](polars-sum-int.json) |
-| `sum` (all) | no values | NULL | 0 (Substrait's `sum0`) | sum-int, [sum-float](polars-sum-float.json) |
+| `sum` (all) | no values | NULL | 0 (Substrait's `sum0`) | sum-int, [sum-float-streaming](polars-sum-float-streaming.json) |
 | `avg` (integers) | `avg_int_result` | the declared type | `Float64` | [avg-int](polars-avg-int.json) |
 | `add` `subtract` `multiply` (`fp64`) | `nan_creation` | raise | NaN (IEEE) | [double-arith](polars-double-arith.json) |
 | `divide` (`fp64`) | `on_division_by_zero` | `ERROR` | `IEEE`; `±inf / ±inf` is NaN | [double-divide](polars-double-divide.json) |

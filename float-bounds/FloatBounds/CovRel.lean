@@ -1291,7 +1291,9 @@ theorem cmerge_fold {C : CConst} {na nb m h Axa Axb Aya Ayb Dxa Dxb Dya Dyb Xx X
     have : 0 ≤ 9.2 * u * R + 105 * u ^ 2 * h * ((Axa + Axb) * (Aya + Ayb)) + (7.1 + 5.1 * h) * u * tiny
       + 4 * u * (na + nb) * Y := by positivity
     linarith
-  have k3 : N ≤ (1 + 3 * (na + nb) * u) * N := le_mul_of_one_le_left hN0 (by nlinarith)
+  have k3 : N ≤ (1 + 3 * (na + nb) * u) * N := le_mul_of_one_le_left hN0 (by
+    have : 0 ≤ 3 * ((na : ℝ) + nb) * u := by positivity
+    linarith)
   rw [← hN] at k2
   obtain ⟨Tn, hTn⟩ : ∃ T, T = C.ad * u * ((Axa + Axb) * (Dya + Dyb + Xy) + (Aya + Ayb) * (Dxa + Dxb + Xx))
       + 10 * u * (na + nb) * R + 60 * u ^ 2 * L * ((Axa + Axb) * (Aya + Ayb)) + 12 * u * tiny * L :=
@@ -1480,7 +1482,9 @@ theorem StdModel.chan_spec : CMergeSpec CConst.chan M.chan := by
     have hh0 : 0 ≤ h := by rw [hh]; positivity
     have hh32 : h ≤ 2 ^ 32 := by
       rw [hh, div_le_iff₀ (by positivity)]
-      nlinarith
+      have := mul_le_mul_of_nonneg_left (by linarith : (nb : ℝ) ≤ 2 ^ 32)
+        (Nat.cast_nonneg na : (0 : ℝ) ≤ na)
+      linarith
     have hdx : |mxa - mxb| ≤ 2 ^ 402 := by have := abs_sub mxa mxb; linarith
     have hdy : |mya - myb| ≤ 2 ^ 402 := by have := abs_sub mya myb; linarith
     have eDx := M.err (mxa - mxb) (by linarith)
@@ -1821,30 +1825,28 @@ theorem mag_sq_le (xs : List ℝ) :
   rw [e1, e2, List.length_map] at h; exact h
 
 set_option maxHeartbeats 1000000 in
-/-- **DuckDB's parallel covariance, to first order in the spread**: for any
-plan of updates and merges over `n ≤ 2³²` pairs of doubles at most `2³⁹⁹` in
-magnitude, the computed co-moment `Ĉ` is within
-`70 n u (√(Q'_x S_yy) + √(Q'_y S_xx)) + 11 n u √(S_xx S_yy) + 3961 n² u² √(Q'_x Q'_y) + 793 n u · tiny`
-of `C = Σ (x − x̄)(y − ȳ)`, where `Q'_x = Σ (|x| + tiny)²`, `Q'_y` likewise. -/
-theorem StdModel.chanCov_rel (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.length ≤ 2 ^ 32)
-    (hB : Bounded (2 ^ 399) P.pairs) (hrep : ∀ p ∈ P.pairs, M.fl p.1 = p.1 ∧ M.fl p.2 = p.2) :
-    |(M.run P).c - comoment P.pairs|
-      ≤ 70 * P.pairs.length * u
-          * (√((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum
-                * comoment (dupL (P.pairs.map Prod.snd)))
-            + √((P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum
-                * comoment (dupL (P.pairs.map Prod.fst))))
-        + 11 * P.pairs.length * u
-          * √(comoment (dupL (P.pairs.map Prod.fst)) * comoment (dupL (P.pairs.map Prod.snd)))
-        + 3961 * P.pairs.length ^ 2 * u ^ 2
-          * √((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum
-              * (P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum)
-        + 793 * P.pairs.length * u * tiny := by
+/-- **The covariance invariant's bound, to first order in the spread**: a
+state within `CInvC C` of `n ≤ 2³²` pairs has its co-moment `Ĉ` within
+`8.14 a n u (√(Q'_x S_yy) + √(Q'_y S_xx)) + 11 n u √(S_xx S_yy) + 3961 n² u² √(Q'_x Q'_y) + 793 n u · tiny`
+of `C = Σ (x − x̄)(y − ȳ)`, `a = C.ad`, where `Q'_x = Σ (|x| + tiny)²`, `Q'_y`
+likewise. -/
+theorem covRel_of_cInvC {C : CConst} {ps : List (ℝ × ℝ)} {s : WState} (hinv : CInvC C ps s)
+    (hne : ps ≠ []) (hN : ps.length ≤ 2 ^ 32) :
+    |s.c - comoment ps|
+      ≤ 8.14 * C.ad * ps.length * u
+          * (√((ps.map fun p => (|p.1| + tiny) ^ 2).sum * comoment (dupL (ps.map Prod.snd)))
+            + √((ps.map fun p => (|p.2| + tiny) ^ 2).sum * comoment (dupL (ps.map Prod.fst))))
+        + 11 * ps.length * u
+          * √(comoment (dupL (ps.map Prod.fst)) * comoment (dupL (ps.map Prod.snd)))
+        + 3961 * ps.length ^ 2 * u ^ 2
+          * √((ps.map fun p => (|p.1| + tiny) ^ 2).sum * (ps.map fun p => (|p.2| + tiny) ^ 2).sum)
+        + 793 * ps.length * u * tiny := by
   obtain ⟨hu, hu', ht, -, -⟩ := fpFacts
-  obtain ⟨-, -, -, Dx, Dy, hDx0, hDy0, hDx, hDy, hC⟩ := M.cInv_plan P hne hN hB hrep
-  generalize P.pairs = ps at hne hN hB hrep hDx hDy hC ⊢
+  obtain ⟨-, -, -, Dx, Dy, hDx0, hDy0, hDx, hDy, hC⟩ := hinv
+  have had0 : 0 ≤ C.ad := le_trans C.nad0 C.nad_le
+  have had := C.ad_le
   have hL := Lw_le hN
-  unfold cBound at hC
+  unfold cBoundC at hC
   have hQx' : (ps.map fun p => (|p.1| + tiny) ^ 2).sum
       = ((ps.map Prod.fst).map fun x => (|x| + tiny) ^ 2).sum := by
     simp [List.map_map, Function.comp_def]
@@ -1895,9 +1897,8 @@ theorem StdModel.chanCov_rel (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.len
   have hR0 : 0 ≤ R := by rw [hR]; exact Real.sqrt_nonneg _
   have hW0 : 0 ≤ W := by rw [hW]; exact Real.sqrt_nonneg _
   -- the terms
-  have t1 : 8.5 * u * (Ax * Dy + Ay * Dx) ≤ 69.11 * (n * u * (Rx + Ry)) := by
-    have := mul_le_mul_of_nonneg_left (add_le_add k1 k2) (by positivity : (0 : ℝ) ≤ 8.5 * u)
-    have : 0 ≤ n * u * (Rx + Ry) := mul_nonneg (mul_nonneg (by linarith) hu.le) (by linarith)
+  have t1 : C.ad * u * (Ax * Dy + Ay * Dx) ≤ 8.13 * C.ad * (n * u * (Rx + Ry)) := by
+    have := mul_le_mul_of_nonneg_left (add_le_add k1 k2) (by positivity : (0 : ℝ) ≤ C.ad * u)
     linarith
   have t3 : 60 * u ^ 2 * L * (Ax * Ay) ≤ 3960 * (n ^ 2 * u ^ 2 * W) := by
     have h1 := mul_le_mul hL k3 (by positivity) (by positivity)
@@ -1905,23 +1906,58 @@ theorem StdModel.chanCov_rel (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.len
     linarith
   have t4 : 12 * u * tiny * L ≤ 792 * (n * u * tiny) := by
     have := mul_le_mul_of_nonneg_left hL (by positivity : (0 : ℝ) ≤ 12 * u * tiny); linarith
-  obtain ⟨T, hT⟩ : ∃ T, T = 8.5 * u * (Ax * Dy + Ay * Dx) + 10 * u * n * R
+  obtain ⟨T, hT⟩ : ∃ T, T = C.ad * u * (Ax * Dy + Ay * Dx) + 10 * u * n * R
       + 60 * u ^ 2 * L * (Ax * Ay) + 12 * u * tiny * L := ⟨_, rfl⟩
   rw [← hT] at hC
   have p1 : 0 ≤ n * u * (Rx + Ry) := by positivity
   have p2 : 0 ≤ n ^ 2 * u ^ 2 * W := by positivity
   have p3 : 0 ≤ n * u * tiny := by positivity
   have p4 : 0 ≤ n * u * R := by positivity
-  have hT' : T ≤ 69.11 * (n * u * (Rx + Ry)) + 10 * (n * u * R) + 3960 * (n ^ 2 * u ^ 2 * W)
+  have p5 : 0 ≤ C.ad * (n * u * (Rx + Ry)) := by positivity
+  have hT' : T ≤ 8.13 * C.ad * (n * u * (Rx + Ry)) + 10 * (n * u * R) + 3960 * (n ^ 2 * u ^ 2 * W)
       + 792 * (n * u * tiny) := by
     have e : 10 * u * n * R = 10 * (n * u * R) := by ring
     rw [hT]; linarith
   have hT0 : 0 ≤ T := by rw [hT]; positivity
   have hfin : (1 + 3 * n * u) * T ≤ T + T / 2 ^ 19 := by
-    have := mul_le_mul_of_nonneg_right (by linarith : 3 * n * u ≤ 1 / 2 ^ 19) hT0; nlinarith
-  have e1 : 70 * n * u * (Rx + Ry) = 70 * (n * u * (Rx + Ry)) := by ring
+    have := mul_le_mul_of_nonneg_right (by linarith : 3 * n * u ≤ 1 / 2 ^ 19) hT0; linarith
+  have e1 : 8.14 * C.ad * n * u * (Rx + Ry) = 8.14 * (C.ad * (n * u * (Rx + Ry))) := by ring
   have e2 : 11 * n * u * R = 11 * (n * u * R) := by ring
   have e3 : 3961 * n ^ 2 * u ^ 2 * W = 3961 * (n ^ 2 * u ^ 2 * W) := by ring
   have e4 : 793 * n * u * tiny = 793 * (n * u * tiny) := by ring
   rw [e1, e2, e3, e4]
+  linarith
+
+/-- **DuckDB's parallel covariance, to first order in the spread**: for any
+plan of updates and merges over `n ≤ 2³²` pairs of doubles at most `2³⁹⁹` in
+magnitude, the computed co-moment `Ĉ` is within
+`70 n u (√(Q'_x S_yy) + √(Q'_y S_xx)) + 11 n u √(S_xx S_yy) + 3961 n² u² √(Q'_x Q'_y) + 793 n u · tiny`
+of `C = Σ (x − x̄)(y − ȳ)`, where `Q'_x = Σ (|x| + tiny)²`, `Q'_y` likewise. -/
+theorem StdModel.chanCov_rel (P : Plan) (hne : P.pairs ≠ []) (hN : P.pairs.length ≤ 2 ^ 32)
+    (hB : Bounded (2 ^ 399) P.pairs) (hrep : ∀ p ∈ P.pairs, M.fl p.1 = p.1 ∧ M.fl p.2 = p.2) :
+    |(M.run P).c - comoment P.pairs|
+      ≤ 70 * P.pairs.length * u
+          * (√((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum
+                * comoment (dupL (P.pairs.map Prod.snd)))
+            + √((P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum
+                * comoment (dupL (P.pairs.map Prod.fst))))
+        + 11 * P.pairs.length * u
+          * √(comoment (dupL (P.pairs.map Prod.fst)) * comoment (dupL (P.pairs.map Prod.snd)))
+        + 3961 * P.pairs.length ^ 2 * u ^ 2
+          * √((P.pairs.map fun p => (|p.1| + tiny) ^ 2).sum
+              * (P.pairs.map fun p => (|p.2| + tiny) ^ 2).sum)
+        + 793 * P.pairs.length * u * tiny := by
+  have h := covRel_of_cInvC (C := CConst.chan) (M.cInv_plan P hne hN hB hrep) hne hN
+  have e : 8.14 * CConst.chan.ad = 69.19 := by norm_num [CConst.chan]
+  rw [e] at h
+  generalize P.pairs = ps at h ⊢
+  obtain ⟨X, hX⟩ : ∃ X, X = √((ps.map fun p => (|p.1| + tiny) ^ 2).sum
+      * comoment (dupL (ps.map Prod.snd)))
+    + √((ps.map fun p => (|p.2| + tiny) ^ 2).sum * comoment (dupL (ps.map Prod.fst))) := ⟨_, rfl⟩
+  rw [← hX] at h ⊢
+  have hX0 : 0 ≤ X := by rw [hX]; positivity
+  have : 0 ≤ (ps.length : ℝ) * u * X := by have := u_pos; positivity
+  have e1 : 69.19 * (ps.length : ℝ) * u * X = 69.19 * ((ps.length : ℝ) * u * X) := by ring
+  have e2 : 70 * (ps.length : ℝ) * u * X = 70 * ((ps.length : ℝ) * u * X) := by ring
+  rw [e2]; rw [e1] at h
   linarith

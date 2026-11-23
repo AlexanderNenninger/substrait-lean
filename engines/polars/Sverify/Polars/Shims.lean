@@ -23,7 +23,7 @@ and of the shims it shares with other engines (`Shim.sortWith`, … in
 `engines/Sverify/Engines/Shims.lean`). The shims are then theorems, as `Rel.duckdb_shim_sound` is for
 DuckDB.
 
-* Value side (`SHIMS`): `int_div_trunc`, `int_mod_trunc`, `round_half_away`,
+* Value side (`SHIMS`): `round_half_away`,
   `sum_empty_null`, `avg_int_declared`, `one_zero`, `strpos_chars`,
   `substring_wrap`, `null_order`, `tie_order`, `decimal_round_half_away`,
   `decimal_div_half_away`, `max_nan_greatest` (and `min_ignore_nan`, which
@@ -34,17 +34,19 @@ DuckDB.
   `sum_makes_nan`; and `int_overflows`, `div_overflows`, `zero_divisor`).
 * Error side: Polars's own value where the reference raises (a wrapped
   integer, NULL for a zero divisor, NaN from `∞ - ∞`, IEEE `±∞`) needs no
-  shim. `Polars.written_faithful`: Polars with the value shims agrees with the
-  reference wherever the reference reports no issue, so a plan `verify`
-  proves free of issues (up to the assumed ones, whose guards stay) runs on
-  Polars as `Rel.eval` (`Rel.polars_sound`).
+  shim: a plan `verify` proves free of issues (up to the assumed ones, whose
+  guards stay) never reaches it (`Rel.polars_sound`,
+  `engines/polars/Sverify/Polars/Engine.lean`).
+
+The truncating `//` and `%` are no shims here: the generated lowering writes
+them (`Polars.idivTemplate`, `Polars.imodTemplate`, `Lowering.polars_exact`).
 -/
 
 namespace Substrait.Polars
 
 open Shim
 
-/-! ## Integers: `division_type` = `TRUNCATE` -/
+/-! ## Integers: Polars's `//` and `%` floor -/
 
 /-- Polars's `//` of integers floors (polars-int-divide), exactly: the engine
 computes on 128 bits, where a 64-bit quotient cannot overflow but for
@@ -53,73 +55,6 @@ def floorDiv (a b : Int) : Int := a.fdiv b
 
 /-- Polars's `%` of integers takes the divisor's sign (polars-int-modulus). -/
 def floorMod (a b : Int) : Int := a.fmod b
-
-/-- `int_div_trunc`: one more than the floored quotient where the remainder is
-not zero and the signs differ. -/
-def intDivTrunc (a b : Int) : Int :=
-  if floorMod a b ≠ 0 ∧ (decide (a < 0) ≠ decide (b < 0)) then floorDiv a b + 1 else floorDiv a b
-
-/-- `int_mod_trunc`: the divisor taken off where the remainder's sign is not
-the dividend's. -/
-def intModTrunc (a b : Int) : Int :=
-  let r := floorMod a b
-  if r ≠ 0 ∧ (decide (r < 0) ≠ decide (a < 0)) then r - b else r
-
-theorem fmod_eq_zero_iff {a b : Int} : a.fmod b = 0 ↔ b ∣ a := Int.dvd_iff_fmod_eq_zero.symm
-
-/-- The floored remainder has the divisor's sign. -/
-theorem fmod_sign (a : Int) {b : Int} : (0 < b → 0 ≤ a.fmod b) ∧ (b < 0 → a.fmod b ≤ 0) := by
-  refine ⟨fun h => Int.fmod_nonneg_of_pos a h, fun h => ?_⟩
-  have := Int.fmod_nonneg_of_pos (-a) (b := -b) (by omega)
-  rw [Int.neg_fmod_neg] at this
-  omega
-
-/-- **`Polars.int_div_trunc`**: the shimmed quotient is the reference's
-(`Int.tdiv`, `BinFn.idiv`). -/
-theorem int_div_trunc (a : Int) {b : Int} (hb : b ≠ 0) : intDivTrunc a b = a.tdiv b := by
-  unfold intDivTrunc floorDiv floorMod
-  rw [Int.tdiv_eq_fdiv]
-  by_cases hd : b ∣ a
-  · have : a.fmod b = 0 := fmod_eq_zero_iff.mpr hd
-    simp [hd, this]
-  · have : a.fmod b ≠ 0 := fun h => hd (fmod_eq_zero_iff.mp h)
-    simp only [hd, ite_false, ne_eq, this, not_false_eq_true, true_and]
-    have hs : b.sign = if 0 < b then 1 else -1 := by
-      rcases Int.lt_trichotomy b 0 with h | h | h
-      · simp [Int.sign_eq_neg_one_of_neg h, show ¬ 0 < b by omega]
-      · omega
-      · simp [Int.sign_eq_one_of_pos h, h]
-    by_cases ha : 0 ≤ a <;> by_cases hb' : 0 ≤ b <;> simp_all <;> omega
-
-/-- **`Polars.int_mod_trunc`**: the shimmed remainder is the reference's
-(`Int.tmod`, `BinFn.imod`). -/
-theorem int_mod_trunc (a : Int) {b : Int} (hb : b ≠ 0) : intModTrunc a b = a.tmod b := by
-  have hq := int_div_trunc a hb
-  have h1 := Int.fmod_add_mul_fdiv a b
-  have h2 := Int.tmod_add_mul_tdiv a b
-  unfold intDivTrunc floorDiv floorMod at hq
-  unfold intModTrunc floorMod
-  dsimp only
-  -- The remainders differ by `b` exactly where the quotients differ by one.
-  have hfm : a.fmod b ≠ 0 → (decide (a.fmod b < 0) ≠ decide (a < 0) ↔
-      decide (a < 0) ≠ decide (b < 0)) := by
-    intro hne
-    have hsgn := fmod_sign a (b := b)
-    by_cases hbp : 0 < b <;> simp_all <;> omega
-  by_cases hc : a.fmod b ≠ 0 ∧ (decide (a < 0) ≠ decide (b < 0))
-  · simp only [hc, ne_eq, not_false_eq_true, and_self, ite_true] at hq
-    have hc' : a.fmod b ≠ 0 ∧ (decide (a.fmod b < 0) ≠ decide (a < 0)) :=
-      ⟨hc.1, (hfm hc.1).mpr hc.2⟩
-    simp only [hc', ne_eq, not_false_eq_true, and_self, ite_true]
-    rw [← hq] at h2
-    rw [Int.mul_add] at h2
-    omega
-  · simp only [hc, ite_false] at hq
-    have hc' : ¬ (a.fmod b ≠ 0 ∧ (decide (a.fmod b < 0) ≠ decide (a < 0))) := by
-      rintro ⟨h0, h⟩; exact hc ⟨h0, (hfm h0).mp h⟩
-    simp only [hc', ite_false]
-    rw [← hq] at h2
-    omega
 
 /-! ## Doubles: `rounding` and `zero_sign` -/
 
@@ -150,22 +85,20 @@ theorem round_half_away (c : Int) : round .halfAwayFromZero c = FloatCode.round 
 
 /-! ## Aggregates: `empty_group_aggregates` and `avg_int_result` -/
 
-/-- `avg_int_declared`: the exact 128-bit sum truncated by the count
-(`int_div_trunc`), NULL for no values. Polars's own `mean` is a `Float64`
-(polars-avg-int). -/
+/-- `avg_int_declared`: the exact 128-bit sum truncated by the count (the
+generated lowering's `//`, `Polars.idivTemplate`), NULL for no values.
+Polars's own `mean` is a `Float64` (polars-avg-int). -/
 def avgIntDeclared (vs : List Int) : Value :=
-  if vs.length = 0 then .null else .int (intDivTrunc vs.sum vs.length)
+  if vs.length = 0 then .null else .int (vs.sum.tdiv vs.length)
 
 variable [Boxes.Ambient]
 /-- **`Polars.avg_int_declared`**: the shimmed `AVG` of integers is the
-reference's (`AggFn.iavg`): Polars's floored quotient corrected to the
-truncated one (`int_div_trunc`) is `Shim.avg_trunc`'s mean. -/
+reference's (`AggFn.iavg`): the truncated quotient is `Shim.avg_trunc`'s
+mean. -/
 theorem avg_int_declared (vs : List Int) : avgIntDeclared vs = AggFn.iavg.apply (vs.map .int) := by
   rw [← Shim.avg_trunc]
   unfold avgIntDeclared Shim.avgTrunc
-  split
-  · rfl
-  · rw [int_div_trunc _ (by omega)]
+  split <;> rfl
 
 /-! ## `MIN` and `MAX` of doubles: `nan_order` = `GREATEST`, `zero_sign` = `ONE_ZERO` -/
 
@@ -409,7 +342,7 @@ theorem substring_wrap (s : String) (a : Int) (n : Option Nat) :
 
 omit [Boxes.Ambient] in
 /-- **`Polars.tie_order`**: Polars's sort with `maintain_order=True` is
-stable (polars-sort-stability): its rows, each with its input position, are a
+stable (polars-sort-stability-streaming): its rows, each with its input position, are a
 permutation of the input sorted by the keys and, among ties, by position
 (`zipIdxLE`). Any such result is `Rel.eval`'s, `List.mergeSort`, for a total
 preorder of the keys (`sortLe`'s, `sortLe_totalPre`). -/
@@ -545,7 +478,7 @@ def aggMakesInfinite (result : Value) (vs : List Value) : Bool :=
 
 /-- **`Polars.agg_makes_infinite`** (A4): on the aggregate the reference
 computes, the guard flags a group exactly where `Measure.makesInf` does.
-Polars sums in its own order (`sum_order = ANY`, polars-sum-float), so on
+Polars sums in its own order (`sum_order = ANY`, polars-sum-float-streaming), so on
 Polars it flags the groups whose own sum overflows: the same groups but at
 the edge, where one order's rounding overflows and another's does not. -/
 theorem agg_makes_infinite (m : Measure) (hm : m.fn.infAgg = true) (grp : Relation) :
@@ -564,73 +497,4 @@ theorem wrap64_of_inI64 {x : Int} (h : inI64 x = true) : wrap64 x = x := by
   have hmax : FloatCode.maxI64 = 2 ^ 63 - 1 := rfl
   unfold wrap64; omega
 
-/-- **Polars as the translation writes it**, on the functions of the slice:
-integer `+ - *` wrap (polars-int-arith), integer `/` and `%` by zero are
-NULL and otherwise the shims `int_div_trunc` and `int_mod_trunc` of the
-floored ones (polars-int-divide, polars-int-modulus), and double operations
-are IEEE's, NaN for `∞ - ∞`, `0 · ∞`, `∞ / ∞` (polars-double-arith); every
-other function is the reference's. -/
-def bin : BinFn → Value → Value → Value
-  | .add, .int a, .int b => .int (wrap64 (a + b))
-  | .sub, .int a, .int b => .int (wrap64 (a - b))
-  | .mul, .int a, .int b => .int (wrap64 (a * b))
-  | .idiv, .int a, .int b => if b = 0 then .null else .int (intDivTrunc a b)
-  | .imod, .int a, .int b => if b = 0 then .null else .int (intModTrunc a b)
-  | f, .float a, .float b =>
-    if nanCase f a b then .float FloatCode.nan else f.apply (.float a) (.float b)
-  | f, v, w => f.apply v w
-
-def written : Impl := ⟨UnFn.apply, bin⟩
-
-/-- **`Polars.written_faithful`**: Polars, with the value shims, agrees with
-the reference wherever the reference reports no issue. Its own values
-elsewhere (a wrapped integer, NULL for a zero divisor, NaN, `±∞`) are on the
-error side, where a verified plan does not go. -/
-theorem written_faithful : written.Faithful := by
-  refine ⟨fun _ _ _ => rfl, fun f v w h => ?_⟩
-  show bin f v w = f.apply v w
-  unfold bin
-  split
-  · simp only [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?, wrapIf] at h
-    split at h <;> simp_all [BinFn.apply, wrap64_of_inI64]
-  · simp only [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?, wrapIf] at h
-    split at h <;> simp_all [BinFn.apply, wrap64_of_inI64]
-  · simp only [BinFn.issue, wrapNum, BinFn.apply, Value.numOf?, wrapIf] at h
-    split at h <;> simp_all [BinFn.apply, wrap64_of_inI64]
-  · rename_i a b
-    simp only [BinFn.apply]
-    split
-    · rfl
-    · rename_i hb; rw [int_div_trunc a hb]
-  · rename_i a b
-    simp only [BinFn.apply]
-    split
-    · rfl
-    · rename_i hb; rw [int_mod_trunc a hb]
-  · rename_i a b
-    have : nanCase f a b = false := by
-      cases hn : nanCase f a b
-      · rfl
-      · exact absurd h (nanCase_issue hn)
-    simp [this]
-  · rfl
-
 end Substrait.Polars
-
-namespace Substrait
-
-variable [Boxes.Ambient]
-/-- **A verified plan runs on Polars.** When `Rel.mayIssues` reports nothing
-but assumed issues (whose guards the translation keeps), on every catalog
-that satisfies the preconditions, Polars as the translation writes it, run
-without its other guards, gives `Rel.eval`'s rows. -/
-theorem Rel.polars_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
-    {F : String → List Fact}
-    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
-    {r : Rel} (hwf : r.WF cat) (hsmall : r.Small cat) (hs : r.looseSub = true)
-    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) :
-    r.eval cat Polars.written = r.eval cat :=
-  Rel.guardFree_sound hcat hA hF hT hwf hsmall hs hm Polars.written_faithful
-
-end Substrait

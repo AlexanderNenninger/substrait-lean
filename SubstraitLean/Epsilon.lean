@@ -40,7 +40,7 @@ give (`Measure.abs`, `floatBound`):
 `"proved"` marks a bound those theorems cover (`provedEps`): the engines'
 `sum_order` behaviours are among the proved ones, the plan has no
 single-precision column (Polars sums `Float32` in single precision,
-polars-sum-float), and the argument, its rows and its groups are the same on
+polars-sum-float-streaming), and the argument, its rows and its groups are the same on
 every engine (`colEps`). That an engine's algorithm is the one its
 behaviour names rests on its characterization (duckdb-sum-double,
 polars-sum-float, polars-sum-float-streaming).
@@ -145,21 +145,23 @@ def doubleMag (env : List AVal) (e : Expr) : Option Rat := do
   it under a stated lower bound `L` on both co-moments, which waits for
   preconditions on aggregates (#918). `[-1, 1]` holds regardless.
 
-Evaluated exactly (`ExactBound`), the square roots rounded up. -/
-def statEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Rat := do
+`COVAR_*`'s constants are `t` (`Stat.StatTol`, ruling 271), `VAR_*`'s the
+same for every algorithm. Evaluated exactly (`ExactBound`), the square roots
+rounded up. -/
+def statEps (t : Stat.StatTol) (env : List AVal) (m : Measure) (rows : Option Nat) :
+    Option Rat := do
   let n ← rows
   guard (n ≤ 2 ^ 32)
   let u := unitRound
   let nf : Rat := n
-  let dOf (sample : Bool) : Rat := ((if sample then max 1 (n - 1) else max 1 n : Nat) : Rat)
+  let dOf (sample : Bool) : Nat := if sample then max 1 (n - 1) else max 1 n
   match m.fn, m.arg with
   | .var sample sqrt, arg =>
     let x ← doubleMag env arg
     let d := dOf sample
     let q := nf * (x + tiny) * (x + tiny)
     let r := nf * (x + tiny) * x
-    let varTol := (160 * nf * u * r + 3970 * nf * nf * u * u * q
-      + 800 * nf * nf * u * tiny) / d
+    let varTol := Stat.varTol n d r q
     let v := nf * x * x / d
     let tv := varTol + u * v
     if sqrt then
@@ -174,9 +176,7 @@ def statEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Rat := 
     let r2 := nf * (byy + tiny) * bx
     let rs := nf * bx * byy
     let rq := nf * (bx + tiny) * (byy + tiny)
-    let covTol := (71 * nf * u * (r1 + r2) + 15 * nf * u * rs
-      + 3970 * nf * nf * u * u * rq + 800 * nf * nf * u * tiny) / d
-    return covTol + u * rs / d
+    return Stat.covTol t n d r1 r2 rs rq + u * rs / d
   | _, _ => none
 
 /-- Is `statEps` of `m` a theorem (`epsilon_var_cr`, `epsilon_stddev_cr`,
@@ -243,11 +243,10 @@ def provedOrders : List String := ["SEQUENTIAL", "ANY", "PAIRWISE", "SCALED_CONS
 def ordersProved (es : List EngineProfile) : Bool :=
   es.all fun e => (e.table.allows "agg.fsum" "sum_order" []).all (provedOrders.contains ·)
 
-/-- The `stat_algo` behaviours `core_var_chan`, `core_cov_chan` and
-`core_var_polars` cover: the reference's own, and Welford's update with a
-merge that meets `MergeSpec` (Chan's, or Schubert and Gertz's on two-pass
-blocks). -/
-def provedStatAlgos : List String := ["EXACT", "WELFORD_CHAN"]
+/-- The `stat_algo` behaviours `core_var_chan`, `core_cov_chan`,
+`core_var_polars` and `core_cov_polars` cover: the reference's own, Welford's
+update with Chan's merge, and two-pass blocks with Schubert and Gertz's merge. -/
+def provedStatAlgos : List String := ["EXACT", "WELFORD_CHAN", "SCHUBERT_GERTZ"]
 
 /-- The group whose `stat_algo` row a statistic reads, as the plan does
 (`AggFn.reads`): `agg.var` for `VAR_*` and `STDDEV_*`, `agg.stat` for
@@ -272,10 +271,19 @@ def statsProvedOn (group : String) (es : List EngineProfile) : List String :=
       | none => false
     if algos.all (provedStatAlgos.contains ·) && proved then some e.name else none
 
--- Every engine's `VAR_*` and `STDDEV_*` is proved; Polars's `COVAR_*` is not: its
--- `agg.stat` row rests on a fuzzed bound until #1808's remainder (ruling 220).
+/-- The constants of the loosest `stat_algo` the engines `es` allow for
+`group`: Schubert and Gertz's where one allows `SCHUBERT_GERTZ`, else Chan's. -/
+def statTolOn (group : String) (es : List EngineProfile) : Stat.StatTol :=
+  if es.any fun e => (e.table.allows group "stat_algo" []).contains "SCHUBERT_GERTZ" then .sg
+  else .chan
+
+-- Every engine's `VAR_*` and `STDDEV_*` is proved. Polars's `COVAR_*` is too
+-- (`core_cov_polars`), but its `agg.stat` row, which `CORR` shares, stays tested
+-- until Polars's `CORR` is proved (ruling 271, #1808).
 #guard statsProvedOn "agg.var" builtinEngines == ["duckdb", "polars", "spark"]
 #guard statsProvedOn "agg.stat" builtinEngines == ["duckdb", "spark"]
+#guard (statTolOn "agg.stat" builtinEngines).cov == 107
+#guard (statTolOn "agg.stat" (builtinEngines.filter (·.name != "polars"))).cov == 71
 
 /-- Why a `CORR` column has no bound, and what lifts it (D30). -/
 def corrWhy : String :=
@@ -479,7 +487,7 @@ def exprEps (es : List EngineProfile) (engine : String) (env : List AVal) (cols 
     let d := if s > 0 then min d1 (ea / s) else d1
     let u := unitRound
     return (d * (1 + u) + 2 * u * (sqrtUp ha + tiny), pa)
-  | .un .ffloor a | .un .fceil a | .un .fround a => do
+  | .un .ffloor a | .un .fceil a | .un .fround a | .un .froundEven a => do
     -- `rule_floor`, `rule_ceil`, `rule_round`: a step of one.
     let (ea, pa) ← exprEps es engine env cols a
     if ea == 0 then return (0, pa)
@@ -611,7 +619,7 @@ def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : Stri
         | .min | .max => return (ea, pa && pf)
         -- D30: an engine's statistic is within the plan's bound of the
         -- reference's exact moments rounded once.
-        | .var _ _ => if ea == 0 && pf then return (← statEps env m r.maxRows, false) else none
+        | .var _ _ => if ea == 0 && pf then return (← statEps .chan env m r.maxRows, false) else none
         | .cov _ | .corr => none
         | _ => if ea == 0 then some (0, false) else none
   | _ => none
@@ -727,7 +735,7 @@ def rowsExact (es : List EngineProfile) (engine : String) (cat : Catalog) (A : S
   (rowSites es engine cat A F T r).all (·.1)
 
 /-- Does the plan read or write a single-precision column? Polars sums
-`Float32` in single precision (polars-sum-float), which no bound here covers. -/
+`Float32` in single precision (polars-sum-float-streaming), which no bound here covers. -/
 def hasFp32 (tj : Json) : Bool := (tj.compress.splitOn "\"fp32\"").length > 1
 
 /-- What `"epsilon"` says of a double `SUM` of exact values with no row cap,
@@ -1117,7 +1125,7 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
         c.map fun m => (name, m)
     | none => []
   let statJson := stats.map fun (name, (m? : Option Measure)) =>
-    (name, match m?.bind (statEps env · r.maxRows) with
+    (name, match m?.bind (fun m => statEps (statTolOn (statGroup m) es) env m r.maxRows) with
     | some e =>
       -- Proved on the engines of `statsProvedOn`, tested on the others.
       let p := m?.any fun m => statProvedFn m && same m

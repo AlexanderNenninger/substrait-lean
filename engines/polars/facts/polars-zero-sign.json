@@ -27,7 +27,8 @@
   },
   "description": [
     "Arithmetic keeps the sign of zero: `1.0 / -0.0` is -inf, `-(0.0)` and `0.0 * -1` are -0.0, `sqrt(-0.0)` is -0.0. Comparison, grouping and sorting are in polars-zero-order.",
-    "With a literal operand on a frame of two rows or more, the kernels take shortcuts that move the sign of a zero away from IEEE: `x + 0.0` and `x - 0.0` return `x`, so `-0.0 + 0.0` and `-0.0 - (-0.0)` are -0.0 (IEEE gives 0.0), and `0.0 - x` is `-x`, so `0.0 - 0.0` is -0.0. Two columns use the IEEE operations."
+    "With a literal operand on a frame of two rows or more, the kernels take shortcuts that move the sign of a zero away from IEEE: `x + 0.0` and `x - 0.0` return `x`, so `-0.0 + 0.0` and `-0.0 - (-0.0)` are -0.0 (IEEE gives 0.0), and `0.0 - x` is `-x`, so `0.0 - 0.0` is -0.0. Two columns use the IEEE operations.",
+    "Superseded for sverify by polars-zero-sign-streaming at the same version: this fact records the in-memory engine, a setting sverify does not run. Sverify runs Polars's streaming engine and refuses `engine_affinity` 'in-memory' (`sverify_polars.SETTINGS`, test_engine_settings.py::test_polars_engine_affinity)."
   ],
   "reference": "One zero (`zero_sign: ONE_ZERO`, #89): `-0.0` is `0.0` everywhere.",
   "status": "open",

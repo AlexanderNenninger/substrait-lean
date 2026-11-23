@@ -320,6 +320,13 @@ theorem dbl_ofDecimalExact (n : Int) (s : Nat) : fp64.Dbl (ofDecimalExact n s) :
   rw [key]
   exact fp64.dbl_ofMag (Nat.min_le_right _ _) hd
 
+/-- The decimal `0` is the double `0.0`. -/
+theorem ofDecimalExact_zero (s : Nat) : ofDecimalExact 0 s = 0 := by
+  have := maxMag_pos
+  simp only [ofDecimalExact, Int.natAbs_zero, Nat.zero_mul, roundRat_zero, signedCode,
+    FloatFormat.signedCode, ite_true]
+  omega
+
 /-- A conversion of decimals to doubles, with what the checker knows of it. -/
 structure DecToDouble where
   conv : Int → Nat → Int
@@ -333,11 +340,13 @@ structure DecToDouble where
       (2 ^ 53 - 1) * (n.natAbs * 2 ^ 1074) ≤ 2 ^ 53 * (10 ^ s * M)
   /-- Its results are doubles (ruling 248). -/
   dbl : ∀ n s, fp64.Dbl (conv n s)
+  /-- The decimal `0` is `0.0` (#1787). -/
+  zero : ∀ s, conv 0 s = 0
 
 /-- `ofDecimalExact`, behind a constant the kernel does not unfold. -/
 opaque decToDouble : DecToDouble :=
   ⟨ofDecimalExact, ofDecimalExact_bounds, ofDecimalExact_mono, ofDecimalExact_rel,
-    dbl_ofDecimalExact⟩
+    dbl_ofDecimalExact, ofDecimalExact_zero⟩
 
 /-- A decimal's unscaled integer `n` at scale `s` as a double's code,
 correctly rounded (#27): `CAST(d AS DOUBLE)`. -/
@@ -348,6 +357,8 @@ theorem ofDecimal_bounds (n : Int) (s : Nat) : negInf < ofDecimal n s ∧ ofDeci
 
 theorem ofDecimal_mono {n n' : Int} (s : Nat) (h : n ≤ n') : ofDecimal n s ≤ ofDecimal n' s :=
   decToDouble.mono s h
+
+theorem ofDecimal_zero (s : Nat) : ofDecimal 0 s = 0 := decToDouble.zero s
 
 /-- `CAST(d AS DOUBLE)` at scale `s` as a `FiniteMonoConv`. -/
 def decConv (s : Nat) : FiniteMonoConv := ⟨(ofDecimal · s), (ofDecimal_bounds · s), ofDecimal_mono s⟩

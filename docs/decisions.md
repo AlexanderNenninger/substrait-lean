@@ -526,7 +526,7 @@ is one value and order-free (`floatSumCR_perm`).
 
 Engines add in an order of their own: DuckDB in the order values reach each
 thread's state (`duckdb-sum-double`), Polars pairwise in blocks of 128
-(`polars-sum-float`), Spark per partition (`spark-sum-double`). Each refines the reference up to the
+(`polars-sum-float-streaming`), Spark per partition (`spark-sum-double`). Each refines the reference up to the
 plan's bound, the distance of any order of additions from the exact sum
 (`StdModel.epsilon_sum` in [`float-bounds/`](float-bounds.md)) plus half an
 ulp of the final rounding (`epsilon_sum_cr`). Their `sum_order` rows stay
@@ -1016,7 +1016,7 @@ Consequences:
 - `Rel.AllowedP` only narrows. `Rel.allowedP_reference`, `Rel.AllowedP_mono`
   and `Rel.AllowedP_transfer` keep their statements.
 - The engines' functions show each of their deviations in an option's scope
-  (`Profile.duckdb_withinOk`, `Polars.written_within`). DuckDB's
+  (`Profile.duckdb_withinOk`, `Polars.impl_within`). DuckDB's
   `fmod(x, 0)` is NaN under `nan_creation`, since its table gives `fp.mod`
   no other `on_division_by_zero`; Polars's NaN for `power` is a domain
   error's (`on_domain_error`), since `power` has no `nan_creation`.
@@ -1763,7 +1763,7 @@ preconditions guard it. In three the reference gives another value:
 
 | `Profile` field | reference | DuckDB | where | the lift |
 |---|---|---|---|---|
-| `float_to_int` | truncates | rounds, ties to even | `CAST(double AS integer)` | refuses, with a hint |
+| `float_to_int` | truncates | rounds, ties to even | `CAST(double AS integer)` | reads `BIGINT` as DuckDB's (since #322, below); narrower targets refused, with a hint |
 | `decimal_to_int` | truncates | rounds, ties away from zero | `CAST(decimal AS integer)` | reads it as DuckDB's (since #322, below) |
 | `corr_degenerate` | NULL | NaN | `corr` of one pair or a constant side | lists it |
 | `list_contains` | NULL | FALSE (2.0.1) | `list_contains(l, x)` with `x` NULL and `l` empty | lists it, under every semantics |
@@ -1771,6 +1771,11 @@ preconditions guard it. In three the reference gives another value:
 Amended 2026-11-20 (ruling 106 §2c, #322): the lift reads `CAST(decimal AS integer)` as the
 reference's own rescale to scale 0, which rounds half away from zero, and the exact cast.
 The field `decimal_to_int` left `Profile`: the two semantics read the cast alike.
+
+Amended 2026-11-21 (ruling 239, D55, #322): the lift reads `CAST(double AS BIGINT)`, under both
+semantics, as `ftoi (froundEven x)`, in Substrait `cast(round(x, rounding: TIE_TO_EVEN))`.
+The field `float_to_int` left `Profile` too. Narrower integer targets stay refused until their
+probe.
 
 R9 stays the reference's rule: the model's cast of a double or decimal truncates,
 and the Ibis frontend's cast means that. DuckDB SQL's `CAST` is DuckDB's cast,
@@ -1884,9 +1889,8 @@ Decided 2026-11-19 (theory advisor, ruling 106; [#322](https://github.com/Alexan
 - The value comes from IEEE 754 and Substrait's own option name, from no engine's facts,
   so D49's mark does not apply.
 
-The decimal part is in [#1959](https://github.com/AlexanderNenninger/substrait-lean/pull/1959). The double part is tracked in
-[#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322); until it closes the lift refuses a cast of a double to an integer
-([D54](#d54-the-lift-refines-the-dialect)'s table).
+The decimal part is in [#1959](https://github.com/AlexanderNenninger/substrait-lean/pull/1959). The double part landed with
+[#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322).
 
 Recomputes sinks: no
 

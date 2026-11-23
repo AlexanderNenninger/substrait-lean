@@ -946,24 +946,21 @@ theorem block_arith {n S Z W s2 g A ε2 L t : ℝ} (hn1 : 1 ≤ n) (hnu : n * u 
   rw [hZ] at k1 a1
   nlinarith
 
-set_option maxHeartbeats 1000000 in
-/-- **A two-pass block meets the tree invariant**, with `Σ|D| = 0`. -/
-theorem StdModel.tInv_block {xs : List ℝ} {s : ℕ × ℝ × ℝ} (h : M.Block xs s)
-    (hB : ∀ x ∈ xs, |x| ≤ 2 ^ 399) : TInv xs s := by
-  obtain ⟨hne, h128, s1, ws, s2, ⟨ys1, hp1, t1⟩, hw, ⟨ys2, hp2, t2⟩, rfl⟩ := h
-  obtain ⟨hu, hu', ht, ht1, hmax⟩ := fpFacts
-  have htt : tiny ≤ 1 / 2 ^ 1022 := by unfold tiny; norm_num
+/-- The mean of a block: `fl(s₁ / n)`, with `s₁` the values' sum in any order
+and tree, within `3.02 u Σ (|x| + tiny)` of the exact mean. -/
+theorem StdModel.block_mean {xs : List ℝ} {s1 : ℝ} (hne : xs ≠ []) (h128 : xs.length ≤ 128)
+    (hB : ∀ x ∈ xs, |x| ≤ 2 ^ 399) (ht1 : ∃ ys, ys.Perm xs ∧ M.toRnd.Tree ys s1) :
+    |M.fl (s1 / xs.length) - xs.sum / xs.length| ≤ 3.02 * u * mag xs := by
+  obtain ⟨ys1, hp1, t1⟩ := ht1
+  obtain ⟨hu, hu', ht, -, hmax⟩ := fpFacts
   have hn1 : (1 : ℝ) ≤ xs.length := by exact_mod_cast List.length_pos_iff.mpr hne
   have hn128 : (xs.length : ℝ) ≤ 128 := by exact_mod_cast h128
   have hnu : (xs.length : ℝ) * u ≤ 1 / 2 ^ 21 := by
     calc (xs.length : ℝ) * u ≤ 128 * (1 / 2 ^ 53) := mul_le_mul hn128 hu' hu.le (by norm_num)
       _ ≤ 1 / 2 ^ 21 := by norm_num
   have hg := gamma_le_101 hnu
-  have hg0 : 0 ≤ gamma xs.length := gamma_nonneg (by linarith)
-  have hg1 : gamma xs.length ≤ 1 := by nlinarith
-  obtain ⟨hA0, hAb, hnt, hMA, -, hS0, -⟩ := list_facts hne (by omega) hB
+  obtain ⟨hA0, hAb, hnt, hMA, -, -, -⟩ := list_facts hne (by omega) hB
   have hn0 : (0 : ℝ) < xs.length := by linarith
-  -- the sum and the mean
   have hov1 : (1 + gamma xs.length) * mag xs ≤ maxFinite := by
     have : (1 + gamma xs.length) * mag xs ≤ 2 * 2 ^ 432 :=
       mul_le_mul (by linarith) hAb hA0 (by norm_num)
@@ -1000,6 +997,30 @@ theorem StdModel.tInv_block {xs : List ℝ} {s : ℕ × ℝ × ℝ} (h : M.Block
       have := mul_le_mul_of_nonneg_right (by linarith : 1.01 * u ≤ 0.01) (mul_nonneg hu.le hA0)
       linarith
     linarith
+  rw [← hM0]; exact hmean
+
+set_option maxHeartbeats 1000000 in
+/-- **A two-pass block meets the tree invariant**, with `Σ|D| = 0`. -/
+theorem StdModel.tInv_block {xs : List ℝ} {s : ℕ × ℝ × ℝ} (h : M.Block xs s)
+    (hB : ∀ x ∈ xs, |x| ≤ 2 ^ 399) : TInv xs s := by
+  obtain ⟨hne, h128, s1, ws, s2, ⟨ys1, hp1, t1⟩, hw, ⟨ys2, hp2, t2⟩, rfl⟩ := h
+  obtain ⟨hu, hu', ht, ht1, hmax⟩ := fpFacts
+  have htt : tiny ≤ 1 / 2 ^ 1022 := by unfold tiny; norm_num
+  have hn1 : (1 : ℝ) ≤ xs.length := by exact_mod_cast List.length_pos_iff.mpr hne
+  have hn128 : (xs.length : ℝ) ≤ 128 := by exact_mod_cast h128
+  have hnu : (xs.length : ℝ) * u ≤ 1 / 2 ^ 21 := by
+    calc (xs.length : ℝ) * u ≤ 128 * (1 / 2 ^ 53) := mul_le_mul hn128 hu' hu.le (by norm_num)
+      _ ≤ 1 / 2 ^ 21 := by norm_num
+  have hg := gamma_le_101 hnu
+  have hg0 : 0 ≤ gamma xs.length := gamma_nonneg (by linarith)
+  have hg1 : gamma xs.length ≤ 1 := by nlinarith
+  obtain ⟨hA0, hAb, -, -, hMb, hS0, -⟩ := list_facts hne (by omega) hB
+  have hn0 : (0 : ℝ) < xs.length := by linarith
+  have hM0 : mx (dupL xs) = xs.sum / xs.length := by
+    simp [mx, sx, dupL, List.map_map, Function.comp_def]
+  have hmean : |M.fl (s1 / xs.length) - mx (dupL xs)| ≤ 3.02 * u * mag xs := by
+    rw [hM0]; exact M.block_mean hne h128 hB ⟨ys1, hp1, t1⟩
+  set m := M.fl (s1 / xs.length) with hm
   refine ⟨rfl, ?_, 0, le_rfl, ?_, ?_⟩
   · show |m - mx (dupL xs)| ≤ 6 * u * mag xs
     have := mul_nonneg hu.le hA0
@@ -1013,6 +1034,9 @@ theorem StdModel.tInv_block {xs : List ℝ} {s : ℕ × ℝ × ℝ} (h : M.Block
     have := abs_sub x m
     have := hB x hx
     have : |m| ≤ 2 ^ 434 := by
+      have h1 := abs_sub_abs_le_abs_sub m (mx (dupL xs))
+      have h2 : 3.02 * u * mag xs ≤ 3.02 * (1 / 2 ^ 53) * 2 ^ 432 :=
+        mul_le_mul (by linarith) hAb hA0 (by norm_num)
       linarith
     linarith
   obtain ⟨hws, hws0⟩ := M.block_sq hw hdev
