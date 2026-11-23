@@ -579,10 +579,10 @@ def test_an_unbounded_double_under_exact_doubles_is_a_problem_like_a_bound_above
 
 def test_an_unbounded_mean_under_exact_doubles_is_refused_on_polars() -> None:
     s, uncapped, capped = _unbounded_means()
-    for requires in (uncapped, capped):
+    for requires, what in ((uncapped, "has no bound on its distance"), (capped, "is within")):
         report = sv.verify(s, requires=requires, ensures=[sv.equivalent(floats="exact")])
         why = routes.choose(report, "polars").why
-        assert "avg" in why and "distance to the reference" in why or "is within" in why, why
+        assert "avg" in why and what in why, why
 
 
 def test_the_checker_bounds_every_double_output_column() -> None:
