@@ -493,5 +493,12 @@ def test_a_printed_bound_rounds_up_to_the_least_double(d) -> None:
 
 
 @given(st.floats(min_value=0, max_value=1e300, allow_nan=False, allow_infinity=False))
-def test_a_double_printed_as_itself_is_unchanged(x) -> None:
-    assert routes._up(routes.Printed(repr(x))) == x
+def test_a_double_printed_exactly_is_unchanged(x) -> None:
+    """A double printed as its exact value is its own least double above it. (`repr(x)` is
+    the shortest text that reads back as `x`, which may lie below `x`: it rounds up to
+    the next double then.)"""
+    import math
+    from decimal import Decimal
+
+    assert routes._up(routes.Printed(str(Decimal(x)))) == x
+    assert x <= routes._up(routes.Printed(repr(x))) <= math.nextafter(x, math.inf)
