@@ -38,7 +38,8 @@ the export handles it in one of these ways:
   grouping key is the pair `(is_nan(x), x + 0.0)`, and a double sort key
   sorts by `is_nan(x)` first, so that NaN equals NaN and sorts greatest,
   and the two zeros are one (ST-4). An ordering comparison of doubles
-  (`<`, `<=`, `>`, `>=`, `between`) follows the same order. A cast of a
+  (`<`, `<=`, `>`, `>=`, `between`) follows the same order. A `MIN`, `MAX`
+  or quantile of doubles has no shim, so the export refuses it. A cast of a
   double to an integer truncates first (ST-6). A gap the plan meets where
   no shim applies refuses the export.
 - `"annotate"` keeps the plan as written and records each choice in the

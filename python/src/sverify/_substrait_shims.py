@@ -24,7 +24,8 @@ write the gap away (the export then refuses, or annotates with
   `(t AND NOT n) OR (n AND NULL)`, with `n` the test `x IS NULL OR y IS NULL` and `t` built from one
   `x < y`: `(NOT is_nan(x) AND is_nan(y)) OR (NOT is_nan(x) AND NOT is_nan(y) AND
   x + 0.0 < y + 0.0)`; `x > y` is `y < x`, `x <= y` is `NOT y < x`, `x >= y` is
-  `NOT x < y` and `between` is `>=` and `<=`.
+  `NOT x < y` and `between` is `>=` and `<=`. A `MIN`, `MAX` or quantile of
+  doubles is not rewritten: the shim refuses such a plan.
 - ST-6 (`float_to_int`): a cast of a double or decimal to an integer
   truncates first, `if x >= 0 then floor(x) else ceil(x)`, so the cast is
   exact.
@@ -48,6 +49,9 @@ Json = dict[str, Any]
 _DOUBLES = frozenset({"fp32", "fp64"})
 _ORDERING = frozenset({"lt", "gt", "lte", "gte", "between"})
 _EQUALITY = frozenset({"equal", "not_equal"})
+#: The aggregates whose group reads `nan_order` or `zero_sign` (`agg.order`,
+#: `agg.quant`): ST-4 does not rewrite them, so a consumer may skip NaN.
+_ORDER_MEASURES = frozenset({"min", "max", "median", "quantile_cont", "quantile_disc"})
 
 
 class Builder:
@@ -108,7 +112,14 @@ def _is_double(t: Any) -> bool:
 
 def st4(typer: _Typer, b: Builder) -> Json | None:
     """Comparisons, keys and sorts of doubles, with NaN equal to NaN and
-    greatest, and one zero (ST-4)."""
+    greatest, and one zero (ST-4). A `MIN`, `MAX` or quantile of doubles, an
+    aggregate's or a window's, is not rewritten, so the shim does not hold
+    there (ruling 273)."""
+    if any(
+        c.holder is None and c.name in _ORDER_MEASURES and any(_is_double(a) for a in c.args)
+        for c in typer.calls
+    ):
+        return None
     done: list[str] = []
     for c in typer.calls:
         if c.name in _ORDERING and any(_is_double(a) for a in c.args):
