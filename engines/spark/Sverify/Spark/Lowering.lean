@@ -29,10 +29,10 @@ on a catalog of doubles, for a plan whose constants are doubles.
 
 `Engine.spark` runs the plan this table lowers (`Spark/Engine.lean`), and the
 writer reads its templates (`--lowering-table`, `SparkDialect.lowered`).
-`ftod`, a double to a decimal, is native here, which Spark's own cast is not: it
-rounds the double's shortest text (`1.005` to `1.01`), the reference the product
-`x · 10ˢ`. So the writer keeps the dialect's `decimal_cast` for it, which rounds
-the product, and never Spark's cast of the double (ruling 278).
+`ftod`, a double to a decimal, is refused here (`refusing`, ruling 278): Spark's
+own cast rounds the double's shortest text (`1.005` to `1.01`), the reference the
+product `x · 10ˢ`, and `Profile.spark` states it only within one unit. The writer
+keeps the dialect's `decimal_cast`, which rounds the product.
 -/
 
 namespace Substrait

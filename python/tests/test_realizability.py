@@ -131,11 +131,12 @@ def test_every_row_names_real_facts(table):
 
 
 def test_shim_counts(table):
-    """D9's measure: the shims per engine. A new one is a deliberate edit."""
+    """D9's measure: the shims per engine. A new one is a deliberate edit:
+    Spark's `decimal_cast`, the writer's double to decimal (ruling 278)."""
     assert {k: len(e["shims"]) for k, e in table.items()} == {
         "duckdb": 10,
         "polars": 15,
-        "spark": 5,
+        "spark": 6,
     }
 
 

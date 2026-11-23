@@ -4,8 +4,10 @@
   "license": "test/sql \u00a9 Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
   "area": "tpch",
   "summary": {"agree": 0, "disagree": 0, "refused": 0, "skipped": 0},
+  "agree_oracle_a_only": 0,
   "disagree_sides": {},
-  "skipped_files": {"tpch/dbgen_readonly.test": "require tpch", "tpch/dbgen_reference_values.test": "require tpch", "tpch/tpch_sf0.test": "include test/sql/tpch/tpch_setup.test_template"},
+  "skipped_files": {"tpch/dbgen_nested_schema.test": "require tpch", "tpch/dbgen_readonly.test": "require tpch", "tpch/dbgen_reference_values.test": "require tpch", "tpch/tpch_sf0.test": "include test/sql/tpch/tpch_setup.test_template"},
+  "refreshed": {"tpch/dbgen_nested_schema.test": "2.0.1"},
   "results": [
 
   ]

@@ -81,6 +81,7 @@ def test_the_profile_is_the_checkers(tables: dict) -> None:
         "null_order",
         "sort on the keys",
         "decimal_negate_sub",
+        "decimal_cast",
     }
     # A shim Polars writes the same way cites the shared lemma (`Shims.lean`).
     proofs = {

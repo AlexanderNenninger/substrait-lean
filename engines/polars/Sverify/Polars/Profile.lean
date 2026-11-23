@@ -83,15 +83,34 @@ def negZeroT (f : UnFn) : Expr :=
       (.bin .eq (.un f (.field 0)) (.lit (.float 0))))
     (.lit (.float FloatCode.negZero)) (.un f (.field 0))
 
+/-- The product `x · 10ˢ` in doubles, of the argument as field 0: `10ˢ` rounded
+to a double, then the product rounded, as Polars's `f64_to_dec128` and the
+reference's `FloatCode.toDecimal?` compute it. -/
+def ftodProduct (s : Nat) : Expr := .bin .fmul (.field 0) (.lit (.float (FloatCode.ofInt (10 ^ s))))
+
+/-- Polars's cast of a double, the argument as field 0, to a decimal of scale `s`:
+the product `x · 10ˢ` rounded half to even (polars-decimal-casts), where the
+reference rounds it half away from zero (`decimal_rescale`, ruling 278). The two
+differ only at an exact tie whose neighbour away from zero is odd, which is where
+`round` and `round(mode='half_to_even')` of the product differ: there it is the
+even neighbour, below `2⁵²` in magnitude, which the cast to an integer takes
+exactly. Everywhere else, NaN, `±∞` and a product that overflows included, it is
+the reference's cast. -/
+def ftodEvenT (s : Nat) : Expr :=
+  .ifThen (.un .not (.bin .eq (.un .fround (ftodProduct s)) (.un .froundEven (ftodProduct s))))
+    (.un .ftoi (.un .froundEven (ftodProduct s))) (.un (.ftod s) (.field 0))
+
 end Polars
 
 /-- The unary functions where Polars's profile differs from the reference: its
 template, in the reference's operations. `round` and `ceil` give `-0.0`
-(polars-round). -/
+(polars-round); a double cast to a decimal rounds the product half to even
+(polars-decimal-casts). -/
 def UnFn.polarsTmpl : UnFn → Option Expr
   | .fround => some (Polars.negZeroT .fround)
   | .froundEven => some (Polars.negZeroT .froundEven)
   | .fceil => some (Polars.negZeroT .fceil)
+  | .ftod s => some (Polars.ftodEvenT s)
   | _ => none
 
 /-- The functions where Polars's profile differs from the reference: its
@@ -105,7 +124,8 @@ def BinFn.polarsTmpl : BinFn → Option Expr
 variable [Boxes.Ambient]
 /-- **Polars's profile**: `//` and `%` floor (`division_type` =
 `FLOOR`), of integers and, for `%`, of doubles; `round` and `ceil` give `-0.0`
-for a negative value that rounds to zero (`round_zero_sign`); every other
+for a negative value that rounds to zero (`round_zero_sign`); a double cast to a
+decimal rounds the product half to even (`decimal_rescale`); every other
 function is the reference's. -/
 def Profile.polars : Profile where
   un f v := match f.polarsTmpl with
@@ -321,7 +341,7 @@ theorem untmpl_subst_eval {f : UnFn} {t : Expr} (h : f.polarsTmpl = some t) (a :
   cases ha : a.evalP Profile.reference row with
   | error k =>
     cases f <;> simp only [UnFn.polarsTmpl, reduceCtorEq, Option.some.injEq] at h <;> subst h <;>
-      simp [negZeroT, Expr.subst, Expr.evalP, ha, bind, Except.bind]
+      simp [negZeroT, ftodEvenT, ftodProduct, Expr.subst, Expr.evalP, ha, bind, Except.bind]
   | ok x =>
     simp only [bind, Except.bind]
     exact Expr.evalP_subst (vs := [x]) (fun i => by
@@ -468,8 +488,9 @@ theorem Profile.polars_un_not_float (f : UnFn) (v : Value) (hv : ∀ c, v ≠ .f
   cases hf : f.polarsTmpl with
   | none => rfl
   | some t =>
-    have : f = .fround ∨ f = .fceil ∨ f = .froundEven := by cases f <;> simp_all [UnFn.polarsTmpl]
-    rcases this with rfl | rfl | rfl <;> simp only [UnFn.polarsTmpl, Option.some.injEq] at hf <;>
+    have : f = .fround ∨ f = .fceil ∨ f = .froundEven ∨ ∃ s, f = .ftod s := by
+      cases f <;> simp_all [UnFn.polarsTmpl]
+    rcases this with rfl | rfl | rfl | ⟨s, rfl⟩ <;> simp only [UnFn.polarsTmpl, Option.some.injEq] at hf <;>
       subst hf <;> cases v <;> first | rfl | exact absurd rfl (hv _)
 
 /-- `round` on Polars, through `Lowering.zeroTemplate`, agrees with the
@@ -536,5 +557,19 @@ theorem Polars.fceil_agree (x : Value) :
 #guard letI := Boxes.Ambient.none
   match Profile.polars.bin .fmod (.float (FloatCode.ofFloat 7.5)) (.float (FloatCode.ofFloat (-2.0))) with
   | .ok (.float c) => c == FloatCode.ofFloat (-0.5) | _ => false
+
+-- A double cast to a decimal (polars-decimal-casts, ruling 278): `0.125`,
+-- `-0.125`, `0.375` and `0.625` at scale 2 are `0.12`, `-0.12`, `0.38` and `0.62`,
+-- `2.5` and `-2.5` at scale 0 are `2` and `-2`, where the reference gives `0.13`,
+-- `-0.13`, `0.38`, `0.63`, `3` and `-3`; the near-ties `1.005` and `-2.675`,
+-- whose products are no ties, are `1.00` and `-2.68` on both.
+#guard letI := Boxes.Ambient.none
+  [(0.125, 2, 12, 13), (-0.125, 2, -12, -13), (0.375, 2, 38, 38), (0.625, 2, 62, 63),
+    (2.5, 0, 2, 3), (-2.5, 0, -2, -3), (3.5, 0, 4, 4), (1.005, 2, 100, 100),
+    (-2.675, 2, -268, -268)].all fun (x, s, polars, ref) =>
+  (match Profile.polars.un (.ftod s) (.float (FloatCode.ofFloat x)) with
+    | .ok (.int m) => m == polars | _ => false) &&
+  (match Profile.reference.un (.ftod s) (.float (FloatCode.ofFloat x)) with
+    | .ok (.int m) => m == ref | _ => false)
 
 end Substrait
