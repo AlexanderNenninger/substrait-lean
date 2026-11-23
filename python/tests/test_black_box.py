@@ -9,8 +9,8 @@ Python table against Lean's."""
 
 import base64
 import json
-import re
 import math
+import re
 import subprocess
 
 import duckdb

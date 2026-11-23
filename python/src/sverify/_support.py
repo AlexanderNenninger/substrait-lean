@@ -17,8 +17,8 @@ from sverify import _plan_read, black_box
 from sverify._unsupported import (  # noqa: F401  (re-exported)
     DUCKDB_ONLY,
     ISSUE_2540,
-    not_yet,
     MIN_MOD_GUARD,
+    not_yet,
 )
 
 
