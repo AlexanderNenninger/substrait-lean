@@ -505,15 +505,18 @@ def _error(e: BaseException) -> str:
     return "error: " + _clip(str(e).strip().splitlines()[0] if str(e).strip() else repr(e), 200)
 
 
-#: DuckDB settings that change what a query means: queries run while one is
-#: set are skipped, and so are those under `default_null_order` (`Replay.probe_lift`).
+#: DuckDB settings that change what a query means, or what it is expected to do
+#: (`max_execution_time` makes a time limit the outcome, which no model states, #2498):
+#: queries run while one is set are skipped, and so are those under `default_null_order`
+#: (`Replay.probe_lift`).
 SEMANTIC = {
     "binary_as_string", "calendar", "current_dialect", "default_collation", "default_order",
     "dialect_compatibility_mode", "disable_timestamptz_casts", "error_on_division_by_zero",
-    "ieee_floating_point_ops", "integer_division", "legacy_disable_null_type", "null_order",
-    "old_implicit_casting", "order_by_non_integer_literal", "preserve_identifier_case",
-    "regex_match_operator_semantics", "scalar_subquery_error_on_multiple_rows", "schema",
-    "search_path", "sqlite_all_varchar", "timezone", "variable",
+    "ieee_floating_point_ops", "integer_division", "legacy_disable_null_type",
+    "max_execution_time", "null_order", "old_implicit_casting", "order_by_non_integer_literal",
+    "preserve_identifier_case", "regex_match_operator_semantics",
+    "scalar_subquery_error_on_multiple_rows", "schema", "search_path", "sqlite_all_varchar",
+    "timezone", "variable",
 }  # fmt: skip
 
 #: Statements after which a name no longer means what the lift takes it to:

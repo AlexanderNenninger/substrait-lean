@@ -367,6 +367,29 @@ def test_large_queries_are_condensed(tmp_path):
     assert r.lean == f'[["{slt.MAX_ROWS // 2}"]]'
 
 
+def test_a_query_under_a_time_limit_is_skipped(tmp_path):
+    """`SET max_execution_time` makes the expected outcome a timeout, which neither
+    the reference nor sverify models, and a 300,000-character edit distance would
+    otherwise run Lean into the checker's watchdog (#2498)."""
+    path = tmp_path / "limit.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            statement ok
+            SET max_execution_time=1000
+
+            query I
+            SELECT levenshtein(repeat('a', 300000), repeat('b', 300000))
+            ----
+            300000
+            """
+        )
+    )
+    results, _ = slt.replay_file(path, "area/limit.test")
+    (r,) = results
+    assert (r.cls, r.reason) == ("skipped", "setting max_execution_time")
+
+
 def test_tables_of_128_bit_integers_out_of_arrow_range_are_refused(tmp_path):
     """DuckDB exports `UHUGEINT` to Arrow as `decimal128(38, 0)`, its maximum
     as -1 (DD-5): the harness refuses such tables rather than mirror them
