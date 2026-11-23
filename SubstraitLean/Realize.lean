@@ -1,5 +1,5 @@
 import SubstraitLean.Epsilon
-import Sverify.Polars.Shims
+import Sverify.Polars.Engine
 import Sverify.DuckDB.Profile
 
 /-!

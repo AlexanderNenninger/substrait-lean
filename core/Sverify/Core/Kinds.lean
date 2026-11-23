@@ -152,7 +152,7 @@ def UnFn.kindOf (f : UnFn) (t : KT) : Option KT :=
   | .isNull | .isNum _ => some (.kind .bool)
   | .neg => need (t.okI Kind.isInt) (.kind .int)
   | .itof => need (t.okI Kind.isInt) (.kind .float)
-  | .fneg | .ffloor | .fceil | .fround | .froundTo _ | .fmath _ =>
+  | .fneg | .ffloor | .fceil | .fround | .froundEven | .froundTo _ | .fmath _ =>
     need (t.okI Kind.isFloat) (.kind .float)
   | .ftoi | .ftoiOrNull => need (t.okI Kind.isFloat) (.kind .int)
   | .narrow _ | .narrowOrNull _ => need (t.okI Kind.isInt) (.kind .int)
@@ -354,7 +354,7 @@ def UnFn.out : UnFn → Kind
   | .md5 | .sha256 | .strftime _ => .str
   | .neg | .ftoi | .ftoiOrNull | .narrow _ | .narrowOrNull _ | .length | .ascii | .regexMatch _
   | .datePart _ | .dayPart _ | .epochUs | .dround _ | .dtrunc _ | .ftod _ | .cardinality => .int
-  | .itof | .fneg | .ffloor | .fceil | .fround | .froundTo _ | .fmath _ | .dtof _ => .float
+  | .itof | .fneg | .ffloor | .fceil | .fround | .froundEven | .froundTo _ | .fmath _ | .dtof _ => .float
   | .toDate | .dayTrunc _ | .addMonths _ false => .date
   | .addMonths _ true | .bucket _ _ | .asTime | .dateTime => .time
   | .timeOfDay => .tod

@@ -40,7 +40,7 @@ the tables only. The shim count per engine is D9's measure of few shims.
 | Engine | Version | Sound by | Under | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 9 | 25 | 1 | 4 | 4 | 0 | 15 | 0 |
-| Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 14 | 13 | 1 | 6 | 8 | 2 | 17 | 7 |
+| Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 15 | 13 | 1 | 6 | 8 | 2 | 17 | 7 |
 | Spark | 4.3.0 | `Engine.spark_sound` | `Engine.GuardFreeSide` | 5 | 27 | 1 | 7 | 3 | 5 | 16 | 0 |
 
 Rows per evidence level:
@@ -48,7 +48,7 @@ Rows per evidence level:
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
 | DuckDB | 25 | 1 | 16 | 2 | 0 | 0 | 15 |
-| Polars | 34 | 1 | 13 | 0 | 0 | 0 | 17 |
+| Polars | 35 | 1 | 12 | 0 | 0 | 0 | 17 |
 | Spark | 18 | 16 | 14 | 0 | 0 | 0 | 16 |
 
 ## Shims
@@ -69,7 +69,8 @@ Rows per evidence level:
 | Polars | `decimal_round_half_away` | expression | `decimal_rescale` |
 | Polars | `decimal_div_half_away` | expression | dec.div: `decimal_rescale` |
 | Polars | `round_half_away` | argument | fp.round: `rounding` |
-| Polars | `one_zero` | expression | `round_zero_sign`, `zero_sign`, agg.order: `zero_sign`, fp.arith: `zero_sign` |
+| Polars | `one_zero` | expression | `zero_sign`, agg.order: `zero_sign`, fp.arith: `zero_sign` |
+| Polars | `round: 0.0 for a negative value that rounds to zero` | expression | `round_zero_sign` |
 | Polars | `max_nan_greatest` | expression | agg.order: `nan_order` |
 | Polars | `nan_through` | expression | agg.var: `stat_algo` |
 | Polars | `avg_int_declared` | expression | `avg_int_result` |
@@ -105,7 +106,7 @@ Rows per evidence level:
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | not characterized | missing |  |
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | probe | tested: [duckdb-float-ieee](../engines/duckdb/facts/duckdb-float-ieee.json), [duckdb-ieee-arith-macos-arm64](../engines/duckdb/facts/duckdb-ieee-arith-macos-arm64.json), [duckdb-ieee-arith-linux-x86-64](../engines/duckdb/facts/duckdb-ieee-arith-linux-x86-64.json) |
-| fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-R15-round](../engines/duckdb/facts/duckdb-R15-round.json) |
+| fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native; stated `TIE_TO_EVEN`: not native | proof | proved `Lowering.duckdb_exact`; [duckdb-R15-round](../engines/duckdb/facts/duckdb-R15-round.json) |
 | agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [duckdb-float-ieee](../engines/duckdb/facts/duckdb-float-ieee.json), [duckdb-sum-double](../engines/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-double](../engines/duckdb/facts/duckdb-avg-double.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | proof | proved `Lowering.duckdb_exact`; [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json), [duckdb-int-div-domain](../engines/duckdb/facts/duckdb-int-div-domain.json), [duckdb-R15-math-domain](../engines/duckdb/facts/duckdb-R15-math-domain.json), [duckdb-R15-atan2](../engines/duckdb/facts/duckdb-R15-atan2.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json), [duckdb-int-div-domain](../engines/duckdb/facts/duckdb-int-div-domain.json), [duckdb-R15-math-domain](../engines/duckdb/facts/duckdb-R15-math-domain.json), [duckdb-R15-atan2](../engines/duckdb/facts/duckdb-R15-atan2.json) |
@@ -152,7 +153,7 @@ Rows per evidence level:
 
 ## Polars 2.1.0
 
-14 shims (2 argument, 11 expression, 1 sort). Its run is proved sound by `Engine.polars_sound`, under `Engine.GuardFreeSide`.
+15 shims (2 argument, 12 expression, 1 sort). Its run is proved sound by `Engine.polars_sound`, under `Engine.GuardFreeSide`.
 
 | Group | Option | Reference's tool | Reference | Polars | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -162,9 +163,9 @@ Rows per evidence level:
 | agg.isum | `overflow` | raise | `ERROR` | `SILENT` | precondition: every result fits its declared width: proved from the inferred bounds (#244), or a SUM's checked on the data (#316) | proof | proved `Polars.sum_leaves_i64`; [polars-sum-int](../engines/polars/facts/polars-sum-int.json) |
 | every | `on_division_by_zero` | raise | `ERROR` | `NULL` | precondition: no divisor is 0 | proof | proved `Rel.polars_sound`; [polars-int-divide](../engines/polars/facts/polars-int-divide.json), [polars-int-modulus](../engines/polars/facts/polars-int-modulus.json) |
 | fp.div | `on_division_by_zero` | raise | `ERROR` | `IEEE` | precondition: no divisor is 0; stated `NULL`, `LIMIT`: not native | proof | proved `Rel.polars_sound`; [polars-double-divide](../engines/polars/facts/polars-double-divide.json) |
-| every | `division_type` | choose | `TRUNCATE` | `FLOOR` | shim `int_mod_trunc` (expression) | proof | proved `Polars.int_mod_trunc`; [polars-int-modulus](../engines/polars/facts/polars-int-modulus.json) |
-| int.div | `division_type` | choose | `TRUNCATE` | `FLOOR` | shim `int_div_trunc` (expression) | proof | proved `Polars.int_div_trunc`; [polars-int-divide](../engines/polars/facts/polars-int-divide.json) |
-| int.mod | `division_type` | choose | `TRUNCATE` | `FLOOR` | shim `int_mod_trunc` (expression) | proof | proved `Polars.int_mod_trunc`; [polars-int-modulus](../engines/polars/facts/polars-int-modulus.json) |
+| every | `division_type` | choose | `TRUNCATE` | `FLOOR` | shim `int_mod_trunc` (expression) | proof | proved `Lowering.polars_exact`; [polars-int-modulus](../engines/polars/facts/polars-int-modulus.json) |
+| int.div | `division_type` | choose | `TRUNCATE` | `FLOOR` | shim `int_div_trunc` (expression) | proof | proved `Lowering.polars_exact`; [polars-int-divide](../engines/polars/facts/polars-int-divide.json) |
+| int.mod | `division_type` | choose | `TRUNCATE` | `FLOOR` | shim `int_mod_trunc` (expression) | proof | proved `Lowering.polars_exact`; [polars-int-modulus](../engines/polars/facts/polars-int-modulus.json) |
 | fp.mod | `division_type` | choose | `TRUNCATE` | `FLOOR` | refused | probe | tested: [polars-double-modulus](../engines/polars/facts/polars-double-modulus.json), [polars-scalar-divisor](../engines/polars/facts/polars-scalar-divisor.json) |
 | every | `min_mod_neg_one` | choose | `ZERO` | `ZERO` | native | proof | proved `Rel.polars_sound`; [polars-int-modulus](../engines/polars/facts/polars-int-modulus.json) |
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
@@ -173,7 +174,7 @@ Rows per evidence level:
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | proof | proved `Lowering.polars_exact`; [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json), [polars-ieee-arith-macos-arm64](../engines/polars/facts/polars-ieee-arith-macos-arm64.json), [polars-ieee-arith-linux-x86-64](../engines/polars/facts/polars-ieee-arith-linux-x86-64.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `round_half_away` (argument) | proof | proved `Polars.round_half_away`; [polars-round](../engines/polars/facts/polars-round.json) |
 | fp.div | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN`, `RECIPROCAL` | observed: within the plan's bound | probe | tested: [polars-scalar-divisor](../engines/polars/facts/polars-scalar-divisor.json) |
-| agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json), [polars-sum-float-streaming](../engines/polars/facts/polars-sum-float-streaming.json), [polars-mean-float-streaming](../engines/polars/facts/polars-mean-float-streaming.json), [polars-sum-float](../engines/polars/facts/polars-sum-float.json), [polars-mean-float](../engines/polars/facts/polars-mean-float.json) |
+| agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json), [polars-sum-float-streaming](../engines/polars/facts/polars-sum-float-streaming.json), [polars-mean-float-streaming](../engines/polars/facts/polars-mean-float-streaming.json) |
 | fp.log | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | probe | tested: [polars-log-base](../engines/polars/facts/polars-log-base.json), [polars-ulp-libm](../engines/polars/facts/polars-ulp-libm.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | proof | proved `Rel.polars_sound`; [polars-double-divide](../engines/polars/facts/polars-double-divide.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.polars_sound`; [polars-double-divide](../engines/polars/facts/polars-double-divide.json) |
@@ -183,7 +184,7 @@ Rows per evidence level:
 | every | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Shim.one_zero`; [polars-zero-sign-streaming](../engines/polars/facts/polars-zero-sign-streaming.json), [polars-zero-order](../engines/polars/facts/polars-zero-order.json) |
 | agg.order | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Shim.one_zero`; [polars-zero-order](../engines/polars/facts/polars-zero-order.json), [polars-min-max-zero](../engines/polars/facts/polars-min-max-zero.json) |
 | fp.arith | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | shim `one_zero` (expression) | proof | proved `Shim.one_zero`; [polars-zero-sign-streaming](../engines/polars/facts/polars-zero-sign-streaming.json), [polars-zero-add](../engines/polars/facts/polars-zero-add.json) |
-| every | `round_zero_sign` | open | `ANY` | `IEEE` | shim `one_zero` (expression) | probe | tested: [polars-round](../engines/polars/facts/polars-round.json), [polars-round-digits](../engines/polars/facts/polars-round-digits.json) |
+| every | `round_zero_sign` | open | `ANY` | `IEEE` | shim `round: 0.0 for a negative value that rounds to zero` (expression) | proof | proved `Lowering.polars_exact`; [polars-round](../engines/polars/facts/polars-round.json), [polars-round-digits](../engines/polars/facts/polars-round-digits.json) |
 | every | `pow_one_inf` | choose | `ONE` | `ONE` | native | proof | proved `Lowering.polars_exact`; [polars-pow-one-inf](../engines/polars/facts/polars-pow-one-inf.json) |
 | every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | probe | tested: [polars-nan-equality](../engines/polars/facts/polars-nan-equality.json) |
 | every | `nan_order` | choose | `GREATEST` | `GREATEST` | native | probe | tested: [polars-nan-order](../engines/polars/facts/polars-nan-order.json) |
@@ -200,9 +201,9 @@ Rows per evidence level:
 | every | `time_interval_months` | raise | none | `DROP_MONTHS`, `ERROR` | not characterized | missing |  |
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
-| every | `sum_order` | choose | `EXACT` | `SEQUENTIAL`, `ANY`, `COMPENSATED` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-sum-float](../engines/polars/facts/polars-sum-float.json), [polars-mean-float](../engines/polars/facts/polars-mean-float.json) |
-| every | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | observed: within the plan's bound | fuzz | tested: [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-cov](../engines/polars/facts/polars-cov.json), [polars-corr](../engines/polars/facts/polars-corr.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json) |
-| agg.var | `stat_algo` | choose | `EXACT` | `WELFORD_CHAN` | shim `nan_through` (expression) | proof | proved `FloatBounds.StdModel.core_var_polars`; [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json), [polars-var-pop-one-nan](../engines/polars/facts/polars-var-pop-one-nan.json) |
+| every | `sum_order` | choose | `EXACT` | `SEQUENTIAL`, `ANY` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-sum-float-streaming](../engines/polars/facts/polars-sum-float-streaming.json), [polars-mean-float-streaming](../engines/polars/facts/polars-mean-float-streaming.json) |
+| every | `stat_algo` | choose | `EXACT` | `SCHUBERT_GERTZ` | observed: within the plan's bound | fuzz | tested: [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-cov](../engines/polars/facts/polars-cov.json), [polars-corr](../engines/polars/facts/polars-corr.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json) |
+| agg.var | `stat_algo` | choose | `EXACT` | `SCHUBERT_GERTZ` | shim `nan_through` (expression) | proof | proved `FloatBounds.StdModel.core_var_polars`; [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json), [polars-var-pop-one-nan](../engines/polars/facts/polars-var-pop-one-nan.json) |
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `RUNNING_ADD`, `TREE` | observed: within the plan's bound | probe | tested: [polars-window-agg](../engines/polars/facts/polars-window-agg.json), [polars-cum-sum-float](../engines/polars/facts/polars-cum-sum-float.json), [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
 | every | `avg_int_result` | choose | `DECLARED_TYPE` | `FP64` | shim `avg_int_declared` (expression) | proof | proved `Polars.avg_int_declared`; [polars-avg-int](../engines/polars/facts/polars-avg-int.json) |
@@ -253,7 +254,7 @@ Refused on Polars, with no expression there:
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | probe | tested: [spark-decimal-arith](../engines/spark/facts/spark-decimal-arith.json) |
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | fuzz | tested: [spark-double-arith](../engines/spark/facts/spark-double-arith.json) |
-| fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | fuzz | tested: [spark-round](../engines/spark/facts/spark-round.json) |
+| fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native; stated `TIE_TO_EVEN`: not native | fuzz | tested: [spark-round](../engines/spark/facts/spark-round.json) |
 | fp.atan2 | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | refused | fuzz | tested: [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json) |
 | fp.pow | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | refused | fuzz | tested: [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json) |
 | fp.elem | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | fuzz | tested: [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json), [spark-ulp-libm](../engines/spark/facts/spark-ulp-libm.json) |

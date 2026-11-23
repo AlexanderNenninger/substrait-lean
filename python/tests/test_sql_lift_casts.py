@@ -68,16 +68,21 @@ def test_the_reference_lift_is_checked_too(query):
     assert code == 0, err or out
 
 
-def test_a_double_cast_to_an_integer_depends_on_the_semantics():
-    query = "SELECT CAST(price AS INTEGER) AS i FROM orders"
-    with pytest.raises(Refused, match="TIE_TO_EVEN"):
-        lift(query, SCHEMAS, "duckdb")
-    # The reference truncates (#209 R9), DuckDB rounds, so the lift refuses it and names
-    # the spellings with one meaning under both (D54).
-    with pytest.raises(Refused, match=r"CAST\(round\(x\) AS BIGINT\)"):
-        lift(query, SCHEMAS, "portable")
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
+def test_a_double_cast_to_bigint_rounds_half_to_even(semantics):
+    # DuckDB's cast rounds (R9), and the lifted text means DuckDB's value under both
+    # semantics (D54, D55): the plan is the cast of the half-even round.
+    lifted = lift("SELECT CAST(price AS BIGINT) AS i FROM orders", SCHEMAS, semantics)
+    plan = json.dumps(lifted.plan)
+    assert '"rounding"' in plan and "TIE_TO_EVEN" in plan
+
+
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
+def test_a_narrower_integer_cast_of_a_double_is_refused_with_its_spellings(semantics):
+    with pytest.raises(Refused, match=r"CAST\(x AS BIGINT\)"):
+        lift("SELECT CAST(price AS INTEGER) AS i FROM orders", SCHEMAS, semantics)
     spelled = "SELECT CAST(round(price) AS INTEGER) AS i FROM orders"
-    assert lift(spelled, SCHEMAS, "portable").schema == ibis.schema({"i": "int32"})
+    assert lift(spelled, SCHEMAS, semantics).schema == ibis.schema({"i": "int32"})
 
 
 @pytest.mark.parametrize(
@@ -261,17 +266,6 @@ def test_a_cast_of_a_rounded_double_raises_where_duckdb_does(fn):
     bounded = sv.verify(query, tables=tables, semantics="duckdb",
                         requires=["x > -1e9 AND x < 1e9"], counterexamples=0)  # fmt: skip
     assert bounded.verdict == "proved", bounded
-
-
-@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
-def test_a_bare_double_cast_stays_refused(semantics):
-    """The bare `CAST(x AS BIGINT)` needs DuckDB's half-to-even cast, which the
-    model does not state yet, under either semantics (D55); the refusal names
-    the casts that lift (#1655, #2008)."""
-    with pytest.raises(
-        Refused, match=r"CAST\(round\(x\) AS BIGINT\), CAST\(floor\(x\) AS BIGINT\)"
-    ):
-        lift("SELECT CAST(x AS BIGINT) FROM t", {"t": ibis.schema({"x": "float64"})}, semantics)
 
 
 #: `cast/float_integer_cast.test` (DuckDB 2.0.0): DuckDB rounds a REAL to the

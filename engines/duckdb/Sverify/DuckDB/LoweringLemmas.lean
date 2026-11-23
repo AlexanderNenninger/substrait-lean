@@ -215,6 +215,17 @@ theorem Lowering.fround_agree (s : DuckDBSettings) (x : Value) :
       FloatCode.round_negNan (fun _ h => FloatCode.canon_round h) c
   all_goals rfl
 
+/-- `round_even` on DuckDB, through `zeroTemplate`, agrees with the reference. -/
+theorem Lowering.froundEven_agree (s : DuckDBSettings) (x : Value) :
+    (Lowering.froundEvenTemplate.evalP (Profile.duckdb s) [x]).Agree
+      (Profile.reference.un .froundEven x) := by
+  cases x
+  case float c =>
+    exact Lowering.zeroTemplate_float (Lowering.duck_lt s) (Lowering.duck_eq s) (Lowering.duck_and s)
+      (fun _ => rfl) (fun _ => rfl) FloatCode.roundEven_negZero
+      FloatCode.roundEven_negNan (fun _ h => FloatCode.canon_roundEven h) c
+  all_goals rfl
+
 /-- `ceil` on DuckDB, through `zeroTemplate`, agrees with the reference. -/
 theorem Lowering.fceil_agree (s : DuckDBSettings) (x : Value) :
     (Lowering.fceilTemplate.evalP (Profile.duckdb s) [x]).Agree
