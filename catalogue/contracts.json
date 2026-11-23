@@ -931,6 +931,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#1985)",
           "row tested: agg.var's rounding (#1985)"
         ],
         "class": "observed",
@@ -950,6 +951,7 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#185)",
           "row tested: agg.var's rounding (#271)"
         ],
         "class": "observed",
@@ -964,6 +966,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#1985)",
           "row tested: agg.var's rounding (#1985)"
         ],
         "class": "observed",
@@ -983,6 +986,7 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#185)",
           "row tested: agg.var's rounding (#271)"
         ],
         "class": "observed",
@@ -1374,6 +1378,7 @@
       "duckdb": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#1985)",
           "row tested: agg.var's rounding (#1985)"
         ],
         "class": "observed",
@@ -1393,6 +1398,7 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
+          "row tested: agg.var's float_overflow (#185)",
           "row tested: agg.var's rounding (#271)"
         ],
         "class": "observed",

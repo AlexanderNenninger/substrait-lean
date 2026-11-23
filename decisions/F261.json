@@ -18,7 +18,8 @@
     "U-2026-11-09-one-verb-verify"
   ],
   "amended_by": [
-    "U-2026-11-22-evidence-gate-bars"
+    "U-2026-11-22-evidence-gate-bars",
+    "U-2026-11-23-n6c-engine-scaled-state"
   ],
   "source": "fable-ruling-261-epics-881-1288-1485-triage.md",
   "note": "1.0: #881 1.7 with the `validate_*` rename (F219), the semantics/engine docs sentence, one noun for a public refresh result, `SinkChange` made `kw_only`, and where `sv.Connection` lives; #1288 10 (recheck private) and 32 (a naming sweep of the public surface, a list first); #1485 11 (numeric adoption gates, with item 6's measurement) folded into #1487. After 1.0: #881 2.3, 2.4, 1.4, 4.3, 4.6, 4.8, 4.10; #1288 6 (`Report.assumptions`, additive, as F140 left it); #1485 7 and 26 in one issue (as F218 put them), JSON lookups and the generated SQL page. Dropped: `[tool.sverify]` timeout and memory, `Node.refresh(streaming=)`, the scaffold generator, the top-level name count, `Report.path` and `Report.evidence`; small doc fixes and module splits go to continuous tidying. #881 S7 folds into #1487 and #1485 14 into #1329. #1288's nine unchecked rows need one read-only pass. The numeric bars of the evidence gate stay with the maintainer."

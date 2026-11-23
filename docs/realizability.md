@@ -39,17 +39,17 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Sound by | Under | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 9 | 25 | 1 | 4 | 4 | 0 | 15 | 0 |
-| Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 15 | 13 | 1 | 6 | 8 | 2 | 17 | 7 |
-| Spark | 4.3.0 | `Engine.spark_sound` | `Engine.GuardFreeSide` | 5 | 27 | 1 | 7 | 3 | 5 | 16 | 0 |
+| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 9 | 25 | 1 | 4 | 6 | 0 | 15 | 0 |
+| Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 15 | 13 | 1 | 6 | 10 | 2 | 17 | 7 |
+| Spark | 4.3.0 | `Engine.spark_sound` | `Engine.GuardFreeSide` | 5 | 27 | 1 | 7 | 5 | 5 | 16 | 0 |
 
 Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 25 | 1 | 16 | 2 | 0 | 0 | 15 |
-| Polars | 35 | 1 | 12 | 0 | 0 | 0 | 17 |
-| Spark | 18 | 16 | 14 | 0 | 0 | 0 | 16 |
+| DuckDB | 25 | 1 | 18 | 2 | 0 | 0 | 15 |
+| Polars | 38 | 0 | 12 | 0 | 0 | 0 | 17 |
+| Spark | 18 | 18 | 14 | 0 | 0 | 0 | 16 |
 
 ## Shims
 
@@ -148,6 +148,8 @@ Rows per evidence level:
 | every | `distribution` | choose | `SAMPLE` | `SAMPLE`, `POPULATION` | not characterized | missing |  |
 | every | `empty_group_aggregates` | choose | `NULL` | `NULL` | native | probe | tested: [duckdb-sum-double](../engines/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-int](../engines/duckdb/facts/duckdb-avg-int.json) |
 | every | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | fuzz | tested: [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json) |
+| agg.var | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | probe | tested: [duckdb-double-overflow](../engines/duckdb/facts/duckdb-double-overflow.json) |
+| agg.stat | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | probe | tested: [duckdb-double-overflow](../engines/duckdb/facts/duckdb-double-overflow.json) |
 | every | `null_join_keys` | choose | `NO_MATCH` | `NO_MATCH` | native | probe | tested: [duckdb-null-keys](../engines/duckdb/facts/duckdb-null-keys.json) |
 | every | `string_positions` | choose | `ONE_BASED_CHARS` | `ONE_BASED_CHARS` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-string-match-case](../engines/duckdb/facts/duckdb-string-match-case.json), [duckdb-R13](../engines/duckdb/facts/duckdb-R13.json) |
 
@@ -202,7 +204,7 @@ Rows per evidence level:
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | every | `sum_order` | choose | `EXACT` | `SEQUENTIAL`, `ANY` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-sum-float-streaming](../engines/polars/facts/polars-sum-float-streaming.json), [polars-mean-float-streaming](../engines/polars/facts/polars-mean-float-streaming.json) |
-| every | `stat_algo` | choose | `EXACT` | `SCHUBERT_GERTZ` | observed: within the plan's bound | fuzz | tested: [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-cov](../engines/polars/facts/polars-cov.json), [polars-corr](../engines/polars/facts/polars-corr.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json) |
+| every | `stat_algo` | choose | `EXACT` | `SCHUBERT_GERTZ` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.core_cov_polars`; [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-cov](../engines/polars/facts/polars-cov.json), [polars-corr](../engines/polars/facts/polars-corr.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json) |
 | agg.var | `stat_algo` | choose | `EXACT` | `SCHUBERT_GERTZ` | shim `nan_through` (expression) | proof | proved `FloatBounds.StdModel.core_var_polars`; [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json), [polars-var-pop-one-nan](../engines/polars/facts/polars-var-pop-one-nan.json) |
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `RUNNING_ADD`, `TREE` | observed: within the plan's bound | probe | tested: [polars-window-agg](../engines/polars/facts/polars-window-agg.json), [polars-cum-sum-float](../engines/polars/facts/polars-cum-sum-float.json), [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
@@ -218,6 +220,8 @@ Rows per evidence level:
 | every | `distribution` | choose | `SAMPLE` | `SAMPLE`, `POPULATION` | not characterized | missing |  |
 | every | `empty_group_aggregates` | choose | `NULL` | `ZERO` | shim `sum_empty_null` (expression) | proof | proved `Shim.sum_empty_null`; [polars-sum-int](../engines/polars/facts/polars-sum-int.json) |
 | every | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | proof | proved `Shim.makes_infinite`; [polars-double-arith](../engines/polars/facts/polars-double-arith.json) |
+| agg.var | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | proof | proved `Polars.agg_makes_infinite`; [polars-nonfinite-aggregates](../engines/polars/facts/polars-nonfinite-aggregates.json) |
+| agg.stat | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | proof | proved `Polars.agg_makes_infinite`; [polars-nonfinite-aggregates](../engines/polars/facts/polars-nonfinite-aggregates.json) |
 | every | `null_join_keys` | choose | `NO_MATCH` | `NO_MATCH` | native | probe | tested: [polars-null-keys](../engines/polars/facts/polars-null-keys.json) |
 | every | `string_positions` | choose | `ONE_BASED_CHARS` | none | not characterized | missing |  |
 | str.sub | `string_positions` | choose | `ONE_BASED_CHARS` | `ZERO_BASED_CHARS` | shim `substring_wrap` (expression) | proof | proved `Polars.substring_wrap`; [polars-substring](../engines/polars/facts/polars-substring.json) |
@@ -301,5 +305,7 @@ Refused on Polars, with no expression there:
 | every | `distribution` | choose | `SAMPLE` | `SAMPLE`, `POPULATION` | not characterized | missing |  |
 | every | `empty_group_aggregates` | choose | `NULL` | `NULL` | native | fuzz | tested: [spark-sum-int](../engines/spark/facts/spark-sum-int.json), [spark-sum-double](../engines/spark/facts/spark-sum-double.json) |
 | every | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | proof | proved `Shim.makes_infinite`; [spark-double-arith](../engines/spark/facts/spark-double-arith.json) |
+| agg.var | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | fuzz | tested: [spark-nonfinite-aggregates](../engines/spark/facts/spark-nonfinite-aggregates.json) |
+| agg.stat | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | fuzz | tested: [spark-nonfinite-aggregates](../engines/spark/facts/spark-nonfinite-aggregates.json) |
 | every | `null_join_keys` | choose | `NO_MATCH` | `NO_MATCH` | native | probe | tested: [spark-null-keys](../engines/spark/facts/spark-null-keys.json) |
 | every | `string_positions` | choose | `ONE_BASED_CHARS` | `ONE_BASED_CHARS` | native | fuzz | tested: [spark-strpos](../engines/spark/facts/spark-strpos.json), [spark-substring](../engines/spark/facts/spark-substring.json) |

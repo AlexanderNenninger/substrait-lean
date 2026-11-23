@@ -221,6 +221,7 @@ reference:
       - cli.summary
       - cli.Discovery
       - cli.Checked
+      - cli.ExitCode
 
   - title: Standards
     desc: >
