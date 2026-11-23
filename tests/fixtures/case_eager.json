@@ -9,36 +9,6 @@
   {
    "extensionFunction": {
     "functionAnchor": 2,
-    "name": "lt"
-   }
-  },
-  {
-   "extensionFunction": {
-    "functionAnchor": 3,
-    "name": "and"
-   }
-  },
-  {
-   "extensionFunction": {
-    "functionAnchor": 4,
-    "name": "add"
-   }
-  },
-  {
-   "extensionFunction": {
-    "functionAnchor": 5,
-    "name": "divide"
-   }
-  },
-  {
-   "extensionFunction": {
-    "functionAnchor": 6,
-    "name": "subtract"
-   }
-  },
-  {
-   "extensionFunction": {
-    "functionAnchor": 7,
     "name": "gt"
    }
   }
@@ -128,317 +98,29 @@
            },
            "then": {
             "scalarFunction": {
-             "functionReference": 7,
+             "functionReference": 2,
              "arguments": [
               {
                "value": {
-                "ifThen": {
-                 "ifs": [
-                  {
-                   "if": {
-                    "scalarFunction": {
-                     "functionReference": 3,
-                     "arguments": [
-                      {
-                       "value": {
-                        "scalarFunction": {
-                         "functionReference": 2,
-                         "arguments": [
-                          {
-                           "value": {
-                            "selection": {
-                             "directReference": {
-                              "structField": {
-                               "field": 0
-                              }
-                             },
-                             "rootReference": {}
-                            }
-                           }
-                          },
-                          {
-                           "value": {
-                            "literal": {
-                             "i64": "0"
-                            }
-                           }
-                          }
-                         ]
-                        }
-                       }
-                      },
-                      {
-                       "value": {
-                        "scalarFunction": {
-                         "functionReference": 2,
-                         "arguments": [
-                          {
-                           "value": {
-                            "literal": {
-                             "i64": "0"
-                            }
-                           }
-                          },
-                          {
-                           "value": {
-                            "selection": {
-                             "directReference": {
-                              "structField": {
-                               "field": 1
-                              }
-                             },
-                             "rootReference": {}
-                            }
-                           }
-                          }
-                         ]
-                        }
-                       }
-                      }
-                     ]
-                    }
-                   },
-                   "then": {
-                    "scalarFunction": {
-                     "functionReference": 6,
-                     "arguments": [
-                      {
-                       "value": {
-                        "scalarFunction": {
-                         "functionReference": 5,
-                         "arguments": [
-                          {
-                           "value": {
-                            "scalarFunction": {
-                             "functionReference": 4,
-                             "arguments": [
-                              {
-                               "value": {
-                                "selection": {
-                                 "directReference": {
-                                  "structField": {
-                                   "field": 0
-                                  }
-                                 },
-                                 "rootReference": {}
-                                }
-                               }
-                              },
-                              {
-                               "value": {
-                                "literal": {
-                                 "i64": "1"
-                                }
-                               }
-                              }
-                             ]
-                            }
-                           }
-                          },
-                          {
-                           "value": {
-                            "selection": {
-                             "directReference": {
-                              "structField": {
-                               "field": 1
-                              }
-                             },
-                             "rootReference": {}
-                            }
-                           }
-                          }
-                         ]
-                        }
-                       }
-                      },
-                      {
-                       "value": {
-                        "literal": {
-                         "i64": "1"
-                        }
-                       }
-                      }
-                     ]
-                    }
-                   }
-                  },
-                  {
-                   "if": {
-                    "scalarFunction": {
-                     "functionReference": 3,
-                     "arguments": [
-                      {
-                       "value": {
-                        "scalarFunction": {
-                         "functionReference": 2,
-                         "arguments": [
-                          {
-                           "value": {
-                            "literal": {
-                             "i64": "0"
-                            }
-                           }
-                          },
-                          {
-                           "value": {
-                            "selection": {
-                             "directReference": {
-                              "structField": {
-                               "field": 0
-                              }
-                             },
-                             "rootReference": {}
-                            }
-                           }
-                          }
-                         ]
-                        }
-                       }
-                      },
-                      {
-                       "value": {
-                        "scalarFunction": {
-                         "functionReference": 2,
-                         "arguments": [
-                          {
-                           "value": {
-                            "selection": {
-                             "directReference": {
-                              "structField": {
-                               "field": 1
-                              }
-                             },
-                             "rootReference": {}
-                            }
-                           }
-                          },
-                          {
-                           "value": {
-                            "literal": {
-                             "i64": "0"
-                            }
-                           }
-                          }
-                         ]
-                        }
-                       }
-                      }
-                     ]
-                    }
-                   },
-                   "then": {
-                    "scalarFunction": {
-                     "functionReference": 6,
-                     "arguments": [
-                      {
-                       "value": {
-                        "scalarFunction": {
-                         "functionReference": 5,
-                         "arguments": [
-                          {
-                           "value": {
-                            "scalarFunction": {
-                             "functionReference": 6,
-                             "arguments": [
-                              {
-                               "value": {
-                                "selection": {
-                                 "directReference": {
-                                  "structField": {
-                                   "field": 0
-                                  }
-                                 },
-                                 "rootReference": {}
-                                }
-                               }
-                              },
-                              {
-                               "value": {
-                                "literal": {
-                                 "i64": "1"
-                                }
-                               }
-                              }
-                             ]
-                            }
-                           }
-                          },
-                          {
-                           "value": {
-                            "selection": {
-                             "directReference": {
-                              "structField": {
-                               "field": 1
-                              }
-                             },
-                             "rootReference": {}
-                            }
-                           }
-                          }
-                         ]
-                        }
-                       }
-                      },
-                      {
-                       "value": {
-                        "literal": {
-                         "i64": "1"
-                        }
-                       }
-                      }
-                     ]
-                    }
-                   }
+                "selection": {
+                 "directReference": {
+                  "structField": {
+                   "field": 0
                   }
-                 ],
-                 "else": {
-                  "scalarFunction": {
-                   "functionReference": 5,
-                   "arguments": [
-                    {
-                     "value": {
-                      "selection": {
-                       "directReference": {
-                        "structField": {
-                         "field": 0
-                        }
-                       },
-                       "rootReference": {}
-                      }
-                     }
-                    },
-                    {
-                     "value": {
-                      "selection": {
-                       "directReference": {
-                        "structField": {
-                         "field": 1
-                        }
-                       },
-                       "rootReference": {}
-                      }
-                     }
-                    }
-                   ]
-                  }
-                 }
+                 },
+                 "rootReference": {}
                 }
                }
               },
               {
                "value": {
-                "cast": {
-                 "type": {
-                  "i64": {
-                   "nullability": "NULLABILITY_NULLABLE"
+                "selection": {
+                 "directReference": {
+                  "structField": {
+                   "field": 1
                   }
                  },
-                 "input": {
-                  "literal": {
-                   "i8": 1
-                  }
-                 },
-                 "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+                 "rootReference": {}
                 }
                }
               }

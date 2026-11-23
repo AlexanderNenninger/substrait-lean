@@ -1,5 +1,5 @@
 Emit [2]
-  Project +[IF (NOT(($1 = 0)) AND (IS_NULL((1 < IF (($0 < 0) AND (0 < $1)) THEN ((($0 + 1) / $1) - 1) ELSE IF ((0 < $0) AND ($1 < 0)) THEN ((($0 - 1) / $1) - 1) ELSE ($0 / $1))) OR true)) THEN (1 < IF (($0 < 0) AND (0 < $1)) THEN ((($0 + 1) / $1) - 1) ELSE IF ((0 < $0) AND ($1 < 0)) THEN ((($0 - 1) / $1) - 1) ELSE ($0 / $1)) ELSE false]
+  Project +[IF (NOT(($1 = 0)) AND (IS_NULL(($1 < $0)) OR true)) THEN ($1 < $0) ELSE false]
     Read t
 tables: t(2)
 arity: 1

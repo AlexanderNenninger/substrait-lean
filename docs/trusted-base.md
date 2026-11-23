@@ -176,9 +176,10 @@ Sverify's words claim no more than these theorems give
   rewrites: a comparison is swapped to `<` (`tests/fixtures/filter_project.expected`),
   `not_equal` becomes `NOT (=)` (`df_float_timestamp.expected`), a boolean
   `CASE` evaluates its branches eagerly (`case_eager.expected`), decimals of
-  two scales meet at the larger one (`decimal_compare_scales.expected`), and
-  defaults such as `common.direct` are dropped. So `write (parse j)` matched
-  `j` on 0 of the 22 fixtures measured (2026-11-23), even after names were resolved, and a
+  two scales meet at the larger one (`python/tests/test_decimal.py`'s
+  comparisons across scales), and defaults such as `common.direct` are
+  dropped. So `write (parse j)` matched `j` on none of the 22 fixtures the
+  parser reads, of the 23 then (2026-11-23), even after names were resolved, and a
   syntactic round trip on input says nothing about meaning (ruling 280). The
   bridge is semantic, running `j` and `parse j` side by side or validating
   `j`: [#2528](https://github.com/AlexanderNenninger/substrait-lean/issues/2528).
