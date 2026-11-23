@@ -815,6 +815,15 @@ abbrev Substrait.sparkOn.ddiv : Substrait.BinEntry Substrait.Profile.spark Subst
   Substrait.BinEntry.native Substrait.BinFn.ddiv
   (Substrait.Lowering.bin_agree_of_eq Substrait.sparkOn.ddiv_native)
 
+theorem Substrait.sparkOn.dmod_native : ∀ (x y : Substrait.Value),
+  Substrait.Profile.bin Substrait.Profile.spark Substrait.BinFn.dmod x y =
+    Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.dmod x y := by
+  native_tac
+
+abbrev Substrait.sparkOn.dmod : Substrait.BinEntry Substrait.Profile.spark Substrait.BinFn.dmod :=
+  Substrait.BinEntry.native Substrait.BinFn.dmod
+  (Substrait.Lowering.bin_agree_of_eq Substrait.sparkOn.dmod_native)
+
 theorem Substrait.sparkOn.pair_native : ∀ (x y : Substrait.Value),
   Substrait.Profile.bin Substrait.Profile.spark Substrait.BinFn.pair x y =
     Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.pair x y := by

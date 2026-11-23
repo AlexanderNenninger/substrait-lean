@@ -966,6 +966,17 @@ abbrev Substrait.duckdbOn.ddiv : Substrait.BinEntry (Substrait.Profile.duckdb (S
   Substrait.BinEntry.native Substrait.BinFn.ddiv
   (Substrait.Lowering.bin_agree_of_eq Substrait.duckdbOn.ddiv_native)
 
+theorem Substrait.duckdbOn.dmod_native : ∀ (x y : Substrait.Value),
+  Substrait.Profile.bin (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+      Substrait.BinFn.dmod x y =
+    Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.dmod x y := by
+  native_tac
+
+abbrev Substrait.duckdbOn.dmod : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  Substrait.BinFn.dmod :=
+  Substrait.BinEntry.native Substrait.BinFn.dmod
+  (Substrait.Lowering.bin_agree_of_eq Substrait.duckdbOn.dmod_native)
+
 theorem Substrait.duckdbOn.pair_native : ∀ (x y : Substrait.Value),
   Substrait.Profile.bin (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
       Substrait.BinFn.pair x y =

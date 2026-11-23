@@ -127,6 +127,7 @@ def Substrait.polarsOn : Substrait.Lowering (Substrait.Profile.polars) :=
     | Substrait.BinFn.dsub  => some (Substrait.polarsOn.dsub )
     | Substrait.BinFn.dmul  => some (Substrait.polarsOn.dmul )
     | Substrait.BinFn.ddiv  => some (Substrait.polarsOn.ddiv )
+    | Substrait.BinFn.dmod  => some (Substrait.polarsOn.dmod )
     | Substrait.BinFn.pair  => some (Substrait.polarsOn.pair )
     | Substrait.BinFn.greatest  => some (Substrait.polarsOn.greatest )
     | Substrait.BinFn.least  => some (Substrait.polarsOn.least )
@@ -231,6 +232,7 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("BinFn.dsub", "native", 0),
   ("BinFn.dmul", "native", 0),
   ("BinFn.ddiv", "native", 0),
+  ("BinFn.dmod", "hand-written schema: a % b of decimals truncated: Polars's % by -b where the signs differ", 0),
   ("BinFn.pair", "native", 0),
   ("BinFn.greatest", "native", 0),
   ("BinFn.least", "native", 0),

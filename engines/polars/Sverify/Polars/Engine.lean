@@ -326,12 +326,12 @@ theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polar
       cases hv : v.unscaled? with
       | none =>
         rw [Profile.polars_dmod_null (.inl hv)] at h; cases h
-        exact .inl (by simp [BinFn.apply, hv])
+        exact .inl (by simp only [BinFn.apply, hv])
       | some a =>
         cases hw : w.unscaled? with
         | none =>
           rw [Profile.polars_dmod_null (.inr hw)] at h; cases h
-          exact .inl (by simp [BinFn.apply, hv, hw])
+          exact .inl (by simp only [BinFn.apply, hv, hw])
         | some b =>
           by_cases hb : b = 0
           · subst hb; rw [Profile.polars_dmod_zero hv hw] at h; cases h
