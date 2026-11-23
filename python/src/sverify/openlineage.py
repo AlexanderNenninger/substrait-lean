@@ -46,8 +46,10 @@ need nothing.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
+import re
 import sys
 import urllib.parse
 import urllib.request
@@ -900,29 +902,77 @@ class Upstream:
             )
 
 
-_SPARK_TYPES = {
-    "long": "int64",
-    "integer": "int32",
-    "int": "int32",
-    "short": "int16",
-    "byte": "int8",
-    "string": "string",
-    "double": "float64",
-    "float": "float32",
-    "boolean": "boolean",
-    "date": "date",
-    "timestamp": "timestamp('UTC')",
-    "timestamp_ntz": "timestamp",
-    "binary": "binary",
-}
+#: The Spark type names DuckDB reads otherwise. DuckDB's parse reads Spark's
+#: other names (`long`, `int`, `short`, `byte`, `float`, `string`, ...) as Spark
+#: means them (`test_a_schema_facets_type_names`).
+_SPARK_TYPES = {"timestamp": "timestamp('UTC')", "timestamp_ntz": "timestamp"}
 
 
 def _ibis_type(t: Any) -> Any:
+    """A `schema` facet's type name as an Ibis type: Spark's names first, then
+    DuckDB's, then Ibis's, also inside Spark's `array<…>`, `map<…>` and
+    `struct<…>` (#2448); a name none of them reads is `unknown`."""
+    import ibis.expr.datatypes as dt
+
+    return _parse_type(t.strip()) if isinstance(t, str) else dt.unknown
+
+
+_NESTED = re.compile(r"(array|map|struct)\s*<(.*)>", re.IGNORECASE | re.DOTALL)
+
+
+@functools.lru_cache(maxsize=1024)
+def _parse_type(t: str) -> Any:
+    """`_ibis_type` of a string; the names facets repeat are read once (a bounded
+    cache, for a reader of many foreign facets)."""
+    import ibis.expr.datatypes as dt
+
+    if m := _NESTED.fullmatch(t):
+        try:
+            return _nested(m[1].lower(), _split(m[2], ","))
+        except ValueError:
+            return dt.unknown  # DuckDB's parse would read Spark's names as its own
+    return _scalar(t)
+
+
+def _nested(kind: str, parts: list[str]) -> Any:
+    """Spark's `array<t>`, `map<k,v>` or `struct<name:t,…>`; a `ValueError`
+    where a part is malformed or names no type."""
+    import ibis.expr.datatypes as dt
+
+    def read(part: str) -> Any:
+        got = _parse_type(part.strip())
+        if got.is_unknown():
+            raise ValueError(part)
+        return got
+
+    if kind == "array" and len(parts) == 1:
+        return dt.Array(value_type=read(parts[0]))
+    if kind == "map" and len(parts) == 2:
+        return dt.Map(key_type=read(parts[0]), value_type=read(parts[1]))
+    if kind == "struct" and all(parts):
+        fields = [_split(p, ":") for p in parts]
+        if all(len(f) >= 2 and f[0].strip() for f in fields):
+            return dt.Struct.from_tuples(
+                (f[0].strip().strip("`"), read(":".join(f[1:]))) for f in fields
+            )
+    raise ValueError(kind)
+
+
+def _split(text: str, sep: str) -> list[str]:
+    """`text` split at each `sep` outside `<…>` and `(…)`."""
+    parts, depth, start = [], 0, 0
+    for i, c in enumerate(text):
+        depth += (c in "<(") - (c in ">)")
+        if c == sep and depth == 0:
+            parts.append(text[start:i])
+            start = i + 1
+    return [*parts, text[start:]]
+
+
+def _scalar(t: str) -> Any:
     import ibis.expr.datatypes as dt
     from ibis.backends.sql.datatypes import DuckDBType
 
-    if not isinstance(t, str):
-        return dt.unknown
     if t.lower() in _SPARK_TYPES:
         return dt.dtype(_SPARK_TYPES[t.lower()])
     try:
