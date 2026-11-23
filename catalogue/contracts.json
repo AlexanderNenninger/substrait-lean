@@ -651,15 +651,15 @@
       },
       "polars": {
         "outcome": "refused",
-        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
       },
       "spark": {
         "outcome": "refused",
-        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (spark does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (spark does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)"
       }
     },
     "pattern": "bound",

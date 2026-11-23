@@ -34,7 +34,7 @@ if getattr(_meta, "PLUGIN_API", None) != 5:
         "install both from the same release (`pip install -U sverify sverify-spark`)"
     )
 
-from sverify._unsupported import ISSUE_271, MIN_MOD_GUARD, RANGE_GUARD
+from sverify._unsupported import ISSUE_2540, MIN_MOD_GUARD, RANGE_GUARD
 from sverify.profiles import Finite, ProfilePlugin, Setting
 from sverify_spark.store import SparkStore
 
@@ -234,7 +234,7 @@ PLUGIN = ProfilePlugin(
         "sverify_raise": (
             "Spark's SQL of the date guards exhausts its JVM's heap (a date from columns "
             "is 38 KB of nested CASEs)",
-            ISSUE_271,
+            ISSUE_2540,
         )
     },
     guards=(RANGE_GUARD, MIN_MOD_GUARD),

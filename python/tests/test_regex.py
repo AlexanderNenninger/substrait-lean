@@ -219,5 +219,5 @@ def test_other_engines_refuse_until_271(engine):
     t = ibis.table(R, name="r")
     for e in (t.s.re_extract("b", 0), t.s.re_replace("b", "c"), t.s.hexdigest("md5")):
         plan = written_plan(to_substrait_json(t.select(x=e)))
-        with pytest.raises(Exception, match="see #271"):
+        with pytest.raises(Exception, match="see #2540"):
             run_plan(con, plan, engine)
