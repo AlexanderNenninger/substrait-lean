@@ -78,7 +78,6 @@ SQL string ─► SQLGlot lift ────────────────�
 | `catalogue/` | 139 real analytical queries (TPC-H, TPC-DS, SSB, ClickBench, JOB, H2O and more), probed against the checker and the engines; [findings](catalogue/FINDINGS.md) |
 | `characterization/` | How engine facts are judged: the areas, the fact schema and the oracle-A baseline. The facts are in `engines/<engine>/facts/`: one JSON document per fact, a diff against the reference profile, with provenance ([DuckDB's facts](engines/duckdb/facts/)) |
 | `dbt/` | `sverify-dbt`, which checks a dbt project's tests and contracts ([dbt/README.md](dbt/README.md)) |
-| `models/` | The refresh protocol, model-checked in TLA+ |
 | `templates/` | A template repository for pipelines ([templates/pipelines/README.md](templates/pipelines/README.md)) |
 | `docs/` | The documents below |
 | `float-bounds/` | A separate Lean package of error bounds for doubles |
@@ -103,7 +102,7 @@ explanations ([docs/how-it-works.md](docs/how-it-works.md),
 [docs/layers.md](docs/layers.md)).
 [python/README.md](python/README.md) is the user's entry. How engine facts
 are judged is in [characterization/README.md](characterization/README.md), and
-the refresh protocol, model-checked in TLA+, in [models/refresh/](models/refresh/README.md).
+the refresh protocol, specified and proved in Lean, in [docs/refresh-findings.md](docs/refresh-findings.md).
 
 ## The Lean project
 
