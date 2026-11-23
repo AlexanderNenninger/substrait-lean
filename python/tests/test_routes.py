@@ -347,7 +347,7 @@ def test_the_observation_problems_are_worded(con) -> None:
     """The checker decides whether an engine's observation meets the postcondition's
     (`Realize.lean`, #1071); the route words its problems as data, with the way out."""
     t = con.table("t")
-    report = sv.verify(t.select("k"), ensures=[_.k > 0, sv.equivalent(floats="plan")])
+    report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats="plan")])
     where = {"group": "", "option": "zero_sign", "facts": ["polars-zero_sign"]}
     missed = {
         "code": "observation_missed",
@@ -366,8 +366,9 @@ def test_the_observation_problems_are_worded(con) -> None:
     r = _on_polars(tol, cls="observed", problems=[not_met])
     assert r.refused and "total is within abs=222 (tested), rel=1e-10 (tested)" in r.why
     held = {"code": "held", "column": "total", "condition": 0, "bounds": bounds, **where}
-    r = _on_polars(report, cls="observed", problems=[held])
-    assert r.refused and "reads total" in r.why and "sv.approx" in r.why
+    named = sv.verify(t.select("k"), ensures=[_.k > 0])
+    text = routes._problem("polars", held, named)
+    assert "reads total" in text and "sv.approx" in text
     unbounded = {"code": "unbounded", "column": "total", "why": "a SUM", **where}
     r = _on_polars(tol, cls="observed", problems=[unbounded])
     assert r.refused and "total has no bound on its distance to the reference (a SUM)" in r.why
