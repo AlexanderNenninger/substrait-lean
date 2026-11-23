@@ -27,6 +27,29 @@ TAGS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
 )
 
 
+def _kinds(text: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    return next(((ks, ls) for tag, ks, ls in TAGS if text.startswith(tag)), ((), ()))
+
+
+def _named(kinds: tuple[str, ...], listed: list[str]) -> list[str]:
+    return sorted({a for a in listed if a.split(":", 1)[0] in kinds})
+
+
+#: Why a tagged raise stays a disagreement when the report lists several issues of its kind.
+AMBIGUOUS = (
+    "several issues of the raise's kind, and the harness cannot tell which raised (ruling 236, C1)"
+)
+
+
+def ambiguous(message: str, listed: list[str]) -> str | None:
+    """`AMBIGUOUS` if the engine's `message` is a tagged raise whose kind
+    the report lists more than once, so `checked` leaves it a disagreement; None otherwise."""
+    if "sverify:" not in message:
+        return None
+    kinds, _ = _kinds(message.split("sverify:", 1)[1].strip())
+    return AMBIGUOUS if len(_named(kinds, listed)) > 1 else None
+
+
 def checked(message: str, listed: list[str], plan_with_data: str) -> str | None:
     """`checked: <issue>` if the engine's `message` is a tagged raise of an
     issue `listed` (the `str` of each of the report's errors and assumptions,
@@ -38,11 +61,11 @@ def checked(message: str, listed: list[str], plan_with_data: str) -> str | None:
     if "sverify:" not in message:
         return None
     text = message.split("sverify:", 1)[1].strip()
-    kinds, lean = next(((ks, ls) for tag, ks, ls in TAGS if text.startswith(tag)), ((), ()))
+    kinds, lean = _kinds(text)
     # The message names the operation by its tag only, so the raise is tied to
     # the report's issue of that kind when exactly one is listed (ruling 236,
     # C1); with several, the harness cannot tell which one raised.
-    named = sorted({a for a in listed if a.split(":", 1)[0] in kinds})
+    named = _named(kinds, listed)
     if len(named) != 1:
         return None
     # The same kind of issue in the checker, on the same data (ruling 230, C1):
