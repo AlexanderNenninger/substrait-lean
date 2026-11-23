@@ -140,6 +140,11 @@ group's extreme: a batch that only inserts into a group merges, and the
 groups it deletes from are recomputed from the new input
 (`ExtremeAgg.extreme_maintained` in
 [`analysis/Sverify/Analysis/IncrementalMinMax.lean`](../analysis/Sverify/Analysis/IncrementalMinMax.lean)).
+On Spark the exact state of doubles costs time: a refresh of a double `SUM`
+and `VAR` per group took 131–135 s at a million rows on one machine, where
+DuckDB took about a second
+([#1329](https://github.com/AlexanderNenninger/substrait-lean/issues/1329#issuecomment-7097132193),
+[#2537](https://github.com/AlexanderNenninger/substrait-lean/issues/2537)).
 A node that ends in a semi or anti join on equal keys keeps a count of
 matches per key and reads the left input only for the keys whose count
 leaves or returns to 0 (`SemiDelta.semi_maintained` in
