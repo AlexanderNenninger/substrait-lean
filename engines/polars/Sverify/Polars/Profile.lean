@@ -90,6 +90,7 @@ template, in the reference's operations. `round` and `ceil` give `-0.0`
 (polars-round). -/
 def UnFn.polarsTmpl : UnFn → Option Expr
   | .fround => some (Polars.negZeroT .fround)
+  | .froundEven => some (Polars.negZeroT .froundEven)
   | .fceil => some (Polars.negZeroT .fceil)
   | _ => none
 
@@ -467,8 +468,8 @@ theorem Profile.polars_un_not_float (f : UnFn) (v : Value) (hv : ∀ c, v ≠ .f
   cases hf : f.polarsTmpl with
   | none => rfl
   | some t =>
-    have : f = .fround ∨ f = .fceil := by cases f <;> simp_all [UnFn.polarsTmpl]
-    rcases this with rfl | rfl <;> simp only [UnFn.polarsTmpl, Option.some.injEq] at hf <;>
+    have : f = .fround ∨ f = .fceil ∨ f = .froundEven := by cases f <;> simp_all [UnFn.polarsTmpl]
+    rcases this with rfl | rfl | rfl <;> simp only [UnFn.polarsTmpl, Option.some.injEq] at hf <;>
       subst hf <;> cases v <;> first | rfl | exact absurd rfl (hv _)
 
 /-- `round` on Polars, through `Lowering.zeroTemplate`, agrees with the
@@ -482,6 +483,21 @@ theorem Polars.fround_agree (x : Value) :
       (Profile.polars_un_negZero (f := .fround) rfl (fun _ => rfl) FloatCode.round_negZero FloatCode.round_negNan
         (fun _ h => FloatCode.canon_round h))
       (fun _ => rfl) FloatCode.round_negZero FloatCode.round_negNan (fun _ h => FloatCode.canon_round h) c
+  all_goals rfl
+
+/-- `round(mode='half_to_even')` on Polars, through `Lowering.zeroTemplate`, agrees with the
+reference: the lowering's entry for `froundEven` (`round_zero_sign`). -/
+theorem Polars.froundEven_agree (x : Value) :
+    (Lowering.froundEvenTemplate.evalP Profile.polars [x]).Agree
+      (Profile.reference.un .froundEven x) := by
+  cases x
+  case float c =>
+    exact Lowering.zeroTemplate_float (p := Profile.polars) (fun x y => Lowering.ref_lt x y) (fun x y => Lowering.ref_eq x y)
+      (fun x y => Lowering.ref_and x y)
+      (Profile.polars_un_negZero (f := .froundEven) rfl (fun _ => rfl) FloatCode.roundEven_negZero
+        FloatCode.roundEven_negNan (fun _ h => FloatCode.canon_roundEven h))
+      (fun _ => rfl) FloatCode.roundEven_negZero FloatCode.roundEven_negNan
+      (fun _ h => FloatCode.canon_roundEven h) c
   all_goals rfl
 
 /-- `ceil` on Polars, through `Lowering.zeroTemplate`, agrees with the

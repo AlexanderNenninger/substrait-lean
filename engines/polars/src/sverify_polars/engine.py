@@ -977,6 +977,14 @@ def _floors(f: dict) -> bool:
     )
 
 
+def _rounds_to_even(f: dict) -> bool:
+    """Does the call state `rounding` = `TIE_TO_EVEN` (`UnFn.froundEven`, D55)?"""
+    return any(
+        o.get("name") == "rounding" and (o.get("preference") or [None])[0] == "TIE_TO_EVEN"
+        for o in f.get("options", [])
+    )
+
+
 class Exprs:
     """Translates expressions over input columns of the given dtypes, or, with
     `param`, a lambda's body over its parameter of that dtype (#94)."""
@@ -1043,6 +1051,13 @@ class Exprs:
                 # Wrap-around and clamping run on DuckDB only so far (#241).
                 if o.get("name") == "overflow" and prefs[0] != "ERROR":
                     raise Unsupported(f"overflow = {prefs}")
+            if name == "round" and len(arg_js) in (1, 2) and _rounds_to_even(f):
+                # D55: `rounding: TIE_TO_EVEN` at zero digits is Polars's own `round(0)`.
+                if len(arg_js) == 2 and self.constant(arg_js[1], "ROUND digits") != 0:
+                    raise Unsupported(
+                        "ROUND to digits with TIE_TO_EVEN: the model has zero digits only"
+                    )
+                return self.round_even(self(arg_js[0]))
             if name in ("divide", "modulus") and len(arg_js) == 2 and _floors(f):
                 return self.floor_divide(name, self(arg_js[0]), self(arg_js[1]))
             if name == "sverify_raise" and len(arg_js) == 2:
@@ -1799,6 +1814,15 @@ class Exprs:
             return Val(pl.lit(None, pl.Boolean), pl.Boolean, a.issues)
         regex = like_regex(p, fold=name == "ilike")
         return Val(a.expr.str.contains(regex), pl.Boolean, a.issues)
+
+    @staticmethod
+    def round_even(a: Val) -> Val:
+        """`ROUND(x, 0)` with `rounding: TIE_TO_EVEN` (`UnFn.froundEven`, D55):
+        Polars's own `round(0)`, which rounds halves to even (polars-round).
+        NaN and `±∞` stay."""
+        if a.dtype != pl.Float64:
+            raise Unsupported(f"round of {a.dtype}")
+        return Val(a.expr.round(0), pl.Float64, a.issues)
 
     @staticmethod
     def round_to(a: Val, digits: dict) -> Val:
