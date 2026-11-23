@@ -1,0 +1,1 @@
+SELECT s1.`c0` AS `x` FROM (SELECT s2.`c2` AS `c0` FROM (SELECT s3.`c0` AS `c0`, s3.`c1` AS `c1`, (CASE WHEN (NOT (s3.`c1` = CAST(0 AS BIGINT))) THEN (s3.`c1` < s3.`c0`) ELSE FALSE END) AS `c2` FROM (SELECT `a` AS `c0`, `b` AS `c1` FROM `t`) AS s3) AS s2) AS s1
