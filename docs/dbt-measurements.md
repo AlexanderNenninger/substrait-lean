@@ -92,7 +92,7 @@ The tests of jaffle_shop sit on its staging models, and none sits on a seed, so 
 - `relationships` from `raw_orders.user_id` to `raw_customers.id` and from `raw_payments.order_id` to `raw_orders.id`.
 - `not_null` on `stg_orders.customer_id`, the test sverify-dbt suggests for `orders`.
 - `relationships` from `stg_orders.order_id` to `stg_payments.order_id`: every order has a payment, so `orders`, which left-joins the per-order payment sums, has no NULL in them ([#2512](https://github.com/AlexanderNenninger/substrait-lean/issues/2512)).
-- `not_null` and `dbt_utils.accepted_range` (0 to 1,000,000) on `stg_payments.amount`, and the range (0 to 100,000,000) on `raw_payments.amount` that proves it: a sum of doubles has a value only where its terms are known to be finite. The overlay's `packages` adds `dbt_utils` 1.3.0.
+- `not_null` and `dbt_utils.accepted_range` (0 to 1,000,000) on `stg_payments.amount`, and the range (0 to 100,000,000) on `raw_payments.amount` that proves it. The ranges are a stopgap: DuckDB's sum of doubles is written as a guarded sum with the group's maximum, and the proof of a value in it needs the terms known to be finite, a gap a later change closes by assuming the data holds only doubles' codes. The overlay's `packages` adds `dbt_utils` 1.3.0.
 
 A model's preconditions are the tests its direct inputs declare, so a fact about a seed reaches `orders` through a test on `stg_orders`, and sverify-dbt's suggestions say which tests to declare.
 
@@ -110,6 +110,8 @@ dbt still runs these 18 tests, and all of them pass, so each assumption holds on
 The 8 staging tests (`unique` and `not_null` on each key, `accepted_values` on `status` and `payment_method`) turn proved: each is a rename of the seed column that carries the same test. So does `orders.not_null(customer_id)`, through the test on `stg_orders`. The 13 tests on seeds are dbt's to run, and `sverify_proved` never skips them.
 
 The `orders` amounts (`not_null(amount)` and the four `*_amount` columns) turn proved through the left join: with the relationship declared, every row of `stg_orders` has a match in the per-order payment sums, so the proof reads the join as an inner join (`contract_sound_all_fk`) and the sums are as non-NULL as their terms. Without the `relationships` test they stay open, and the report proposes it (`sv.references`).
+
+The five amount tests need the relationship and the ranges together. With the relationship alone they stay open, which leaves 17 of 38 proved and 14 of the project's own 20 (the count minus those five; this variant was not re-run). The gate reads the relationship-only numbers.
 
 The 2 tests that stay open are not checked: `orders.relationships(customer_id)` and `stg_orders.relationships(order_id)`. Sverify-dbt proves no foreign key of a model's result, and dbt runs them.
 
