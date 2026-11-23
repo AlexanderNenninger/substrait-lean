@@ -793,11 +793,26 @@ def withCommon (kind : String) (body : List (String × Json)) (emit : Option (Li
     else obj [("project", obj [common m, ("input", obj [(kind, obj body)]),
       ("expressions", Json.arr #[])])]
 
+/-- The expressions of a projection over `below` with the columns that a
+projection under it (`Rel.bindStep`) binds written back in. -/
+def unbindProject (cat : Catalog) : Rel → List Expr → List Expr
+  | .project r ss, es =>
+    unbindProject cat r (es.map (·.subst ((List.range (r.arity cat)).map .field ++ ss)))
+  | _, es => es
+
 /-- The kinds of a projection's expressions over columns of kinds `ks`:
 `wkind`, or the kind the source plan declares where `Parse.projectKey`
 records one (a projected `0.0`, timestamp or typed `NULL`, #96). -/
-def projKinds (schemas : Schemas) (ks : List WKind) (es : List Expr) : List WKind :=
+def projKinds (schemas : Schemas) (cat : Catalog) (below : Rel) (ks : List WKind)
+    (es : List Expr) : List WKind :=
   let declared := Parse.schemaKinds (schemas (Parse.projectKey es) 0)
+  -- The plan the writer prints binds the arguments of nested calls as columns
+  -- (`Rel.bindArgs`, #821), so this projection's expressions read them and
+  -- are not the ones the source plan declared kinds for: substituting the
+  -- bound columns back gives those (`Rel.bindStep_spec`, #2102).
+  let declared := if declared.isEmpty then
+      Parse.schemaKinds (schemas (Parse.projectKey (unbindProject cat below es)) 0)
+    else declared
   es.zipIdx.map fun (e, i) => match declared[i]? with
     | some k => if k == .other then wkind ks e else .ofKind k
     | none => wkind ks e
@@ -843,7 +858,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
   | .filter r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ => relKinds schemas cat r
   | .project r es =>
       let ks := relKinds schemas cat r
-      ks ++ projKinds schemas ks es
+      ks ++ projKinds schemas cat r ks es
   | .emit r m =>
       let ks := relKinds schemas cat r
       m.map (ks.getD · .other)
@@ -1060,7 +1075,7 @@ def writeRel (schemas : Schemas) (cat : Catalog)
       ("input", writeRel schemas cat [] r none),
       ("expressions",
         let ks := relKinds schemas cat r
-        Json.arr ((es.zip (projKinds schemas ks es)).zipIdx.map fun ((e, k), i) =>
+        Json.arr ((es.zip (projKinds schemas cat r ks es)).zipIdx.map fun ((e, k), i) =>
           writeExpr ks (if k == .other then hint.getD (ks.length + i) .other else k) e).toArray)] out
   | .cross a b, out => withCommon "cross" [
       ("left", writeRel schemas cat [] a none), ("right", writeRel schemas cat [] b none)] out

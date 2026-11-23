@@ -3351,13 +3351,7 @@ partial def parseRel (fns : List (Nat × String)) (j : Json) : P Rel := do
         pure (.emit (.project lifted es) (List.range n ++ (List.range es.length).map (n + k + ·)))
       else if bindsProject fns ejs then
         -- Beyond the cap, the chains are bound below the projection (D50-d).
-        let g := Rel.guardedProject inp cols.length
-          (← ejs.mapM fun e => do return (← toLExpr fns cols bits e))
-        -- The kinds the source plan declares (a typed `NULL`, #2102) belong to
-        -- the bound expressions, which the written plan prints.
-        if let .emit (.project below es) _ := g then
-          recordDeclaredKinds fns (below.kinds (← get)) ejs es
-        pure g
+        pure (Rel.guardedProject inp cols.length (← ejs.mapM fun e => do return (← toLExpr fns cols bits e)))
       else
         let es ← ejs.mapM fun e => do return (← parseExpr fns cols bits e)
         -- A project that appends nothing is the identity (used to carry `emit`).
