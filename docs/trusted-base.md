@@ -56,7 +56,7 @@ the project's one axiom (the trusted table below).
 | `liftDuckDB.total` | The lift of DuckDB's SQL covers every generated entry | `DuckDB/Lift/Duckdb.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.duckdb_sound` | A proved contract holds on the model of DuckDB (default settings), given `NoRaiseSide`, which an empty `Rel.mayIssues` discharges (`Engine.duckdb_noRaise_of_mayIssues`). The model differs from the reference only in its scalar functions: its relational behaviour is the reference's, and that the engine runs it is the assumption `Engine.Runs` ([below](#the-trusted-parts-in-detail)) | `DuckDB/Engine.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.polars_sound` | … on the model of Polars, given `GuardFreeSide`, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`) (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
-| `Engine.spark_sound` | … on the model of Spark, given `GuardFreeSide`, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`) (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
+| `Engine.spark_sound` | … on the model of Spark, given `SparkSide`: a catalog of doubles, a plan whose constants are doubles (the checker's check), and either `GuardFreeSide` for a plan without IEEE division, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`), or `NoRaiseSide`, every guard kept (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.contract_sound_runs` | … on an engine's run, given the engine runs its model (`Engine.Runs`) | `Sound.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.contract_sound_runs_near` | … on an engine's run with open float rows, given `Rel.FloatOpenSafeP` over its table, which `Rel.floatOpenSafeP_aggregate` discharges for a root aggregate's double `SUM` and `AVG`, and `Rel.floatOpenSafeP_of_noDouble` for a closed plan without doubles; other shapes are #929's | `Sound.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.transfer_of_noDouble` | A result a table allows for a plan without doubles, the reference allows, where the table with the reference's choices at the options only doubles read (`floatOnlyOptions`) transfers (`transferB`) | `NoDouble.lean` | propext, Classical.choice, Quot.sound |
@@ -208,8 +208,7 @@ Sverify's words claim no more than these theorems give
   `IS NOT NULL` included, and the Polars translator. The interpreters of the
   generated lowering tables are among them: `sverify/sql/lowering.py` writes a
   DuckDB template as SQL, and `sverify_polars/lowering.py` a Polars template
-  as a `pl.Expr`, which the Polars translator takes over from its hand-written
-  shims in #271's step 2. Golden, round-trip and
+  as a `pl.Expr` (#271). Golden, round-trip and
   differential tests cover them
   ([the translations](engine-profiles.md#the-translations-today)).
 - The CLI's glue, `Main.lean`, `SubstraitCheck.lean`, `ContractCheck.lean` and `ShardCheck.lean`:
@@ -301,7 +300,7 @@ Sverify's words claim no more than these theorems give
   feed; it is proved when the change is computed from two snapshots.
 - An engine's run of a proved plan. `Engine.contract_sound` proves the
   contract on the rows the engine's model computes for the translated plan
-  (`r'.eval cat E.impl`), under the engine's side condition (`Engine.NoRaiseSide` for DuckDB, `Engine.GuardFreeSide` for Polars and Spark, none for the reference). The chain from there to the engine's actual
+  (`r'.eval cat E.impl`), under the engine's side condition (`Engine.NoRaiseSide` for DuckDB, `Engine.GuardFreeSide` for Polars, `Engine.SparkSide` for Spark, none for the reference). The chain from there to the engine's actual
   result, in order:
   1. the Lean theorem, `Engine.contract_sound` with the engine's
      `Engine.Sound` (`Sound.lean`); `Engine.polars_sound` and

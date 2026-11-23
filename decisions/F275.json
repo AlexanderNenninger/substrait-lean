@@ -1,0 +1,14 @@
+{
+  "id": "F275",
+  "date": "2026-11-23",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "(1) #1849: a function discontinuous in a double (`floor`, `ceil`, truncation, `round`, a cast to an integer, decimal or text, a comparison, and `CASE` on any of these) applied to an operand whose ε on an engine is positive or unbounded has no bound on that engine: a threshold problem, wherever the expression sits, by the same predicate as #568's refusal for filters, keys and sorts. An engine where the operand is exact is unaffected, and `route=\"auto\"` picks one. (2) #2486: an unbounded column under an exact observation is a problem, as `not_met` is, never `tested`, because problems are monotone in ε.",
+  "issues": [
+    1849,
+    2486
+  ],
+  "source": "fable-ruling-275-1849-2486-discontinuous-unbounded.md",
+  "note": "No D-number: the reference is unchanged, and the analysis closes a soundness gap by extending #568's refusal. The predicate sits beside `exprEps`, and any function from a double to a non-double type counts as discontinuous unless a lemma says otherwise, so the list is closed by default. A precondition that keeps the value more than ε from every threshold lifts the refusal where the analysis sees it. Not on the 1.0 path: a Polars broadcast shim (the optimizer folds it back, and it fixes Polars alone) and a run-time margin check for projections. Tests: track B's three wrong rows refused on Polars and proved on DuckDB; `cast(sum(x) AS BIGINT)` and `round(avg(x))` refused where ε > 0; the count of catalogue and golden verdicts that change, each a wrong PROVED. For #2486 also: `planTol`'s ulps round up (as F274), no plan tolerance while a column is unbounded, and a check that ε answers every double output column of a plan bounded per plan. The changelog says such plans were wrongly proved and are now refused where the operand is inexact."
+}

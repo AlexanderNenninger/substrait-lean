@@ -219,8 +219,8 @@ bound the checker proves on that column (`ε`, below). Three cases:
   the route lets the postcondition run. A tolerance stated with
   `sv.within` finds nothing to meet and refuses the whole plan, naming the
   column and its exits: `sv.max_rows(n)` in `requires`, `sv.equivalent(floats="plan")`,
-  or no tolerance. Polars's compensated sum (`COMPENSATED`) is tested for the sign;
-  its proof is open ([#1045](https://github.com/AlexanderNenninger/substrait-lean/issues/1045)).
+  or no tolerance. Every engine's `SUM` is a tree sum, so the sign is proved on
+  DuckDB, Polars and Spark (`signKeptOn`).
 - A filter, grouping key or sort on a double may keep other rows on an engine than
   on the reference where its threshold lies within the bound of the doubles' range
   (#568's threshold rule). The route refuses the whole plan, whether or not a
@@ -248,7 +248,7 @@ order the engine profiles allow (`sum_order`):
 |---|---|---|
 | `SEQUENTIAL`, `ANY`, `PAIRWISE` | a tree of rounded additions in any order (`FloatSums`, `core/Sverify/Core/AllowedP.lean`) | `Rnd.Tree.error`, `TreeSum.tree` ([`Tree.lean`](../float-bounds/FloatBounds/Tree.lean)) |
 | `SCALED_CONSTANT` | DuckDB's constant run, one `fl(k · x)` ([duckdb-sum-double](../engines/duckdb/facts/duckdb-sum-double.json)) | `TreeSum.const` |
-| `COMPENSATED` | Kahan's sum, Polars's grouped sum in memory ([polars-sum-float](../engines/polars/facts/polars-sum-float.json)) | `Rnd.kahan_near` ([`Kahan.lean`](../float-bounds/FloatBounds/Kahan.lean)) |
+| `COMPENSATED` | Kahan's sum, DuckDB's `kahan_sum` ([duckdb-kahan-sum](../engines/duckdb/facts/duckdb-kahan-sum.json)) | `Rnd.kahan_near` ([`Kahan.lean`](../float-bounds/FloatBounds/Kahan.lean)) |
 
 Each is within `γ n · Σ (|xᵢ| + tiny)` of the exact sum, the sequential
 sum's bound, for `n ≤ 2³²` doubles. For a tree, an error grows with the
@@ -565,8 +565,13 @@ single pairs and merges does (`cInvC_pcrun`). The invariant's bound over any
 constants (`covRel_of_cInvC`) gives the co-moment within `106 n u (…)`
 (`plCov_rel`, DuckDB's `70`), and `COVAR_*` within `covTolK 107`
 (`core_cov_polars`, `StatTol.sg` in `StatProps.lean`, ruling 271). Its `CORR`
-(`PearsonState`) has no theorem yet, and the `agg.stat` row, which both
-read, stays tested until it does
+([`CorrSG.lean`](../float-bounds/FloatBounds/CorrSG.lean)) keeps one
+`PearsonState`, whose two sides and co-moment are, term for term, the
+variance's and the covariance's states over the same means (`PRRun.proj`).
+`dp_xy / √(dp_xx · dp_yy)` takes three roundings, fewer than DuckDB's
+formula, and stays within `1 + 3E/L + 8u` at Chan's `corrErr`
+(`corr_pl_le`, `core_corr_polars`). The `agg.stat` row cites
+`core_cov_polars` and is proved
 ([#1808](https://github.com/AlexanderNenninger/substrait-lean/issues/1808)).
 
 `Epsilon.statEps` reports these bounds per column: a `VAR_*`'s and a

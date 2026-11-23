@@ -308,8 +308,7 @@ shim of `engines/polars/src/sverify_polars/shims.py` once, as `Polars.<name>`,
 against a model of Polars's own functions taken from its facts (the trusted
 part, as `Profile.duckdb` is for DuckDB):
 
-- the value shims: `int_div_trunc` and `int_mod_trunc` give `Int.tdiv` and
-  `Int.tmod`, `sum_empty_null` NULL for no values, `avg_int_declared` the
+- the value shims: `sum_empty_null` NULL for no values, `avg_int_declared` the
   reference's truncated mean (which its clamp leaves), `round_half_away`
   `roundMag`, `one_zero` `canon` on the float codes, `strpos_chars`
   and `substring_wrap` `Text.strpos` and `Text.substrWrap`, `null_order` the
@@ -322,12 +321,17 @@ part, as `Profile.duckdb` is for DuckDB):
   precondition rules out. On Polars a double `SUM` is summed in Polars's own
   order (`sum_order`), so `agg_makes_infinite` flags the groups whose own sum
   overflows, which differ from the sequential sum's only at the edge;
-- the error side: `Polars.written_faithful` (Polars, with the value shims,
-  agrees with the reference wherever the reference reports no issue) and
-  `Rel.polars_sound` (a plan `verify` proves free of issues, up to the
-  assumed ones whose guards stay, runs on Polars as `Rel.eval`).
+- the error side: `Polars.impl` is Polars's functions, `Profile.polars`'s
+  values and Polars's own where the profile raises (a wrapped integer, `NULL`
+  for a zero divisor, NaN), and `Rel.polars_sound` (a plan `verify` proves
+  free of issues, up to the assumed ones whose guards stay, lowered by
+  Polars's table, runs on Polars as `Rel.eval`).
 
-The Polars rows of `--options` name these theorems as their evidence. The
+Integer `//` and `%`, and `round` and `ceil`, are no shims of their own: the
+translation writes them from the generated lowering table
+(`sverify_polars/lowering.py`), whose templates `Lowering.polars_exact` proves
+exact under `Profile.polars` (#271). The Polars rows of `--options` name these
+theorems as their evidence. The
 `clustered` row stays tested, and so do the rows these theorems do not cover.
 
 ### Polars as a profile
@@ -404,16 +408,15 @@ from its [facts](../engines/spark/facts/). Option by option:
 | `null_order` | the reference's | first for an ascending key ([null-order](../engines/spark/facts/spark-null-order.json)) | shim `null_order`, a written argument |
 | every other option | the reference's | the table | native, or the writer's shims |
 
-Spark gives the reference's value wherever the reference reports no issue
-(`Profile.spark_okImpl_faithful`), so a plan the reference proves runs on
-Spark as it is (`Engine.spark_sound`). Until the checker reports under
+Spark runs the plan its generated lowering writes (`Lowering.spark`), so a
+plan the reference proves runs on Spark (`Engine.spark_sound`). Until the checker reports under
 Spark's profile ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)),
 a `"profile": "spark"` request gets the reference's report, labelled
 `"reference"`, with `"pending": "spark"`. `power(±1, ±∞)` is NaN on Spark
 (`pow_one_inf`, [D40](decisions.md#d40-power1--is-cs-pow)) and `floor` and `ceil` of NaN are `0` (`float_to_int`);
-the writer refuses double `power` and passes NaN through `floor` and `ceil`
-(`Profile.sparkWritten`). `atan2` reads `-0.0` as `0.0` (`zero_sign`), and
-the writer refuses double `atan2`. Once the checker reports under the profile, a plan proved
+the lowering refuses double `power` and passes NaN through `floor` and `ceil`
+(`Lowering.spark_refuses`, `Spark.ffloorEntry`). `atan2` reads `-0.0` as
+`0.0` (`zero_sign`), and the lowering refuses double `atan2`. Once the checker reports under the profile, a plan proved
 under it runs on Spark by `native`, and on DuckDB by `transfer` where
 DuckDB's choices are within Spark's at every option the proof depends on.
 What is proved
@@ -427,10 +430,11 @@ What is proved
 - `Shim.avg_trunc`, `Shim.null_order`, `Shim.one_zero`: the other shims give
   the reference's value, by the lemmas Polars's shims share
   ([Shims.lean](../engines/Sverify/Engines/Shims.lean)).
-- `Profile.sparkWritten_okImpl_faithful` and `Rel.spark_sound`: Spark under
-  ANSI, as the writer writes it (`Profile.sparkWritten`), gives `Rel.eval`'s
-  rows for a plan whose only issues are assumed ones, as `Rel.polars_sound`
-  does for Polars. Its own values on the error side (NaN, a `date_add`
+- `Rel.spark_sound` and `Rel.spark_sound_or_raises`: Spark under ANSI, as its
+  generated lowering writes the plan (`Lowering.spark`), gives `Rel.eval`'s
+  rows on a catalog of doubles: for a plan whose only issues are assumed ones
+  and that calls no IEEE division, as `Rel.polars_sound` does for Polars, and
+  for any plan, every guard kept, where Spark does not raise (ruling 277). Its own values on the error side (NaN, a `date_add`
   wrapped past 2³¹ days, SP-2) are where the reference raises. The NaN
   values are rows of `Profile.spark.table`; the wrap is `sparkBin`'s
   `date_add` arm, within the table through the uncharacterized `date_range`

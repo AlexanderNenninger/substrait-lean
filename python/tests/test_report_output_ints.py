@@ -77,13 +77,18 @@ def test_timestamps_are_microseconds_in_the_report_and_the_run(engine):
     assert dict(report.output) == run_types(report, engine)
 
 
-def test_an_explicit_integer_cast_has_todays_width():
-    """Pins today's widths: the report and the run agree on what a cast gives.
-    The cast to the width it names is #1772 (a writer change and a regen of the
-    generated DuckDB lowering); this test changes with it."""
+@pytest.mark.parametrize("engine", ENGINES)
+def test_an_explicit_integer_cast_has_the_width_it_names(engine):
+    """Ruling 114 (#1772): a cast to an integer type gives that type, in the report
+    and in the run, narrowing, widening below 64 bits or widening to 64."""
     t = table()
-    report = sv.verify(t.select(n=t.a.cast("int32"), w=t.b.cast("int64")))
-    assert dict(report.output) == run_types(report, "duckdb")
+    report = sv.verify(
+        t.select(n=t.a.cast("int32"), w=t.b.cast("int64"), m=t.b.cast("int8"), a=t.a),
+        on_inferred="ignore",
+    )
+    assert report.output["n"] == dt.int32 and report.output["w"] == dt.int64
+    assert report.output["m"] == dt.int8 and report.output["a"] == dt.int8
+    assert dict(report.output) == run_types(report, engine)
 
 
 def test_a_timestamp_difference_does_not_run():
