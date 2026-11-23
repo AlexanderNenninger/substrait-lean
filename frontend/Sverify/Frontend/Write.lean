@@ -793,12 +793,14 @@ def withCommon (kind : String) (body : List (String × Json)) (emit : Option (Li
     else obj [("project", obj [common m, ("input", obj [(kind, obj body)]),
       ("expressions", Json.arr #[])])]
 
-/-- The expressions of a projection over `below` with the columns that a
-projection under it (`Rel.bindStep`) binds written back in. -/
-def unbindProject (cat : Catalog) : Rel → List Expr → List Expr
-  | .project r ss, es =>
-    unbindProject cat r (es.map (·.subst ((List.range (r.arity cat)).map .field ++ ss)))
-  | _, es => es
+/-- The expressions of a projection over `below` with the columns that the
+projections under it bind (`Rel.bindStep`) written back in, through at most
+`fuel` of them: each level can double the expressions (#2338), and a plan that
+declares a kind binds a few levels at most. -/
+def unbindProject (cat : Catalog) : Nat → Rel → List Expr → List Expr
+  | fuel + 1, .project r ss, es =>
+    unbindProject cat fuel r (es.map (·.subst ((List.range (r.arity cat)).map .field ++ ss)))
+  | _, _, es => es
 
 /-- The kinds of a projection's expressions over columns of kinds `ks`:
 `wkind`, or the kind the source plan declares where `Parse.projectKey`
@@ -811,7 +813,7 @@ def projKinds (schemas : Schemas) (cat : Catalog) (below : Rel) (ks : List WKind
   -- are not the ones the source plan declared kinds for: substituting the
   -- bound columns back gives those (`Rel.bindStep_spec`, #2102).
   let declared := if declared.isEmpty then
-      Parse.schemaKinds (schemas (Parse.projectKey (unbindProject cat below es)) 0)
+      Parse.schemaKinds (schemas (Parse.projectKey (unbindProject cat 3 below es)) 0)
     else declared
   es.zipIdx.map fun (e, i) => match declared[i]? with
     | some k => if k == .other then wkind ks e else .ofKind k
