@@ -37,6 +37,10 @@ def Profile.spark.table : ProfileTable where
     -- `round(x)` rounds halves away from zero; `round(x, d)` rounds the
     -- shortest decimal text, which the writer never calls (spark-round).
     (some "fp.round", "rounding", .asked ["TIE_AWAY_FROM_ZERO"] ["TIE_AWAY_FROM_ZERO"]),
+    -- `float_to_int` (ruling 273): a cast's conversion is the engine's own;
+    -- elsewhere (`fp.round`, `fp.floor`) it stays uncharacterized.
+    (none, "float_to_int", .loose ["TRUNCATE", "TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN"]),
+    (some "cast.num", "float_to_int", .oneOf ["TRUNCATE"]),
     (none, "nan_creation", .oneOf ["NAN"]),
     (none, "float_overflow", .oneOf ["INFINITY"]),
     (none, "zero_sign", .oneOf ["ONE_ZERO"]),
@@ -107,6 +111,10 @@ def Profile.spark.obs : ObsTable := [
   -- Values are raw (D31), and the zeros are one at `=`, `<`, keys and
   -- partitions; MIN and MAX keep whichever zero came first, a member of the class.
   (none, "zero_sign", (ObsRow.native ["spark-zero-sign", "spark-zero-order"]).tracking 271),
+  -- A double or decimal to integer cast truncates natively
+  -- (spark-cast-double-to-int, ruling 273).
+  (some "cast.num", "float_to_int", (ObsRow.native ["spark-cast-double-to-int"]).proved
+    "Rel.spark_sound"),
   -- `atan2` of a zero: `π` where the reference gives `-π`, a difference in value that
   -- `zeros := .canon` does not describe: refused (the lowering refuses it too,
   -- `Lowering.spark_refuses`). `power` and `atan2` are refused at `rounding` too, so neither

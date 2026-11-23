@@ -30,6 +30,10 @@ def Profile.polars.table : ProfileTable where
     (none, "min_mod_neg_one", .oneOf ["ZERO"]),
     (none, "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
     (some "fp.round", "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
+    -- `float_to_int` (ruling 273): a cast's conversion is the engine's own;
+    -- elsewhere (`fp.round`, `fp.floor`) it stays uncharacterized.
+    (none, "float_to_int", .loose ["TRUNCATE", "TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN"]),
+    (some "cast.num", "float_to_int", .oneOf ["TRUNCATE"]),
     -- By a length-1 divisor, `x * (1 / c)` (polars-scalar-divisor).
     (some "fp.div", "rounding", .oneOf ["TIE_TO_EVEN", "RECIPROCAL"]),
     (some "fp.mod", "division_type", .oneOf ["FLOOR"]),
@@ -182,6 +186,10 @@ def Profile.polars.obs : ObsTable := [
   -- `first` and `last` follow input order on streaming, run after run.
   (none, "tie_pick", ({ ObsRow.native ["polars-first-last"] with rerun := some Obs.exact }).tracking 271),
   (some "fp.round", "rounding", (ObsRow.shimmed "round_half_away" ["polars-round"]).proved "Polars.round_half_away"),
+  -- A double or decimal to integer cast truncates natively
+  -- (polars-cast-double-to-int, ruling 273).
+  (some "cast.num", "float_to_int", (ObsRow.native ["polars-cast-double-to-int"]).proved
+    "Rel.polars_sound"),
   (some "fp.div", "rounding", ({ ObsRow.approxWithin "plan" ["polars-scalar-divisor"] with
     precondition := "every divisor of a double division with no column reference (a literal, a constant expression) is not subnormal: |y| ≥ 2⁻¹⁰²² (fp64), 2⁻¹²⁶ (fp32); the plan has no bound below it (`Epsilon.exprEps`)",
     note := "By a scalar divisor Polars computes fl(x · fl(1 / y)): two roundings, a relative error of 2u per division where IEEE has u. Below the smallest normal, 1 / y overflows (0.0 / 1e-310 is NaN, 1e-300 / 1e-310 is inf), hence the precondition. Decided on #444: no exact-IEEE shim for `/`. The plan's bound is the reciprocal's, `rule_div_recip`, for every divisor without a column reference; it is at least the exact quotient's (`rule_div_le_recip`)." }).tracking 271),
