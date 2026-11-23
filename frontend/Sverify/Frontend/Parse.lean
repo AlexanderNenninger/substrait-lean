@@ -659,8 +659,8 @@ def _root_.Substrait.Expr.outBits (cols : List Nat) : Expr → Nat
   | _ => 64
 
 /-- The width of each column of the result as the written plan and its run give it
-(`Report.output`'s integers, #1484): a projected cast keeps the width the source plan
-declares for it, `CAST(b AS BIGINT)` of a `SMALLINT` included (ruling 114, #1772). -/
+(`Report.output`'s integers, #1484): a projected cast or literal keeps the width the source
+plan declares for it, `CAST(b AS BIGINT)` of a `SMALLINT` included (ruling 114, #1772). -/
 def _root_.Substrait.Rel.outBits (tables : Tables) (r : Rel) : List Nat :=
   r.bitsBy Expr.outBits tables (declaredProjectBits tables Expr.outBits)
 
