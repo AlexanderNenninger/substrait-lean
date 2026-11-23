@@ -604,3 +604,17 @@ def test_a_tagged_list_sum_raise_is_checked_against_its_domain_issue(monkeypatch
     got = checked(msg, ["domain error: LIST_SUM(i)"], "{}")
     assert got and got.startswith("checked: domain error")
     assert checked(msg, [], "{}") is None
+
+
+def test_a_tagged_raise_with_several_issues_of_its_kind_says_why_it_stays_a_disagreement():
+    """#2549: two SUMs in one query list two `SUM overflow` issues, so the
+    harness cannot tell which raised (ruling 236, C1): the disagreement
+    carries that reason, and one SUM does not."""
+    from sverify_dev.checked import AMBIGUOUS, ambiguous
+
+    msg = "Invalid Input Error: sverify: integer overflow in SUM: 9216000000000000000000"
+    two = ["SUM overflow: SUM(a)", "SUM overflow: SUM(b)"]
+    assert ambiguous(msg, two) == AMBIGUOUS
+    assert ambiguous(msg, two[:1]) is None
+    assert ambiguous(msg, ["domain error: LIST_SUM(i)"]) is None
+    assert ambiguous("Out of Range Error: something else", two) is None

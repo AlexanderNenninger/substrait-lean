@@ -875,7 +875,7 @@ class Replay:
         expected ones."""
         from sverify.engine import run_checker, run_plan, written_plan
         from sverify.testing import LeanRaised, lean_values
-        from sverify_dev.checked import checked
+        from sverify_dev.checked import ambiguous, checked
 
         code, out, err = run_checker((), plan)
         if code != 0 or "well-formed: yes" not in out:
@@ -983,9 +983,11 @@ class Replay:
                     # The written plan's own check of a reported assumption
                     # (ruling 230): the report lists it and Lean finds it.
                     data = json.dumps(_typed_inline(json.loads(written_plan(plan)), rows, self.con))
-                    if why := checked(str(e), listed(), data):
+                    issues = listed()
+                    if why := checked(str(e), issues, data):
                         res.cls, res.reason = "agree", why
                         return res
+                    res.reason = ambiguous(str(e), issues)
 
         if lean_ok and engine_ok is not False:
             res.cls = "agree"
@@ -1265,10 +1267,13 @@ KNOWN: tuple[Known, ...] = (
         (
             "aggregate/aggregates/test_sum.test",
             "aggregate/aggregates/test_sum_fastpath.test",
-            "aggregate/sparse_clustered_aggregation.test",
             "sql_export/aggregate_results.test",
         ),
     ),
+    # Two SUMs in one query: the written plan's tagged check raises (the sum leaves 64 bits, as
+    # DuckDB's HUGEINT sum does), and the harness cannot tell which of the two listed issues
+    # raised (`checked.AMBIGUOUS`, ruling 236, C1). One SUM of the same shape agrees (#2162).
+    Known("#2162", ("aggregate/sparse_clustered_aggregation.test",), r"sum\(.*sum\("),
     # `AND` runs in order in DuckDB's filter; in the reference both operands
     # run, and the written plan's cast raises.
     Known("duckdb-exec-short-circuit", ("cast/signed_cast_repro.test",)),
