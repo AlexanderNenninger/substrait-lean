@@ -38,6 +38,7 @@ import Sverify.Analysis.Pruning
 import Sverify.Analysis.Quarantine
 import Sverify.Analysis.Refines
 import Sverify.Analysis.Refresh
+import Sverify.Analysis.RefreshSnapshot
 import Sverify.Analysis.Retention
 import Sverify.Analysis.Rows
 import Sverify.Analysis.Safety
