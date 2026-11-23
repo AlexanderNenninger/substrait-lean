@@ -15,6 +15,7 @@ import polars as pl
 import pyarrow as pa
 import pytest
 
+import sverify as sv
 from sverify.engine import connect, put_table, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import inline_tables, lean_values
@@ -215,3 +216,20 @@ def test_a_product_past_38_digits_raises(con):
     plan = written_plan(plan_of(con, "SELECT x * x AS r FROM w"))
     with pytest.raises(polars_engine.IntegerOverflow, match="multiply leaves DECIMAL"):
         run_plan(con, plan, "polars")
+
+
+def test_a_double_cast_to_decimal_runs_as_the_reference_on_polars():
+    """Polars's native cast rounds the product `x · 10ˢ` half to even (0.125 is
+    0.12, polars-decimal-casts), and the reference half away from zero. Polars's
+    run path writes the reference's (`double_to_decimal`), so a proved cast gives
+    the reference's values. A switch of `UnFn.ftod` to Polars's native cast fails
+    here (ruling 278, #2523). 1.005 is a near-tie: its product rounds to
+    100.49999999999999, so it gives 1.00 on every route."""
+    con = sv.connect()
+    con.put("t", pa.table({"f": pa.array([0.125, -0.125, 0.375, 1.005], pa.float64())}))
+    t = con.table("t")
+    report = sv.verify(t.select(r=t.f.cast("decimal(3, 2)")), requires={"t": [ibis._.f.abs() < 9]})
+    assert report.verdict == sv.Verdict.PROVED, str(report)
+    out = report.run(con, "polars")
+    assert report.routes["polars"].taken == "translated", report.routes["polars"]
+    assert out.column("r").to_pylist() == [D("0.13"), D("-0.13"), D("0.38"), D("1.00")]
