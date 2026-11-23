@@ -772,10 +772,12 @@ def _smallest(bounds: Mapping[str, tuple[float, bool]]) -> str:
     return f"sv.within({kind}={smallest:g})"
 
 
-#: Why #568's threshold rule refuses a plan, as `realization` words it.
+#: Why #568's threshold rule refuses a plan, as `realization` words it; ruling 275
+#: extends it to a projection that rounds, casts or compares a double.
 _THRESHOLD = (
-    "a filter, grouping key or sort on a double may keep other rows on {engine} than "
-    "the reference: its threshold lies within the doubles' bound of their range; "
+    "a filter, grouping key or sort on a double, or a projection that rounds, casts or "
+    "compares one, may keep other rows or give other values on {engine} than the "
+    "reference: its threshold lies within the doubles' bound of their range; "
     "for a constant threshold, state a precondition that keeps the values away from it; "
     "for a threshold computed from the data (a mean, a sum), compare exact columns: "
     "for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact "

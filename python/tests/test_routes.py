@@ -459,7 +459,7 @@ def test_rows_that_may_flip_under_the_bound_are_refused(con) -> None:
     plan = [_observed("sum_order", {"floats": {"bound": "plan"}})]
     assert _on_polars(report, cls="observed", observed=plan).cls == "observed"
     r = _on_polars(report, cls="refused", observed=plan, problems=[{"code": "threshold"}])
-    assert r.refused and "may keep other rows on polars" in r.why
+    assert r.refused and "may keep other rows or give other values on polars" in r.why
 
 
 def test_a_threshold_computed_from_the_data_names_exact_columns() -> None:
