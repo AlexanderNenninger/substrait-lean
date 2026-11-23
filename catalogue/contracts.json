@@ -290,7 +290,6 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.order's list_null_order (#1484)",
           "row tested: agg.order's nan_order (#1985)",
           "row tested: agg.order's zero_sign (#1985)"
         ],
@@ -298,11 +297,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "translation tested (no row for the options; #271)"
-        ],
         "class": "shim",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -310,8 +306,8 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.order's nan_order (#271)",
-          "row tested: agg.order's zero_sign (#271)"
+          "row tested: agg.order's nan_order (#2544)",
+          "row tested: agg.order's zero_sign (#2544)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -324,7 +320,6 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.order's list_null_order (#1484)",
           "row tested: agg.order's nan_order (#1985)",
           "row tested: agg.order's zero_sign (#1985)"
         ],
@@ -332,11 +327,8 @@
         "outcome": "tested"
       },
       "polars": {
-        "causes": [
-          "translation tested (no row for the options; #271)"
-        ],
         "class": "shim",
-        "outcome": "tested"
+        "outcome": "proved"
       },
       "snowflake": {
         "outcome": "refused",
@@ -344,8 +336,8 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.order's nan_order (#271)",
-          "row tested: agg.order's zero_sign (#271)"
+          "row tested: agg.order's nan_order (#2544)",
+          "row tested: agg.order's zero_sign (#2544)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -358,7 +350,6 @@
     "engines": {
       "duckdb": {
         "causes": [
-          "row tested: agg.order's list_null_order (#1484)",
           "row tested: agg.order's nan_order (#1985)",
           "row tested: agg.order's zero_sign (#1985)",
           "row tested: cmp's nan_order (#1985)",
@@ -369,8 +360,8 @@
       },
       "polars": {
         "causes": [
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
+          "row tested: cmp's nan_equality (#2544)",
+          "row tested: cmp's nan_order (#2544)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -381,11 +372,11 @@
       },
       "spark": {
         "causes": [
-          "row tested: agg.order's nan_order (#271)",
-          "row tested: agg.order's zero_sign (#271)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: cmp's zero_sign (#271)"
+          "row tested: agg.order's nan_order (#2544)",
+          "row tested: agg.order's zero_sign (#2544)",
+          "row tested: cmp's nan_equality (#2544)",
+          "row tested: cmp's nan_order (#2544)",
+          "row tested: cmp's zero_sign (#2544)"
         ],
         "class": "exact",
         "outcome": "tested"
@@ -557,8 +548,8 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
+          "row tested: cmp's nan_equality (#2544)",
+          "row tested: cmp's nan_order (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -570,9 +561,9 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: cmp's zero_sign (#271)"
+          "row tested: cmp's nan_equality (#2544)",
+          "row tested: cmp's nan_order (#2544)",
+          "row tested: cmp's zero_sign (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -594,8 +585,8 @@
       },
       "polars": {
         "causes": [
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)"
+          "row tested: cmp's nan_equality (#2544)",
+          "row tested: cmp's nan_order (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -606,9 +597,9 @@
       },
       "spark": {
         "causes": [
-          "row tested: cmp's nan_equality (#271)",
-          "row tested: cmp's nan_order (#271)",
-          "row tested: cmp's zero_sign (#271)"
+          "row tested: cmp's nan_equality (#2544)",
+          "row tested: cmp's nan_order (#2544)",
+          "row tested: cmp's zero_sign (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -644,22 +635,22 @@
       "duckdb": {
         "causes": [
           "row tested: agg.quant's nan_order (#1985)",
-          "row tested: agg.quant's quantile_interp (#900)"
+          "row tested: agg.quant's quantile_interp (#1985)"
         ],
         "class": "shim",
         "outcome": "tested"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (polars does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
       },
       "spark": {
         "outcome": "refused",
-        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (spark does not run it yet; see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271)"
+        "reason": "median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' (spark does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)"
       }
     },
     "pattern": "bound",
@@ -786,7 +777,7 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: fp.arith's zero_sign (#271)"
+          "row tested: fp.arith's zero_sign (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -802,7 +793,7 @@
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
           "row tested: agg.fsum's empty_group_aggregates (#1985)",
           "row tested: agg.fsum's float_overflow (#1985)",
-          "row tested: win.agg's window_sum_algo (#900)"
+          "row tested: win.agg's window_sum_algo (#1985)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -810,7 +801,7 @@
       "polars": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: win.agg's window_sum_algo (#900)"
+          "row tested: win.agg's window_sum_algo (#2544)"
         ],
         "class": "shim",
         "outcome": "tested"
@@ -822,8 +813,8 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's empty_group_aggregates (#271)",
-          "row tested: win.agg's window_sum_algo (#900)"
+          "row tested: agg.fsum's empty_group_aggregates (#2539)",
+          "row tested: win.agg's window_sum_algo (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -857,7 +848,7 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's float_overflow (#185)"
+          "row tested: agg.var's float_overflow (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -891,7 +882,7 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's float_overflow (#185)"
+          "row tested: agg.var's float_overflow (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1285,7 +1276,7 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's float_overflow (#185)"
+          "row tested: agg.var's float_overflow (#2544)"
         ],
         "class": "observed",
         "outcome": "tested"

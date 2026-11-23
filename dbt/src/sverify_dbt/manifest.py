@@ -199,7 +199,7 @@ def load(project: str | Path, target_path: str | Path = "target") -> Project:
     if adapter != "duckdb":
         raise ProjectError(
             f"the project uses the {adapter} adapter; sverify-dbt reads DuckDB projects only "
-            "(the other engines wait on #271)"
+            "(other dialects' SQL: see #866)"
         )
     catalog = _catalog(target / "catalog.json")
     relations: dict[str, Relation] = {}

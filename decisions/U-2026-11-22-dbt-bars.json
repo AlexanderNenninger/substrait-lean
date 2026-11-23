@@ -1,0 +1,20 @@
+{
+  "id": "U-2026-11-22-dbt-bars",
+  "date": "2026-11-22",
+  "decided_by": "user",
+  "scope": "release",
+  "status": "in-force",
+  "summary": "The evidence gate's dbt bars, set from the measurement in #2418: on DuckDB-style projects, jaffle_shop's proof rate stays at or above 25 % of its declared tests, so it can't regress. Warehouse dialects have no read-rate bar for 1.0: the scoped statement says sverify-dbt reads DuckDB SQL dbt projects.",
+  "issues": [
+    1487,
+    2418
+  ],
+  "amends": [
+    "U-2026-11-22-evidence-gate-bars"
+  ],
+  "amended_by": [
+    "U-2026-11-23-dbt-gate-without-range"
+  ],
+  "source": "https://github.com/AlexanderNenninger/substrait-lean/issues/1487#issuecomment-7084918796",
+  "note": "Sets the bar the 2026-11-22 gate ruling left to the maintainer. The measurement at the time: 5 of jaffle_shop's 20 tests proved. BigQuery and other warehouse dialects are out of scope until a lift exists (Snowflake and Spark: #866). Paraphrased from the coordinator's relay on #1487; the maintainer's own words aren't quoted there."
+}

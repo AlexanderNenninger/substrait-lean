@@ -104,7 +104,7 @@ place, and what retires it.
 | opaque, `implemented_by`, unsafe def | `evalEngines`, `evalEnginesUnsafe` | `SubstraitLean/Obligations.lean` | The engine profiles' evaluation while the obligations elaborate | |
 | sorry | `checkGenerated` | `engines/Sverify/Engines/Generated.lean` | With `check_generated` off (a plain `lake build`, every editable install), the generated entries' proofs are `sorryAx`; CI, the wheels and `poe prove` check them. `substrait-check --build` says which build it is (`generated proofs checked` or `unchecked`); the report records it as `checker.generated_proofs`, and `str(report)` says "proved by a checker whose generated proofs are unchecked" for the second | |
 | compiled checker | `partial def` on the evaluation path, IO, `Lean.Json` | `SubstraitLean/`, `SubstraitCheck.lean`, `Main.lean` | The compiled code runs what the definitions state; a `partial def` is opaque to proofs | |
-| CLI glue | `parse`, `schemaEnv`, `Report.json`, `runOn`, `serve`, `underProfile` | `SubstraitLean/ContractCheck.lean`, `SubstraitCheck.lean` | Reading the request and writing the answer; `underProfile` marks a request under an engine's profile pending (the reference's report, labelled `reference`) | Engine profiles of their own ([tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/271)) |
+| CLI glue | `parse`, `schemaEnv`, `Report.json`, `runOn`, `serve`, `underProfile` | `SubstraitLean/ContractCheck.lean`, `SubstraitCheck.lean` | Reading the request and writing the answer; `underProfile` marks a request under an engine's profile pending (the reference's report, labelled `reference`) | Engine profiles of their own ([tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/2545)) |
 | CLI glue | `"class_basis": "computed"`, `"sorted_basis": "computed"` | `SubstraitLean/Realize.lean` | The class and the sort per engine are computed from the rows; no theorem connects them to the engine's refinement | A theorem that does |
 | ε path | `"epsilon"`, `"rows_exact"`, `"margin_checks"` | `SubstraitLean/Epsilon.lean`, `core/Sverify/Core/MarginCheck.lean` | The [float bounds](float-bounds.md) and the threshold rule feed the per-engine verdict and the run-time checks; `check_proved_sound` covers the analysis without them | A second lemma that covers them |
 | Python glue | `verdict`, `_proof_cache`, `SVERIFY_CHECKER`, `Report.from_json` | `python/src/sverify/` | The one report of an answer; a cached answer for the same request and checker binary; a checker named by the environment or a plugin; a report read back from a file | |
@@ -262,7 +262,7 @@ Sverify's words claim no more than these theorems give
   `--serve` loop and `runOn` that call `check` and print its report, and
   `underProfile`, which marks a request under an engine's profile pending
   and returns the reference's report (an engine's own report waits for
-  [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)). On the Python side, the glue of
+  [#2545](https://github.com/AlexanderNenninger/substrait-lean/issues/2545)). On the Python side, the glue of
   incremental views (change tables, consolidation, merge, and the finish that
   turns the state back into the view's rows). The checker parses and writes
   each maintenance plan (`init`, `contrib`, `merge`, `regroup`, the finish and

@@ -91,15 +91,16 @@ V, R, X = "verified", "rejected", "upstream"
 #:   natively, within the plan's bound. FETCH and windows over a named table run
 #:   on Snowflake and Spark with ties open (`to_sql`'s `rows` follows the engine).
 #: * Spark has no TIME type before 4.1.
-#: New functions run on DuckDB only until the generated lowerings (#271).
+#: Functions the Polars and Spark writers do not run yet (#2540); Snowflake's
+#: profile is out of tree.
 DUCKDB_ONLY = {
-    "polars": "see #271",
-    "snowflake": "see #271",
-    "spark": "see #271",
+    "polars": "see #2540",
+    "snowflake": "Snowflake is out of tree",
+    "spark": "see #2540",
 }
-#: Windows with no ORDER BY, which Spark's and Snowflake's writers refuse (#271).
+#: Windows with no ORDER BY, which Spark's and Snowflake's writers refuse.
 NO_ORDER_BY = {"snowflake": "need an ORDER BY", "spark": "need an ORDER BY"}
 #: Snowflake has no lists yet; DuckDB, Polars and Spark have (#94).
-NO_LISTS_SNOWFLAKE = {"snowflake": "see #271"}
+NO_LISTS_SNOWFLAKE = {"snowflake": "Snowflake is out of tree"}
 #: Spark has no ordered `array_agg` (`collect_list` has no ORDER BY).
-NO_ORDERED_LISTS = {**NO_LISTS_SNOWFLAKE, "spark": "see #271"}
+NO_ORDERED_LISTS = {**NO_LISTS_SNOWFLAKE, "spark": "see #2540"}

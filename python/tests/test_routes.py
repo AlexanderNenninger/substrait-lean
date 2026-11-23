@@ -5,6 +5,8 @@ from __future__ import annotations
 import ibis
 import pyarrow as pa
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
@@ -152,7 +154,8 @@ def test_sequence_needs_a_total_sort(con) -> None:
     req = {"t": [_.i.between(-100, 100)]}
     seq = sv.equivalent(rows="sequence")
     unsorted = sv.verify(t.select("k", "i"), requires=req, ensures=[seq])
-    assert "not sorted" in routes.choose(unsorted, "duckdb").why
+    why = routes.choose(unsorted, "duckdb").why
+    assert "not sorted" in why and "order_by" in why and 'rows="multiset"' in why
     order = [ibis.asc("k", nulls_first=True), "i"]
     tied = sv.verify(t.select("k", "i").order_by(order), requires=req, ensures=[seq])
     assert not tied._sequence_determined
@@ -259,12 +262,11 @@ def test_installed_versions_are_the_probed_ones() -> None:
         assert installed in prof.versions or installed == UNPROBED.get(engine), engine
 
 
-def _verdict(cls="exact", evidence="proved", observed=(), shims=(), problems=(), **kw) -> dict:
+def _verdict(cls="exact", evidence="proved", shims=(), problems=(), **kw) -> dict:
     """A checker verdict on Polars (`"engines"`, `SubstraitLean/Realize.lean`)."""
     return {
         "class": cls,
         "evidence": evidence,
-        "observed": list(observed),
         "shims": list(shims),
         "problems": list(problems),
         "theorems": [],
@@ -274,16 +276,6 @@ def _verdict(cls="exact", evidence="proved", observed=(), shims=(), problems=(),
         "version": "",
         "transfer": {},
         **kw,
-    }
-
-
-def _observed(option: str, observation: dict, shim: str | None = None) -> dict:
-    return {
-        "group": "",
-        "option": option,
-        "observation": observation,
-        "shim": shim,
-        "facts": [f"polars-{option}"],
     }
 
 
@@ -354,35 +346,60 @@ def test_the_class_and_the_refusals_are_the_checker_s(con) -> None:
     assert r.refused and "gave no verdict on polars" in r.why
 
 
-def test_q_refinement_against_the_postcondition(con) -> None:
-    """D18's check: an engine equal to the reference up to `canon` meets a
-    postcondition that observes zeros only if it says `zeros="canon"`, or
-    through the row's shim."""
+def test_the_observation_problems_are_worded(con) -> None:
+    """The checker decides whether an engine's observation meets the postcondition's
+    (`Realize.lean`, #1071); the route words its problems as data, with the way out."""
     t = con.table("t")
-    exact = sv.verify(t.select("k"), ensures=[sv.equivalent(floats="plan")])
-    canon = sv.verify(t.select("k"), ensures=[sv.equivalent(zeros="canon")])
-    zeros = [_observed("zero_sign", {"zeros": "canon"})]
-    r = _on_polars(exact, cls="observed", observed=zeros)
+    report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats="plan")])
+    where = {"group": "", "option": "zero_sign", "facts": ["polars-zero_sign"]}
+    missed = {
+        "code": "observation_missed",
+        "components": ["zeros"],
+        "observed": {"zeros": "canon"},
+        **where,
+    }
+    r = _on_polars(report, cls="observed", problems=[missed])
     assert r.refused and "observes its zeros" in r.why and "sv.equivalent" in r.why
-    assert _on_polars(canon, cls="observed", observed=zeros).cls == "observed"
-    shimmed = [_observed("zero_sign", {"zeros": "canon"}, shim="canon")]
-    assert _on_polars(exact, cls="observed", observed=shimmed).cls == "shim"
-    # A tolerance: the engine's ε must be within the stated one.
-    tol = [_observed("sum_order", {"rows": "multiset", "floats": {"rel": 1e-12}})]
-    for report, ok in (
-        (sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-9))]), True),
-        (sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-15))]), False),
-        (exact, False),
-    ):
-        r = _on_polars(report, cls="observed", observed=tol)
-        assert (r.cls == "observed") is ok, r
+    bounds = [
+        {"kind": "abs", "value": 222.0, "proved": False},
+        {"kind": "rel", "value": 1e-10, "proved": False},
+    ]
+    tol = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-15, abs=1.0))])
+    not_met = {"code": "not_met", "column": "total", "bounds": bounds, **where}
+    r = _on_polars(tol, cls="observed", problems=[not_met])
+    assert r.refused and "total is within abs=222 (tested), rel=1e-10 (tested)" in r.why
+    held = {"code": "held", "column": "total", "condition": 0, "bounds": bounds, **where}
+    named = sv.verify(t.select("k"), ensures=[_.k > 0])
+    text = routes._problem("polars", held, named)
+    assert "reads total" in text and "sv.approx" in text
+    unbounded = {"code": "unbounded", "column": "total", "why": "a SUM", **where}
+    r = _on_polars(tol, cls="observed", problems=[unbounded])
+    assert r.refused and "total has no bound on its distance to the reference (a SUM)" in r.why
+
+
+def test_the_route_takes_the_realization_the_checker_gives(con) -> None:
+    """A verdict's `"realized"` is the class, evidence and observation the route takes (#1071)."""
+    t = con.table("t")
+    report = sv.verify(t.select("k"))
+    realized = {
+        "class": "observed",
+        "evidence": "tested",
+        "shims": [],
+        "problems": [],
+        "observation": {"floats": {"abs": 1e-6}},
+        "bound_proved": False,
+    }
+    report._engines = {"polars": _verdict(realized=realized)}
+    r = routes.choose(report, "polars")
+    assert (r.cls, r.evidence, r.bound_proved) == ("observed", "tested", False)
+    assert r.lenses is not None and r.lenses.floats == sv.within(abs=1e-6)
 
 
 def test_unsupported_functions_are_refused(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select(h=t.k.cast("string").hexdigest("md5")))
     r = routes.choose(report, "polars")
-    assert r.refused and r.cls == "refused" and "see #271" in r.why
+    assert r.refused and r.cls == "refused" and "see #2540" in r.why
 
 
 def test_inputs_are_checked_before_the_run(con) -> None:
@@ -396,69 +413,13 @@ def test_inputs_are_checked_before_the_run(con) -> None:
     report.run(con, "polars", check_requires=False)
 
 
-def _eps(why: str | None = None, **kinds: tuple[float, bool]) -> dict:
-    """A column's `ε` as the checker normalises it (`Realize.epsBounds`):
-    each kind's value and whether it is proved."""
-    bounds = {k: {"value": v, "proved": p} for k, (v, p) in kinds.items()}
-    return {"bounds": bounds, "unbounded": False, "why": why}
-
-
-def test_a_plan_dependent_float_bound(con) -> None:
-    """Polars's `sum_order`: `q` bounds the doubles per plan. The contract's
-    `ε` gives bounds that each hold on their own; a stated tolerance is met
-    by one no larger than its bound of the same kind (B1)."""
-    t = con.table("t")
-
-    def route(tolerance, epsilon):
-        report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=tolerance)])
-        report._epsilon = epsilon
-        plan = [_observed("sum_order", {"floats": {"bound": "plan"}})]
-        return _on_polars(report, cls="observed", observed=plan)
-
-    no_bound = {"bounds": {}, "unbounded": False, "why": None}
-    both = {"total": _eps(abs=(222.0, False), rel=(1e-10, False)), "k": no_bound}
-    assert route(sv.within(rel=1e-9), both).cls == "observed"
-    assert route(sv.within(abs=1e3), both).cls == "observed"
-    r = route(sv.within(rel=1e-15, abs=1.0), both)
-    assert r.refused and "total is within abs=222 (tested), rel=1e-10 (tested)" in r.why
-    assert "no per-plan bound" in route(sv.within(rel=1e-9), None).why
-    # A bound is proved only where Lean says so; otherwise the route rests
-    # on a test.
-    assert route(sv.within(rel=1e-9), both).evidence == "tested"
-    marked = {"total": _eps(abs=(222.0, True), rel=(1e-10, False))}
-    assert route(sv.within(rel=1e-9), marked).evidence == "tested"
-    assert route(sv.within(abs=1e3), marked).evidence == "proved"
-    assert route(sv.within(rel=1e-9), {"total": _eps(rel=(1e-10, True))}).evidence == "proved"
-
-
-def test_a_shim_does_not_lift_the_plans_bound(con) -> None:
-    """A row with a shim and a per-plan bound (DuckDB's VAR row, whose
-    `nan_through` handles NaN only) still refuses a tolerance its bound does
-    not meet: the census's `var-within-rel-cap`, `within(rel=1e-9)` against
-    abs = 1.78e-7."""
-    t = con.table("t")
-
-    def route(tolerance):
-        report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=tolerance)])
-        report._epsilon = {"v": _eps(abs=(1.77815e-07, True))}
-        plan = [_observed("stat_algo", {"floats": {"bound": "plan"}}, shim="nan_through")]
-        return _on_polars(report, cls="observed", observed=plan)
-
-    r = route(sv.within(rel=1e-9))
-    assert r.refused and "v is within abs=1.77815e-07" in r.why
-    assert route(sv.within(abs=1e-6)).cls == "observed"
-
-
 def test_rows_that_may_flip_under_the_bound_are_refused(con) -> None:
     """#568's threshold rule, as the checker applies it: where a filter, key
     or sort on a double may keep other rows on the engine than on the
     reference, the route is refused."""
     t = con.table("t")
     report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(abs=1e3))])
-    report._epsilon = {"total": _eps(abs=(222.0, True))}
-    plan = [_observed("sum_order", {"floats": {"bound": "plan"}})]
-    assert _on_polars(report, cls="observed", observed=plan).cls == "observed"
-    r = _on_polars(report, cls="refused", observed=plan, problems=[{"code": "threshold"}])
+    r = _on_polars(report, cls="refused", problems=[{"code": "threshold"}])
     assert r.refused and "may keep other rows or give other values on polars" in r.why
 
 
@@ -517,6 +478,46 @@ def test_a_sessions_own_version_decides() -> None:
 
     assert routes.session_version(Session()) == "4.3.1"
     assert routes.session_version("spark") is None
+
+
+@given(st.decimals(min_value=0, max_value=1000, allow_nan=False, allow_infinity=False, places=30))
+def test_a_printed_bound_rounds_up_to_the_least_double(d) -> None:
+    """`_up` gives the least double at or above the decimal the checker printed, so a
+    tolerance at or above it meets the bound exactly (ruling 274)."""
+    import math
+    from decimal import Decimal
+
+    text = str(d)
+    got = routes._up(routes.Printed(text))
+    assert Decimal(got) >= Decimal(text)
+    assert Decimal(math.nextafter(got, -math.inf)) < Decimal(text)
+
+
+@given(st.floats(min_value=0, max_value=1e300, allow_nan=False, allow_infinity=False))
+def test_a_double_printed_exactly_is_unchanged(x) -> None:
+    """A double printed as its exact value is its own least double above it. (`repr(x)` is
+    the shortest text that reads back as `x`, which may lie below `x`: it rounds up to
+    the next double then.)"""
+    import math
+    from decimal import Decimal
+
+    assert routes._up(routes.Printed(str(Decimal(x)))) == x
+    assert x <= routes._up(routes.Printed(repr(x))) <= math.nextafter(x, math.inf)
+
+
+def test_a_suggested_tolerance_meets_the_printed_bound(con) -> None:
+    """The tolerance a problem suggests is at or above the bound the checker printed,
+    also where the nearest double of that text lies below it (ruling 274)."""
+    import re
+    from decimal import Decimal
+
+    t = con.table("t")
+    report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-15))])
+    text = str(Decimal(2e-10) + Decimal("1e-30"))  # just above the double 2e-10
+    bound = {"kind": "rel", "value": routes.Printed(text), "proved": True}
+    p = {"code": "not_met", "column": "total", "group": "", "option": "o", "bounds": [bound]}
+    suggested = re.search(r"floats=sv\.within\(rel=([^)]*)\)", routes._problem("polars", p, report))
+    assert suggested and Decimal(float(suggested[1])) >= Decimal(text)
 
 
 def _unbounded_means():
