@@ -1684,7 +1684,7 @@ wheels = [
 
 [[package]]
 name = "sverify"
-version = "0.9.0.dev0"
+version = "0.9.0"
 source = { editable = "../python" }
 dependencies = [
     { name = "ibis-framework" },
@@ -1750,7 +1750,7 @@ docs = [{ name = "great-docs", specifier = ">=0.11.0" }]
 
 [[package]]
 name = "sverify-dbt"
-version = "0.9.0.dev0"
+version = "0.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
@@ -1791,7 +1791,7 @@ dev = [
 
 [[package]]
 name = "sverify-duckdb"
-version = "0.9.0.dev0"
+version = "0.9.0"
 source = { editable = "../engines/duckdb" }
 dependencies = [
     { name = "sverify" },

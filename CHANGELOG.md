@@ -1,5 +1,2759 @@
 # Changelog
 
+## 0.9.0 (2026-11-23)
+
+The last release before 1.0's candidate: the public API has one name for each concept, with no deprecated aliases, the exit codes run from the best to the worst, each engine is an extra of its own, and every format sverify writes is bumped once. "Breaking changes" collects what a job has to change, and the breaking entries follow it, before the others.
+
+### Breaking changes
+
+This list says what an upgrade from 0.8.0 changes in a job, and the breaking entries after it give each change with its migration note. 0.9.0 keeps no deprecated alias. A renamed or removed name raises `AttributeError`, `TypeError` or `ImportError`, and the formats Sverify reads back read their earlier versions too ([stability.md](docs/stability.md)).
+
+#### Install
+
+- `pip install sverify` installs no engine to run plans on, DuckDB included.
+  Add the engine you run: `sverify[duckdb]`, `sverify[polars]`,
+  `sverify[spark]`, or `sverify[all]`. `sv.verify`, the SQL dialects and
+  `report.to_sql` work without one.
+- Each engine package covers the minor release its facts were probed at:
+  `duckdb>=2.0.0,<2.1`, `polars>=2.1.0,<2.2`, `pyspark>=4.3.0,<4.4`. A run on
+  another patch of that minor warns (`EngineVersionWarning`); a run on
+  another minor raises `EngineVersionError`.
+- Python 3.12 or later.
+- `sverify-dbt` is released at the same version and pins `sverify==<version>`.
+
+#### Command line
+
+The exit codes run from the best to the worst, so the worst of several runs
+is their maximum. `sverify.cli.ExitCode` names them:
+
+| Outcome | 0.8.0 | 0.9.0 |
+|---|---|---|
+| proved | 0 | 0 |
+| not proved | 1 | 1 |
+| usage | 2 | 2 |
+| unsupported | 3 | 3 |
+| refused: no route to the engine | 3 (with unsupported) | 4 |
+| budget exceeded | 4 | 5 |
+| quarantined | 5 | 6 |
+| held | 5 (with quarantined) | 7 |
+| error | 6 | 8 |
+
+- `--json` and `--output-format` are removed: write `--format json`, or
+  `--format X`.
+- `sverify contract export` drops `--format odcs`.
+- `check --require-proved` exits 1 for a node whose postconditions are only
+  checked on the data.
+- `sverify check query.sql --schema schemas.yaml` checks a bare SQL file.
+
+#### Python names
+
+Old → new, with no alias. "One name for each concept in the public API" below has the
+complete list, and "Breaking: deprecated aliases are removed" and "The deprecated
+names are gone" the removals.
+
+| 0.8.0 | 0.9.0 |
+|---|---|
+| `Report.proved` | `Report.verdict`, a `sverify.Verdict` |
+| `sverify.types.Observation` | `sverify.types.Lenses` |
+| `sverify.types.CheckedCondition` | `sverify.types.Postcondition` |
+| `sverify.types.RefreshReport` | `sverify.types.BatchRefresh` |
+| `SqlError`, `OdcsContract`, `SqlFrontEnd` | `SQLError`, `ODCSContract`, `SQLFrontEnd` |
+| `Issue.hint_needs`, `Issue.suggested` | `Issue.suggested_requires`, `Issue.needs` |
+| `CheckedCondition.suggested` | `Postcondition.needs` |
+| `Route.kind`, `.reason`, `.facts`, `.proved_facts`, `.version` | `Route.taken`, `.why`, `.engine_facts`, `.theorem_facts`, `.probed_version` |
+| `Contract.profile`, `Stored.profile` | `semantics` |
+| `Stored.where`, `Stored.where_key` | `location`, `location_key` |
+| `SinkWrite.inserted`, `.deleted` | `inserts`, `deletes` |
+| `SourceBatch.trusted`, `.kind` | `assumes`, `mode` |
+| `RetentionReport.view` | `RetentionReport.node` |
+| `FlightSource(secret=)`, `FlightSource(token=)` | `FlightSource(credentials=)` |
+| `Upstream.why_unverified`, `Upstream.evidence` | `Upstream.why`, `Upstream.assertions` |
+| `sverify.engines.run(con, plan_json)` | `run(con, plan)` |
+| `sverify.from_substrait`, `substrait_export.recheck` | `sverify.Report.from_substrait` |
+| `sverify.Changes` | `sverify.io.Changes` |
+| `from sverify.contracts import unique, Report, ...` | `sverify` and `sverify.types` |
+| `sverify.io.FlightLog` | `sverify.testing.FlightLog` |
+| `Sink.committed()` | `Sink.contract(version=None)` |
+| `sverify.errors.Unsupported`, `NotIncremental` | `UnsupportedError`, `NotIncrementalError` |
+| `Connection.arrow`, `Connection.ibis` | `con.get`, `con.rows`, `con.put`; `con.table(name).get_backend()` |
+| `.last_report` | `.report` |
+| `deterministic=` | `reproducible=sv.equivalent()` |
+| `run_sharded(float_order="any")` | `run_sharded(reproducible=sv.equivalent(floats="plan"))` |
+| `sv.sql(query, as_=)` | `sv.sql(query, name=)` |
+| `arrives_within(col, days=, ...)` | `arrives_within(col, within)` |
+| `rows_per(["a", "b"], 3)` | `rows_per("a", "b", at_most=3)` |
+| `SVERIFY_CHECK`, `SVERIFY_PREBUILT_CHECK`, `SVERIFY_SPILL_DIRECTORY` | `SVERIFY_CHECKER`, `SVERIFY_PREBUILT_CHECKER`, `SVERIFY_TEMP_DIRECTORY` |
+
+`bool(report.verdict)` raises `TypeError`: compare with the verdict you
+expect. `SinkChange` takes keywords, and
+`RefreshReport.diffed` is a dict of node to reason.
+
+#### Defaults that changed
+
+- Checks on data run the proved plan on the engine of the table's
+  connection, where they went through Ibis. A condition outside the model
+  now raises `UnsupportedError`. Sverify's own DuckDB connections, those of
+  `sv.connect()` among them, run at the time zone UTC.
+- `Report.run` runs the rewritten plan where one of seven proved rewrites
+  applies and the preconditions were checked on the data;
+  `run(optimize=False)` keeps the plan as written.
+- The default observation reads `-0.0` and `0.0` as one value, every NaN as
+  one, and a list's elements as a multiset; `elements="sequence"` observes
+  their order.
+- `Report.run` compares each table it reads with the schema the plan was
+  verified for, and refuses a mismatch before a row is read.
+- Under `semantics="reference"`, DuckDB SQL's `CAST(x AS <integer>)` of a
+  double or a decimal is refused, since DuckDB rounds where the reference
+  truncated: write `CAST(round(x) AS BIGINT)`, `floor` or `ceil`.
+- A Polars or Spark run no longer runs the plan on DuckDB first, and
+  `requires` are checked on the run's own engine.
+
+#### Formats
+
+Each changed format is bumped once. Sverify reads the earlier versions of
+the formats it reads back ([stability.md, The formats](docs/stability.md#the-formats)).
+
+| Format | 0.8.0 | 0.9.0 | What changed |
+|---|---|---|---|
+| Report JSON | 2 | 5 | `verdict`; `lenses`; a route's keys renamed as in the Python API |
+| Sink contract record | 2 | 3 | `profile` is `semantics` |
+| Substrait export manifest | 2 | 3 | follows `Report.lenses` |
+| OpenLineage facet `sverify_contract` | 1 | 3 | follows `Report.lenses`; a route's `kind` is `taken` |
+| Command line JSON | 1 | 2 | a write's `inserts` and `deletes`; a fix's `why` |
+| Refresh report JSON | 1 | 2 | as the command line's |
+| Quarantine record | 1 | 1 | unchanged |
+
+A job that reads the command line's or the refresh report's JSON reads the
+new keys.
+
+#### sverify-dbt
+
+- `sverify-dbt check --format json` prints the envelope of
+  `sverify check --format json`; its models are `items`.
+- It exits as `sverify check` does, and its `--fail-on` levels nest:
+  `contract`, `unproved`, `refused`.
+- Statuses are snake_case (`"not_proved"`, `"not_checked"`),
+  `sverify_dbt.Needed` is `NeededTest`, and `CheckResult.proved` is
+  `proved_tests`.
+
+
+### Breaking: the default observation reads one zero and list elements as a multiset
+
+Where `ensures` names no observation (`Report.lenses`, a sink's `reproducible`), `-0.0` now equals `0.0` and every NaN equals every other (`zeros="canon"`), and the order of a list's elements is not observed (`elements="multiset"`), as the order of rows is not ([#1285](https://github.com/AlexanderNenninger/substrait-lean/issues/1285), [the default observation](docs/core-semantics.md#the-default-observation)). Engines then run a plan as written where only the sign of a zero differs, with no zero-sign shim (`DuckDB`'s `round(-0.4)` may return `-0.0`); a contract that observes the signs (`sv.equivalent(floats="plan")` names zeros exact) keeps the shim. The order of elements counts with `elements="sequence"`; an `ORDER BY` inside the aggregate is what makes it determined there, and it does not raise the level. Every list is read as a multiset under the default, also one whose order the plan fixes (a literal, a sorted list, a split). `Report.observation` and its JSON (`equivalence`) show the new levels, so a report stored before reads as the new default where it carried none. A contract that names `sv.equivalent(...)` keeps every component it does not name exact, as before. The checker reads `elements="multiset"` for `Report.deterministic` in a follow-up: until then an unordered `collect` still reports a tie place. An unordered `string_agg` is one at every observation, since its value is a string.
+
+### Breaking for raw SQL: an integer cast of a double under the default semantics
+
+Under the default semantics (`"portable"`), `CAST(x AS <integer>)` of a double in DuckDB SQL is refused by the lift ([D54](docs/decisions.md#d54-the-lift-refines-the-dialect), #1484), where it truncated and DuckDB rounds half to even. Write `CAST(round(x) AS BIGINT)`, `CAST(floor(x) AS BIGINT)` or `CAST(ceil(x) AS BIGINT)`, which mean the same on both; the error names them. A decimal's cast lifts as DuckDB rounds it, half away from zero (#322). The Ibis frontend's cast still truncates (R9).
+
+`Report.dialect_differences` lists where the reference reads a DuckDB SQL text differently from DuckDB on a value and the lift does not refuse it: `corr` of one pair or of a side whose values are all equal (NULL here, NaN on DuckDB). Each entry has the construct, where it is, both readings, an example and the spellings that mean the same. `str(report)` prints them as notes, `to_json` carries them, and the verdict is unchanged. The list is empty under `semantics="duckdb"` and for an Ibis transformation.
+
+### `Report.verdict` replaces `Report.proved` (breaking)
+
+`Report.proved`, a boolean, is removed with no alias. `Report.verdict` is a `sverify.Verdict`: `proved` (every postcondition holds and no run raises), `proved_with_checks` (the same, but a run stops where a check of `Report.assumed` fails on the data) or `unproved`. `bool(report.verdict)` raises `TypeError`, so `assert report.verdict` cannot pass on `unproved`; compare with the value you expect. `Report.run` and `on_unproved` treat both proved values as the old `proved`. `Postcondition.proved` stays a boolean. The report's JSON holds the value in `verdict` (format 2 held the first line of `str(report)`, which `summary` holds now), and `proved` stays, derived from `verdict`, until 2.0. The report's JSON is format 5 in this release, and `Report.from_json` reads formats 2 to 4. sverify-dbt's `CheckResult.proved` (a list) is renamed `proved_tests` for one name per concept ([#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484), finding 6).
+
+### Breaking: `Sink.keeps_retired` is a plain class attribute (#2081)
+
+`keeps_retired` is the one name a custom sink sets to say it keeps the rows a
+view retires (`keeps_retired = True`). The deprecated property that read the
+internal `_keeps_retired` is removed; nothing changes for a sink that already
+sets `keeps_retired`.
+
+### `semantics="portable"`, and lenses in the report's words
+
+Breaking. The semantics every engine reaches is called `"portable"`:
+`sv.verify(..., semantics="portable")` is the default, `Report.semantics`
+and a route's `profile` say `"portable"`, and `sv.sql(..., semantics=...)`
+takes `"duckdb"` or `"portable"`. `"reference"` is refused, with the list of
+names `verify` takes. The reference profile keeps its name in the theory
+(`Profile.reference`, `docs/core-semantics.md`). The SQL lift's profile
+constant `sverify.sql_lift.REFERENCE` is `PORTABLE`.
+
+Reports, Substrait manifests and sinks' contract records written before
+1.0 say `"reference"`, and read as `"portable"`: a sink resumes, and its
+plan's digest is unchanged ([docs/stability.md](docs/stability.md)).
+
+Messages say "lenses" where they said "the observation": "no engine
+meets the lenses' tolerance", "depends on floats, which the lenses ignore".
+([#2081](https://github.com/AlexanderNenninger/substrait-lean/issues/2081),
+[#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288))
+
+### Breaking: deprecated aliases are removed (#2081, #1288)
+
+A name that warned with a `DeprecationWarning` since 0.x is gone, and the old
+form raises. `docs/stability.md` states the 1.0 policy: a renamed or removed
+name is not kept as an alias.
+
+| Removed | Write instead |
+| --- | --- |
+| `sverify.Changes` | `sverify.io.Changes` |
+| `sverify.from_substrait(...)` | `sverify.Report.from_substrait(...)` |
+| `sverify.io.FlightLog` | `sverify.testing.FlightLog` |
+| `Sink.committed()`, and a sink that overrides it | `Sink.contract(version=None)`; override `contract` |
+| `Sink.view`, `SinkChange.native` | none: they were internal |
+| `IcebergSink.create_options_ignored` | none: it was internal |
+| `DeltaSink.maintain(vacuum=)` | `maintain(vacuum_retention=)` |
+| `IcebergSink.maintain(expire=)` | `maintain(snapshot_retention=)` |
+| `FlightSource(token=)` | `FlightSource(credentials=...)` |
+| `run_sharded(float_order="any")` | `run_sharded(reproducible=sv.equivalent(floats="plan"))` |
+| `sv.sql(query, as_=...)` | `sv.sql(query, name=...)` |
+| `arrives_within(col, days=, hours=, minutes=, seconds=)` | `arrives_within(col, within)`, a `timedelta` or ISO 8601 duration |
+| `rows_per(["a", "b"], 3)` | `rows_per("a", "b", at_most=3)` |
+| `SVERIFY_PREBUILT_CHECK` | `SVERIFY_PREBUILT_CHECKER` |
+
+The remaining aliases (`errors.Unsupported`, `Connection.arrow`, the
+environment variables of the checker and the spill directory, and others) are
+removed too, in "The deprecated names are gone".
+
+### Composite foreign keys
+
+`sv.references` takes several columns, as `sv.key` does:
+`sv.references("street", "zip", to=[addresses.street, addresses.zip])`, or
+`to=("addresses", ["street", "zip"])`. A row whose parts are all non-NULL
+must match one row of the referenced table on every part (SQL's MATCH
+SIMPLE). The data check, `sv.testing.cases`, the Substrait export and the
+ODCS export and read handle it, and `odcs.read` now reads composite
+relationships ([#2223](https://github.com/AlexanderNenninger/substrait-lean/issues/2223)).
+
+A pair of columns that do not compare is refused at `verify`, for one column too.
+
+Breaking: `References` has the fields `cols`, `table` and `others` (tuples),
+in place of `col` and `other`. A report exported before this change reads back
+only once exported again.
+
+### Checks on data run the proved plan by default (breaking)
+
+A check of `requires` on bound inputs, of `on_unproved="check"` on an output, of a batch at a refresh and of `Report.check_inputs` now runs each condition's plan, as the checker wrote it, on the engine of the table's `sverify.connect()` connection when no engine is named (`check_engine=None`), where it went through Ibis ([F219](docs/ledger.md#f219), [#2342](https://github.com/AlexanderNenninger/substrait-lean/issues/2342)). The count then has the reference's meaning on every engine. A condition outside the Lean model, which Ibis evaluated before, now raises `UnsupportedError` with the reason: write it in the subset `verify` reads. A table of another Ibis backend is still checked by Ibis there.
+
+sverify's own DuckDB connections use the time zone UTC, so an instant (a UTC-zoned timestamp) comes back zoned UTC on a host in another zone. It used to come back in the host's zone, which the written plans refuse. A connection from `sv.connect()` is one of them: raw SQL run on it now runs at the time zone UTC, which shows where a `TIMESTAMPTZ` becomes text or a calendar value. Your own DuckDB connections keep theirs.
+
+### `RefreshReport` is `BatchRefresh`, and `SinkChange` takes keywords (breaking)
+
+`sverify.types.RefreshReport`, what one batch did to a node's state (`StageRefresh.report`), is renamed `BatchRefresh`, beside `Refresh`, `StageRefresh` and `SourceRefresh`, with no alias: `Report` names a verification only. `SinkChange` takes its arguments by keyword, like the other result types; a custom sink reads one and never builds it, so only a test that builds one changes (`SinkChange(view=..., contract=..., schema=..., change=...)`). `docs/stability.md` says that `sv.connect()` returns a `sverify.engines.Connection`, and the engines guide pairs `semantics=` with `engine=` ([#2343](https://github.com/AlexanderNenninger/substrait-lean/issues/2343)).
+
+### `Report.from_substrait` is the one way to read a stored plan back (breaking)
+
+`sverify.substrait_export.recheck` and `sverify.substrait_export.from_substrait` are removed with no alias: `sv.Report.from_substrait(data)` reads an export and proves its contract again, as before ([#2344](https://github.com/AlexanderNenninger/substrait-lean/issues/2344)).
+
+### One name for each concept in the public API (breaking)
+
+The 1.0 naming sweep ([#2345](https://github.com/AlexanderNenninger/substrait-lean/issues/2345), ruling 263) gives each concept one name across the Python API, the formats and the command line. No old name stays as an alias: each raises `AttributeError`, `TypeError` or `ImportError`, or is a key a reader of the new format maps. A `reason` is a code and `why` is words, in the Python API and the JSON sverify writes per run; a stored table's columns and record keys keep their names, so the quarantine table's `_reason` and its record's `reason` stay (`docs/stability.md`, ruling 264).
+
+Python names, old → new:
+
+- `sverify.types.Observation` → `sverify.types.Lenses`, as `Report.lenses` names it.
+- `sverify.types.CheckedCondition` (the items of `Report.ensures`) → `sverify.types.Postcondition`: "check" reads data (F219).
+- `sverify.errors.SqlError` → `SQLError`, `sverify.odcs.OdcsContract` → `ODCSContract` and `sverify.profiles.SqlFrontEnd` → `SQLFrontEnd`: an acronym is capitals in a public name, as in `SQLStep`.
+- `Issue.hint_needs` → `Issue.suggested_requires`, as `Report.suggested_requires`.
+- `Route.kind` → `Route.taken`; `Route.reason` → `Route.why`; `Route.facts` → `Route.engine_facts`; `Route.proved_facts` → `Route.theorem_facts`; `Route.version` → `Route.probed_version`, beside `Route.unprobed_version`.
+- `sverify.io.Contract.profile` and `Stored.profile` → `semantics`, as `Report.semantics`.
+- `Stored.where` and `Stored.where_key` → `location` and `location_key`, as `Sink(location=)`.
+- `SinkWrite.inserted` and `SinkWrite.deleted` → `inserts` and `deletes`, as `SourceRefresh`.
+- `SourceBatch.trusted` → `assumes`, as `Source(assumes=)`, and `SourceBatch.kind` → `mode`, as `SourceRefresh.mode`; `SourceBatch.from_changes(trusted=, kind=)` → `(assumes=, mode=)`, and `SourceBatch.from_snapshot(reason=)` → `(why=)`.
+- `RetentionReport.view` → `RetentionReport.node`.
+- `FlightSource(secret=)` → `FlightSource(credentials=)`, as every other source. The token is now named in the refresh's `credentials`, as every source's are.
+- `sverify.odcs.Unread.reason` → `Unread.why`.
+- `sverify.openlineage.Upstream.why_unverified` → `Upstream.why`, and `Upstream.evidence` → `Upstream.assertions`.
+- `sverify.engines.run(con, plan_json, ...)` → `run(con, plan, ...)`, as `run_sharded(plan, ...)`.
+- `Postcondition.checker_ignores`, `Report.check_asof_pairs` and `Report.check_margins` are internal now: `Postcondition.ignores` is the public view, and `Report.run` calls the other two.
+
+Formats, each bumped once; the two that sverify reads back, the report and the sink record, are read in their earlier formats too:
+
+- The report's JSON is format 5. A route's keys `kind`, `reason`, `facts`, `version` and `proved_facts` are `taken`, `why`, `engine_facts`, `probed_version` and `theorem_facts`. `Report.from_json` reads formats 2 to 4.
+- The sink's contract record is format 3. Its key `profile` is `semantics`. `Contract.from_json` reads formats 1 and 2.
+- The OpenLineage facet `sverify_contract` is format 3. Its route's `kind` is `taken`, as in the report JSON; its `_schemaURL` is `…/schemas/openlineage-contract-facet/3.json`.
+- The command line's JSON is format 2, and the refresh report's JSON (`Refresh.to_json`) is format 2. A write's `inserted` and `deleted` are `inserts` and `deletes`, and in the command line's JSON a fix's `reason` (`check --fix`, `--diff`) is `why`. The refresh report's `$schema` is `…/schemas/refresh/2.json`. Jobs that read these documents read the new keys.
+
+Command line: `--json` is removed. Write `--format json`. `sverify-dbt check --format json` writes format 2 of the same document.
+
+Messages follow the names. A refresh that finds the stored state verified under other semantics says "the plan was verified under semantics='duckdb', and is now under semantics='portable'", and `sverify check --against-sink` says "(semantics='portable' then, 'duckdb' now)". A retention line names the node.
+
+### `sverify.contracts` re-exports nothing (breaking for its imports)
+
+`sverify.contracts` is internal, and it no longer re-exports the 40 names it took from `sverify.conditions` and `sverify.report`. An import such as `from sverify.contracts import unique, Report` raises `ImportError`. Import from the public modules: `sverify` (`sv.unique`, `sv.max_rows`, `sv.references`, `sv.rows_per`, `sv.arrives_within`, `sv.approx`, `sv.Report`) and `sverify.types` (the condition and report types, such as `Unique`, `Needed`, `Issue`). `docs/stability.md` lists the public modules ([#2410](https://github.com/AlexanderNenninger/substrait-lean/pull/2410), [#2081](https://github.com/AlexanderNenninger/substrait-lean/issues/2081)).
+
+### Breaking: exit codes run from the best to the worst (#2458)
+
+`sverify check`, `refresh` and `explain` (and the `exit` of their JSON) number
+their exit codes by severity, so the worst of several runs is their maximum.
+`sverify.cli.ExitCode` names them, and `sverify-dbt` and the pipeline
+template's `lake.py` read it.
+
+| Outcome | 0.8.0 | Now |
+|---|---|---|
+| proved | 0 | 0 |
+| not proved | 1 | 1 |
+| usage | 2 | 2 |
+| unsupported | 3 | 3 |
+| refused (no route to the engine) | 3 (with unsupported) | 4 |
+| budget exceeded | 4 | 5 |
+| quarantined | 5 | 6 |
+| held | 5 (with quarantined) | 7 |
+| error | 6 | 8 |
+
+### Status names each node's mode and why it recomputes (breaking: `RefreshReport.diffed`)
+
+`Status` and the refresh report name how each node is maintained: "delta rules", "state per group", "touched groups", "touched frames" or "recompute and diff". A node that is recomputed and diffed says which operator causes it, in `NodeStatus.recomputed` and in the refresh summary. `RefreshReport.diffed` changes from a list of view names to a dict of view to reason: indexing and `.append` no longer work, iteration, truthiness and `len` do (#742).
+
+### Breaking: two more exit codes; `check --require-proved`; relaxations in the JSON (#881 S1, S2, 1.3)
+
+- `sverify` exits 3 only for a construct outside the model. A proved node with
+  no route to the engine (`refresh`) exits 4, `status` `"refused"`. A refresh
+  that held a node exits 7, `status` `"held"`; 6 is for rows quarantined.
+  `cli.schema.json` allows `exit` up to 8, and the codes run from the best to the
+  worst (#2458).
+- `sverify check --require-proved` exits 1 for a node whose unproved
+  postconditions are only checked on the data (`on_unproved="check"`), with a
+  `checked_only` finding that `sverify explain` describes. The pipeline
+  template's check workflow passes it.
+- Each item of the JSON has `relaxations`, the settings of its transform that
+  weaken the gate (`on_unproved="check"`, `on_inferred="ignore"`, `"off"` or
+  `"warn"`, `check_requires=False`), for a CI step to diff between base and head.
+- A report's text for an assumed-finite operation says the plan raises and
+  commits nothing on overflow, where it said the data is refused before the run.
+- `docs/stability.md` says what the promise covers of the checker binary.
+
+### Breaking: `--output-format` removed (#881 S5)
+
+`sverify` and `sverify-dbt check` take `--format`. Replace
+`--output-format X` with `--format X`. `sverify` no longer takes `--json`
+("One name for each concept in the public API"); `sverify-dbt check` still does.
+
+### `Report.needs` is the one name; result and IO dataclasses are keyword-only
+
+Breaking. `Report.needed`, `Report.needed_text` and `Report.needed_conditions`
+are removed: read `Report.needs` (`Needed.label`, `.text`, `.condition`). The
+old names of `Report`'s internal fields (`depends`, `epsilon`, `transfer` and
+the 28 others) and `Report.plan` (`Report.internal_plan`) no longer read with
+a `DeprecationWarning`; 1.0 keeps no alias
+([#2081](https://github.com/AlexanderNenninger/substrait-lean/issues/2081)).
+
+`Report`, `Contract`, `Batch`, `Snapshot`, `SourceBatch` and `SinkWrite` take
+keyword arguments only, so a field added in 1.x breaks no caller. sverify
+builds `Report` and `Contract`; a source or sink of your own builds the other
+four, by keyword: `Batch(table=rows, cursor=n)`.
+
+`sverify.odcs.UnreadRuleWarning` and `sverify.openlineage.LineageWarning`
+derive from `SverifyWarning`, so `warnings.simplefilter("error",
+SverifyWarning)` covers every warning sverify gives.
+
+A precondition checked on data with `check_engine=` counts the rows that
+break it inside the engine: 8 ms on 5 million rows on DuckDB, where it took
+187 ms
+([#881](https://github.com/AlexanderNenninger/substrait-lean/issues/881)).
+
+### One verb for proving, and the plan layer in a module of its own
+
+Breaking.
+
+- `ContractedTransform.check(...)` is `ContractedTransform.verify(...)`: "verify"
+  proves (`sv.verify`, `.verify`), and "check" reads data (`check_requires`,
+  `Report.check_inputs`, `proved_with_checks`). The commands keep their names:
+  `sverify check` and `sverify-dbt check` verify a project.
+- `on_unproved="runtime"` is refused; write `on_unproved="check"`.
+- The plan layer moved to `sverify.engines.plan`, outside the 1.x promise:
+  `to_sql`, `substrait_json`, `written_plan` and `delta_plans`. Import them
+  from there; `sverify.engines` no longer has them. `sverify.engines.create_table`
+  and `table_rows` are gone (`con.create`, `con.rows`), and so is
+  `sverify.engines.Unsupported` (`UnsupportedError`).
+- `sverify.errors` says which exceptions keep a built-in base, and the bases
+  are fixed for 1.x.
+- `sverify check --fix` and `--diff` say that the preconditions they write
+  narrow the input each node accepts.
+
+([#881](https://github.com/AlexanderNenninger/substrait-lean/issues/881))
+
+### Breaking: sverify-dbt prints sverify's JSON document, and takes only sverify's public API
+
+`sverify-dbt check --format json` prints the envelope of `sverify check --format json` (`format`, `sverify`, `command`, `exit`, `status`, `items`, `findings`, `error`), with the dbt version and adapter beside it. The models are now `items`, no longer `models`: a script reading `.models` must read `.items`. Each model is an item (`status` `refused` for a model sverify cannot read, added to the schema) and each unproved test a finding with sverify's code, which `sverify explain` takes. A failed check prints the envelope with its `error` as well. sverify-dbt catches `UnsupportedError` for a refusal instead of every `ValueError`, and a test lists the few names it still takes outside the public API ([#891](https://github.com/AlexanderNenninger/substrait-lean/issues/891)).
+
+### sverify-dbt's result types take keywords and say statuses in snake_case (breaking)
+
+Before 1.0 freezes them ([#891](https://github.com/AlexanderNenninger/substrait-lean/issues/891) 2.6), sverify-dbt's result types match sverify's. No old name stays as an alias.
+
+- A test's or constraint's `status` is `"pending"`, `"proved"`, `"not_proved"` or `"not_checked"` (`sverify_dbt.result.Status`), where it was `"not proved"` and `"not checked"`. This holds in `TestResult.status`, `ModelResult.by_status(...)` and the tests of each item in `sverify-dbt check --format json`. The text report keeps its words.
+- `sverify_dbt.Needed` is `NeededTest`, since `sverify.types.Needed` is another class, and its `because` is `why`.
+- `Suggestion.because` (from `CheckResult.suggestions()`) is `Suggestion.why`, a `list[str]`.
+- `TestResult`, `NeededTest`, `ContractIssue`, `ModelResult`, `CheckResult` and `Suggestion` take keyword arguments only.
+- `CheckResult.tests` and `CheckResult.relations`, the manifest's nodes, are internal (`_tests`, `_relations`).
+
+### A postcondition that reads an unbounded double is refused with its exit
+
+A route to an engine ran a postcondition that read a double with no bound on its distance to the reference (a mean or `SUM` without a row cap) while refusing the same postcondition on a double with a bound, so `avg <= 100` ran uncapped and was refused with `sv.max_rows(1000)`. The checker's engine-robustness now keeps only the sign of such a column, and the route refuses what reads more, naming `sv.approx(...)` and the row cap. What reads only the sign (`_.total >= 0`) runs as before ([#1045](https://github.com/AlexanderNenninger/substrait-lean/issues/1045)).
+
+### Routes, profiles and typed values in the tour
+
+An explicit `route=` that does not apply now names how to reach the engine: verify under `semantics="reference"`, or pass `route="auto"` ([#1046](https://github.com/AlexanderNenninger/substrait-lean/issues/1046)). The tour shows `semantics="polars"` and the refusal ([chapter 5](notebooks/05_pipelines_and_engines.py)) and a decimal's scale and an unsigned column's refusal ([chapter 4](notebooks/04_contracts.py), [#1050](https://github.com/AlexanderNenninger/substrait-lean/issues/1050)). `docs/proofs.md` names the theorem each route and class rests on.
+
+### A tour chapter on engines
+
+The tour has a seventh notebook, [Engines](notebooks/07_engines.py): one proved plan runs on DuckDB, Polars and Spark, its routes are read, the plan is written as Spark SQL, and two refusals are followed to their exits ([#1047](https://github.com/AlexanderNenninger/substrait-lean/issues/1047)).
+
+### Two more refusals name their exit
+
+A Delta sink whose table has constraints the view does not guarantee says to add them to the view's `ensures` or drop them from the table; an incremental view over preconditions that were not proved says to state them in the `ensures` of the transformation that produces those inputs
+([#1048](https://github.com/AlexanderNenninger/substrait-lean/issues/1048), [#1051](https://github.com/AlexanderNenninger/substrait-lean/issues/1051)).
+
+### Contracts, export and sinks in the tour
+
+Chapter 4 shows `sv.rows_per` beside `sv.max_rows` ([#1057](https://github.com/AlexanderNenninger/substrait-lean/issues/1057)), chapter 5 stores a sum of doubles under exact bits and under a tolerance ([#1048](https://github.com/AlexanderNenninger/substrait-lean/issues/1048)), and `docs/getting-started.md` says what the Substrait export rests on ([#1053](https://github.com/AlexanderNenninger/substrait-lean/issues/1053)). `docs/teaching.md` lists each answer.
+
+### A tour chapter on sverify-dbt
+
+The tour has an eighth notebook, [Your dbt project](notebooks/08_dbt.py): a small dbt project is compiled and checked with `sverify_dbt.check`, a test it cannot prove is read through its counterexample and fixed in the model, the proved tests go into a selector for `dbt build`, and two refusals are followed to their exits. The published notebooks pin `sverify-dbt` to the release with `sverify` ([#1055](https://github.com/AlexanderNenninger/substrait-lean/issues/1055)).
+
+### Refusals of data and composition name their exit
+
+A composition that fails now ends with "state it in the producer's `ensures`, or set `on_unproved="check"`"; data that breaks a key, a row cap or a stated precondition names `on_violation="quarantine"` or `"hold"`; the CLI's time-budget message names `--timeout` and `SVERIFY_TIMEOUT`
+([#1056](https://github.com/AlexanderNenninger/substrait-lean/issues/1056), [#1057](https://github.com/AlexanderNenninger/substrait-lean/issues/1057)).
+
+### One place decides "proved"
+
+`Report` alone combines a report's fields into "proved"; the CLI's status of a
+discovered transform and the Substrait export now call it. The trusted-base
+page lists that decision and every read after it, and a test fails where
+another module starts deciding for itself
+([#1088](https://github.com/AlexanderNenninger/substrait-lean/issues/1088)).
+
+### How this project is built
+
+`docs/how-this-is-built.md` says who writes and checks the project, what you can check without trusting anyone, where a person's judgement enters, how a change lands and how to disagree. The READMEs link it ([#1089](https://github.com/AlexanderNenninger/substrait-lean/issues/1089)).
+
+### Upstream report lists what is filed and fixed
+
+`upstream/REPORT.md` has a "Filed and fixed" table with each thread's link, the release that fixes it and how sverify handles it, the README links it, and CI warns when an open upstream thread has gone 90 days without a check ([#1091](https://github.com/AlexanderNenninger/substrait-lean/issues/1091)).
+
+### Theorem cards for the three engine soundness theorems
+
+`docs/theorems/duckdb_sound.md`, `polars_sound.md` and `spark_sound.md` say what each engine theorem assumes and leaves out, with examples whose routes and theorem names `test_readme.py` pins ([#1094](https://github.com/AlexanderNenninger/substrait-lean/issues/1094)).
+
+### Theorem cards for `floatSumCR_mem`, `floatAvgCR_mem` and `comomentNum_nonneg`
+
+The last cards of [#1094](https://github.com/AlexanderNenninger/substrait-lean/issues/1094): the bounds of a `SUM` and an `AVG` of doubles and the non-negative variance numerator, with examples whose verdicts `test_readme.py` pins. Every top-level theorem the issue lists has a card.
+
+### Theorem card for `Rel.keys_sound`
+
+`docs/theorems/keys_sound.md` says what a derived key means, what it assumes and what it leaves out, with three examples whose verdicts `test_readme.py` pins. `dbt/README.md` links it with `contract_sound` ([#1094](https://github.com/AlexanderNenninger/substrait-lean/issues/1094)).
+
+### Theorem cards for `Rel.AllowedP_mono`, `Rel.refines_of_perm` and `Rel.optimize_refines`
+
+Three more cards in `docs/theorems/`, each with an example whose verdict, route or rows `test_readme.py` pins ([#1094](https://github.com/AlexanderNenninger/substrait-lean/issues/1094)).
+
+### Theorem cards for the refresh protocol
+
+`docs/theorems/` has cards for `Refresh.no_corruption`, `Refresh.record_describes_table`, `Refresh.read_is_head`, `Refresh.monotone` and `Refresh.quiet`. They say what each assumes and leaves out; the first two have a Delta example whose summaries `test_readme.py` pins: a resumed refresh, a merge, and a replace after another application wrote the sink ([#1094](https://github.com/AlexanderNenninger/substrait-lean/issues/1094)).
+
+### Theorem cards
+
+`docs/theorems/` has a page for each theorem of the contract family (`contract_sound`, `contract_sound_all`, `contract_sound_allowed`, `contract_sound_allowed_closed`): what it says, what it assumes, the Lean statement line by line, what it rules out and doesn't cover, and an example that runs in CI ([#1094](https://github.com/AlexanderNenninger/substrait-lean/issues/1094)).
+
+### `AND` and `OR` guard the next operand (D50)
+
+`WHERE qty <> 0 AND total / qty > 1` is now proved: the SQL and Ibis frontends
+lift an `AND` or `OR` over a raising operand so the operand runs only where the
+earlier ones do not decide the result. `semantics="duckdb"` keeps DuckDB's
+eager reading.
+
+### A run records the engine settings it was checked under
+
+Each route now carries the engine settings its profile assumes, as read from the session the run uses (`Route.settings`, and `settings` in the report JSON), so a run's record says what it ran under. The Spark session sverify starts is read back against `SPARK_CONF` before it runs anything, and refused with `EngineSettingsError` where a setting did not take, as when Spark hands back a session the process already had. A test now holds that an engine that raises commits nothing to a Delta, Iceberg or custom sink ([#1130](https://github.com/AlexanderNenninger/substrait-lean/issues/1130)).
+
+### DuckDB's Lean half, a Lake package of its own
+
+DuckDB's functions under its settings, the SQL printer's model and its
+soundness, the black boxes and the casts from VARCHAR, its choice table and
+the lowering's lemmas move into `engines/duckdb/`, the Lake package
+`sverify-duckdb` with modules `Sverify.DuckDB.*`, beside its Python
+distribution ([#1189](https://github.com/AlexanderNenninger/substrait-lean/issues/1189)).
+It builds on the core, the analysis and engines-common alone, and CI checks
+that it does. The generated lowering, `Engine.duckdb` and the lift stay in
+the root package until the generators move. No theorem changed.
+
+### DuckDB's lowering joins its Lean package
+
+The lowering generator (`generate_lowering`, `Sverify.Engines.LoweringSearch`)
+moves into engines-common, and DuckDB's lowering, its generated entries, its
+cache and `Engine.duckdb` into `sverify-duckdb`
+([#1189](https://github.com/AlexanderNenninger/substrait-lean/issues/1189)).
+The package reads `check_generated` itself, and the root passes its own
+setting on. The lift stays in the root package until its parser has a
+package. No theorem changed.
+
+### The frontend, a Lean package of its own
+
+The Substrait JSON parser (`Parse`) and the builders of Substrait's JSON
+(`SubstraitJson`) move into `frontend/`, the Lake package `sverify-frontend`
+with modules `Sverify.Frontend.*`, which builds on the core and the analysis
+alone ([#1189](https://github.com/AlexanderNenninger/substrait-lean/issues/1189)).
+The lift from DuckDB's SQL (its generator, hints, cache and generated
+entries) joins `sverify-duckdb`, which imports the frontend. DuckDB's Lean
+half is now all in its package. No theorem changed.
+
+### Polars's Lean half, a Lake package of its own
+
+Polars's table, shims, profile and `Engine` value move into
+`engines/polars/`, the Lake package `sverify-polars` with modules
+`Sverify.Polars.*`, beside its Python distribution
+([#1189](https://github.com/AlexanderNenninger/substrait-lean/issues/1189)).
+It builds on the core, the analysis and engines-common alone, and CI checks
+that it does. No theorem changed.
+
+### Polars's Lean modules stand on the shared packages
+
+Polars's Lean modules now import only the core, the analysis, engines-common
+and each other ([#1189](https://github.com/AlexanderNenninger/substrait-lean/issues/1189)).
+The lowering machinery (`Sverify.Engines.Lowering`) and what an engine's
+model is sound for (`Sverify.Engines.Sound`) join engines-common,
+`Profile.reference_faithful` joins the analysis (`Sverify.Analysis.ProfileImpl`),
+and `Expr.floorDivOf`/`Expr.floorModOf` join the core. Polars's table and
+`Engine` value get modules of their own (`PolarsTables`, `PolarsEngine`). No
+theorem changed.
+
+### Spark's Lean half, a Lake package of its own
+
+Spark's table, shims, profile and `Engine` value move into `engines/spark/`,
+the Lake package `sverify-spark` with modules `Sverify.Spark.*`, beside its
+Python distribution
+([#1189](https://github.com/AlexanderNenninger/substrait-lean/issues/1189)).
+It builds on the core, the analysis and engines-common alone, and CI checks
+that it does; it no longer imports Polars's shims. No theorem changed.
+
+### Substrait's profile, a Lean package of its own
+
+`Profile.substrait`, the YAMLs' own looseness, moves into `engines/substrait/`,
+the Lake package `sverify-substrait` with modules `Sverify.Substrait.*`, on the
+core alone ([#1189](https://github.com/AlexanderNenninger/substrait-lean/issues/1189)).
+`verify(semantics="substrait")` is unchanged. With it, every engine's and
+Substrait's Lean half is a package of its own. No theorem changed.
+
+### The core's rounding is proved to meet the float bounds' standard model
+
+The bounds in `float-bounds/` are proved for any rounding that meets the
+standard model, and the core rounds with integer codes. A new library,
+`float-bounds/FloatBridge`, proves that the core's rounding is such a model
+and agrees with the codes on every value the core rounds
+([#1196](https://github.com/AlexanderNenninger/substrait-lean/issues/1196)),
+one step of the link between the two that was trusted.
+
+### Kahan's sum and DuckDB's constant runs are proved within the sum bound
+
+Sverify now proves the bound on an engine's double `SUM` for the last two
+summation orders it took as given: Kahan's compensated sum (`COMPENSATED`,
+Polars's grouped sums) and DuckDB's constant runs added as one product
+(`SCALED_CONSTANT`). Both algorithms are written on the core's codes and
+proved to meet `SumOrder` through the float-bounds bridge
+(`KahanSums.sumOrder`, `FloatSumsK.sumOrder`,
+[#1196](https://github.com/AlexanderNenninger/substrait-lean/issues/1196)).
+What stays trusted is that the engine runs the algorithm its fact names.
+
+### The Ibis producer's and the Substrait export's refusals say what to do
+
+A construct the Ibis producer does not read ends with a rewrite ("rewrite it with a supported operation or column type"), and `to_substrait` refusals end with a fix: a malformed plan says to export one sverify produced, a missing checker feature to rebuild `substrait-check` from the same commit, an unverified report to fix what it names and verify again ([#1205](https://github.com/AlexanderNenninger/substrait-lean/issues/1205)).
+
+### Five more refusals name what to do
+
+An unparseable SQL model, a secret path without its mount or vault, a missing
+secret-server address, an HTTP error from the secret server and a Snowflake
+substring bound at 2^32 now end with the fix
+([#1205](https://github.com/AlexanderNenninger/substrait-lean/issues/1205)).
+
+### Ten more refusals say what to do
+
+A HUGEINT literal, a `uuid` or other unsupported column type, a timestamp with a time zone, a list of decimals, `collect(include_null=True)`, truncating to a sub-second unit, a `VALUES` alias with too many names, a black-box call with the wrong argument count, an export with no matching Substrait impl and a streaming plan that falls back in memory under `streaming="require"` now end with the change that lifts them. `python -m sverify_dev.exits` counts the refusals that still name nothing (345 of 583); a test keeps the count from rising ([#1205](https://github.com/AlexanderNenninger/substrait-lean/issues/1205)).
+
+### A refusal on Snowflake names its exit
+
+A route refused because the checker cannot yet check under `semantics="snowflake"` now ends with the issue that lifts it ([#852](https://github.com/AlexanderNenninger/substrait-lean/issues/852)).
+
+### The SQL lift's refusals say what to do
+
+Each construct the SQL lift refuses now ends with something to do: a rewrite the lift reads (nine refusals about the query itself: an unresolved name, a table that is not an input, `HAVING` without `GROUP BY`, a misplaced or nested aggregate, a wrong argument count), or, for a construct it does not read yet, "write this step in Ibis", with the open issue that tracks the construct where there is one ([#319](https://github.com/AlexanderNenninger/substrait-lean/issues/319), [#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322), [#342](https://github.com/AlexanderNenninger/substrait-lean/issues/342), [#348](https://github.com/AlexanderNenninger/substrait-lean/issues/348), [#350](https://github.com/AlexanderNenninger/substrait-lean/issues/350)). `python -m sverify_dev.exits` counts the refusals that still name nothing, and a test keeps the count from rising ([#1205](https://github.com/AlexanderNenninger/substrait-lean/issues/1205)).
+
+### The SQL writer's refusals say what to do
+
+A plan the SQL writer cannot write now ends with a fix or a way out: a malformed plan says to build it with sverify or fix it, and the other refusals say to rewrite the step or run the plan with another engine. `python -m sverify_dev.exits` counts the refusals that still name nothing, and a test keeps the count from rising ([#1205](https://github.com/AlexanderNenninger/substrait-lean/issues/1205)).
+
+### `DECIMAL(38, 0) + DECIMAL(38, 0)` is typed
+
+`verify` refused the sum of two `DECIMAL(38, 0)` columns because the inferred bound on them was a whole number past 64 bits, which reads as a HUGEINT. The bound is now a decimal literal, so the sum is typed as `DECIMAL(38, 0)` and its possible overflow is reported as an issue ([#1252](https://github.com/AlexanderNenninger/substrait-lean/issues/1252)).
+
+### An Ibis table with a DuckDB ENUM column is refused
+
+Ibis types a DuckDB `ENUM` as `string`, so a plan over an Ibis table bound to
+a DuckDB backend was proved under text order, where DuckDB orders an `ENUM` by
+declaration position
+([#1253](https://github.com/AlexanderNenninger/substrait-lean/issues/1253)).
+The DuckDB engine now reads the declared types of the base tables an Ibis
+expression scans and refuses `UUID`, `ENUM`, `BIT` and `BIGNUM` columns with
+the exit (`CAST(col AS VARCHAR)` in the source query). A plugin may set
+`ProfilePlugin.refuse_declared_types` to do the same for its engine.
+
+### DuckDB UUID, ENUM, BIT and BIGNUM columns are refused with their exit
+
+Arrow exports a DuckDB `UUID` as text, and DuckDB compares a string with a
+`UUID` by casting the string, so a plan read as text proved the wrong rows
+([#1253](https://github.com/AlexanderNenninger/substrait-lean/issues/1253)).
+Sverify now refuses a column by the type DuckDB declares for it, whatever
+Arrow exports it as (`UUID`, `ENUM`, `BIT`, `BIGNUM`, also inside a list,
+struct or map), and the message names the exit: read it as text with
+`CAST(col AS VARCHAR)` in the source query. Three engine facts record what
+DuckDB does (`duckdb-uuid-text-order`, `duckdb-uuid-string-cast`,
+`duckdb-enum-order`).
+
+### Polars tables no longer name a `column_divisor` shim
+
+The Polars tables listed a `column_divisor` shim for `%` of doubles that nothing implemented. The row now says what the engine does: Polars refuses `%` of doubles until `Profile.polars` models the floored `%` ([#1270](https://github.com/AlexanderNenninger/substrait-lean/issues/1270)).
+
+### Polars runs `%` of doubles natively under `semantics="polars"`
+
+`Profile.polars` models Polars's `%` of doubles, `x - y * floor(x / y)` over Polars's own `/`, and the Polars engine runs it natively, for column and literal divisors alike ([#1270](https://github.com/AlexanderNenninger/substrait-lean/issues/1270), decision D41: `fp.mod` accepts `division_type: FLOOR`). A zero divisor and an infinite operand raise under the profile, where Polars gives NaN. Under the reference, `%` of doubles stays refused on Polars.
+
+### Polars computes shifts, `ROUND` and `log(x, b)` natively
+
+On Polars, `<<` and `>>`, `ROUND(x, d)` for `0 ≤ d ≤ 22` and `log(x, b)` run
+as Polars expressions where they called Python per row or numpy per batch
+([#1270](https://github.com/AlexanderNenninger/substrait-lean/issues/1270)).
+The values are the same. On a million rows the shifts take 1 to 2 ms, down
+from 56 to 109 ms.
+
+### Polars runs no Python: `log10`, `log2` natively, five operations refused
+
+Polars's translation no longer calls Python per row or numpy per batch for
+what Polars cannot compute exactly
+([#1270](https://github.com/AlexanderNenninger/substrait-lean/issues/1270)).
+`log10` and `log2` run as Polars's own `ln(x) / ln(b)`, within 2.1 ulp of
+libm's, which the plan's float bound states (polars-ulp-libm). On Polars these
+are refused with the reason and another engine to run them on: `ROUND(x, d)`
+outside `0 ≤ d ≤ 22`, `%` of doubles, `levenshtein`, and `replace`, `LIKE` and
+`ILIKE` with a pattern that is not a literal. DuckDB and Spark run them as
+before.
+
+### Polars computes `replace`, `reverse`, `ascii`, `repeat` and `LIKE` natively
+
+On Polars, `replace` with a literal pattern, `reverse`, `ascii`, `repeat`,
+and `LIKE`/`ILIKE` with a literal pattern run as Polars expressions where they
+called Python per row ([#1270](https://github.com/AlexanderNenninger/substrait-lean/issues/1270)).
+The values are the same. On a million rows they take 1 to 29 ms, down from
+97 to 184 ms. A pattern per row still takes the old path.
+
+### Fixed: `rows="sequence"` needs a sort without ties
+
+A postcondition that observes the rows as a sequence (`sv.equivalent(rows="sequence")`) used to run on an engine whenever the plan's result was sorted, also when the sort keys tied and the engines may order the ties differently. The checker now proves the sequence (`sequence_determined`, `check_sequence_determined_sound`) when the sort's columns contain a key of its input, none clustered, and the route refuses it otherwise. A contract that sorts on a non-key under `rows="sequence"` states a key (`sv.unique`) or observes `rows="ties permuted"` ([#1285](https://github.com/AlexanderNenninger/substrait-lean/issues/1285)).
+
+### Added: `strings="casefold"` and `strings="ascii"`
+
+`sv.equivalent(strings=...)` takes two more levels: `"casefold"` (Unicode's canonical caseless match) and `"ascii"` (the compatibility caseless match, keeping the code points below U+0080, so `søren` equals `sren`). The default stays `"exact"`. The levels are the ones Lean's `StringObs` has; [what they hide](docs/core-semantics.md#what-the-string-levels-hide) ([#1285](https://github.com/AlexanderNenninger/substrait-lean/issues/1285)).
+
+### What "verified" means
+
+The getting-started guide and `docs/core-semantics.md` say what a verified
+plan is: proved, and determined up to its profile's observation, so every
+sound engine gives the one answer
+([#1285](https://github.com/AlexanderNenninger/substrait-lean/issues/1285)).
+
+### Report: one name for what a proof needs, proved NOT NULL in the output types, the engine version
+
+API changes, with no aliases ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288) API-5):
+
+- `CheckedCondition.suggested` (a mapping of conditions per table) is now `CheckedCondition.needs`, a tuple of `Needed` like `Report.needs` and `Issue.needs`. The report JSON writes each as a whole `needed` object, as it writes `Report.needs`.
+- `Issue.suggested` is removed: read `Issue.needs`. `on_inferred="silent"` is refused with a `ValueError`: write `"ignore"`.
+- `Report.facts` maps each column to a `ColumnFacts` (`nullable`, `lower`, `upper`; `str()` gives the words it held before), in the report JSON too ([#704](https://github.com/AlexanderNenninger/substrait-lean/issues/704)).
+- `Report.suggestions` is removed: read `c.needs` of each `c` in `report.ensures`.
+- `Report.lenses` is the one name for what the result's consumer observes: it replaces `Report.observation` and `Report.equivalence`, and `Route.observation` is `Route.lenses`. A postcondition whose `reason` was `"observation"` reads `"lenses"`, and `str(report)` prints a `lenses:` line.
+- Three written formats follow the name, each with a new version; files written before still read:
+  - the report's JSON, format 4: `lenses` for `equivalence` (in a route too), each of `facts` an object, and each of a postcondition's `needs` a whole `needed` object;
+  - the Substrait contract manifest, format 3: `lenses`, `lenses_components` and an `up_to` entry's `lenses` for the `equivalence` names;
+  - the OpenLineage facet `sverify_contract`, format 2 (its schema URL ends in `/2.json`): `lenses` for `equivalence`.
+  A release older than this one refuses the new formats and says to upgrade.
+- `Report.warnings` is removed. It was always empty; `report.issues` with `error` false is the same list.
+- `Report.not_null` is removed: `Report.output` types each column the checker proves never NULL as not nullable (`count(*)` is `!int64`), so `[c for c, t in report.output.items() if not t.nullable]` is the list ([#704](https://github.com/AlexanderNenninger/substrait-lean/issues/704)). The report JSON keeps its `not_null` list, and a report written before reads back with those columns not nullable.
+
+A postcondition proved only with a precondition sverify inferred is no longer reported as proved under `on_inferred="error"`: its `proved` is false, its `reason` is `"needs"` and its `needs` lists the bounds its proof used. A postcondition that holds without them stays proved; `Report.facts` and `Report.output` then rest on the stated preconditions alone. sverify-dbt still marks every test of a model that needs source tests as not proved, and says which tests used a bound and which hold but leave the model able to fail ([#701](https://github.com/AlexanderNenninger/substrait-lean/issues/701)).
+
+`Report.engine_version` is the engine version the profile of `semantics` describes (`"2.0.0"` under `semantics="duckdb"`), None under the reference; the report JSON carries it ([#710](https://github.com/AlexanderNenninger/substrait-lean/issues/710)).
+
+### A source's change log drops what every reader has read
+
+`StaticSource` kept every change `apply` made since it was built, and an `io.Source` the last 64 batches, in the Python process, after every node had read them. A long-running pipeline's driver memory grew with its input, beside the views' state in the engine. Each pipeline now reports the version it committed, and the log keeps only the changes some reader has not read yet. A reader that lags keeps its changes; one older than the log gets the whole table to diff, as before (#1329).
+
+### The checker names the columns a view reads
+
+`substrait-check --reads plan.json` prints, for each table a plan reads, the columns its output needs, or `"all"` outside the incremental fragment. Sverify proves that a stored table keeping those columns, consolidated, gives the view and its delta plans (`Rel.zeval_prune`, `Rel.incremental_sound_prune`), so incremental refresh can store less of an input ([#1329](https://github.com/AlexanderNenninger/substrait-lean/issues/1329)). The checker speaks protocol 3: a sverify older than this checker refuses it with a message to upgrade.
+
+### Polars keeps a pipeline view's state in Parquet parts, as Spark does
+
+On Polars, a refresh now writes the change as a new Parquet part and leaves the state's other parts where they are; the Lean merge plan adds the parts up when something reads the table or they pass a size bound (#1329, #173). A weight sum that leaves 64 bits is raised at the later read that adds the parts up, not at the refresh that caused it. Polars and Spark share one implementation of the parts (`sverify._parts`). Four inserts of a quarter of the rows each into a filter view peak at 695 MB where they peaked at 947 MB over two million rows, and at 1369 MB where they peaked at 2314 MB over eight million; a refresh of a built state costs the change, 0.1 s for 100,000 rows at either size.
+
+### Polars keeps a pipeline view's state in Parquet files it writes and scans
+
+On Polars, an incremental view's state is a generation of Parquet files that Polars writes and scans lazily, where it was an Arrow table in the Python process (#1329, #173). Merging a change into the state runs the merge plan on Polars. The Polars translation takes `rows="multiset"` (as `to_sql` does), which lets an aggregate emit its groups in any order: the merge of a state peaks at 651 MB where it peaked at 1078 MB for two million rows.
+
+### Spark keeps a pipeline view's state in Parquet parts it writes and reads
+
+On Spark, an incremental view's state is a list of Parquet parts that Spark writes and reads, where it was an Arrow table in the Python process (#1329, #173). A refresh writes the change as a new part; the Lean merge plan adds the parts up when something reads the table or they pass a size bound. The driver's peak for four inserts into a filter view is 591 MB where it was 708 MB over two million rows, and 1289 MB where it was 1849 MB over eight million; a refresh takes about 2.9 times as long as before on a local session.
+
+### The state location takes a URI, and Spark sizes its consolidation
+
+`SVERIFY_STATE_LOCATION` names where Polars and Spark write an incremental view's state: a directory, or a URI that the driver and every executor read and write. Spark's consolidation of a state sets its shuffle partitions for the state's size: 8.4 s at eight million rows where Spark's default of 200 partitions took 9.9 s. The interim Arrow store (`sverify._arrow_state`) is gone.
+
+### An engine plugin brings its state store: `ProfilePlugin.store`
+
+`ProfilePlugin.store` makes the state store an engine keeps an incremental pipeline's state in. DuckDB keeps it in a DuckDB table, Polars and Spark in Arrow tables, as before. A plugin without one runs one-shot plans only, and refreshing a node on its engine raises an error that says so, as a dialect-only plugin like `sverify-snowflake` does. `ProfilePlugin` is outside the 1.x promise ([stability.md](docs/stability.md)), so a plugin written for 0.8.0 adds the field to keep refreshing on its engine ([#1189](https://github.com/AlexanderNenninger/substrait-lean/issues/1189), [#1359](https://github.com/AlexanderNenninger/substrait-lean/pull/1359)).
+
+### `sverify check query.sql --schema schemas.yaml` (#1362)
+
+A bare `.sql` file is a `check` target: one query, the types of its tables from a
+YAML or JSON file (`{table: {column: type}}`), and the verdict `verify` gives with
+no contract. `--dialect` and `--semantics` take `sverify.sql`'s values and defaults.
+The JSON, SARIF and GitHub outputs are those of a Python file.
+
+### `sverify check` on a `.sql` file with an unterminated string exits 2 (#1362)
+
+A tokenizer error of the SQL parser was a traceback; it is a usage error naming the parse failure.
+
+### `ProfilePlugin.sql`: a dialect's SQL front-end (#1362)
+
+A plugin can read a SQL dialect: `ProfilePlugin(sql=SQLFrontEnd(read, lift))`.
+`sverify.sql(dialect=)` looks the dialect up among the installed plugins (an
+unknown one names those installed), and DuckDB's own lift is registered the same way.
+The dialect's semantics is the engine's name, accepted only where the plugin brings
+the checker's profile. A report of SQL read by a front-end other than DuckDB's names
+its package and version. `PLUGIN_API` is 4: engine packages need the same release.
+
+### Spark's written plan has one model; Polars's and Spark's soundness theorems apply to an example
+
+`Engine.polars_sound` and `Engine.spark_sound` are each applied to one example plan that meets `Engine.GuardFreeSide` ([#1441](https://github.com/AlexanderNenninger/substrait-lean/issues/1441)). Spark's written plan is modelled by `Profile.sparkWritten` alone: the hand-written `Spark.bin` is gone, and `date_add`'s wrap at 2³¹ days is a row of `Profile.spark` under `date_range` (spark-date-range). `Rel.spark_sound` keeps its name.
+
+### `semantics="polars"` is reported as pending
+
+The checker does not report under Polars's own profile yet, as for Spark
+([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)).
+`verify(semantics="polars")` now gives the reference's report with a
+`ProfilePendingWarning` (`report.semantics` says `"reference"`), and the plan
+reaches Polars by the `translated` route, which computes the stated `FLOOR`.
+The `native` route to Polars and the `recheck` route from a DuckDB report to
+Polars are refused until the checker proves under `Profile.polars`
+([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
+Polars's observation rows now apply to Polars's tables.
+
+### The checker's engines carry their soundness proofs
+
+The list `substrait-check` is built over holds each engine's `Engine` value
+with the proof that its run is sound (`EngineEntry`,
+`engines/Sverify/Engines/Entry.lean`), so an entry whose theorem does not
+state its engine's soundness no longer builds
+([#1443](https://github.com/AlexanderNenninger/substrait-lean/issues/1443)).
+`--realizability`'s `"theorem"` names that proof (`Engine.duckdb_sound`,
+`Engine.polars_sound`, `Engine.spark_sound`), and a new `"side"` the side
+condition it holds under (`Engine.NoRaiseSide`, `Engine.GuardFreeSide`). An engine package from outside
+builds its checker over `builtinEntries ++ [its entry]`, copying
+`SubstraitCheckExamples/DummyEngine.lean`; `EngineProfile.translationTheorem`
+and `asReference` are gone, and a request under such an engine's profile is
+pending like a built-in one's.
+
+### The as-of join's cap holds for every table, counted at the run
+
+`sv.asof_join`'s `max_pairs` used to count the pairs only when both tables were Arrow tables held by a `sverify.connect()` connection; a join over Parquet files or an engine's own tables ran with no bound. The checker now reads each as-of join off the plan and writes the count of its pairs as a plan of its own, which `Report.run` evaluates on the engine before the join, whatever the tables are. The refusal above `max_pairs`, with the same exits, now comes from the run instead of from `asof_join` ([#1447](https://github.com/AlexanderNenninger/substrait-lean/issues/1447)).
+
+### `asof_join` refuses a join that would compare more than 10⁸ pairs of rows
+
+`sv.asof_join` is a range join, so the pairs of rows it compares (each left
+row with every right row of its `by` group) are quadratic in the rows
+([#1447](https://github.com/AlexanderNenninger/substrait-lean/issues/1447)).
+Where both tables are held by a `sverify.connect()` connection, it now counts
+them and raises `UnsupportedError` above `max_pairs` (default 10⁸, which keeps
+DuckDB's join under about 7 seconds), naming the exits: `by` columns, fewer
+rows, or a larger cap (`max_pairs=None` for none).
+
+### DuckDB runs `asof_join` as its ASOF JOIN
+
+On DuckDB, `sverify.asof_join` without a `tolerance`, over integer, date, timestamp or string columns, runs as `ASOF [LEFT] JOIN` ([#1447](https://github.com/AlexanderNenninger/substrait-lean/issues/1447), [`duckdb-asof-join`](engines/duckdb/facts/duckdb-asof-join.json)). It compares no pairs of rows, so the `max_pairs` cap does not apply there; the other engines and a join with a `tolerance` keep the range join and the cap. At a tie on the right DuckDB's pick may differ from the range join's: both are allowed, and the report already says `deterministic` is false for such a plan.
+
+### Maintained double aggregates keep their exact state in the engine
+
+A maintained `SUM`, `AVG`, `VAR`, `STDDEV`, `COVAR` or `CORR` of doubles keeps
+its exact moments as integer limbs, rows of the group state that the engine
+adds up with its own `SUM` (#1447). A batch no longer brings each changed row
+to the driver: Python reads the limbs of the touched groups and rounds them
+once, so the results are unchanged (D25, D30), on DuckDB, Polars and Spark. The state takes about half the
+bytes of the decimal strings it replaces. A group with `2⁴¹` values or more,
+past what the limbs hold, raises.
+
+### Exact double aggregates fold in Arrow, whatever the values
+
+A maintained `SUM`, `AVG`, `VAR`, `STDDEV`, `COVAR` or `CORR` of doubles used to add rows with a NaN, an infinity or a weight of 256 or more to its exact state one at a time in Python. Arrow now sums them per group like every other row, so a batch full of NaNs or of rows repeated many times folds about twice as fast, and the result is the same exact state ([#1447](https://github.com/AlexanderNenninger/substrait-lean/issues/1447)).
+
+### The user pages of the docs name no Lean theorems
+
+The how-to and explanation pages say what a guarantee is in plain words and link the reference pages for the Lean names, and a test checks it, along with every link and anchor of `docs/` and the old place of the engine facts ([#1448](https://github.com/AlexanderNenninger/substrait-lean/issues/1448)).
+
+### The SQL writers print raw doubles
+
+The DuckDB and Spark writers no longer add `+ 0.0` to float reads, scalar results and aggregates. The written plan gave `atan2((0.0 * -1.0) + 0.0, -1.0) = π` where the reference gives `-π`, and `1.0 / (x * -1.0)` gave `inf` for `-inf` under `semantics="duckdb"` (#1461). `round` and `ceil` print the proved template on DuckDB, and a stored `-0.0` now reaches the model: the plan's literal is the text `-0.0`, which the parser reads. DuckDB's own comparisons, groups, joins, window partitions and sort keys already read the zeros as one.
+
+### The DuckDB and Spark writers print a zero class's canonical value for MIN, MAX and keys
+
+Where the engine's pick among equal zeros depends on row order or partitioning (`MIN`, `MAX`, `QUANTILE_CONT` and `MEDIAN` of doubles on DuckDB and Spark, and a double group key or `DISTINCT` row on DuckDB), the written plan adds `+ 0.0`, so a rerun gives the same sign and the plan stays inside the reference's allowed values (D31). `sverify.testing.canonical` reads `-0.0` as `0.0` and says so in its docstring (#1461).
+
+### A variance, covariance or correlation of an infinity reads nan_creation
+
+A variance, standard deviation, covariance or correlation of a `+∞` or `-∞` is a NaN made by the aggregate, so `nan_creation` governs it (as for a double `SUM` or `AVG`). Under `semantics="polars"`, `"spark"` and `"duckdb"` (whose profiles all have `nan_creation = NAN`) the checker no longer bounds such a result by the statistics' properties, and any value is allowed there. The reference still raises, so a verified plan under the reference is unchanged. The evidence of a DuckDB route that reads `agg.var` or `agg.stat` goes from proved to tested for `nan_creation` ([#241](https://github.com/AlexanderNenninger/substrait-lean/issues/241) tracks the proof), and verdicts and Substrait manifests list the read ([#1469](https://github.com/AlexanderNenninger/substrait-lean/pull/1469)).
+
+### QUANTILE_CONT of infinities reads nan_creation; Polars and Spark interpolate as LINEAR_DIFF
+
+`quantile_cont` and `median` between a `-∞` and a `+∞` neighbour are a NaN made by the aggregate: `nan_creation` governs them, and the reference raises. Polars and Spark compute `lo + (hi − lo)·w`, which is NaN with a `-∞` lower neighbour and any greater upper one; their `quantile_interp` behaviour is now `LINEAR_DIFF` (between the neighbours, or NaN), and their quantile rows are refused under the reference route ([#1475](https://github.com/AlexanderNenninger/substrait-lean/pull/1475)).
+
+### A Polars or Spark run no longer runs the plan on DuckDB first
+
+A report with assumed issues (an integer `SUM` that must fit, an operation on finite doubles that must not give `±∞`) ran its plan on DuckDB before the target engine to check them, which doubled the run and made DuckDB's errors everyone's. The Polars and Spark translations check them as they run, so `Report.run` runs the plan on the target engine only, and a batch that breaks one is refused with the same `PreconditionError` (#1484).
+
+### Reports name the black-box laws a proof trusts
+
+`Report.black_boxes` maps each black box a plan calls (DuckDB's `entropy`,
+`base64`, …) to the laws its row declares, as `sverify.black_box.Law` tuples,
+and `str(report)` prints one line for each, such as `trusts: black box entropy
+keeps its declared laws (non_null, at_least 0)`. The report's JSON keeps them
+under `black_boxes`. If an engine's function ever breaks a declared law, the
+checker refuses to print the rows instead of showing the row's sample value
+([#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484)).
+
+### The report says which build of the checker proved it
+
+A checker built without `check_generated` (a plain `lake build`, an editable
+install, `SVERIFY_CHECKER`, a borrowed binary) holds its generated lift and
+lowering proofs as `sorry`. The report's JSON gains `checker.generated_proofs`
+(`true`, `false`, or `null` where the checker does not say), and `str(report)`
+starts with "proved by a checker whose generated proofs are unchecked" for such
+a build. The proof cache already separates the two builds by the checker's hash (#1484, [trusted base](docs/trusted-base.md)).
+
+### `Report.deterministic` holds up to the member of a class of doubles (D48)
+
+`Report.deterministic` is now true when every result the reference allows is
+the same up to row order and up to which member of a class of doubles it
+keeps: `-0.0` or `0.0`, and which NaN (`check_class_determined_sound`). A
+`GROUP BY` or `DISTINCT` key over doubles, `MIN`, `MAX` and `QUANTILE_DISC`
+no longer make it false, so a refresh or a sink epoch of `SELECT region,
+MAX(price) … GROUP BY region` over a double `price` runs under the default
+`reproducible=`. An expression that reads a picked double and can tell `-0.0`
+from `0.0`, such as `atan2`, still makes it false, and the report names the
+expression.
+
+A rerun requirement that reads the members of a class, `sv.equivalent()`
+with exact doubles and exact zeros, still refuses each such pick. The
+refusal names the pick and the two ways out: an observation that reads one
+zero and one NaN (`floats="plan"`, the sinks' default, or
+`zeros="canon"`), or a plan without the pick.
+
+`sv.equivalent(floats="plan")` now compares `-0.0` and `0.0` as equal also
+where the plan has no bound on its doubles.
+
+### Decimal `+` and `-` raise where DuckDB's operand cast does
+
+DuckDB casts each operand of a decimal `+` or `-` to the result type and raises there, also where the exact sum fits (`DECIMAL(38,0) + DECIMAL(38,10)` at `10^28` against `-0.0000000001`). The reference returned the value. It now checks an operand that can exceed 38 digits at the result's scale and raises, and the inferred precondition is `|a| < 10^(38 - s)` (D56, [#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484), `duckdb-decimal-addsub-operand-cast`).
+
+### `--delta` names the operator that has no delta rule
+
+`substrait-check --delta` and `NotIncrementalError` said "not incrementally maintainable (left join, fetch or window)" for every plan without a delta rule, a global aggregate and `COUNT(DISTINCT …)` included. The message now lists each blocking operator with the tables under it: `no delta rule for aggregate over orders; left join over orders, customers`.
+
+### `Report.deterministic` is a theorem
+
+`Report.deterministic` is now `Rel.detPlan`, and when it is true every result
+the reference allows is the checker's up to row order
+(`check_deterministic_sound`, #1484 finding 9). Before, it checked only ties
+in windows, ordered aggregates and `LIMIT`s. It now turns false in four more
+places, and `tie_places` names each one:
+
+- `MIN` or `MAX` over doubles, a group key over doubles, or a `DISTINCT` over
+  doubles, where the reference keeps any member of a class (`0.0` and
+  `-0.0`, the NaNs; D31);
+- `QUANTILE_CONT` of doubles (the median), which may be any double between
+  the two neighbours;
+- an aggregate the checker has not proved a function of its values, such as
+  `AVG` of integers;
+- an ordered aggregate whose argument is a sort column holding doubles, since
+  `0.0` and `-0.0` tie.
+
+A `LIMIT` over an `ORDER BY` on a key stays deterministic, and so does an
+ordered aggregate (`first`, `last`, `group_concat`, `mode`, `arg_min`) whose
+group and order hold a key. A `LIMIT` over a clustered sort is no longer
+deterministic, because the reference leaves the order of the groups open.
+Over 2,394 recorded requests, 50 turn false: 22 for `MIN`/`MAX` over doubles,
+17 for an `AVG` of integers, 6 for the median of doubles, 4 for a group key
+over doubles and 1 for an ordered `ARRAY_AGG` over ties. None turns true. A
+rerun requirement (`reproducible=`) refuses these plans. D48 then counts the
+first bullet's picks as determined again, up to the member of a class
+(`1484-d48-class-level.md`).
+
+### Postconditions are proved over the transformation itself
+
+`substrait-check --contract` builds each postcondition's plan from the
+request's transformation and refuses a postcondition plan that selects from
+anything else, so `check_proved_sound` speaks of the transformation the report
+is about (#1484, finding 2).
+
+This fixes a soundness hole in `Report.from_substrait`. An exported plan carries
+the shims the export applied, and the postconditions' plans in the export do
+not. The recheck proved the postconditions of the plan without the shims and
+reported them for the exported plan. It now proves each condition over the
+exported plan. An export whose condition reads another relation is refused
+with an error that says to verify and export again.
+
+An Ibis condition over a transformation that ends in a join's `select` is no
+longer merged into that select by Ibis.
+
+### The oracle of `allows_rows` has a theorem for most plans
+
+`Rel.evalChoices_allowed` (`analysis/Sverify/Analysis/ChoicesSound.lean`) proves that a result `allows_rows` accepts is one the reference allows (`Rel.OrderAllowed`), for plans without an ordered aggregate (`FIRST`, `LAST`, `STRING_AGG`, `collect`, `MODE`). The other plans stay tested; the next changes prove them one at a time (#1484).
+
+### The oracle of `allows_rows` groups by canonical key
+
+`sverify.testing.lean_choices`, the oracle of `allows_rows`, grouped and deduplicated by exact equality where the reference does it up to canonical codes (D31): keys `-0.0` and `0.0`, or two NaN payloads, gave two groups, each over the whole class's rows, so an engine's single row was rejected. It groups with `distinctRows`, as `Rel.eval` does.
+
+### The first line of a report says "proved with checks"
+
+`str(report)` and the markdown note started with `proved` for a plan proved under assumptions that a run checks on the data (`Report.assumed`), which hid what the verdict says. The line now reads `proved with checks: 2 assumptions`. The JSON `summary` carries the same text ([#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484)).
+
+### An integer literal next to a TINYINT or SMALLINT column has the column's type
+
+DuckDB types an integer literal next to a narrower integer operand as that operand when the value fits, so `tiny_col + 100` is a `TINYINT` and raises past 127. The SQL lift widened the column to `INTEGER` and would not have raised. It now follows DuckDB in arithmetic, `COALESCE`, `CASE`, `GREATEST`, `LEAST` and `NULLIF`; a literal that does not fit widens the column as before (`tiny_col + 200` is an `INTEGER`). Any other query that puts an integer literal next to a `TINYINT` or `SMALLINT` (a list literal, a `lag` default) is refused, naming `CAST(100 AS INTEGER)` ([#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484), `duckdb-coerce-int-literal-width`).
+
+### An integer `AVG` is a function of its values
+
+The checker now proves that an `AVG` with an integer result (the truncated
+mean) depends on its group's values only, as `SUM` and `COUNT` do
+(`AggFn.orderFree`). Two results change:
+
+- `report.deterministic` is true again for a plan whose only open place was
+  an integer `AVG` ("not proved a function of its values").
+- `run_sharded` runs an integer `AVG` grouped by the split key on each shard
+  as it is (`linear`), where it split the mean into a `SUM` and a `COUNT`
+  (`two_phase`) before.
+
+### No runtime error on every order of the ties
+
+The proof that a plan with no reported issue raises no runtime error now
+covers every order of the ties the reference allows (`Rel.mayIssues_sound_all`,
+#1484). Before, it covered one order, the reference evaluator's. An engine that
+breaks a window's ties another way, as the routes for windows on Spark and
+Snowflake allow, is covered too. The issues sverify reports are unchanged.
+
+### Errors in a condition on one side of a join
+
+The proof that a plan with no reported issue raises no runtime error now
+covers a condition that an engine evaluates on one side of a join before any
+pair exists, even when the other side is empty. DuckDB pushes a filter on one
+side into that side, and a hash join computes a key such as `10 // a.x` on
+every row of its side (#1484). Before, this case was outside the proof. The
+issues sverify reports are unchanged.
+
+### A raising constant in a lambda's body is reported under a guard too
+
+`Expr.constIssues` read a lambda's list and not its body, so `ifelse(id > 5, xs.map(e -> e + 1 // 0), NULL)` under a precondition that no row passes was proved, where D21 counts every constant subexpression that raises as raising for the whole plan. The body is read now ([#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484), K5 of ruling 100). No engine run raised: DuckDB has no SQL form for lambdas yet and Polars returned NULLs.
+
+### Closed plans without doubles are proved near-safe on DuckDB, Polars and Spark
+
+Sverify proves that a plan in which no double occurs gives, on an engine's table, only results the reference allows, where the table with the reference's choices at the options only doubles read transfers (`Rel.transfer_of_noDouble`, [#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484)). The run plan's `near` gate now rests on that theorem: under `floats_plan` or an `approx` postcondition, a rewrite runs only where neither plan has a double or an open measure and both transfer at DuckDB, Polars and Spark. Plans the theorem does not cover keep their `run_gate` of `near`: a plan with an integer `MIN` or `MAX` (they read `list_null_order`, where every engine's table differs from the reference) or an integer `AVG` (`avg_int_result`), and a plan with an integer `BIT_AND`, `BIT_OR`, `BIT_XOR` or `QUANTILE_DISC`, which is not closed.
+
+### `NULLIF` in SQL has the type of its first argument
+
+DuckDB's `NULLIF(a, b)` compares in the common type of `a` and `b` and returns `a` itself. The lift typed the result as the common type, so `NULLIF(int_column, double_column)` was a double and an addition on it did not raise where DuckDB's integer addition does. Where the two types differ, the lift now writes `CASE WHEN a = b THEN NULL ELSE a END`; `NULLIF` of two values of one type is unchanged ([#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484), `duckdb-nullif-type`).
+
+### A function option takes its first supported preference
+
+A plan may list several preferences for a function option, and Substrait applies
+the first one the engine supports. The parser accepted an option when any
+preference was supported but modelled the first listed one, so
+`on_division_by_zero: ["IEEE", "NULL"]` on an integer `divide` was read as `IEEE`.
+`checkOptions` now keeps the supported preferences and the parse reads the first
+of them (#1484, R1).
+
+### `Report.output` types decimal aggregates as the run returns them
+
+`Report.output` took its types from Ibis, so a decimal `AVG` said `decimal(10, 2)` where the run returns `decimal(14, 6)`, and a decimal `SUM` said `decimal(38, 2)` where it returns `decimal(20, 2)`. The checker now reports each output column's type (`outputKinds`, from `Write.relKinds`), and `Report.output` states a decimal column's precision and scale as the checker types it, which the ODCS and OpenLineage exports and sverify-dbt's contract check read. A checker without the field leaves Ibis's types as they were ([#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484)).
+
+### `Report.output` states the run's integer widths
+
+`report.output` now types an integer column as the run returns it: `int64` for a computed integer (`i8 + i8`, `abs(i8)`, `-i16`, `year(ts)`, `length(s)`), the declared width for a column passed through, and `timestamp(6)` for a timestamp. It said Ibis's widths before (`int8` for `i8 + i8`), which the run did not return. Code that read a computed column's width from `report.output` sees `int64`. A Polars run casts a passed-through narrow column back to its declared width (it returned `int64`). The contract report's `outputKinds` carries an integer's `bits`. An explicit cast gives today's width in both; writing the width it names is #1772.
+
+### `requires` are checked on the run's own engine
+
+`Report.run` checks a report's preconditions on the engine it runs on, as one checker-written plan per table that counts every condition, where it ran an Ibis count per condition on the table's backend. A result that is not TRUE is a violation, a condition plan that raises is a violation (`PreconditionError`, "raised on"), and a condition the engine's writer refuses refuses the run, with no fallback to Ibis. A DuckDB run by the reference's translation no longer runs the plan once beforehand for its assumed `SUM`s and operations on finite doubles: the translation checks them as it runs ([#1484](https://github.com/AlexanderNenninger/substrait-lean/issues/1484), S3 and S4). A report read back with `Report.from_substrait` now checks the preconditions the export carries before it runs, as the report `sv.verify` returned did (a row condition by its own plan, `unique` and the other table conditions as before), where it ran on data that broke them and, on Polars, without the plan's guards; a run refuses a report that holds a precondition it has no check for ([#1513](https://github.com/AlexanderNenninger/substrait-lean/issues/1513)).
+
+### Spark refuses a decimal comparison it would round
+
+Spark compares decimals of different scales in a common type and, where that type passes 38 digits, rounds the operand of the higher scale: `CAST(2 AS DECIMAL(38,0)) = CAST(1.5 AS DECIMAL(38,10))` is true on Spark. The Spark writer now refuses such a comparison, and `GREATEST` or `LEAST` of such a pair (the common type has `max(p₁ - s₁, p₂ - s₂) + max(s₁, s₂)` digits), naming the two types; a pair that fits 38 digits is written as before and is exact (`spark-decimal-compare-scale`, #1484).
+
+### `to_sql` writes the rows the engine's runner writes
+
+`to_sql`'s default for `rows` follows the engine (`"multiset"` for Spark and Snowflake, `"sequence"` for DuckDB), so a bare `to_sql(plan, "spark")` writes FETCH and windows over a named table with ties open, as a run on Spark sends them, where it refused them. `rows="sequence"` stays refused there; the message names `rows="multiset"` and the report's `deterministic` as the ways on. `Node.to_sql("spark")` of a node without a report writes what its refresh runs.
+
+### A column no query mentions blocks nothing
+
+A struct column the DuckDB writer has no SQL form for, a `map` column of a Delta table, a zoned timestamp or an unsigned integer failed every plan over their table, also where no query read them (`SELECT d, e, d + e FROM t`, `DeltaSource(...).pipe(agg)`). Such a column is left out of the plan when the transformation and the conditions never mention it. A query that reads it still refuses, now naming the column: `column 'm' of 'orders': type map<…> is not supported`.
+
+### `sverify check` proves a decorated transform on its declared schemas
+
+`@sv.transform(schemas={"orders": {"id": "int64", "amount": "int64"}})` gives a
+transform its input schemas. `sverify check pipeline.py` then proves the contract
+of a transform the file never applies, as `paid.verify(orders=...)` does, with no
+driver script. Without `schemas` the file's `unchecked` message names the new
+exit (#1485, item 10).
+
+### Dagster and Airflow examples
+
+`templates/orchestrators/` has a Dagster asset check and an Airflow DAG that prove a
+transform's contract before they run it, tested with dagster 1.13.30 and
+apache-airflow 3.4.0 ([compatibility](templates/pipelines/docs/compatibility.md), #787).
+
+### Ranges of double arithmetic are the exact result's, rounded at the ends
+
+The checker bounded a double `+`, `-` or `*` by the exact result widened by an error term, so `a / 8` of `a` in `[0, 8]` came out as `< 1.0000000000000009` and `amount * 3 + 1` of `amount` in `[0, 1e300)` as `≥ 0.0`. The ends are now rounded as the operation rounds them (rounding is monotone), and so is a quotient by one divisor: `a / 8`, `a * 0.125` and `(x + y) / 2` are in `[0, 1]`, `x + y` in `[0, 2]`, and `amount * 3 + 1 > 0` is proved ([#1485](https://github.com/AlexanderNenninger/substrait-lean/issues/1485), items 7 and 26). A bound with one end only (`amount >= 0`) still gives `any double`.
+
+### Every module imports without DuckDB, and `verify` runs without it
+
+Importing any `sverify` or `sverify_duckdb` module no longer imports `duckdb`, and `sv.verify` proves a plan, from Ibis or from SQL, in an environment that has none. What runs on DuckDB (`sv.connect("duckdb")`, table reads and sinks) raises `ImportError: this needs DuckDB: pip install 'sverify[duckdb]'`. The DuckDB engine counts as installed for running plans only where `duckdb` is. DuckDB is still a dependency of `sverify`; moving it to an extra follows (#1485, 16).
+
+### DuckDB is an extra: `pip install 'sverify[duckdb]'`
+
+`pip install sverify` now installs no engine and no `duckdb`: `sv.verify`, the SQL dialects and `report.to_sql` work, and everything that runs plans or holds tables raises `ImportError: this needs DuckDB: pip install 'sverify[duckdb]'` or names the extra of the engine. That makes sverify installable beside `soda-core-duckdb` (`duckdb<1.1`). Add the extra where you relied on the implicit DuckDB: `sverify[duckdb]`, or `sverify[all]`, which now includes it. `sverify-dbt` brings DuckDB itself (#1485, 16; #1288).
+
+### First-hour stumbles
+
+`sverify check revenue.sql` exits 2 and says to check SQL through `sv.sql` in a `.py` file or a dbt project, in place of "not a Python file" and exit 6. The internal `DOUBLE(…)` cast no longer shows around an aggregate, and the check's output no longer ends with a bare status line after the node's own verdict. A counterexample prints a date or timestamp in the output as a date or timestamp, as the input does, which also fixes sverify-dbt's `order_date = 0`. The `SUM` hint leads with the run-time check, and its example row cap is one anyone would write (#1485).
+
+### sverify-dbt keeps an incremental model's tests out of `sverify_proved`
+
+`sverify check` proved an incremental model's tests from its full-refresh SQL and listed them under "dbt build may skip them", so `dbt build --exclude selector:sverify_proved` dropped them even where an incremental run (the `append` strategy, or `merge` on another key) could break them (#1485). The tests of an incremental model are now skippable only for the `merge` or `delete+insert` strategy on a `unique_key` that a proved `unique` test names. Otherwise they are reported as proved for the full refresh and `dbt build` keeps running them. Proving the incremental branch is a follow-up.
+
+### `lean_values` raises on join conditions too
+
+`sverify.testing.lean_values` raises `LeanRaised` where the reference raises in a join or semi-join condition, on the pairs the checker's hash join tests (`substrait-check --raises`), so a raise on a pair without matching join keys can be missed; every error it raises is the reference's. A window's aggregates are not looked into: a frame may leave a row out.
+
+### `lean_values` raises on a window's aggregates too
+
+`sverify.testing.lean_values` raises `LeanRaised` where the reference raises in the argument or filter of a window's aggregate, on the frame of each row (`substrait-check --raises`): a row that no frame holds raises nothing.
+
+### A message names a computed column the output drops
+
+An overflow over a column that an earlier step computes and the output never keeps
+reads `amount * 2 * 3 + 1`, where it printed Lean's `(($1 * 3) + 1)`.
+
+### Clearer messages: names, vacuous requires, suggestions
+
+An overflow after an aggregate names the measure (`sum(amount) * 2 + 1`) where it
+printed Lean's `($1 * 2) + 1`. `sverify check --diff` prints the report's other
+fixes (a row cap for an unbounded `SUM`) where no precondition helps, in place of
+"No preconditions to add". A report hints at `requires` that no row can meet, such
+as `amount > 5` with `amount < 3`, which made every `ensures` hold with nothing to
+check. A misspelt column in `requires` or in SQL suggests the closest column.
+
+### A clear message where no wheel exists
+
+PyPI carries wheels for Linux (x86_64, aarch64) and macOS on Apple silicon. On Windows and Intel macOS, `pip install sverify` used to fall back to the sdist, which needs elan and a full `lake build`. The sdist's build now stops at once and names the platforms with a wheel, WSL2 or a container as the way out, and `SVERIFY_BUILD_FROM_SOURCE=1` for building from source (#1485).
+
+### One-sided bounds through a double difference and quotient
+
+A double difference keeps its lower end where the minuend has a finite lower end and the subtrahend a finite range (`amount - 1` with `amount >= 0` is "a double ≥ -1.0"), and a quotient of a non-negative dividend by a divisor with a positive lower end is at least `0.0`, each with one end only (#1485 items 7 and 26). The upper end of such a quotient is not kept: the divisor may be NaN, which is above every bound.
+
+### An overlapping refresh that loses the commit race reports "already committed"
+
+When two refreshes of one sink overlap and the other commits the same state first, the slower refresh returns that state as already committed instead of raising `ConcurrentWriteError`. If the sink holds a different state, the error stays (#1485).
+
+### A sink records the engine, its version, the release and the profile that wrote a state
+
+A sink's contract record gains optional fields `engine`, `engine_version`, `sverify`, `profile` and, for an engine that comes from another package than sverify, `package` (`name==version`). Records written before them read as unknown and resume as before; the record's format stays 2. A restarted job that finds another engine or engine version than the record names says so in `started` (`engine duckdb → polars`): a view that is recomputed and diffed resumes, a view maintained from its state resumes where its report proves the plan determined (every engine then holds the same rows), and is recomputed once where the plan leaves a value open. A changed release alone is in `StageRefresh.record_changes` only. The profile a plan was verified under (`semantics=`) is a component of the plan's digest, left out for the reference, so a sink written under another profile recomputes once, and the refresh names both profiles; digests of reference plans are unchanged ([#1485](https://github.com/AlexanderNenninger/substrait-lean/issues/1485)).
+
+### A refresh logs each node and each commit
+
+A refresh writes one INFO line per node and one per commit to the `sverify` logger, in the words of `Refresh.summary()` ("paid: committed merge v5: +2 −0", or "already committed" where an overlapping refresh had committed the same state), so an orchestrator's task log shows what ran without printing the summary (#1485 item 25).
+
+### Reports name the transform's parameter
+
+When the result of one contracted transformation feeds another, the downstream report says `requires orders: …`, the name in its own `requires`, in place of the name of the upstream transformation that feeds it (`requires latest: …`). The same holds for the "needs" text (#1485).
+
+### `print(report)` is the contract in plain words
+
+`str(report)` now says what holds, what each run checks on the data and what is not proved, in the words `sverify check` uses (table names are the transform's parameters). The full text, with the semantics, the evidence for each engine, the routes and the observation, is `report.details()`, which `sverify check --full` prints (#1485).
+
+### The sdist carries the file the Lean statements read
+
+The sdist now includes `tests/contracts/int_division.json`, which `SubstraitLean/Statements.lean` reads, so the wheel built from it compiles again. `tests/test_sdist_inputs.py` checks that every `include_str` path in the Lean sources is in the sdist (#1485).
+
+### `DeltaSource(uri, schema=...)` and `IcebergSource(catalog, id, schema=...)`
+
+With a declared schema, building a node and `sverify check` prove a transform without opening the table: no lake credentials or network on a pull request, and no failure for a table that does not exist yet. Every refresh reads the table's schema and raises `SchemaError` naming the differences when it is not the declared one (#1485, 18).
+
+### SQLGlot from 30.8, beside SQLMesh
+
+`sverify` requires `sqlglot>=30.8.0,<30.18` in place of `~=30.17.0`. The lift's tests pass on every release from 30.8, the one SQLMesh 0.235 and later pin, so `pip install sverify sqlmesh` resolves to a current SQLMesh in place of falling back to 0.4.1 (#1485).
+
+### The plan digest a sink records is stable across releases
+
+A sink's contract records a digest of the plan that wrote it, and a refresh resumes from the sink only when the plan's digest is the same. The digest used to be the sha256 of the plan's text, which lists every function the writer knows, so each release that added or dropped a function changed it and the first refresh after an upgrade rewrote every sink in full. The digest is now the sha256 of the plan with that list left out and each function reference replaced by the function's name: the same plan gives the same digest in 0.7.0 and 0.8.0, which the critique's run showed ([#1485](https://github.com/AlexanderNenninger/substrait-lean/issues/1485), finding 24). This release recomputes sinks once, as it changes the digest; the ODCS and OpenLineage exports record the new digest too. A release that changes the canonical form, or what a plan means, says so in its changelog. The digest also hashes in a record of the changes that make an unchanged plan compute another result (`MEANING_CHANGES`): a decision that changes a value of the reference or narrows what it allows, and the fix of a wrong result of a lowering. A sink written before one is recomputed, and the refresh says which change did it; a decision that only opens a choice leaves the digest alone, and each decision after D49 says which it is (`Recomputes sinks: yes` or `no`).
+
+### `verify` holds schemas, not a DuckDB connection
+
+`sv.verify` builds its plans over unbound Ibis tables and the lift reads the input schemas directly, so a verification no longer starts a DuckDB database and uses about 30 % less memory. Results are unchanged. This is the first step of moving DuckDB to an extra (#1485, 16).
+
+### Polars raises where its variance of finite values is NaN
+
+Over finite values, Polars's ungrouped `var` can come back NaN where the reference gives a value (`[1e308] * 100000` gives NaN against the reference's 0.0). The written plan now raises `VarianceNaN`, with or without guards, and the message of the infinity raise names the algorithm's intermediate steps too ([#1486](https://github.com/AlexanderNenninger/substrait-lean/issues/1486)).
+
+### The statistical aggregates' model says what it knows outside `Stat.fits`
+
+`StatProps` (the model of Welford's and the generic algorithms) asked for the reference's own value for finite values past 2³² rows or 2³⁹⁸ in magnitude, which DuckDB and Polars do not give (`var_pop([1e150, 3e150])` differs in the last digits). Those inputs are now open, any double; NaN and infinities keep the reference's value. No verdict changes: the route already reports such columns unproved ([#1486](https://github.com/AlexanderNenninger/substrait-lean/issues/1486), D30).
+
+### A `VALUES` row that raises or misses its type is refused
+
+The parser evaluated each row of a `virtualTable` when it read the plan, so an overflow or a division by zero in a computed row never reached the safety analysis, and it never compared a cell or an integer literal with its declared type, so `--write` could emit a plan no consumer accepts. A field that is not a literal is now refused (as the SQL lift refuses `VALUES` of computed values), a cell must fit its column's type (`Parse.literalFits`), and an `i8`, `i16`, `i32` or `i64` literal must fit its width ([#1491](https://github.com/AlexanderNenninger/substrait-lean/issues/1491)).
+
+`right(s, n)` for `n = -2**63` no longer lifts to an `i64` literal one past the type's range (`1 - n`); the offset is capped at the largest one DuckDB's `substring` takes, so the query stays checkable, which the width check on literals would otherwise have turned into a refusal.
+
+### Strings and booleans can be ordered on DuckDB and Polars
+
+A verified plan that compares strings or booleans with `<`, `BETWEEN`, `GREATEST` or `LEAST` now runs on
+DuckDB and Polars, in the model's order: code point for strings, `FALSE < TRUE` for booleans. Before, `verify`
+proved such a plan and both translators refused to run it (#1492).
+
+### Decimal comparisons across scales and wide decimal averages no longer overflow DuckDB
+
+A comparison of decimals of different scales was proved but raised on DuckDB, which casts both sides to one `DECIMAL(38, s)` and fails where a value does not fit (#1498). The DuckDB writer now compares the unscaled integers, with the scale gap's floor and remainder, so no cast can fail. A decimal `AVG` over `DECIMAL(p, s)` with `p` above 34 is refused (its `DECIMAL(p + 4, s + 4)` result does not fit 38 digits and the model had no overflow check for it), and the writer's quotient for the rest no longer multiplies the sum past 38 digits (#1497).
+
+### A decimal quotient is checked against its declared type
+
+`sverify_decimal_div` reads as an unchecked decimal only where its declared `DECIMAL(p, s)` follows from its operands: the numerator's precision plus the upscale, or, for the `SUM` and `COUNT` of one argument, the summed argument's precision plus the upscale. Elsewhere it reads as the checked decimal, so `verify` reports an overflow where the quotient can have more digits ([#1497](https://github.com/AlexanderNenninger/substrait-lean/issues/1497)).
+
+### The trust in an incremental view's maintenance plans is stated
+
+The checker parses and writes the plans that maintain an incremental view (state, contributions, merge, finish) and does not contract-check them, so a view's report is its batch query's and a refresh can raise where the report lists no issue; it then applies nothing. `docs/trusted-base.md` and the `_linear.py` docstring say so, and a test keeps a decimal `AVG` at `DECIMAL(34, 2)` with values of ±(10^34 − 1)·10^-2 equal to the batch `AVG` on DuckDB and Polars ([#1497](https://github.com/AlexanderNenninger/substrait-lean/issues/1497)).
+
+### The refusal of a wide decimal `AVG` names the way through
+
+`AVG` of a decimal over 34 digits stays refused, since its `DECIMAL(p + 4, s + 4)` result must fit 38 digits ([#1497](https://github.com/AlexanderNenninger/substrait-lean/issues/1497)). The message now says to cast the argument to `DECIMAL(34, s)` or narrower first, which verifies (the cast's overflow becomes an inferred bound) and runs to the exact mean, and `docs/reference-semantics.md` states both limits, precision and scale.
+
+### `replace` with an empty pattern returns the string unchanged
+
+The model's `replace` put the replacement around every character, as Polars
+does, and DuckDB returns the string unchanged, so a plan verified with an empty
+constant pattern ran on Polars with another answer than the SQL gave on DuckDB.
+The reference now gives DuckDB's value: `replace(s, '', r)` is `s`, and NULL for
+a NULL `r`. Both frontends accept the empty pattern, and the SQL writers and the
+Polars engine fold it to `s`, so every route gives the same answer
+([#1508](https://github.com/AlexanderNenninger/substrait-lean/issues/1508)).
+
+### SQL `NTILE(k)` is proved
+
+The SQL lift wrote `NTILE` as arithmetic over `ROW_NUMBER` and `COUNT`, whose
+product was reported as a possible overflow that no precondition could rule
+out, so no SQL plan with `NTILE` was proved. It now writes the model's `ntile`
+window function, the SQL standard's buckets, as the Ibis producer does
+([#1509](https://github.com/AlexanderNenninger/substrait-lean/issues/1509)).
+
+### The state store matches double keys as `GROUP BY` does
+
+An incremental refresh of a view grouped by, or `DISTINCT` over, a double column crashed with `ArrowInvalid: Cannot yet unify dictionaries with nulls` when a NaN key and a NULL key met, and kept `0.0` and `-0.0` apart, so a refresh after an append of `-0.0` gave a count of 1 where a recompute gives 2 (#1511). The store now encodes the combined key column once, with one zero and one NaN on its copy of the key (the stored values stay raw, D31), and NULL as its own key.
+
+Sharded evaluation's split-key and `unique` checks compare doubles the same way (#1519): `0.0` on one shard and `-0.0` on another is now a split key `check_keys` refuses, where the sharded result had two groups for one.
+
+### `QUANTILE_DISC` of doubles may return any zero or NaN of its class (D45)
+
+The reference now treats `QUANTILE_DISC` as it treats `MIN` and `MAX` (D31).
+Where the selected value is a zero or a NaN, any member of its class in the
+group, or the class's canonical value, is allowed (`AggFn.Picks`). DuckDB
+returns `-0.0` or `+0.0` by row order and thread count, and both are now
+results the reference allows. No verdict changes.
+
+### A window's `MIN`, `MAX` and `QUANTILE_DISC` of doubles may return any zero or NaN of its class (D45)
+
+D45 now covers windows. Over a frame, `MIN`, `MAX` and `QUANTILE_DISC` allow
+any member of the selected value's class among the frame's values, or the
+class's canonical value, as they do in a group. DuckDB's windowed `MIN` and
+`MAX` return either zero by row order (`duckdb-minmax-zero-sign`), and both
+are now results the reference allows.
+
+One verdict changes: a plan with a windowed `MIN`, `MAX` or `QUANTILE_DISC`
+over an argument that may be a double loses its determinism certificate
+(`report.deterministic` is false), and the report names the window function
+("keeps any member of a class of doubles"). Over arguments without doubles
+nothing changes.
+
+### `asof_join` keeps every left row
+
+`sv.asof_join` dropped all but one of the left rows that share their `by` and
+`on` values (and the rows with a NULL `on`), and the plan was proved. The
+ranking is now per left row, numbered first, so each row keeps its match and
+the output has one row per left row. `unique(by, on)` of the output is no
+longer proved: it was true only because rows were dropped. The `key=` parameter,
+which named the columns that identified left rows, is gone
+([#1517](https://github.com/AlexanderNenninger/substrait-lean/issues/1517)).
+
+### Polars and Spark quantiles: LINEAR_DIFF reads the engine's double position
+
+Polars and Spark compute the quantile position `(n − 1)·q` in doubles, so at some positions that are whole in exact arithmetic they interpolate toward the next value. Their `quantile_interp` behaviour `LINEAR_DIFF` now takes the neighbours of that double position, so it states what the two engines compute. The reference stays at the exact position ([#1527](https://github.com/AlexanderNenninger/substrait-lean/pull/1527)).
+
+### `run` and incremental views count the NULLs of a table the engine reads where it is
+
+The check of `Report.run` and of an incremental view's first load counted a NULL in a non-null column only on an Arrow table. A `Resident` table or a `Scan` of files now gets the same count, on the engine, beside the range check of its integer columns: a NULL in a column the plan reads as non-null is refused, naming the column ([#1540](https://github.com/AlexanderNenninger/substrait-lean/issues/1540)).
+
+### `Report.run` checks the data against the schema the plan was verified for
+
+`Report.run` compares each table it reads with the plan's `baseSchema` and refuses a mismatch before an engine reads a row, on every engine, naming the table and the column: a missing column, a type the reader would change (a double in a `BIGINT` column, a decimal or a string in an integer one), a NULL in a column the plan reads as non-null (counted on the data, since `con.put` tables are nullable by default), and an integer outside its declared type's range when the table's physical type is wider (an `int64` column read as `int32`; the engine counts the values outside, once, as a precondition). Narrower integers, `float32` in a double column and a nullable column without NULLs still run. Strings of any Arrow width count as one type. Before, `Report.run` checked none of this and only Polars's reader refused a changed type, so a run on drifted data returned rows that broke a postcondition the report calls proved ([#1540](https://github.com/AlexanderNenninger/substrait-lean/issues/1540)).
+
+### The schema check covers pipelines, incremental views and `run_sharded`
+
+The check `Report.run` makes on its tables (types, NULLs in a non-null column, integers outside their declared width) now also runs where a plan reads tables outside a report: `run_sharded` refuses a shard or broadcast table that differs from the plan's schema (`ValueError`), and an incremental view checks its tables when it is built and the rows each batch inserts (`PreconditionError`). On an Arrow table the width check is one native pass over the column's minimum and maximum instead of a counting plan on the engine: 5 million rows take 0.8 ms where the plan took 95 ms ([#1540](https://github.com/AlexanderNenninger/substrait-lean/issues/1540)).
+
+### A redelivered duplicate no longer takes a published row out of the sink
+
+With `on_violation="quarantine"` and a `unique` key, an exact copy of a row the node already holds sent both copies to quarantine and deleted the published row. Rows identical in every column now count once: the kept row stays and the extra copy is set aside. Copies that disagree on some column still go to quarantine together ([#1547](https://github.com/AlexanderNenninger/substrait-lean/issues/1547)).
+
+### Engine packages check their sverify
+
+`sverify-duckdb`, `sverify-polars` and `sverify-spark` check at import that the installed `sverify` speaks their plugin interface, and otherwise fail with one `ImportError` that says to install both from the same release, in place of a `TypeError` from deep inside sverify (#1585). `sverify check` no longer prints a second traceback when `sverify.errors` itself fails to import; it exits 8 with the message.
+
+### sverify-dbt first run
+
+A seed without `column_types` is checked once `dbt seed` and `dbt docs generate` have given it types, and is refused with that instruction before (#1586). The refusal for a relation without types now reads "ref('x') has no column types: …", and `sverify-dbt suggest` says when it read nothing because every model was refused. A plain `dbt compile` after `dbt run` renders an incremental model's `{{ this }}` branch; sverify-dbt now says so and asks for `dbt compile --full-refresh`.
+
+### Quarantine report: published rows a disagreeing duplicate took out
+
+`QuarantineReport` gains `retracted`: of the rows a refresh quarantined, how many the node had already published, because a new row repeated their key with other values. The report line says "N already published", and the refresh JSON has a `retracted` field per source ([#1593](https://github.com/AlexanderNenninger/substrait-lean/issues/1593)).
+
+### `VAR_*`, `STDDEV_*` and `COVAR_*` read `float_overflow`
+
+The function groups `agg.var` and `agg.stat` now list `float_overflow`, as
+`agg.fsum` does, so each engine's table states what it gives where a
+variance or covariance of finite doubles overflows: `+inf` on DuckDB, Polars
+and Spark (their facts' new probes,
+[#1601](https://github.com/AlexanderNenninger/substrait-lean/issues/1601)). The
+reference already raises there (`AggFn.infAgg`); a `#guard` in
+`Infer.lean` now ties the two lists. Results are unchanged.
+
+### Main carries a development version
+
+A build from main is versioned `<next minor>.0.dev0` (now `0.9.0.dev0`), so it cannot be mistaken for the release on PyPI, and an `==` pin no longer matches across the two. `python/scripts/set_version.py` sets the nine places that carry the version; the release skill uses it for the bump and to reopen main after a release (#1606).
+
+### DuckDB's integer mean depends on the plan's shape and the platform
+
+DuckDB rewrites an ungrouped `avg` of integers to `SUM / COUNT`, which gives the model's value. A grouped or window `avg` keeps the native finalize, which on x86-64 Linux divides in 80 bits and rounds again, so its last bit can differ from the model's. The negative-sum cast of `HUGEINT` to `DOUBLE` rounds twice on every platform. The probes `avg_int.py` and `avg_int_shapes.py` count both, and the fact `duckdb-avg-int` records them
+([#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
+
+### A repeated guarded double operation is computed once
+
+The guards of a double operation repeated the operation's SQL, and nested operations multiplied
+it: `(x * x + x) / y` wrote 579,251 characters. A projection of double arithmetic
+(no branch or short-circuit, so every part is evaluated on every row anyway) now computes
+each such operation once, in a layer below it. The same query writes 3,528 characters and
+runs in 0.011 s on 3 million rows in DuckDB, against 0.657 s
+([#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
+
+### The refusal of `CAST(DOUBLE AS BIGINT)` no longer advises `round()` first
+
+Under `semantics="duckdb"` the lift refuses `CAST(x AS BIGINT)` of a double, since DuckDB
+rounds half to even and the model's cast truncates. The message advised `round()` first,
+but the lift refuses that composition too. It now says to use `semantics='reference'`
+([#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
+
+### Guards that a constant decides are not written
+
+A literal operand decides checks that the written SQL used to spell out: `x / 2.0`
+no longer carries the division-by-zero, infinity-over-infinity and overflow
+`CASE`s (2680 characters become 244), and `n // 10` drops the sign tests of the
+floor division and the zero check that never held (1390 become 438). A check
+stays where a constant can still make it fire (`x / 0.5` can overflow)
+([#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
+
+### `COUNT(DISTINCT x)` is written natively
+
+The written SQL counts the distinct values of a non-double column with the
+engine's own `COUNT(DISTINCT x)`, not a `ROW_NUMBER` over the group and the
+value ([#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
+On 5 million rows it takes 0.08 s, down from 0.30 s.
+
+### A row cap bounds a `COUNT`
+
+With `sv.max_rows(n)` on its input, a `COUNT` is proved to be at most `n`, as an
+integer `SUM` already was. A query that multiplies or adds a count now proves
+its result fits `BIGINT` from a bound on the column and a row cap. This covers
+the exact exit of a threshold computed from the data, `x * COUNT(y) > SUM(y)`,
+which the refusal of `x > (SELECT AVG(y) …)` names ([#1608]). Without a cap the
+product still has an `overflow` error.
+
+[#1608]: https://github.com/AlexanderNenninger/substrait-lean/issues/1608
+
+### Shorter, faster range checks in written date SQL
+
+The SQL Sverify writes for `date_trunc` of a date and for a date plus a constant number of days now checks the reference's date range once, on the input: a truncation stays in range, and a constant shift moves the range. On DuckDB, `date_trunc('month', day)` over 5 million rows runs 2.4× faster (0.085 to 0.035 s), and `day + INTERVAL 7 DAY` matches the hand-written query. The results and the errors are the same ([#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
+
+### Date and time operations compute their operand once
+
+The range guards of a date or timestamp operation (`day + INTERVAL 7 DAY`,
+`date_trunc('month', day)`, `date_part`) repeated the operand's SQL, and the
+`DATE` as `TIMESTAMP` guard nested them. A projection of date and time
+operations over columns now computes each operand once in a layer below it:
+`day + INTERVAL 7 DAY` writes 1,326 characters instead of 3,227 and
+`date_trunc('month', day)` 1,366 instead of 3,387, and on 10 million days in DuckDB they run in 0.08 s
+instead of 0.12 s and 0.41 s instead of 0.69 s
+([#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
+
+### A mean of a bounded integer column is exact
+
+A double `SUM` or `AVG` of an integer column whose values are at most `M` in
+magnitude, over at most `N` rows with `N · max(M, 1) ≤ 2^52`, is now exact on
+every engine: every summation order adds such integers exactly, and a mean
+divides once, as the reference does. Its column reports no tolerance, so a
+threshold on it, such as `qty > (SELECT AVG(qty) FROM orders)` with a bound on
+`qty` and `sv.max_rows`, lowers instead of being refused ([#1608]). D35 is
+amended for the summation orders Sverify takes on trust (DuckDB's constant
+runs, Polars's in-memory Kahan sum), with each engine's tests as evidence.
+
+[#1608]: https://github.com/AlexanderNenninger/substrait-lean/issues/1608
+
+### The written SQL leaves ties open, as the reference does
+
+Under the default observation (`rows="multiset"`), `report.to_sql` and
+`node.to_sql` no longer number rows by `rowid` to break ties as Lean's list
+order does. A sort, a `LIMIT` and a window below it use the sort keys alone;
+the result is ordered only where the plan's last sort orders it. Plans with
+open ties no longer return `Rel.eval`'s rows on every run unless the report is
+`reproducible` or `rows="sequence"` asks for them. On 3 million rows in
+DuckDB the survey's window queries run 1.8 to 2.1x faster
+([#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
+
+### `suggested_requires` states the bound a hint names
+
+A refusal that proves once a bound is stated now puts that bound in
+`report.suggested_requires`: `_.total.between(-1e300, 1e300)` for a `SUM` or
+`AVG` of a double (also behind a join or a CTE) and the integer bounds of a
+`LAG` overflow. `requires=report.suggested_requires` proves them
+([#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
+
+### The threshold refusal names the exit for a mean
+
+`a filter, grouping key or sort on a double may keep other rows` now says what to do for each kind of threshold: a constant takes a
+precondition that keeps the values away from it, and a threshold computed from the data
+(`qty > (SELECT AVG(qty) …)`) takes exact columns, for a mean of integers `x * COUNT(y) > SUM(y)`,
+which is the exact mean's comparison and another query than the rounded one
+([#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
+
+### `ORDER BY ... LIMIT n` is written as a top-N
+
+The written SQL sorts and limits in one SELECT, which DuckDB runs as a Top N,
+and numbers only the rows that stay. It no longer numbers the whole table
+first: on 5 million rows `ORDER BY total DESC, id LIMIT 10` takes 0.015 s,
+down from 0.455 s
+([#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
+
+### A grouped double `SUM` or `AVG` runs faster on DuckDB
+
+Sverify checks a double `SUM` or `AVG` for both infinities among its values and for finite values that overflow. On DuckDB it now runs those checks only for the groups whose sum is not finite, in a second stage joined back on the keys (#1608, #1787). On 10 million rows the written query takes 0.11 s where it took 0.37 s, and 0.23 s where it took 0.46 s behind a join; with every group infinite it takes the same time as before.
+
+A finite sum has finite values. Lean proves this for sums added in any tree or in sequence (`SumOrder.isFinCode`). For DuckDB's constant runs and Polars's compensated sum it is a probed engine fact (`duckdb-sum-double`, `polars-sum-float`). The two-stage SQL is tested against the one-stage SQL (`tests/test_two_stage_sums.py`). The group keys stay as written; doubles as keys, window sums and the other engines keep one stage.
+
+### Tied windows, `first` and `string_agg` take their keys alone
+
+Under `rows="multiset"` a window node with two or more functions that read
+how ties are ordered numbers its rows once, so every function sees one
+arrangement (`Rel.Allowed`'s). `first`, `last`, `string_agg` and `collect` sort
+by their own keys, without the row ordinal. Spark and Snowflake write plans with
+tied windows and `LIMIT`s that they refused, and `rows="sequence"` is the only
+observation they still refuse. Where an engine's runner leaves ties open (`ProfilePlugin.rows`, Spark and
+Snowflake), a margin check above a `LIMIT` or a window that reads the order of
+ties is refused before the run, since the check and the run would each pick
+their own rows; `reproducible=`, a total sort key or `on_inferred="warn"` lift
+it. DuckDB writes both statements with the row ordinal and is not affected
+([#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
+
+### `CAST(round(x) AS BIGINT)` of a double lifts from DuckDB SQL
+
+Under `semantics="duckdb"`, `sv.sql` now lifts `CAST(round(x) AS BIGINT)`,
+and the same with `floor` and `ceil`, where `x` is a `DOUBLE`. Sverify proves
+the lifted plan computes what DuckDB does: the rounded value is integral, so
+DuckDB's half-to-even cast and the model's truncating cast agree, and NaN,
+±∞ and values past 2⁶³ raise in both. A bare `CAST(x AS BIGINT)` of a double
+and casts to narrower integer types stay refused; the bare cast's refusal
+names the rounded casts that lift
+([#1655](https://github.com/AlexanderNenninger/substrait-lean/issues/1655)).
+
+### A deep `AND`/`OR` nest in a filter or projection checks in time linear in its depth
+
+Beyond the top three levels, a filter's `AND` and `OR` chains are now bound as
+guarded columns below the filter, one projection per operand that may raise,
+each operand written once (D50-d,
+[#1719](https://github.com/AlexanderNenninger/substrait-lean/issues/1719)).
+The same holds for a projection's expressions. The plan keeps the lift's rows
+and raises where it raises (`Rel.guardedFilter_eval`, `Rel.guardedFilter_raises`,
+and the projection's), and a guard below the third level is proved where the
+analysis already reads it, in the level's `CASE` condition. Elsewhere
+(aggregates, join conditions, lambdas) the levels below the third stay eager,
+as before.
+
+On Spark 4.3, Spark's parser refuses the SQL sverify writes for an alternating
+nest 80 levels deep (299 KB) and nothing runs; 70 levels (231 KB) parse and run
+in 16 to 31 s, most of it in Spark's optimizer (measured on homelab,
+[#2030](https://github.com/AlexanderNenninger/substrait-lean/pull/2030#issuecomment-7056408687),
+[phases](https://github.com/AlexanderNenninger/substrait-lean/pull/2030#issuecomment-7057113974)).
+Sverify sets no depth limit of its own.
+
+### UTC instants: the conversion with a naive timestamp, and instant literals
+
+A timestamp with the time zone UTC (an instant, [D53](docs/decisions.md#d53-a-timestamp-with-the-time-zone-utc-is-an-instant)) can now be converted to and from a naive timestamp at UTC, which keeps the microseconds: `x AT TIME ZONE 'UTC'` in SQL, the cast between `timestamp('UTC')` and `timestamp` in Ibis. A literal with an explicit offset is an instant (`TIMESTAMPTZ '2024-01-01 12:00:00+02'`, a timezone-aware Python `datetime`), so a filter by an instant, `IN` over instants and `COALESCE` with one run on DuckDB and Polars, under any session or host zone, and a Delta filter on an instant skips the files its naive twin skips. A literal without an offset, DuckDB's `CAST` between the two kinds, and a comparison, `IN`, `COALESCE`, `CASE` or set operation that mixes an instant with a naive timestamp are refused and name [#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725), because DuckDB reads them in the session's zone. Calendar functions of an instant stay refused. `UnFn.atUtc` is new in the core, so the DuckDB lowering is regenerated.
+
+### A UTC-zoned timestamp is read as an instant
+
+A Delta `timestamp` column (Arrow `timestamp[us, tz=UTC]`) is no longer refused. It is an instant, its own kind ([D53](docs/decisions.md#d53-a-timestamp-with-the-time-zone-utc-is-an-instant)): compared with another instant, ordered, grouped, joined on, aggregated with `MIN`, `MAX` and `COUNT`, and written back as an instant (Delta `timestamp`) on DuckDB and Polars, whatever the session or host time zone. Calendar functions, interval arithmetic, casts, a naive timestamp in the same comparison, literals and zones other than UTC are refused and name [#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725); Spark and Snowflake refuse the kind until they have a map. The conversion to a naive timestamp and instant literals are the next step of the issue.
+
+### DuckDB reads partitioned and column-mapped Delta tables, and Delta tables on S3, where they are
+
+A Delta table's partition values come from its log, and its column mapping (by name or by id) is followed, so DuckDB scans these tables without loading them into Python (#173). Delta tables on S3 are read through DuckDB's `httpfs` with a temporary secret made from the `Storage`; with no explicit key the scan needs DuckDB's `aws` extension, and without it the table reads through Arrow as before.
+
+Also fixed: the Arrow route returned NULL for every column of a column-mapped Delta table, because delta-rs's Arrow reader ignores the mapping. It now reads those tables through delta-rs's DataFusion reader, and their file statistics reach the logical columns.
+
+### DuckDB reads renamed Iceberg columns and equality deletes natively
+
+An Iceberg table's Parquet files are read by field id, so a column renamed since a file was written is found without passing the table through Python. Equality deletes (which pyiceberg cannot read) apply to the data files written before them, NULL matching NULL, for local Parquet files of tables without partition fields ([#173](https://github.com/AlexanderNenninger/substrait-lean/issues/173)).
+
+### Polars reads partitioned and column-mapped Delta tables from their files
+
+A Delta table with partition columns or column mapping (by name or by id) on Polars is scanned lazily on its streaming engine, as on DuckDB, instead of reaching Polars as an Arrow copy: the partition values from the log are joined on the file path and the files are read by their physical names ([#173](https://github.com/AlexanderNenninger/substrait-lean/issues/173)).
+
+### Polars reads Delta and Iceberg tables from their files
+
+A pipeline on Polars holds a local Delta or Iceberg source as the Parquet files of its version, and Polars scans them lazily on its streaming engine instead of receiving an Arrow copy of the table. Deletion vectors, position and equality deletes and renamed Iceberg columns are applied as on DuckDB, and a file column whose type does not widen to the table's raises ([#173](https://github.com/AlexanderNenninger/substrait-lean/issues/173)).
+
+### Internal: a Parquet scan is plain data, and DuckDB's reader of it lives in `sverify_duckdb`
+
+`sverify._scan.Scan` no longer holds SQL: `sverify_duckdb.scan` reads a scan (`attach_scan`, `read_scan`), as the Polars and Spark plugins will read it (#173). `Scan.to_arrow()` stays the reference reader. No behaviour changes.
+
+### Spark reads Delta and Iceberg tables from their files
+
+A plan run on Spark reads a local Delta or Iceberg source as the Parquet files of its version, with the session's own reader, instead of receiving an Arrow copy of the table through `createDataFrame`. Deletion vectors, position and equality deletes and renamed Iceberg columns are applied as on DuckDB and Polars, and classic and Spark Connect sessions both work ([#173](https://github.com/AlexanderNenninger/substrait-lean/issues/173)).
+
+### A decision on DuckDB's integer `AVG` is refused where DuckDB may take it the other way
+
+Under `semantics="duckdb"`, DuckDB's own `avg` of integers returns a double
+within a band of the mean Sverify verifies
+([#1735](https://github.com/AlexanderNenninger/substrait-lean/issues/1735)).
+The lift marks that mean (D52), and a plan that reads it is proved only where
+every filter, sort, `DISTINCT`, join condition, grouping key, postcondition and
+key that reads the mean has one outcome over the band, and every output column
+that reads it has a bound in `Report.epsilon`. Elsewhere the report holds a
+`source_threshold` error and its verdict is `unproved`, so `to_sql`, `run`, the
+SQL-file CLI and sverify-dbt refuse it. The way out is a precondition that keeps
+the mean away from the threshold, or exact columns: `SUM(y) > c * COUNT(y)` for
+an integer `c`.
+
+### GROUP BY ALL over a FROM-first query names itself
+
+`FROM t GROUP BY ALL` (DuckDB's FROM-first form, which selects `*`) is refused with "GROUP BY ALL over `*` ... name the columns in a SELECT" instead of "`*` is not supported yet" (#176).
+
+### A Polars connection needs no DuckDB
+
+`sv.connect("polars")` holds its tables as Arrow and runs with no `duckdb` installed (#1764), and the `polars` extra no longer brings `sverify[duckdb]`. Without DuckDB, an Ibis expression bound to such a connection (`con.table(name)`) does not execute through Ibis: it names the engine to run on (`Report.run(con, "polars")`). With DuckDB installed it executes there as before. Spark does not hold tables (a connection runs on DuckDB or Polars), so the `spark` extra keeps `sverify[duckdb]`.
+
+### Table conditions are counted by the engine that runs their plan
+
+`unique`, `references`, `rows_per`, `max_rows` and `arrives_within` were counted by executing an Ibis expression on the connection's own backend (DuckDB). Each is now an Ibis relation that the checker's plan carries, run by the engine the check runs on, with the reference's meaning; a NULL key is one key in `unique` and `rows_per`, a NULL foreign key breaks nothing in `references`, on DuckDB, Polars and Spark. All the table conditions of one table run as one plan. A condition the engine's writer refuses refuses the check (#1764).
+
+### An integer cast gives the type it names
+
+`t.a.cast("int32")` is an `int32` in `Report.output` and in the run, on every
+engine, and so is a widening cast such as `t.b.cast("int64")` of an `int16`
+column. Both were `int64` and `int16` before
+([#1772](https://github.com/AlexanderNenninger/substrait-lean/issues/1772), ruling 114).
+
+### Every refusal of the Ibis producer names its construct
+
+Each refusal of the Ibis frontend sets `UnsupportedError.construct`: `"function <name>"` for a function, otherwise SQL keywords in upper case (`"LAMBDA"`, `"FRAME"`, `"INTERVAL"`, `"JOIN"`). A tool can group refusals by it without reading the message, whose text is unchanged ([#700](https://github.com/AlexanderNenninger/substrait-lean/issues/700), [#1786](https://github.com/AlexanderNenninger/substrait-lean/pull/1786)).
+
+### Precondition checks count in Arrow
+
+A run that checks its preconditions on an engine counted each condition's failing rows in a Python loop over every row. It now counts them with Arrow's compute kernels. On the catalogue's `fin-vwap` at 10⁶ rows, the preconditions take 10 ms where they took 121, and the checked run on DuckDB 98 ms where it took 212 (#1787).
+
+### No overflow assumed for a division by a decimal
+
+A double divided by a decimal converted to a double, such as `price / CAST(quantity AS DOUBLE)` with a decimal quantity, no longer assumes an overflow to `±inf` where the dividend is bounded. A zero divisor raises division by zero first. Any other decimal at scale `s` is at least `10⁻ˢ` in size, so the quotient stays within the dividend's bound over that divisor (`decQuotFinite_sound`, #1787).
+
+### No overflow check on a division by a count
+
+A double divided by an integer cast to a double, such as a rate `d1.cast("float64") / users` or a mean computed as a sum over a count, can't overflow to `±inf`. A zero divisor already raises division by zero, and any other divisor is at least 1 in size. Sverify proves this (`Expr.mayInfBin_sound`), so it no longer assumes such an overflow or checks for it in the SQL it writes (#1787).
+
+### A verified run on DuckDB leaves out checks the proof rules out
+
+Where the contract's preconditions rule out an expression's errors, a verified run on DuckDB now writes that expression without its checks, the check that a double operation does not overflow to `±∞` included (#1787). The run checks the preconditions on its tables first, and only a run whose preconditions were checked, on a route through the reference, does this. Lean proves the expressions meet no issue there (`Expr.issues_nil_of_safe`, `Rel.duckdb_marks`). As on Polars, this rests on the data not changing between the input check and the run. `to_sql` keeps every check unless given a report's `unchecked`.
+
+### A verified run leaves out the row numbering the result doesn't need
+
+To give the rows in Lean's order, a run on DuckDB or Polars numbers them, and DuckDB first copies each input to do so. Where the checker proved that the observation can't see that order, a verified run now leaves the numbering out (#1787). Under the default multiset lens this holds when the result is deterministic (`check_deterministic_sound`). Under `rows="sequence"` it holds when the plan's last sort decides every row's place (`check_sequence_determined_sound`). This happens only on a run that checked the preconditions on its tables, on a route through the reference. `Report.to_sql` already wrote SQL this way for a multiset lens.
+
+### A pending engine profile keeps the reference's ±∞ precondition
+
+`verify(semantics="polars")` (or Spark's), whose report is the reference's
+until the engine has a report of its own, dropped the reference's
+precondition that no double overflows to ±∞ while labelling the report
+`"reference"`. It now keeps it, as the reference's report does. Only
+`semantics="duckdb"`, DuckDB's SQL lift, treats ±∞ as the value (#575).
+
+### A bounded double `SUM` runs without its overflow checks
+
+A double `SUM` or `AVG` whose column is bounded, over an input with a `max_rows` cap, can't overflow to `±∞` in any order an engine adds it (#1787). A verified run on DuckDB now writes it as a plain sum, without the second pass that checked for `±∞`. As with the other run-time checks, this happens only on a run that checked the preconditions on its tables. Sverify's bound for engine sums now also reads `-0.0` as zero (D35, amended).
+
+### Proved rewrites run on an engine, in Lean
+
+Sverify's Lean model now states what an optimization must prove before an
+engine may run it ([#1787](https://github.com/AlexanderNenninger/substrait-lean/issues/1787), step 1).
+A rewrite that refines the plan, exactly or up to the order of rows, gives an
+engine run that the reference allows for the plan as written
+(`Engine.Sound.of_refines`). A contract verified on the plan as written holds
+on that run, with every bound computed from the written plan
+(`Engine.contract_sound_rewrite`). A refinement at one node carries up through
+every operator but `FETCH` (`analysis/Sverify/Analysis/Refines.lean`), and
+`Engine.runPlan` falls back to the written plan when the engine does not
+translate the rewrite or the rewrite fails the side condition's check. Nothing
+runs the optimized plan yet: item 2 of the epic adds the per-rule gate.
+
+### Seven proved rewrites run by default
+
+`Report.run` now runs the rewritten plan where one of seven proved rewrites
+applies and the run checked your preconditions on the data
+([#1787](https://github.com/AlexanderNenninger/substrait-lean/issues/1787),
+ruling 150): an implied filter, a filter the contract rules out, `DISTINCT`
+or `GROUP BY` on a key, `fn(DISTINCT key)`, and a join to a keyed table none
+of whose columns the query reads. The engine gets other SQL for those plans,
+and under `rows="multiset"` the rows may come back in another order.
+`run(check_requires=False)`, `run(optimize=False)` and `Report.to_sql` keep
+the plan as written; `to_sql(optimize=True)` writes the rewrite, for data you
+know meets the preconditions. The name `optimize` is provisional. The report's
+`run_gate` says when the checker kept the plan as written. The bench and the
+rules that stay off are in `docs/optimizations.md`, "The gate".
+
+### Proved rewrites can run, rule by rule
+
+Sverify can now run the rewritten plan in place of the plan you wrote, where
+the checker proves the rewrite keeps the guarantee
+([#1787](https://github.com/AlexanderNenninger/substrait-lean/issues/1787),
+item 2). A gate turns each rewrite rule on or off, and a rule goes on only
+with a measured gain and no loss on DuckDB, Polars or Spark
+(`docs/optimizations.md`, "The gate"). `Report.run` and `Report.to_sql` take the
+checker's plan to run on the translated and transfer routes. Elsewhere they run
+the plan as written, as they do wherever a gate keeps it: the report names that
+gate. Every rule starts off, so no result or written SQL changes.
+
+### No overflow assumed where a division or product shrinks its operand
+
+Sverify proves that a double divided by a value of at least 1 in size, or multiplied by one of at most 1, can't overflow to `±inf` (`BinFn.shrinks_fin`). Two common examples are a percentage `x / 100.0` and a rate `x * 0.01`. The same holds when a contract's ranges bound the divisor or factor, as in `x / y` with `y >= 1`. Sverify no longer assumes an overflow there, so a checked run drops the assumed check before the plan and the check in the SQL it writes (#1787).
+
+### Written plans declare only the functions they call
+
+A plan the checker writes (`--write`, a report's `optimized`, the plan to run and the assumed issues' check) used to declare all 153 functions sverify knows, about 11 KB of each plan. It now declares only those it calls, so a written plan is 0.6–3.3 KB where it was 11–13 KB, and the contract goldens' answers are 75 KB where they were 190 KB (#1787). A plan's digest is unchanged: it never read the declarations (`plan_digest`).
+
+### Every refusal of the SQL lift names its construct and the SQL it refused
+
+Each refusal of the SQL frontend sets `UnsupportedError.construct` (`"function md5"`, or keywords such as `"CORRELATED SUBQUERY"` and `"TRY CAST"`) and `UnsupportedError.sql`, the innermost part of the query being read, cut at 60 characters. With #1786 every refusal of both frontends names its construct ([#700](https://github.com/AlexanderNenninger/substrait-lean/issues/700), [#1788](https://github.com/AlexanderNenninger/substrait-lean/pull/1788)).
+
+### Polars keeps the sign of a zero (D31)
+
+The Polars engine made `-0.0` read as `0.0` and canonicalised scalar results, so a plan such as `cot(x)` for a row `x = -0.0` returned `+inf` on Polars where the reference and DuckDB give `-inf`. Reads and scalar results now keep their raw values, as the SQL writers do (#1461); only identity boundaries (comparison, group, join and window keys) read the zeros as one. A sum or difference gets IEEE's zero sign by a shim (`polars-zero-sign`), and so does `x ** y` (`(-0.0) ** 0.5` is `+0.0`). A double group key is the canonical zero (#1794).
+
+### A double product's domain error names its cause
+
+A product `x * y` of unbounded doubles is reported as a domain error (`0 * ±inf` is NaN), with the hint to bound the columns. With finite bounds the verdict is `proved_with_checks`: the overflow to `±inf` is checked on the data ([#1803](https://github.com/AlexanderNenninger/substrait-lean/issues/1803)).
+
+### `STDDEV_*` bounds are proved
+
+`Report.epsilon` of a `STDDEV_*` column of doubles is now proved on DuckDB
+and Spark, as `VAR_*` and `COVAR_*` already were: an engine's square root of
+its variance is within the reported bound of the reference's correctly
+rounded root (`FloatBounds.StdModel.epsilon_stddev_cr`,
+[#1807](https://github.com/AlexanderNenninger/substrait-lean/issues/1807)).
+Polars stays tested until its `VAR_*` algorithm is proved (#1808).
+
+### The covariance proof is stated for any merge
+
+The covariance's error invariant is now proved for any merge of pairs that meets
+`CMergeSpec` (`cInv_merge_of`), over the bound's constants (`CConst`), with
+DuckDB's merge as one instance at its own constants (`chan_spec`,
+`CConst.chan`). This is the first step toward proving Polars's `COVAR_*` and
+`CORR` (`stat_algo`), whose merge is Schubert and Gertz's
+([#1808](https://github.com/AlexanderNenninger/substrait-lean/issues/1808), ruling 271).
+
+### Polars's `COVAR_*` and `CORR` rows are proved
+
+Polars's `CORR` is now proved within `StatProps`' bound, at the same constants
+as DuckDB's (`FloatBounds.StdModel.core_corr_polars`,
+[#1808](https://github.com/AlexanderNenninger/substrait-lean/issues/1808),
+ruling 271). Polars's `agg.stat` `stat_algo` row, which `COVAR_*` and `CORR`
+share, is now proved, so `proved_on` lists Polars for `COVAR_*` columns.
+
+### Polars's `COVAR_*` bound is proved, with a looser leading constant
+
+Polars's `COVAR_*` is now proved within `StatProps`' bound at Schubert and
+Gertz's constants (`stat_algo` `SCHUBERT_GERTZ`, `StatTol.sg`,
+`FloatBounds.StdModel.core_cov_polars`,
+[#1808](https://github.com/AlexanderNenninger/substrait-lean/issues/1808),
+ruling 271). Its leading constant loosens from 71 to 107, so a plan whose
+stated tolerance sits between the two can change from verified to not verified
+on Polars. DuckDB's and Spark's bounds are unchanged. Polars's `COVAR_*` and
+`CORR` share one `stat_algo` row, which stays tested until Polars's `CORR` is
+proved.
+
+### Polars's `VAR_*` and `STDDEV_*` bounds are proved
+
+`Report.epsilon` of a `VAR_*` or `STDDEV_*` column of doubles is now proved on
+Polars as on DuckDB and Spark: two-pass blocks, Welford's update and Schubert
+and Gertz's merge, in any order and tree, keep the variance within the
+reported bound (`FloatBounds.StdModel.core_var_polars`,
+[#1808](https://github.com/AlexanderNenninger/substrait-lean/issues/1808)).
+`proved_on` lists Polars for `VAR_*` and `STDDEV_*` columns. Polars's `COVAR_*`
+stays tested against a fuzzed bound.
+
+### The corrected two-pass bound is proved
+
+`FloatBounds.StdModel.corrTwoPass_error` bounds the textbook formula
+`Σ d² − (Σ d)² / n` applied to doubles shifted by any constant, which is how
+sverify writes Snowflake's `VAR_*` (values minus their group's mean), with
+both sums added in any order an engine may use
+([#1810](https://github.com/AlexanderNenninger/substrait-lean/issues/1810)).
+For the group's mean the bound is `(2n + 9) u S` to first order.
+
+### Errors name the missing extra
+
+A call that names an engine sverify installs as an extra, when that engine is
+not installed, raises `ImportError` with the install command:
+`sv.connect("polars")`, `sv.verify(..., semantics="polars")`,
+`report.run(con, "polars")` and `sverify.sql.dialect_of("spark")` say
+`engine 'polars' is not installed: pip install 'sverify[polars]'`, where they
+said "unknown engine"
+([#183](https://github.com/AlexanderNenninger/substrait-lean/issues/183)). A
+test checks every entry point of an extra on a bare install.
+
+### sverify-dbt reads dbt's files as UTF-8 on every platform
+
+`sverify-dbt` names `encoding="utf-8"` where it reads dbt's `manifest.json`
+and the selectors file it writes, so a project with non-ASCII names or
+descriptions reads the same on Windows as elsewhere
+([#183](https://github.com/AlexanderNenninger/substrait-lean/issues/183)).
+
+### Text files are read and written as UTF-8 on every platform
+
+sverify names `encoding="utf-8"` wherever it reads or writes a text file: the
+SQL files of `sverify check`, ODCS contracts, OpenLineage files, sink records,
+secrets files and the proof cache. On Windows, Python's default is the
+locale's code page (cp1252), so non-ASCII text in those files failed or was
+misread there
+([#183](https://github.com/AlexanderNenninger/substrait-lean/issues/183)).
+
+### The CLI's time budget stops cleanly where there is no SIGALRM
+
+On Windows, `sverify check --timeout` (and `SVERIFY_TIMEOUT`) now raises the
+budget's error in the main thread when time runs out, so the command prints
+what it proved before stopping, as on Linux and macOS. Before, only the
+watchdog stopped it, ending the process without the partial report
+([#183](https://github.com/AlexanderNenninger/substrait-lean/issues/183)).
+
+### Windows paths in table names, file URIs and `check --fix`
+
+Three fixes from the Windows trial
+([#183](https://github.com/AlexanderNenninger/substrait-lean/issues/183)):
+
+- A Delta source at a Windows path (`C:\lake\orders`) is named `orders`. It
+  was named after the whole path, so a refresh, its sink record and a resume
+  looked it up under another name.
+- A `file:` URI keeps its drive and host: `file:///C:/db/t` and
+  `file://C:\db\t` are read under `C:`, where native scans (DuckDB, Polars,
+  Spark) looked under the current drive's root.
+- `sverify check --fix` and `--diff` keep a file's line endings. A file with
+  `\r\n` endings came back with `\r\r\n` on Windows, and `--diff` showed
+  every line as changed.
+
+### Fixed: Spark's IEEE division by `-0.0`
+
+A division of doubles under `on_division_by_zero` = `IEEE` (what `semantics="duckdb"` asks for) returned the opposite infinity on Spark for a `-0.0` divisor: `1 / -0.0` gave `+inf` where the reference gives `-inf`, in every release since 0.2.0. Spark now writes the plain `/`, so an IEEE division by a zero of either sign raises on Spark (`DIVIDE_BY_ZERO`), as Spark's engine model states; DuckDB SQL with a zero divisor raises there where DuckDB returns `±inf`. Snowflake's division was the plain `/` already.
+
+### Fixed: a rounded, cast or compared double that an engine computes within a bound
+
+A projection that sends a double through `floor`, `round`, a cast to an integer,
+a decimal or text, or a comparison was PROVED on an engine that computes the
+double only within a bound, and could return another integer or truth value
+there: `floor(x / 49.0)` was `0` on Polars, whose quotient by a constant lands
+one ulp below `1`. Such plans are now refused on those engines, as a filter on
+the same double is (#568's threshold rule), and run where the double is exact;
+a precondition that keeps the value away from the threshold lifts the refusal
+([#1849](https://github.com/AlexanderNenninger/substrait-lean/issues/1849), ruling 275).
+
+### A report read back keeps its run-time checks
+
+`Report.to_json` now writes what a run checks on the data (the margin checks of threshold filters on double sums, the pair counts of as-of joins and the as-of join's cap) and `Report.from_json` reads it back; a plan read by `Report.from_substrait` keeps the cap ([#1863](https://github.com/AlexanderNenninger/substrait-lean/issues/1863)).
+
+### An integer cast to a wide DECIMAL is read as a decimal (corrected rule)
+
+Sverify used to read an integer's cast to `DECIMAL(p, 0)` with 19 or more digits as the integer itself, a rule from before decimals were modelled. Arithmetic after such a cast was then checked and written at 64 bits, where the plan computes it at `p` digits: `CAST(i AS DECIMAL(38, 0)) * j` was reported as `may fail: overflow` and refused ([#1876](https://github.com/AlexanderNenninger/substrait-lean/issues/1876)). The cast is now read as the plan declares it, as any other cast to a decimal:
+
+- arithmetic after the cast is checked at `p` digits, so such products and sums prove where they fit;
+- the result column is `DECIMAL(p, 0)` where it was an integer;
+- the public Snowflake writer, which computes no decimal as the reference does yet (#27), refuses such a plan where it wrote 64-bit integer arithmetic before.
+- a decimal's truncation and rounding to an integer keep their operand's bounds, so more casts of a decimal back to an integer prove: `CAST(CAST(i AS DECIMAL(38, 0)) AS BIGINT)` proves with no precondition.
+
+### Long IN lists check in milliseconds
+
+The checker's time for `x IN (...)` grew exponentially with the list's length:
+2.5 s for 11 literals, minutes for 13. Checking each `OR`'s right operand
+re-analysed the left one several times, and an `IN` list nests its `OR`s on
+the left. A list of 50 literals now checks in under 0.1 s
+([#1877](https://github.com/AlexanderNenninger/substrait-lean/issues/1877)).
+
+### ODCS: `missingValues` rules that list values read
+
+`odcs.read` raised `TypeError` on a `missingValues` rule that listed values. It now reads the rule as the column being neither NULL nor one of the values (#1886).
+
+### ODCS: a fractional row cap reads
+
+`odcs.read` reads a `rowCount` cap such as `mustBeLessOrEqualTo: 2.5` as `max_rows(2)`, where it used to skip it as a lower bound.
+
+### to_substrait casts the narrower input of a set relation
+
+A set relation whose inputs differ in decimal precision (a full outer join of two sums) is written with a cast of the narrower input to the wider precision at the same scale, and reads back (#1904). It was refused for the time between #2106 and this change.
+
+### Substrait export: a set relation whose inputs differ in type is refused
+
+`to_substrait` refuses a plan whose set relation has inputs of different column types, decimals of two precisions for example, which Substrait does not allow. It used to write a plan the Substrait validator rejects (TPC-DS q51). `report.to_sql(dialect)` writes the plan for an engine.
+
+### float32 columns, interval casts, and unread columns under SQL conditions
+
+- Sverify reads float32 (`REAL`) columns and constants: it passes them through,
+  compares, orders and groups them, takes their `min` and `max`, and casts them
+  to double. A run returns float32 where `Report.output` says float32, on every
+  engine, and a float32 constant arrives bit for bit. Every use whose result
+  depends on the width stays refused with the step named: arithmetic, `SUM`, `AVG`
+  and the statistical aggregates, `round`, and casts to strings, decimals and
+  `REAL` ([#1908](https://github.com/AlexanderNenninger/substrait-lean/issues/1908),
+  [#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417), ruling 186).
+- In SQL, a `REAL` next to an integer or decimal constant is compared as a `REAL`, as
+  DuckDB does (`0.3::REAL = 0.3` is true; fact `duckdb-coerce-real`). The constant is
+  rounded once, as DuckDB rounds it; one that would round twice (an integer past 2^53,
+  a decimal whose nearest double is halfway between two singles) is refused.
+- A double constant `-0.0` keeps its sign in the written plan and on Polars.
+- An integer cast to an interval of weeks, days, hours, minutes or seconds,
+  `n.cast("interval('D')")`, is read as `n.as_interval("D")`
+  ([#1926](https://github.com/AlexanderNenninger/substrait-lean/issues/1926)).
+- A SQL `ensures` condition on an Ibis transformation no longer fails on a binary
+  or map column that nothing reads
+  ([#1958](https://github.com/AlexanderNenninger/substrait-lean/issues/1958)).
+- Binary values are refused by design, with advice that holds on every engine:
+  encode them as text at the source (hex or base64), or leave the column out
+  ([#1918](https://github.com/AlexanderNenninger/substrait-lean/issues/1918)).
+
+### Aggregates and windows over expressions
+
+`mode()` of an expression ([#1909](https://github.com/AlexanderNenninger/substrait-lean/issues/1909)), window partitions and sort keys that are expressions ([#1930](https://github.com/AlexanderNenninger/substrait-lean/issues/1930)), `quantile()` of several fractions ([#1910](https://github.com/AlexanderNenninger/substrait-lean/issues/1910)) and `nunique()` of whole rows ([#1912](https://github.com/AlexanderNenninger/substrait-lean/issues/1912)) are read: the Ibis producer projects the expressions into columns first, writes one measure for each fraction and counts the rows left after a `DISTINCT`.
+
+### Casts of booleans to numbers, and of lists
+
+- `CAST(b AS INT)` and `CAST(b AS DOUBLE)` of a boolean are 1, 0 or NULL, so
+  `b.cast("int64").sum()` counts the trues
+  ([#1911](https://github.com/AlexanderNenninger/substrait-lean/issues/1911)).
+- A list casts element by element, `transform(l, x -> CAST(x AS t))`. Polars runs it;
+  the SQL engines refuse the lambda until
+  [#348](https://github.com/AlexanderNenninger/substrait-lean/issues/348). A cast of a
+  struct is refused by design: sverify cannot build a struct
+  ([#1919](https://github.com/AlexanderNenninger/substrait-lean/issues/1919), ruling 186).
+
+### `first(order_by=)`, `last(order_by=)` as windows and `arbitrary()`
+
+`first(order_by=)` and `last(order_by=)` over a window ([#1913](https://github.com/AlexanderNenninger/substrait-lean/issues/1913)) are read as `FIRST_VALUE` / `LAST_VALUE` over the whole partition in that order, as Ibis writes them. `arbitrary()` ([#1920](https://github.com/AlexanderNenninger/substrait-lean/issues/1920)) is read as `first()` without an order: a non-NULL value of the group, proved as membership, reported as the engine's choice unless the group is a key.
+
+### `group_concat` over a window, RANGE frames over `timestamptz`
+
+`group_concat(sep=)` as a window function ([#1915](https://github.com/AlexanderNenninger/substrait-lean/issues/1915)) joins the frame's non-NULL strings in the window's order, on DuckDB. RANGE frames with interval offsets accept a timestamp with time zone as the sort key ([#1931](https://github.com/AlexanderNenninger/substrait-lean/issues/1931)).
+
+### Quantile of a decimal: the refusal names the cast
+
+`median()` and `quantile()` of a decimal column stay refused, by design: DuckDB truncates a double interpolation, and Spark and Polars return doubles, so no engine gives one value ([#1921](https://github.com/AlexanderNenninger/substrait-lean/issues/1921)). The message says to cast the column first (`x.cast("float64").quantile(q)`), which verifies and runs on DuckDB.
+
+### A double cast to a timestamp is read as seconds
+
+Sverify reads Ibis's `x.cast("timestamp")` of a double as seconds since the
+epoch, as DuckDB's `to_timestamp` does: the microseconds are `x * 1e6`
+computed as a double and rounded half to even, so `2.5e-6` seconds is 2
+microseconds ([duckdb-to-timestamp-double](engines/duckdb/facts/duckdb-to-timestamp-double.json)).
+A value outside the timestamp range raises. `try_cast` and a cast to a
+timestamp with a time zone stay refused
+([#1922](https://github.com/AlexanderNenninger/substrait-lean/issues/1922)).
+
+### Dates and times: more Ibis constructs
+
+Ibis `date_bin`/`delta` of literal timestamps (#1924), a date part such as
+`iso_year` of a constant date (#1927), a date or timestamp moved by a column's
+count of months or years (#1925, the day cut to the month's length, as DuckDB
+does) and `ibis.timestamp(y, m, d, h, mi, s)` of integer columns (#1928, with
+DuckDB's ranges for the time) are read.
+
+### Ibis `unnest(keep_empty=True)`
+
+An empty or NULL list gives one row with a NULL element (#1917), as DuckDB,
+Polars and Spark's `explode_outer` do. `unnest(offset=)` stays refused.
+
+### SQL lift: GROUP BY ALL, QUALIFY and strftime
+
+`GROUP BY ALL` groups by the select items without an aggregate, `QUALIFY`
+filters a window column, and `strftime(ts, fmt)` with a constant format of
+`%Y %m %d %H %M %S %j %%` is read (#1991, #319). `current_date` and `now()`
+stay refused, naming the function; pass the date in as a column or a constant.
+
+### Ibis reads `truncate("ms")` and `truncate("us")`
+
+`ts.truncate("ms")` and `ts.truncate("us")` of a timestamp are read as `date_trunc('millisecond', …)` and `date_trunc('microsecond', …)`, which Lean, DuckDB, Polars and Spark already modelled ([#1929](https://github.com/AlexanderNenninger/substrait-lean/issues/1929)). Nanoseconds stay refused. A cast of a timestamp to a number stays refused by design (DuckDB has no such cast; the replay ledgers say why); a number to a timestamp waits on the question of #1933's reading ([#1922](https://github.com/AlexanderNenninger/substrait-lean/issues/1922)).
+
+### A literal column has its declared width
+
+A column projected from an integer literal now has the literal's declared type's
+width, not its value's: `ibis.literal(0, "int64")` starts a 64-bit column, so
+adding to it is checked at 64 bits, where sverify used to report `may fail:
+overflow` at 8 bits and refuse the plan. An `int8`, `int16` or `int32` literal
+keeps its narrower width ([#1934](https://github.com/AlexanderNenninger/substrait-lean/issues/1934)).
+
+### sverify-dbt reads more row-level tests
+
+`sverify-dbt` maps the regex, LIKE, length and column-pair tests of dbt-expectations, and `not_accepted_values` and `not_empty_string` of dbt-utils, to conditions sverify proves ([#1936](https://github.com/AlexanderNenninger/substrait-lean/issues/1936)). A regex test with `flags` is listed as not checked, with the reason.
+
+### SQL lift and plans without a table: more functions
+
+The SQL lift reads `radians(x)` and `degrees(x)` (#1938), `right(s, n)` with a
+column or expression for `n` (#1942), `str_split` inside the arguments of
+another `str_split` (#1940) and a `WITH` in front of a `UNION`, `EXCEPT` or
+`INTERSECT` (#1939). A plan that reads no table, as an Ibis scalar expression
+makes, now runs on DuckDB (#1916); Polars refuses it, naming the construct.
+
+Under `semantics="duckdb"`, the lifted integer `%` lists `MIN % -1` as an issue, since DuckDB raises there (#2058); a bound on either operand discharges it. DuckDB, Polars and Spark run the guard; an engine that cannot raise it refuses the plan and names it.
+
+### sverify-dbt reads row-count and column-set tests
+
+`expect_table_row_count_to_equal` and `expect_table_row_count_to_be_between` become a cap on the model's rows (`sv.max_rows`): proved from the upper bound in a model's tests, and a precondition when an input states it. A lower bound above 0, `group_by` and `row_condition` are refused by name. `expect_table_columns_to_match_set`, `…_match_ordered_list`, `…_contain_set`, `…_not_contain_set`, `expect_table_column_count_to_equal`, `…_be_between` and `expect_column_to_exist` are decided from the model's columns, without a proof. Tests of two relations or of a lower bound (`equal_rowcount`, `recency`, `…_distinct_count` and others) are listed as not checked, each with the reason ([#1937](https://github.com/AlexanderNenninger/substrait-lean/issues/1937)).
+
+### Nested double arithmetic in DuckDB SQL checks in under a second
+
+`sv.verify` of DuckDB SQL under `semantics="duckdb"` took time exponential in
+how deeply double arithmetic nests: six chained divisions took 193 s
+([#1952](https://github.com/AlexanderNenninger/substrait-lean/issues/1952)).
+Each operation's NaN and infinity handling names its operands several times,
+and the lift copied a nested operand once per mention. It now computes a
+nested operand once, as a column below the `SELECT` list, wherever every row
+evaluates it anyway, so the plan grows linearly: ten divisions check in about
+0.6 s. The checker also keys a projection's declared column types by a short
+encoding of its expressions, which makes the check of a plan 10 to 20
+projections deep 13 to 20 times cheaper.
+
+### `odcs.read` reads id paths to properties without an id
+
+An id path such as `schema/products_obj/properties/id` names a property with no
+`id` of its own by its `name`, as ODCS's example `schema/relationships.odcs.yaml`
+writes it, so both foreign keys of that example read as `sv.references`. A
+relationship sverify leaves unread now says why: it is not a foreign key, it
+names no single column the contract defines, or it is a composite key (#2223)
+(#1956).
+
+### ODCS: patterns and object-level foreign keys
+
+`odcs.read` reads `logicalTypeOptions.pattern` as a search condition (ODCS's patterns are unanchored) when the pattern is in the regular-expression subset all engines agree on ([#1957](https://github.com/AlexanderNenninger/substrait-lean/issues/1957)), and reads foreign keys written on the schema object and references by id path (`schema/<object id>/properties/<property id>`) as `references` ([#1956](https://github.com/AlexanderNenninger/substrait-lean/issues/1956)). A composite foreign key is listed as unread: `references` takes one column. A condition whose SQL holds braces, such as `{8}`, no longer breaks the condition query.
+
+### Binary and map columns pass through
+
+Sverify carries a column of a type it does not read, such as binary or a map,
+through a plan unchanged on DuckDB, Polars and Spark: a `SELECT *` over a table
+with a binary or map column, a filter or join on other columns, a sort on
+others, `UNION ALL` and `LIMIT`. `IS NULL` and `IS NOT NULL` read such a column.
+Any other use is refused, and the message names it: a function, comparison or
+cast of the column, a filter, join, sort, grouping or partition on it, and
+`DISTINCT` over it. A binary constant stays refused
+([#1958](https://github.com/AlexanderNenninger/substrait-lean/issues/1958),
+[#1918](https://github.com/AlexanderNenninger/substrait-lean/issues/1918)).
+
+### A CASE of constants has its declared width
+
+A column computed by a `CASE` whose branches are integer constants now has the
+width their declared type gives, as a literal column does since
+[#1934](https://github.com/AlexanderNenninger/substrait-lean/issues/1934):
+`CASE WHEN x > 0 THEN 100 ELSE 0 END` of `BIGINT` literals is a 64-bit column, and
+`e * e` of it is no longer reported as an 8-bit overflow. A `CASE` of `TINYINT`
+constants stays 8 bits ([#1968](https://github.com/AlexanderNenninger/substrait-lean/issues/1968)).
+
+### Six more DuckDB rows are proved
+
+DuckDB's `division_type`, `round`'s rounding, NaN equality, `substring`'s
+negative start, `LIKE`'s case sensitivity and string positions are now
+proved by the generated lowering (`Lowering.duckdb_exact`), so a plan that
+reads them no longer lists them as tested rows
+([#1985](https://github.com/AlexanderNenninger/substrait-lean/issues/1985)).
+DuckDB's integer powers are named as a shim, written as checked products.
+
+### `sv.asof_join(how="left")` keeps every left row, proved
+
+Sverify now proves that a left as-of join has one output row per left row:
+every result the reference allows has as many rows as the left table
+(`AsofSite.left_exactly_one`,
+[#1992](https://github.com/AlexanderNenninger/substrait-lean/issues/1992)).
+The checker's as-of sites report whether a plan has the shape the theorem is
+about (`left_exact`).
+
+### A left key survives `sv.asof_join`
+
+A key of the left table that `requires` states is now proved a key of
+`sv.asof_join`'s output, for `how="left"` and `how="inner"`: `unique(order_id)`
+on the facts gives `unique(order_id)` after the join
+([#1992](https://github.com/AlexanderNenninger/substrait-lean/issues/1992)).
+The key analysis keeps a dependency through a projection's copies of the
+columns it depends on, which helps any plan that renames or reorders columns
+above a join.
+
+### A key survives a GROUP BY of the key and its attributes
+
+`unique(customer_id)` on the input now proves `unique(customer_id)` after `GROUP BY customer_id, name`, and after the same grouping of `customers LEFT JOIN orders`. Sverify carries functional dependencies through the plan (a key gives every column, and a join's left side keeps its dependencies), and a dependency onto a key makes its left side a key ([#1993](https://github.com/AlexanderNenninger/substrait-lean/issues/1993)).
+
+### sverify-dbt suggest names the input test that proves a model test
+
+`sverify-dbt suggest` tries `not_null` on the seed and source columns no test covers when a model test fails because a row may fail it, and names the minimal set that proves the test, such as `not_null` on `raw_orders.ordered_at` for `fct_daily_revenue.not_null(order_day)`. It used to print that nothing more was provable ([#1994](https://github.com/AlexanderNenninger/substrait-lean/issues/1994)).
+
+### sverify-dbt fails a refused model with an enforced contract
+
+`sverify-dbt check` exits 1 under the default `--fail-on contract` when sverify refuses a model whose contract is enforced, and names the refusal on stderr; it used to exit 0 on exactly the model it could not read ([#1995](https://github.com/AlexanderNenninger/substrait-lean/issues/1995)). A refused model without a contract still exits 0.
+
+### Pipelines ignore an unused map, struct or binary column
+
+A pipeline over a table with a map, struct or binary column no step mentions refreshes, as `verify` does, with or without `requires`. The plans of the view's strategies (delta rules, state per group, touched groups, semi joins) read the columns the view and its conditions mention (#1996).
+
+### Clearer first hour: run-time checks, constants, quarantine, refresh summary
+
+- A report that holds with checks reads "proved with checks: 1 run-time check" (it said "1 assumption"), matching the `while it runs:` lines below it.
+- Double constants print as Python writes them: `amount * 3.0 + 1.0`, not `amount * 3.000000 + 1.000000`, and `value * 3.0000001` keeps its digits.
+- `sverify check`'s "Not proved" lines say each postcondition in words (`total < 5: it may be FALSE on some rows`), as its guarantees do.
+- `sverify check` lists a node's quarantine table among its credentials only where a precondition sets rows aside (`on_violation="quarantine"`).
+- `Refresh.summary()` is one line per node for every refresh: a first refresh reads "paid: computed, requires checked on data, created v1: +2 −0", and what is notable (a recompute, a schema change) leads the line; `str()` keeps the full entry.
+
+([#1997](https://github.com/AlexanderNenninger/substrait-lean/issues/1997))
+
+### Install lines lead with the engine, and a refused run names its postcondition in words
+
+- The install sections of `python/README.md`, `docs/getting-started.md`, `docs/engines.md` and the `sverify` skill lead with `pip install 'sverify[duckdb]'`, which the first example needs; `pip install sverify` follows as the verify-only install.
+- `UnverifiedRunError` and the unverified-refresh warning say `ensures total < 5 is not proved`, as `sverify check` does, with the Python syntax left out.
+
+([#1997](https://github.com/AlexanderNenninger/substrait-lean/issues/1997))
+
+### A rewrite no longer runs where the plan as written may raise
+
+`Report.run` could run a proved rewrite that dropped the part of the plan
+that raises, such as a left join's unused input whose `SUM` may overflow, and
+return rows where the reference raises
+([#2006](https://github.com/AlexanderNenninger/substrait-lean/issues/2006)).
+The rewrite now runs only where neither the plan as written nor the rewrite
+has an issue; otherwise the engine runs the plan as written, and `run_gate`
+says `issues`.
+
+### The default semantics' SQL lift is proved against DuckDB
+
+SQL lifted under `semantics="reference"` now uses the proved entries of the
+lift's reference table, and Sverify proves that each of them, wherever it gives
+a value, gives DuckDB's (`liftReference_refines_duckdb`, D54,
+[#2008](https://github.com/AlexanderNenninger/substrait-lean/issues/2008)).
+`CAST(DOUBLE AS BIGINT)` stays refused under the reference (D55), now with the
+refusal text of the Lean table.
+
+### Wordings that match their theorems
+
+The PyPI page, `Verdict.PROVED`, `ViewContract.deterministic` and `verify`'s `semantics` docstring say what the theorems state: the proof holds for the model of each engine's functions, and that the model matches the engine rests on tests ([#2009](https://github.com/AlexanderNenninger/substrait-lean/issues/2009)).
+
+### A decimal average over a window stays within its inputs
+
+`AVG` of a decimal column over a window now keeps the bounds of the values it averages, as a grouped `AVG` already did. A sum minus its average per partition, or a ratio that divides by that average, no longer reports an overflow or a division by zero that its inputs' bounds rule out ([#2015](https://github.com/AlexanderNenninger/substrait-lean/issues/2015)).
+
+### Assumed issues are checked by a plan whose result is the verdict
+
+A report's assumed issues (an integer `SUM` that must fit 64 bits, an
+operation on finite doubles that must not give `±∞`) were checked by guards
+inside the plan an engine runs. DuckDB and Spark skip an expression the result
+does not need: a column nothing reads, one under a filter or a limit pushed
+below it, one joined to an empty input, one under a `count(*)`. There a run
+returned rows where the reference raises
+([#2018](https://github.com/AlexanderNenninger/substrait-lean/issues/2018)).
+`Report.run` now first runs a check plan the checker writes from the plan as
+written (`assumed_check` in the report's JSON), on the run's own engine: one
+row, one column per place where an issue may occur, aggregates every engine
+computes. A batch on which an issue occurs is refused with a
+`PreconditionError` before the run. The guards inside the plan stay. The
+DuckDB run of the whole plan before another engine's run is gone, and so is
+`ProfilePlugin.checks_assumed` and `check_inputs`'s `assumed_checked`.
+
+### Spark names a parser refusal
+
+When Spark's parser refuses the SQL sverify wrote for a plan as too complex (a nest of about 80 levels), the run raises `UnsupportedError` with the statement's size and the fact `spark-exec-parser-depth` in place of Spark's `FAILED_TO_PARSE_TOO_COMPLEX` error
+([#2030](https://github.com/AlexanderNenninger/substrait-lean/issues/2030)).
+
+### DuckDB 2.0.1 is probed
+
+DuckDB 2.0.1 joins 2.0.0 as a probed version of the DuckDB table (`alsoProbed`). The sqllogictests that changed between the tags were replayed at 2.0.1: the disagreements each cite an engine fact or an open issue ([#2045](https://github.com/AlexanderNenninger/substrait-lean/issues/2045), [#2376](https://github.com/AlexanderNenninger/substrait-lean/issues/2376)).
+
+### Engine versions: one range per profile
+
+Each engine profile now covers one range of engine versions: the minor releases its facts were probed at (D70, amending D14). The engine packages depend on that range, `duckdb>=2.0.0,<2.1`, `polars>=2.1.0,<2.2` and `pyspark>=4.3.0,<4.4`, and sverify-dbt's DuckDB bound is the same; a test holds each bound to its profile. A run on an unprobed patch inside the range warns (`EngineVersionWarning`) and records the version on its route as `Route.unprobed_version`, also in the report JSON, and the route's evidence line says "this run is on 2.0.1, unprobed". A run on another minor is refused (`EngineVersionError`, which names the range); before, only another major was. `run(..., unverified=True)` now also runs a proved plan on a refused version, unverified. A Spark session's own version decides. `warnings.simplefilter("error", sverify.errors.EngineVersionWarning)` refuses every unprobed version ([#2052](https://github.com/AlexanderNenninger/substrait-lean/issues/2052)).
+
+### What an unproved run does where the reference raises
+
+The docs say it: an unproved run does what its engine's facts record at the probed version, and no theorem covers it. The integer-overflow row of the pitfalls table names the versions and links the facts ([#2054](https://github.com/AlexanderNenninger/substrait-lean/issues/2054)).
+
+### A double sum under `semantics="duckdb"` keeps its overflow check
+
+Under `semantics="duckdb"`, a `sum` or `avg` of doubles no longer drops the overflow to `±∞` from its issues: DuckDB's running sum overflows where the model's exact sum stays finite (`avg(1e308, 1e308)` is `inf` in DuckDB), so a verification over an unbounded double column is `proved_with_checks` where it was `proved`, and a run refuses a batch that overflows. A scalar operation's `±∞` stays the engine's value there. The check also tests the total for NaN where no input is NaN: partial sums that overflow in both directions combine to NaN ([#2057](https://github.com/AlexanderNenninger/substrait-lean/issues/2057)).
+
+### The catalogue's prose names where the facts are
+
+`catalogue/` points to `engines/<engine>/facts/` for the engine facts, and its feature notes no longer present DataFusion as a current engine ([#2081](https://github.com/AlexanderNenninger/substrait-lean/issues/2081)).
+
+### `sverify contract export` drops `--format`
+
+`sverify contract export` writes ODCS, its one format, so its `--format odcs` flag is gone: drop it from the command. The flag chose nothing, and the 1.x promise keeps a flag for good once 1.0 ships ([#2081](https://github.com/AlexanderNenninger/substrait-lean/issues/2081)).
+
+### The refusal of a duration compared with an interval of days or months gives its own reason
+
+A comparison of a duration (`ts - ts`, `d - d`) with an interval of days or months is still refused, and the message now says why: durations compare as microseconds, and no month length suits every engine. Write the interval in hours or seconds ([#2081](https://github.com/AlexanderNenninger/substrait-lean/issues/2081)).
+
+### `power` is strict in a NULL base
+
+`power(x, 0)` is NULL for a NULL `x`, as DuckDB, Polars and Spark give it. It was the constant 1: the parser, the SQL plan reader and the Polars engine folded a literal zero exponent, and the base was never evaluated. A proof that `power(x, 0)` is not NULL now needs `x` not NULL. For a non-NULL `x` the result is still 1, NaN and `±inf` included. On Spark, a double `power(x, 0.0)` is refused with the other double powers ([D71](docs/decisions.md#d71-power-is-strict-in-both-arguments), part of [#2081](https://github.com/AlexanderNenninger/substrait-lean/issues/2081)). Every incremental sink is recomputed once at the upgrade, since a stored plan keeps `power(x, 0)` and the stored 1 is no longer the reference's value.
+
+### A typed NULL beside a nested call keeps its type in the written plan
+
+`CAST(NULL AS DOUBLE)` projected beside a nested call such as `-(d + d)` was written as an `i64` NULL, so Polars returned an `int64` column and DuckDB an untyped one. The written plan now keeps the declared type (#2102).
+
+### A condition of `NOT NULL` takes the ELSE branch in the written SQL
+
+A `CASE WHEN NOT CAST(NULL AS BOOLEAN) THEN a ELSE b END` in a written plan took the THEN branch, because the writer folded `NOT NULL` to `TRUE`. `NOT NULL` is NULL, and the CASE takes ELSE, as the reference and the engines' own SQL do.
+
+### A stated float tolerance keeps the plan as written
+
+Under `sv.equivalent(floats=sv.within(...))`, an engine now runs the plan as written in place of the checker's rewrite, as it already did under `floats="plan"`. The exception is a plan where the rewrite is proved safe at every engine's doubles: one with no double and no open measure. The report names the gate (`run_gate` is `"near"`) ([#2105](https://github.com/AlexanderNenninger/substrait-lean/issues/2105)).
+
+### The SQL lift refuses `lpad` and `rpad` past 2^20 characters
+
+`lpad(s, n, p)` and `rpad(s, n, p)` with a constant `n` over 1,048,576 characters are refused, with the reason. The lift writes the fill as a constant of `n` characters, and `lpad('', 1100000000, '😀')` built 4.4 GB of it before DuckDB refused the query at its string limit ([#2135](https://github.com/AlexanderNenninger/substrait-lean/issues/2135)).
+
+### A FLOAT cast to an integer in DuckDB SQL is refused
+
+A DuckDB SQL `CAST(x AS INTEGER)` of a `FLOAT` (REAL) is refused as the cast
+of a `DOUBLE` is: DuckDB rounds it to the nearest integer, and the model's cast
+truncates. Sverify used to prove the truncated value, 0 for `0.55::FLOAT`
+where DuckDB gives 1. The message names spellings that lift, with
+`CAST(x AS DOUBLE)` in place of the `FLOAT`
+([#2152](https://github.com/AlexanderNenninger/substrait-lean/issues/2152)).
+
+### SQL lift: `MEDIAN` of a date, timestamp or FLOAT is refused
+
+DuckDB interpolates the median of a date, timestamp or FLOAT (`2024-01-05 12:00:00` for the days 1 to 10) where the lift took the lower middle, a different value ([#2153](https://github.com/AlexanderNenninger/substrait-lean/issues/2153)). The lift now refuses it and names the rewrite: `quantile_disc(x, 0.5)` for the lower middle, or a cast to DOUBLE.
+
+### `signbit` at zero, and black-box refusals in a long-lived checker
+
+Lean now evaluates DuckDB's `signbit` at `+0.0` and `-0.0` (FALSE and TRUE), and refuses it at NaN only. A call Lean does not evaluate (`signbit` of NaN, `string_split('', '')`) is refused every time. Before, the second such call in one checker process read NULL and was reported as a broken law ([#2154](https://github.com/AlexanderNenninger/substrait-lean/issues/2154)).
+
+### `drop_null` of no column verifies
+
+An Ibis `drop_null([])` (an empty subset, or a table with no column to test) no longer crashes the producer with an `IndexError` ([#2155](https://github.com/AlexanderNenninger/substrait-lean/issues/2155)). With `how="any"` every row stays; with `how="all"` none does, as DuckDB gives.
+
+### Fixed
+
+- The SQL writer no longer refuses `corr` and `cov` of booleans (`(t.G > 34.0).corr(t.G <= 34.0)`) after the checker accepted them: it read `abs` of a double built from an `IF` as an integer `abs`, as Lean's parser does not ([#2158](https://github.com/AlexanderNenninger/substrait-lean/issues/2158)).
+
+### Written list_sum raises sverify's tagged check
+
+`list_sum` past 64 bits now raises sverify's own tagged check ("list_sum out of range") in the written SQL, instead of DuckDB's untagged cast error. The report and the semantics are unchanged (#2162).
+
+### The report lists an ordering comparison of lists
+
+A DuckDB SQL query that orders lists (`<`, `<=`, `>`, `>=`, `BETWEEN`, `greatest`, `least`) now shows a dialect difference, `list_null_order`, in `Report.dialect_differences`, under every semantics. Where a NULL element decides the order, the plan gives NULL and DuckDB orders the NULL last: `[1,2] < [1,NULL,3]` is NULL here and TRUE on DuckDB (part of [#2163](https://github.com/AlexanderNenninger/substrait-lean/issues/2163)). The verdict is unchanged.
+
+### SQL lift: a CTE named like an input no longer hides the input's qualified name
+
+With an input keyed `main.orders`, `WITH orders AS (SELECT ... FROM orders) SELECT ... FROM orders` was refused as an unknown table: the lift skipped every table named like a CTE anywhere in the query. It now skips only the names a CTE has in scope, so the CTE's body reads the input ([#2169](https://github.com/AlexanderNenninger/substrait-lean/issues/2169)). A CTE named like its own source table already lifts since [#2166](https://github.com/AlexanderNenninger/substrait-lean/issues/2166)'s fix.
+
+### A sorted result is sorted once
+
+Under a multiset observation, the SQL Sverify writes for a result that ends in a sort, or a top-N, sorts by the sort's own keys. It no longer numbers the rows by those keys and sorts again by the number. Spark and Snowflake write this by default, and DuckDB's checked runs do where the order of ties can't be observed (#2186).
+
+### A CASE over doubles on Polars runs in the memory of its input
+
+A `CASE` around ordering comparisons of doubles took 5 to 6 GB on Polars for a 64-row table: the plan Polars collects has no common-subexpression elimination, and the lowering wrote a nested operand six times per comparison and listed an operand's issues once per read. Each operand is written once and each distinct issue is checked once; the same plan peaks near 500 MB
+([#2210](https://github.com/AlexanderNenninger/substrait-lean/issues/2210)).
+
+### `substrait-check --help`
+
+The Lean checker prints a usage page for `--help` and `-h`: its flags grouped
+(checking a plan, diagnostics, serving, tables and coverage), one line each,
+with an example and the exit codes. An unknown flag, a flag used without its
+file and a file it can't read are usage errors with one line on stderr and
+exit 2, where they ended in an uncaught exception before
+([#2239](https://github.com/AlexanderNenninger/substrait-lean/issues/2239)).
+The flags keep their names.
+
+### `repeat('', n)` returns at once
+
+The checker returns `''` for `repeat('', n)` without counting to `n`, so a plan that repeats an empty string `2^63 - 1` times no longer hangs it ([#2278](https://github.com/AlexanderNenninger/substrait-lean/issues/2278)).
+
+### A `file:` URI on another host is no local path outside Windows
+
+On Linux and macOS, `file://otherhost/x` was read as the local file `/x`. Such a URI now takes the non-native read path. On Windows the host is a UNC share as before, and `file:///x` and `file://localhost/x` read as before ([#183](https://github.com/AlexanderNenninger/substrait-lean/issues/183), [#2306](https://github.com/AlexanderNenninger/substrait-lean/pull/2306)).
+
+### A cast to a type that holds a struct is refused
+
+A cast whose target is a struct, or a list of structs, is refused: the model carries no field names, so a target with the same field kinds in another order read as the identity, where DuckDB and Polars pair a struct cast's fields by name and Spark by position. The proper pairing follows ([#2376](https://github.com/AlexanderNenninger/substrait-lean/issues/2376)).
+
+### Polars's double sums are proved, as the streaming engine adds them
+
+Polars's profile states its double `SUM` and `AVG` as the streaming engine
+computes them, sequential per group and pairwise per morsel
+(`polars-sum-float-streaming`). Kahan's compensated sum is the in-memory
+engine's, which sverify refuses, and it left the profile
+([#2411](https://github.com/AlexanderNenninger/substrait-lean/issues/2411)).
+A postcondition that holds on the reference's sum and keeps its sign is now
+proved on Polars, as on DuckDB and Spark, where it was tested: five catalogue
+queries (clickbench q09, q13, q37 and q42, and h2o-groupby q1) run on Polars
+with proved evidence.
+
+### `sverify-dbt` reads past a column list that names no columns
+
+A `unique_combination_of_columns` test whose `combination_of_columns` holds a null, or is a bare string, made `sverify-dbt check` fail with a `TypeError` for the whole project. Such a test is now not checked, with the reason "its columns are no list of column names", and the project's other tests are checked as before. dbt itself fails such a test ([#2414](https://github.com/AlexanderNenninger/substrait-lean/issues/2414)).
+
+### A Flight source refuses a log that restarted
+
+A `FlightLog` that restarted numbers its batches from 1 again, and a `FlightSource` took it for the log its cursor was read from and skipped every new batch numbered up to the cursor. The log now has an identity (`FlightLog.id`, the `log` key of the stream's schema metadata), the cursor records it, and `read`, `restore` and the audit raise an error naming both logs when they differ; reading the log again is your choice, by starting the node on a new sink. Cursors recorded before this release name no log, so existing Flight cursors refuse once after the upgrade: a job with an old sink and a `FlightLog` server sees the error, and starts the node on a new sink to read the log again. `FlightLog` gains the public `id`; a Flight server of another make that names no log is read as before ([#2426](https://github.com/AlexanderNenninger/substrait-lean/issues/2426)).
+
+### Secrets and Flight: values read as written, errors that say what is wrong
+
+- A `KEY=value` secret file loses only one pair of matching quotes around a value, so `PASSWORD=abc'` reads as `abc'` ([#2429](https://github.com/AlexanderNenninger/substrait-lean/issues/2429)).
+- A JSON field that is not a string reads as its JSON: `true`, `null`, `{"a": 1}`. This applies to `file:` secrets and to OpenBao and Vault ([#2429](https://github.com/AlexanderNenninger/substrait-lean/issues/2429)).
+- `azure-kv:` takes a vault's URL as well as its name, as in `azure-kv:https://myvault.vault.azure.net/lake` ([#2433](https://github.com/AlexanderNenninger/substrait-lean/issues/2433)).
+- A misconfigured secrets backend says what is wrong, such as `[secrets.bao]: unexpected keyword argument 'adress'`, and a `names` table without `ref` says so ([#2428](https://github.com/AlexanderNenninger/substrait-lean/issues/2428)).
+- `FlightLog` refuses a ticket whose values have the wrong type with the ticket's shape, and no longer answers with a server traceback ([#2427](https://github.com/AlexanderNenninger/substrait-lean/issues/2427)).
+
+### A double→integer cast in `to_substrait` now carries ST-6's shim or assumption
+
+Substrait leaves open how a cast of a double or a decimal to an integer rounds ([ST-6](upstream/bugs/ST-6.json)), and `to_substrait` exported such a cast as exact. The cast now reads `float_to_int`: `shims="apply"` truncates first (`floor` for `x >= 0`, `ceil` otherwise, then the cast), `"annotate"` ships ST-6's assumption, and `"refuse"` refuses. Under `semantics="substrait"` such a plan is no longer proved ([#2438](https://github.com/AlexanderNenninger/substrait-lean/issues/2438)).
+
+### `try_cast` of a double to an integer is proved again on every engine
+
+Each engine's table now states its double or decimal to integer cast
+(`float_to_int` at `cast.num`, ruling 273): Polars and Spark truncate natively,
+and DuckDB's cast rounds, so its lowering writes `trunc` first, a shim. The
+route of `try_cast` goes back from tested to proved on DuckDB, Polars and Spark
+([#2438](https://github.com/AlexanderNenninger/substrait-lean/issues/2438)).
+
+### `to_substrait` exports `min` and `max` of values that are not lists
+
+The default `to_substrait()` refused every `min` and `max`, even of an integer column, naming `list_null_order`: where a NULL element sorts inside a list. That option now matters only where a value of the plan may be a list, so `min` and `max` of integers, doubles and strings export, and of lists still depend on it ([#2439](https://github.com/AlexanderNenninger/substrait-lean/issues/2439)).
+
+### A sink refuses a commit over a state read from another source
+
+Two nodes that shared a sink and an `app_id` could read different sources under one name, and a source with no table id (a Flight source) left only its versions to tell them apart: the second writer skipped or replaced the other's rows without a word. The contract now records what identifies such a source (`fingerprints`, an optional key of the sink's contract record; a Flight source's is its server and table), and a commit over a state with another fingerprint raises an error naming both sources. A record written before this release has none and is not compared ([#2441](https://github.com/AlexanderNenninger/substrait-lean/issues/2441)).
+
+### OpenLineage: `read` takes a file holding one event over several lines
+
+`sverify.openlineage.read` reads a JSON file holding one event written over several lines, as `jq .` or Marquez's UI save it. It used to fail with a `JSONDecodeError` ([#2447](https://github.com/AlexanderNenninger/substrait-lean/issues/2447)).
+
+### `Upstream.schema` reads Spark's nested types as Spark means them
+
+A `schema` facet's `struct<…>`, `array<…>` and `map<…>` now read Spark's type names inside them as Spark's, so `struct<a:int>` is `struct<a: int32>` and `timestamp` inside a struct is `timestamp('UTC')`, the types the Spark job wrote. A malformed nested type is `unknown`. Recent type names are cached ([#2448](https://github.com/AlexanderNenninger/substrait-lean/issues/2448)).
+
+### `strpos` and `contains` on long strings run in linear time
+
+The checker searched a string for a needle by testing every position, up to `n · m` comparisons. A long, almost-matching needle took DuckDB's `test_contains_long_almost_matching_needle` past the replay's 120 s watchdog. The search now rolls a hash over the string and compares characters only where the hash matches, proved equal to the reference's search (`Text.Find.findFrom_eq_fast`). That replay file takes 6 s, and `strpos`, `contains`, `instr` and `position` on long strings stop being quadratic in `verify` (#2497).
+
+### The replay skips queries DuckDB's time limit interrupts
+
+The DuckDB replay (`sverify_dev.slt`) skips a query that DuckDB stops with `max_execution_time` ("Query exceeded maximum execution time"): the time limit is an outcome no model states. `function/string/test_levenshtein_interrupt.test` no longer runs Lean into the checker's watchdog, and queries that finish under the limit are replayed as before ([#2498](https://github.com/AlexanderNenninger/substrait-lean/issues/2498)).
+
+### Polars refuses a variance beside a list in one grouping
+
+On Polars, a grouping that holds a list-computed measure (`ARRAY_AGG` and the
+like) runs on the in-memory engine. Its `VAR_*` and `STDDEV_*` then use the
+in-memory algorithm, not the one the Polars profile states and proves the
+bound for. The translation to Polars now refuses such a grouping, as it does
+for a double `SUM` or `AVG`
+([#2507](https://github.com/AlexanderNenninger/substrait-lean/issues/2507)).
+The plan still runs on the other engines. On Polars, compute the list and
+the statistic in separate groupings.
+
+### A LEFT JOIN on a declared foreign key keeps the right side's non-NULLs
+
+Where `sv.references` (or a dbt `relationships` test, which sverify-dbt reads as one) says every left row of a `LEFT JOIN` has a match, the proofs read the join as an inner join: the columns of the right side are as non-NULL as they are on their own, for example a `SUM` over a group of a non-NULL column. The report names the step ("left join on a foreign key, under references …"); without the reference, the column stays unproved and the report proposes `sv.references`. The plan that runs stays the LEFT JOIN. On jaffle_shop with the declared relationship, the five `orders` amount tests are proved: 19 of the project's 20 tests, up from 14 ([#2512](https://github.com/AlexanderNenninger/substrait-lean/issues/2512)).
+
+### A cast of a double to a decimal reads `decimal_rescale`, and `to_substrait` carries ST-8's assumption or refuses
+
+Substrait leaves open both which value a cast of a double to a decimal rounds and how ([ST-8](upstream/bugs/ST-8.json)): DuckDB and Polars round the double product `x · 10^s`, half away from zero and half to even, and Spark's native cast rounds the double's shortest decimal text (`1.005` to `DECIMAL(3,2)` is 1.01 there). The cast now reads `decimal_rescale`, and Polars's and Spark's profiles state their own casts, so the generated lowerings no longer write the native cast on those engines. `to_substrait` with `shims="apply"` refuses such a cast, `"annotate"` ships the assumption that the consumer rounds the double product half away from zero, and `"refuse"` refuses ([#2523](https://github.com/AlexanderNenninger/substrait-lean/issues/2523)). The values sverify writes and runs are unchanged.
+
+### Refusals name the open issue
+
+A refusal of a function that Polars's or Spark's writer does not run yet now
+names [#2540](https://github.com/AlexanderNenninger/substrait-lean/issues/2540),
+the open issue for that work, where it named #271, which is closed. Snowflake's
+refusals say that its profile is out of tree. Every such refusal still ends with
+its exit, `run it with engine='duckdb'`.
+
+### `exp`, `sqrt` and the trigonometric functions route to Spark
+
+`pow_one_inf` belongs to `power` alone (D40), but sat on the group of every elementary function, so Spark's refusal of it refused `sqrt`, `exp`, `sin` and the rest. The group `fp.elem` is split into `fp.pow` (`power`), `fp.atan2` (`atan2`) and `fp.elem` (the unary functions) (ruling 163). `sqrt`, `exp`, `sin`, `cos`, `tan`, `asin`, `acos` and `atan` of doubles now route to Spark with the bounds of [#1818](https://github.com/AlexanderNenninger/substrait-lean/pull/1818); `power` and `atan2` stay refused there, each naming its own group. Reports for plans with a unary function no longer list `pow_one_inf` among their options, on any engine. No reference value or allowed set changes.
+
+### Polars's lowering is generated and proved
+
+Polars now has a generated lowering, as DuckDB has: each function Polars
+computes its own way gets a template, proved to give the reference's value
+under Polars's profile (`Lowering.polars_exact`,
+[#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
+Integer `//` and `%` truncate from Polars's floored ones, `round` and `ceil`
+give `0.0` for a negative value that rounds to zero, and `%` of doubles is
+refused. Polars's `rounding`, `pow_one_inf`, `negative_start` and
+`case_sensitivity` rows, and DuckDB's `round_zero_sign` and `pow_one_inf`
+rows, are now proved. `Profile.polars`, which `semantics="polars"` will
+verify under, states Polars's `-0.0` from `round` and `ceil`. The translation
+to Polars still writes these functions by hand, and a test checks that it
+agrees with the table.
+
+### Polars runs its generated lowering
+
+The translation to Polars now writes integer `//` and `%`, `round` and `ceil`
+from the generated lowering table (`sverify_polars.lowering`), the templates
+`Lowering.polars_exact` proves
+([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)). The
+hand-written shims `int_div_trunc` and `int_mod_trunc` are gone. `round` and
+`ceil` of a negative value that rounds to zero now give `0.0` on Polars, as the
+reference does, where they gave `-0.0`; the two are one value for every
+comparison sverify makes. Polars's `division_type` and `round_zero_sign` rows
+are proved by `Lowering.polars_exact`.
+
+### Spark runs lists
+
+Spark now runs `unnest()`, list literals, list elements and lengths, and an unordered `collect()`
+([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)): `posexplode` in a lateral
+subquery, `array`, `try_element_at`, `cardinality` and `collect_list`, which gives NULL where the
+reference does for no values. An ordered `collect()` stays refused, since `collect_list` has no
+`ORDER BY`.
+
+### Spark runs its generated lowering
+
+The translation to Spark writes double arithmetic, the elementary functions,
+`floor`, `ceil`, `date_add` and the shifts from Spark's generated lowering
+table, whose templates Lean proves
+([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
+The hand-written model of what the writer computes (`Profile.sparkWritten`) is
+gone. Spark's soundness now holds on the plan the table lowers, in two
+branches: with its guards dropped for a plan without IEEE division, and with
+every guard kept where Spark does not raise. More Spark routes are proved
+where they were tested, among them integer division, `mod`, the string
+matches and the date parts, and 15 rows of Spark's table cite a theorem where
+they tracked #271.
+
+### Spark runs the logarithms of doubles
+
+Spark now runs `ln`, `log10`, `log2` and `log(b, x)` of doubles natively ([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)).
+Its values are Java's, within 1 ulp of the exact result by its source
+(spark-ulp-libm), and the plan's float bound adds each function's distance
+from libm's value per call. `exp`, `sin`, `cos`, `tan`, `asin`, `acos` and `atan` have their bounds
+and writer too, but `sverify.verify` still refuses them on Spark, as it does `sqrt`: their group
+reads `pow_one_inf`, which Spark refuses. `sin`, `cos` and `tan` are bounded up to 2²⁰. `power` and
+`atan2` stay refused. The bounds of Polars's `log10`, `log2` and `log(b, x)` and DuckDB's
+`log(b, x)` are restated as the sum of both distances, so they are wider.
+
+### A decimal cast to a smaller scale in `to_substrait` now carries ST-8's assumption or refuses
+
+Substrait leaves open how a cast of a decimal to a smaller scale rounds ([ST-8](upstream/bugs/ST-8.json)), and `to_substrait` exported such a cast as exact in every mode. The cast now reads `decimal_rescale`: `shims="apply"` refuses it, since ST-8 has no rewrite, `"annotate"` ships ST-8's assumption, and `"refuse"` refuses ([#2504](https://github.com/AlexanderNenninger/substrait-lean/issues/2504)). A plan whose decimals keep every digit (sums, products, casts to a larger scale) exports as before.
+
+### A `MIN` or `MAX` of doubles in `to_substrait` is no longer reported as shimmed
+
+ST-4's shim rewrites comparisons, grouping keys and sort keys of doubles, and no aggregate, yet `shims="apply"` reported a `MIN`, `MAX` or quantile of doubles as shimmed: a consumer whose `MAX` skips NaN gave another value. `"apply"` now refuses such a plan, `"annotate"` ships ST-4's assumption, and `"refuse"` refuses ([ST-4](upstream/bugs/ST-4.json), [#2505](https://github.com/AlexanderNenninger/substrait-lean/issues/2505)).
+
+### SQL lift: named `WINDOW`, `any_value` and `DATE ± INTEGER`
+
+The DuckDB SQL lift reads `WINDOW w AS (…)` with `OVER w` and `OVER (w ORDER BY …)`, `any_value(x)` (a non-NULL value of the group, reported as the engine's choice) and `DATE ± <integer constant>` (a DATE). `arg_min_null`, `bitstring_agg` and `histogram_exact` are refused with the reason and [#326](https://github.com/AlexanderNenninger/substrait-lean/issues/326); `DATE ± <integer column>` and `DISTINCT ON` stay refused with their rewrite ([#319](https://github.com/AlexanderNenninger/substrait-lean/issues/319)).
+
+### `range` and `generate_series` as inputs, and built-in schema names
+
+`FROM range(a, b[, step])`, `generate_series(…)` and `UNNEST(generate_series(…))` with constant integer, date or timestamp bounds are lifted as the rows they list (at most 10,000), so a date spine verifies (#321). A call qualified by its built-in schema (`main.lower(x)`, `pg_catalog.lower(x)`) reads as the bare function (#328).
+
+### Refused: a sample of a series, and a percent limit
+
+`TABLESAMPLE` on `range()` or `generate_series()` is refused. `LIMIT n PERCENT` and `LIMIT … WITH TIES` are refused on every source, tables included: the lift read a percent limit as a row count, a wrong result that tables accepted until now (#321).
+
+### `CAST(decimal AS integer)` and scale-reducing decimal casts in DuckDB SQL
+
+The SQL lift reads `CAST(dec AS BIGINT)` as DuckDB does, rounding half away from zero (the rescale to scale 0, then the exact cast), under `semantics="reference"` and `"duckdb"`. `CAST(dec AS DECIMAL(p, s))` to a smaller scale lifts too. The double case stays refused until the rounding cast lands (#322).
+
+### The SQL lift reads `CAST(double AS BIGINT)` as DuckDB's rounding
+
+`sv.verify` of DuckDB SQL lifts `CAST(x AS BIGINT)` of a double, under both `semantics`, as the cast of the half-to-even round, which is what DuckDB computes ([#322](https://github.com/AlexanderNenninger/substrait-lean/issues/322), D55). A plan's `round(x, rounding: TIE_TO_EVEN)` at zero digits is read and written on DuckDB, Polars and Spark. Casts of a double to narrower integers stay refused, with the spelling that lifts.
+
+### Second and millisecond timestamps
+
+Columns of `timestamp(0)` and `timestamp(3)` (Arrow `timestamp[s]` and `timestamp[ms]`) are now read as microseconds, exactly (D61, [#323](https://github.com/AlexanderNenninger/substrait-lean/issues/323)). Results are `timestamp(6)`. A cast to `timestamp(0)` or `timestamp(3)` floors on the timeline, as `date_trunc` does.
+
+### Nanosecond timestamp columns are read
+
+A `timestamp[ns]` column, the unit Parquet and pandas often carry, is read
+with every digit on DuckDB and Polars. Sverify compares it with other
+nanosecond timestamps, orders, groups and joins on it, counts it and takes its
+`MIN` and `MAX`. Nanoseconds reach 1677-09-21 to 2262-04-11. A calendar
+function, interval arithmetic, a cast, or a microsecond timestamp or literal in
+the same comparison is refused, and the message says so. Spark holds
+microseconds only and refuses the column
+([#323](https://github.com/AlexanderNenninger/substrait-lean/issues/323)).
+
+### The SQL lift reads `list_append`, `list_prepend`, `flatten`, `list_first` and `list_last`
+
+DuckDB SQL with `list_append(l, x)`, `list_prepend(x, l)` (and their `array_` names), `flatten(l)`, `list_first(l)` and `list_last(l)` lifts (part of [#327](https://github.com/AlexanderNenninger/substrait-lean/issues/327)). A NULL list is empty for an append and a prepend and a NULL value is an element, as in DuckDB; `list_first` and `list_last` are NULL for an empty or NULL list.
+
+### The SQL lift refuses what DuckDB refuses for `if` and `iff`
+
+DuckDB SQL with a two-argument `if(condition, value)` is refused, as DuckDB's binder does; the lift had read it as a `CASE` without `ELSE` (part of [#328](https://github.com/AlexanderNenninger/substrait-lean/issues/328)). `iff`, which DuckDB 2.0 does not have, stays refused as an unknown function. Tests check `if` (also schema-qualified) and `arbitrary` against DuckDB.
+
+### The SQL lift reads `ascii`, `levenshtein`, `if` and `arbitrary`
+
+DuckDB SQL with `ascii(s)`, `levenshtein(s, t)`, `if(c, a, b)` and `arbitrary(x)` lifts (part of [#328](https://github.com/AlexanderNenninger/substrait-lean/issues/328)). `ascii` and `levenshtein` are the model's functions, which agree with DuckDB on ASCII text and raise on other text as the reference does (D43). `if(c, a, b)` is the `CASE` it abbreviates, and `arbitrary` is DuckDB's other name of `first`.
+
+### The SQL lift reads a qualified call as DuckDB does
+
+The lift reads `main.lower(x)` and `system.main.lower(x)` as `lower(x)`, as
+DuckDB does, and refuses `pg_catalog.lower(x)`, `memory.main.lower(x)` and
+`system.pg_catalog.lower(x)`, which DuckDB refuses with a binder error. `len`
+and `substr` lift as `length` and `substring`, tested against DuckDB (#328).
+
+### DuckDB's SUM and AVG of doubles with both infinities are no domain error
+
+Under `semantics="duckdb"`, a `SUM` or `AVG` of doubles holding `+∞` and `-∞`
+is NaN, as DuckDB computes it, and `verify` no longer reports a domain error
+for it ([#341](https://github.com/AlexanderNenninger/substrait-lean/issues/341)).
+The generated lift writes the aggregate as a sum that never sees `+∞` or NaN
+and the largest and smallest value, finished by a `CASE` that gives NaN or
+`+∞` where they say so; Lean proves it equals `SUM` or `AVG` of the values,
+and that none of its measures has a domain error. Under the reference semantics the
+aggregate and its domain error are unchanged. The written SQL has three
+aggregates where DuckDB's has one, until the generated lowering folds the
+pattern back (#271).
+
+### The margin check reads DuckDB's finish of `SUM` and `AVG`
+
+Under `semantics="duckdb"`, a threshold on a double `SUM` or `AVG` that DuckDB
+finishes with a `CASE` (NaN, `+∞` or the sum) has the margin check again. The
+`CASE`'s conditions must compare a key, a count, an integer sum, a minimum or a
+maximum with a constant, combined with `and` and `not`; a condition that reads a
+variance, a quantile or another measure the engines compute differently has no
+check (#341, #929).
+
+### Correlated `EXISTS` and `NOT EXISTS` lift
+
+A correlated `[NOT] EXISTS` that is a conjunct of `WHERE` lifts as a semi (anti) join of the outer relation
+with the subquery's `FROM`, on the conjuncts that read the outer query's columns; the others filter the
+subquery's side. Names resolve innermost first. The shapes that stay refused name what to write: a `GROUP BY`,
+`HAVING`, `DISTINCT`, `ORDER BY`, `LIMIT` or a computed select list in the subquery, an `EXISTS` under
+`OR`, `CASE` or `NOT (… AND …)` or in the select list, an outer reference in a join's `ON` or in a nested
+subquery. Correlated `IN` and `NOT IN` follow
+([#345](https://github.com/AlexanderNenninger/substrait-lean/issues/345), [#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
+
+### Correlated `IN` and `NOT IN` lift
+
+`x [NOT] IN (SELECT k FROM r WHERE …)` that reads the outer query's columns, as a conjunct of `WHERE`, lifts as a
+semi (anti) join. `IN` is a semi join on `x = k AND p`; `NOT IN` an anti join on
+`p AND (x = k OR x IS NULL OR k IS NULL)`, so a NULL needle or a NULL in the subquery's column keeps SQL's three-valued
+answer (a row stays only if no row of the subquery with `p` TRUE equals `x` or makes the comparison NULL; an empty
+result keeps it, also for a NULL `x`). The subquery's shapes are those of correlated `EXISTS`; one that reads the
+outer query in its select list, returns two columns or sits under `OR` or in the select list is refused by name
+([#345](https://github.com/AlexanderNenninger/substrait-lean/issues/345), [#1608](https://github.com/AlexanderNenninger/substrait-lean/issues/1608)).
+
+### Casts of booleans and dates to VARCHAR
+
+`CAST(b AS VARCHAR)` of a boolean gives `true` or `false`, and of a date gives `YYYY-MM-DD`, in Ibis and in DuckDB SQL, with constants folded ([#346](https://github.com/AlexanderNenninger/substrait-lean/issues/346)). Polars refuses the date cast, since it has no cast from a date to a timestamp ([#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)). Casts of timestamps and decimals to strings stay refused until their text is decided.
+
+### Casts of decimals to VARCHAR
+
+`CAST(x AS VARCHAR)` of a `DECIMAL(p, s)` now verifies and runs on DuckDB, Polars and Spark: `-` for a negative value, an integer part of at least one digit, then `.` and exactly `s` digits (`0.500`, `-0.05`). A `DECIMAL(p, p)` on DuckDB is widened by one digit first, because DuckDB prints it without the integer part; at `DECIMAL(38, 38)` the report refuses DuckDB and names a cast to `DECIMAL(38, 37)` as the way through. A lifted `CAST(DECIMAL(p, p) AS VARCHAR)` is refused too. Casts of timestamps to VARCHAR stay refused until [#323](https://github.com/AlexanderNenninger/substrait-lean/issues/323); the message names `strftime` with an explicit format ([#346](https://github.com/AlexanderNenninger/substrait-lean/issues/346)).
+
+### The SQL lift reads `time_bucket`
+
+DuckDB SQL with `time_bucket(width, ts[, origin])` lifts for a constant width of days or less (part of [#347](https://github.com/AlexanderNenninger/substrait-lean/issues/347)). The buckets count from DuckDB's default origin (2000-01-03), a constant timestamp origin, or the default plus a constant interval, and agree with DuckDB on negative and NULL timestamps. A width in months, a `DATE` argument and a computed origin are refused. A call spelled `date_bin`, which DuckDB 2.0.0 does not have, is refused.
+
+### The SQL lift reads `time_bucket` by months and of a DATE
+
+DuckDB SQL with `time_bucket(width, ts[, origin])` now lifts for a constant width in months or years, and for a `DATE` argument (part of [#347](https://github.com/AlexanderNenninger/substrait-lean/issues/347)). A month width counts from the origin's month (default 2000-01) and returns the first of the bucket's first month; a `DATE` with a width of whole days or months stays a `DATE`, unless the origin is a timestamp. A year before 1 or after 9999 raises where DuckDB goes below year 1. A width mixing months and days, a sub-day width of a `DATE`, and an interval origin of a month width are refused.
+
+### Timestamp delta verifies
+
+`ts.delta(other, unit)` for microsecond, millisecond, second, minute, hour and day counts the unit boundaries crossed ([D58](docs/decisions.md#d58-a-timestamps-delta-counts-the-unit-boundaries-crossed)), as DuckDB's `date_diff` does. It runs on DuckDB; other engines refuse it with "see #271". Week, month, quarter, year and nanosecond stay refused ([#60](https://github.com/AlexanderNenninger/substrait-lean/issues/60)).
+
+### A timestamp plus a column's interval verifies
+
+`ts + col.as_interval("h")` (a count of days or less, from a column) is accepted for a timestamp, as it already was for a date, and runs on DuckDB. Other engines refuse it with "see #271" until their writers are lowered ([#60](https://github.com/AlexanderNenninger/substrait-lean/issues/60)).
+
+### The reported float bounds are computed exactly
+
+The checker evaluates the bounds behind `Report.epsilon` in exact rational
+arithmetic, with square roots rounded outward and each bound written as a
+decimal at least the bound
+([#660](https://github.com/AlexanderNenninger/substrait-lean/issues/660)).
+The `1 + 2⁻⁴⁰` factor that covered an evaluation in doubles, an unproved
+step, is gone, so the bounds are slightly tighter in their last digits.
+Verdicts do not change.
+
+### Every condition verify cannot read is named at once
+
+`verify` reads every `requires` and `ensures` condition before it proves
+anything. If some cannot be read (an unknown column, SQL the lift does not
+read, a construct outside the model), it raises one
+`sverify.errors.ConditionError` (an `UnsupportedError`) whose `.errors` maps
+each such condition's label to its own refusal; the query is not refused
+([#699](https://github.com/AlexanderNenninger/substrait-lean/issues/699)).
+
+An Ibis condition that does not type-check, or names a column the table lacks, raised
+`TypeError` or `AttributeError` before and now raises `ConditionError`, a
+`ValueError`: `except TypeError` around `verify` no longer catches it.
+
+### A refusal names its construct as data
+
+`UnsupportedError` carries `construct` (`"function md5"` for a function,
+otherwise SQL keywords in upper case such as `"WITH RECURSIVE"`) and `sql` (the
+fragment the SQL lift refused; None for the Ibis producer), keyword-only and
+None where a refusal sets none. The text of the error is unchanged. The Ibis
+aggregates set `construct` first; the other refusals of the lift and the
+producer follow
+([#700](https://github.com/AlexanderNenninger/substrait-lean/issues/700)).
+
+### Qualified table names in `tables`
+
+`verify`'s `tables` keys may be qualified (`"shop.main.orders"`, `"main.orders"`). A query's reference matches a key as DuckDB resolves names (catalog, schema, table, with the defaults `memory` and `main`), and the same table name in two schemas stays two inputs. A name outside the inputs is refused with the key to add (#706).
+
+### assert_contract takes the Ibis table a transform returned; SARIF results carry fixes
+
+`sverify.testing.assert_contract` and `assert_engines_agree` take the Ibis table a contracted transform returns on Ibis tables (`assert_contract(paid(orders))`), as well as a node; `data=` gives the rows of the tables it reads, as Arrow tables, dicts or tuples ([#711](https://github.com/AlexanderNenninger/substrait-lean/issues/711)). Checking the test data and the output evaluates a table's Ibis conditions in one query.
+
+`sverify check --format sarif`: a transform's first `needs` result carries a SARIF fix, the edits `check --fix` makes to its `requires=` ([#793](https://github.com/AlexanderNenninger/substrait-lean/issues/793)).
+
+### Spark runs an AVG of decimals
+
+A plan with an `AVG` of a `DECIMAL` (or Ibis's decimal division by an integer) now runs on Spark, where it was refused. Sverify writes the exact quotient at the reference's scale, rounded half away from zero; Spark's own `/` rounds once at a scale of its own first (spark-decimal-arith). A result past 12 decimal places, past 32 integer digits, or of 38 digits with more than 6 decimal places stays refused, with a cast to fewer digits as the way out ([#739](https://github.com/AlexanderNenninger/substrait-lean/issues/739)).
+
+### Spark's refusal of a time of day names the setting
+
+A plan with a time of day (`TIME`) refused on Spark now says why: Spark 4.3 reads `TIME` only with `spark.sql.timeType.enabled` on (spark-time-type). The old message said `TIME` needed Spark 4.1 and named the internal kind `tod` ([#739](https://github.com/AlexanderNenninger/substrait-lean/issues/739)).
+
+### `to_substrait()` exports ordering comparisons of doubles (#741)
+
+`<`, `<=`, `>`, `>=` and `between` on doubles are written with NaN greatest and
+the two zeros one (ST-4), as equality, sort keys and grouping keys already were.
+`t.filter(t.w > 1.0)` no longer refuses the export.
+
+### The guide is split into one page per task
+
+The guide page is gone. The how-to material is `docs/tasks.md`, now an index, and one page per task (`docs/how-to-contracts.md`, `how-to-guards.md`, `how-to-bounds.md`, `how-to-command-line.md`, `how-to-nodes.md`, `how-to-quarantine.md`, `how-to-table-formats.md`, `how-to-credentials.md`, `how-to-openlineage.md`, `how-to-time-buckets.md`, `how-to-engines-and-sql.md`, `how-to-export.md`, `how-to-production.md`, `how-to-install.md`). `python/README.md` is the short entry: what sverify does, one example, install and links; what the checker proves is in `docs/what-sverify-proves.md` and the status in `docs/stability.md`. `test_readme.py` fails a tutorial or how-to page over 600 lines ([#753](https://github.com/AlexanderNenninger/substrait-lean/issues/753)).
+
+### Opposing pairs in three reference pages
+
+`docs/reference-semantics.md`, `docs/engine-profiles.md` and `docs/optimizations.md` state nine claims without an "X, not Y" pair or an "instead of" ([#754](https://github.com/AlexanderNenninger/substrait-lean/issues/754)). Every fact, identifier, link and number stays.
+
+### sverify check --against-sink: contract drift
+
+`sverify check <file>[:<node>] --against-sink` compares each stored node's contract with the one its sink last committed. A committed promise the node no longer proves (a NOT NULL column, a CHECK, a unique key) is a `contract_weakened` finding at error level, so the check exits 1; a reworded CHECK the node still proves, a smaller key, and a condition inserted before the others are no drift. A changed plan or profile is a `plan_changed` note. The JSON gains `drift`, per node, with what was weakened and added. Without the flag `check` opens no sink ([#769](https://github.com/AlexanderNenninger/substrait-lean/issues/769)).
+
+### A GitHub Action for `sverify check`
+
+`actions/check/` is a composite action that installs `sverify`, runs `sverify check --format sarif` on each target with the default 30 s timeout, merges the logs into one SARIF run and uploads it to code scanning (part of [#770](https://github.com/AlexanderNenninger/substrait-lean/issues/770), item 1). Its job exits with the worst code of the targets', and the `action` job of CI tests it on two example pipelines, one proved and one not, with the PyPI release and with the checkout. `require-proved` needs sverify 0.9.0 and says so. [Checking without running](../docs/how-to-command-line.md#in-github-actions) says how to use it.
+
+### A status page per pipeline in the pipeline template
+
+The pipeline template's catalog now has a phone-friendly status page for each pipeline, `status-<file>.html`. It shows the last refresh (with a link to its run), the rows each node wrote and stores, the contract the check proved, and the next scheduled refresh, read from `refresh.yml`'s schedule. The existing `pages` workflow publishes it with the catalog ([#771](https://github.com/AlexanderNenninger/substrait-lean/issues/771)).
+
+### An AWS session reports its own scope
+
+`Storage` fills `reads` and `writes` from the session when they are not declared: with `boto3` installed, sverify asks STS who the session is, reads the `GetObject` and `PutObject` grants of that role's or user's policies and keeps the prefixes, once per credential. `sverify check` then warns with `[scope]` about a sink outside `staging/` without a `writes=` declaration. A `Deny`, a condition or a pattern that is not a prefix leaves the scope unknown ([#778](https://github.com/AlexanderNenninger/substrait-lean/issues/778)).
+
+### One error for running out of memory
+
+`sverify.errors.MemoryLimitError` (code `memory_limit`, a `MemoryError`) is raised when a step runs out of the memory allowed it: the checker past `SVERIFY_CHECKER_MEMORY_MB` during a proof, or DuckDB past its `memory_limit` (`SVERIFY_MEMORY_LIMIT`, `--memory-limit`) during a run or a refresh, which then commits nothing. `.stage`, `.limit` and `.setting` say which. The command line exits 5 with code `memory` for both; a checker over its cap exited 6 (then the error code) before. Sverify sets no memory default of its own, and the limit does not reach Polars; with `--engine polars` the command says so ([#783](https://github.com/AlexanderNenninger/substrait-lean/issues/783)).
+
+Report text prints a large double constant as Python writes it (`value * 1e+302`), not its 303 digits, and the pipeline template's check loop names the two `overflow` cases `--fix` cannot write a bound for ([#885](https://github.com/AlexanderNenninger/substrait-lean/issues/885)).
+
+### sverify-dbt reads mutually_exclusive_ranges
+
+sverify-dbt reads `dbt_utils.mutually_exclusive_ranges` as `sv.non_overlapping`, on plain columns and with an open end written `coalesce(valid_to, L)` when another test keeps every start before `L`. The shop's point-in-time join `orders_with_city` now proves `unique(order_id)` ([#814](https://github.com/AlexanderNenninger/substrait-lean/issues/814)).
+
+### `sv.non_overlapping`: keys through a point-in-time join
+
+`sv.non_overlapping(lo, hi, by=...)` in `requires` states that a table's validity ranges `[lo, hi)` do not overlap per `by`, as in a type-2 dimension. A left or inner join that equates the `by` columns and tests `lo <= x` and `x < hi` (or `hi IS NULL OR x < hi`) then gives each left row at most one partner, and the left side's keys stay keys of the join: the shop's `orders_with_city` proves `unique(order_id)` from the orders' key. The data check is one window query over the ranges ordered by start. Closed ends (`x <= hi`) have no rule. Incremental views refuse it, as they do `rows_per`.
+
+### Sorts by a double on DuckDB and Spark
+
+The SQL Sverify writes for DuckDB and Spark sorts by a double column itself. It no longer adds a key that ranks NaN apart, since both engines already order NaN above `+inf` as the reference does (#824).
+
+### Engines from plugin packages run by name, with their secrets by reference
+
+`sverify.engines.run(con, plan, "<engine>")` runs a plan on any engine an installed package registers (`sverify.profiles`, `ProfilePlugin.runner`). An engine's runner that needs credentials declares them (`ProfilePlugin.credentials`): each run hands it `sverify.io.Secret` references, resolved by the configured resolver (#775), never values, and `run(credentials={...})` points one at another secret. A refresh on a plugin engine that keeps no pipeline state is refused by the engine's name, with the engines that have one and the one-shot run in the message. `PLUGIN_API` is 5: engine packages need the same release.
+
+### sverify-dbt checked against dbt packages' own projects
+
+`python -m sverify_dbt.replay` builds the integration projects of dbt-utils
+1.4.1 and dbt-expectations 0.10.10 with dbt on DuckDB and checks them with
+sverify-dbt, test by test, beside dbt's own result. No proved test fails in
+dbt's run. The ledgers in `dbt/replay/` name an issue or a design reason for
+every test sverify-dbt does not check; CI's `dbt` job replays them and warns
+on a change ([#859](https://github.com/AlexanderNenninger/substrait-lean/issues/859)).
+
+### An integer cast to a timestamp in Ibis means seconds
+
+Ibis reads `t.i.cast("timestamp")` as seconds since the epoch, as its DuckDB
+backend's `to_timestamp` does; sverify read microseconds, so it proved and
+ran a plan whose meaning differed from Ibis's. Sverify now reads seconds,
+as `as_timestamp("s")`, and refuses `try_cast` and a time zone there
+([#860](https://github.com/AlexanderNenninger/substrait-lean/issues/860)).
+
+### Ibis's own tests replayed through sverify
+
+`sverify_dev.ibis_replay` runs Ibis 12.0.0's backend tests on DuckDB and
+verifies and runs every expression they execute through sverify, against
+Ibis's own rows: 431 tests agree, none disagree, and each of the 594 refused
+names its issue or why it is refused by design
+([#860](https://github.com/AlexanderNenninger/substrait-lean/issues/860)).
+The replay found two bugs. Ibis's cast of an integer to a timestamp reads
+seconds since the epoch, where sverify read microseconds (fixed in its own
+change). A run refused a table with a float32 column the query never reads
+when it checked a precondition; the check now reads only the columns the
+preconditions read, as SQLGlot finds them.
+
+### Exported plans pass Substrait's validator
+
+`report.to_substrait()` writes plans `substrait-validator` accepts: a
+projection that only reorders columns becomes its input's output mapping, a
+typed NULL is nullable, a constant table's values have its columns' types, an
+`if_then`'s NULL or decimal constant takes its other branches' type, and the
+plan declares the contract message it carries (`expected_type_urls`). A
+precondition on a text column (`reverse` needs ASCII) no longer fails the
+export, and `from_substrait` checks it again. Exports ask the checker's
+transfer check once per process, about six times faster. CI validates every
+coverage case and catalogue query with the validator and records the result
+in a ledger ([#862](https://github.com/AlexanderNenninger/substrait-lean/issues/862)).
+
+### ODCS's published examples read
+
+`sverify.odcs.read` is checked against the 42 example contracts the Open Data
+Contract Standard publishes for v3.2.0: 151 conditions read, every unread rule
+with its reason and issue, and 95 of the schema objects export and read back
+to the same conditions ([#864](https://github.com/AlexanderNenninger/substrait-lean/issues/864)).
+`read` now takes a quality rule's SQL that names its object (`SELECT COUNT(*)
+FROM orders WHERE …`, in any case), and leaves unread a timestamp bound with a
+time zone on a column without one, which DuckDB's cast would have dropped; a
+bound on a column with a time zone is cast to `TIMESTAMPTZ`.
+A physical type that DuckDB reads as an array (`varchar[3]`) becomes an array
+only where the logical type says `array` or says nothing; under `string` it is
+a string, as ODCS's AdventureWorks example means it.
+
+### One definition of the public API, and `sverify.types` (#886)
+
+The public API is the names in the `__all__` of nine modules and the
+members without an underscore of the classes among them
+([`docs/stability.md`](docs/stability.md#the-python-api)). The API reference
+lists each of them, and `tests/test_public_api.py` holds the two equal.
+
+- `sverify.types` is new: the types a public name returns or holds, for
+  annotations and `isinstance`. These are the conditions (`Unique`, `Key`,
+  `References`, `MaxRows`, `RowsPer`, `ArrivesWithin`, `Approx`,
+  `PlannedCondition`), what a report holds (`Issue`, `Needed`,
+  `CheckedCondition`, `Discharged`, `Counterexample`, `Observation`,
+  `Within`, `Route`, `DialectDifference`), what a refresh returns (`Refresh`,
+  `StageRefresh`, `RefreshReport`, `SourceRefresh`, `QuarantineReport`,
+  `RetentionReport`, `Status`, `NodeStatus`, `Group`) and `SQLStep`.
+  `import sverify` does not import it.
+- `sverify.io` exports `Fact` and `Stored`, and `sverify.engines` exports
+  `Native` (its members outside the 1.x promise for now) and `Sharded`.
+- `ODCS_VERSION`, `SPEC_VERSION`, `FACET_FORMAT` and `FACET_SCHEMA_URL`
+  leave their modules' `__all__`. They stay importable, and each value is in
+  what sverify writes (the ODCS `apiVersion`, the events' `schemaURL`, the
+  `sverify_contract` facet).
+- The reference gains the condition constructors, `ContractedTransform`,
+  `Verdict`, `io.FlightSource`, the credentials (`io.Secret`, `Resolver`,
+  `set_resolver`, `CredentialUse`), `testing.LeanRaised`, and the errors
+  and warnings it was missing.
+
+### The deprecated names are gone
+
+1.0 keeps no deprecation alias ([#886](https://github.com/AlexanderNenninger/substrait-lean/issues/886), part of [#2081](https://github.com/AlexanderNenninger/substrait-lean/issues/2081)). Each removal has a replacement:
+
+- `Connection.arrow`: read a table with `con.get(name)` or `con.rows(name)`, write one with `con.put(name, table)`.
+- `Connection.ibis`: `con.table(name).get_backend()` is the same Ibis backend.
+- `ContractedTransform.last_report` and `SQLStep.last_report`: read `.report`.
+- `DeltaSource.hi_slack` and `IcebergSource.hi_slack`: internal, no replacement.
+- `sverify.errors.Unsupported` and `sverify.errors.NotIncremental`: `UnsupportedError` and `NotIncrementalError`.
+- `sverify.contracts.InferredPreconditionWarning`: `sverify.errors.InferredWarning`.
+- `deterministic=` of `Report.run` and `routes.choose`: `reproducible=sv.equivalent()`.
+- `StaticSource(table, version)`, and `StaticSource` and `sverify.testing.source` without `name=`: write `StaticSource(table, name=..., version=...)`; `name=` is required.
+- The environment variables `SVERIFY_CHECK` and `SVERIFY_SPILL_DIRECTORY`: set `SVERIFY_CHECKER` and `SVERIFY_TEMP_DIRECTORY`.
+
+### sverify-dbt checks a model that reads an ephemeral model
+
+dbt inlines an ephemeral model into each reader as a CTE, so the reader's compiled SQL names the ephemeral's inputs. `sverify-dbt check` now reads those inputs through the ephemeral model, transitively, instead of refusing the reader with "a hard-coded table name"; the ephemeral model itself prints a note saying which models it is inlined into (#891, 1.4).
+
+### `sverify-dbt check` exits as `sverify check` does, and a refused model no longer fails the default gate
+
+A model sverify cannot read (`WITH RECURSIVE`) with an enforced contract failed `--fail-on contract` on every run, and its text showed no reason. It now prints its constraints as not checked, and the gate fails only on a constraint that is not proved. The `--fail-on` levels nest: `contract` (the default), `unproved` (also any test not proved) and `refused` (all of that, and exit 3 where a model is refused). `--fail-on unproved` no longer fails on a refused model, which it did; use `refused` for that. An unreadable project is exit 2, an unsupported check 3, a broken install or an I/O error exit 8 with its message, where it was a traceback and exit 1, the code for "a contract does not hold" (#891, 1.2 and 1.3).
+
+### `sverify check <dbt dir> --format json` works
+
+`sverify-dbt check` takes `--format text|json` (`--json` stays as the alias), the flag `sverify check` forwards to it. For a dbt project `sverify check` prints text or JSON; `--format github`, `sarif` and `junit` stop with a usage error instead of reaching sverify-dbt's parser (#891).
+
+### `sverify-dbt check` prints for CI and takes sverify's budgets
+
+`sverify-dbt check --format github|sarif|junit` prints one annotation per finding on the model's file, a SARIF 2.1.0 log, or a JUnit suite per model. `--timeout` and `--memory-limit` bound the check as they do in `sverify check`, which now passes both through for a dbt project; a check past either exits 5. The time limit is off unless `--timeout` or `$SVERIFY_TIMEOUT` sets it: a project check is many models, and `sverify check`'s 30 s is per file (#891).
+
+### sverify-dbt stops on a mismatched sverify, and warns on an older manifest
+
+`import sverify_dbt` raises an `ImportError` naming the two versions when the installed `sverify` is not at sverify-dbt's version, instead of failing deep inside a check. `check` warns when `manifest.json` is not schema v12 (dbt-core 1.10 to 1.12), where it attaches tests by guesswork. The README's sample output is what `check` prints on `examples/shop` (every `accepted_values` test there is proved now), a test keeps it so, and `PROOF-STATUS.md` has the current counts, 23 of 26 (#891, 1.7 and 1.8).
+
+### `sverify-dbt check --selectors` needs the whole project
+
+`--selectors` with `--select` stops with a usage error, and `CheckResult.write_selectors` raises `ValueError` after a partial check: the selector would have replaced the proved tests of every model outside the selection, and `dbt build --exclude selector:sverify_proved` would have run them all again without a word (#891, 1.6).
+
+### DuckDB's quantile_cont stays inside the model near whole positions
+
+DuckDB computes the position `(n − 1)·q` of `quantile_cont` in a double, which can miss the exact position's floor or ceiling when the exact position is within `(n − 1)·2⁻⁵¹` of a whole one. In that band the written plan now takes `quantile_disc` of `q` moved by 10⁻¹⁵ toward 1/2, whose index is the nearest whole position, and raises `domain` where the neighbours are `-inf` and `+inf`. This replaces the refusal of `quantile(1/3)` (Ibis writes 16 decimals) from two values: the writer now refuses a fraction of more than 21 decimals, and a group of 10¹⁴ values or more ([#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900)).
+
+### DuckDB's quantile_cont stays inside the model at a whole position
+
+DuckDB computes the position `(n − 1)·q` of `quantile_cont` in doubles, so where the exact position is whole and its double is not (n = 26, q = 0.28), it interpolates toward the next value: of the values 1.0 then 1e300 it gave 8.9e284 where the model says 1.0. The written plan now takes `quantile_disc` at a whole exact position, and bounds the result by the second smallest value where the lower neighbour is the first, with the guards in exact integer arithmetic ([#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900)).
+
+### DuckDB's quantile_cont is stated as what it computes, and its route is a shim
+
+`quantile_interp`'s `LINEAR` (DuckDB's own `quantile_cont`) now takes the neighbours of its double position `(n − 1)·q` and an ulp past them where the lower neighbour is first, where it read "between the neighbours". The written plan's guards (`Dialect.quantile`) are the shim `quantile_guard`, with the precondition `(COUNT(x) − 1)·10^scale < 2^52` checked on the data, so a DuckDB `quantile_cont` route reports class `shim` where it reported `exact` (the evidence stays tested, tracked in [#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900)).
+
+### Fixed
+
+- A node over a source that cannot restore (`from_frame`) no longer rewrites its sink when the sink's record is at a higher version of the same contents. The record's digest says the rows are the state, and the writer skips, as the model of the refresh protocol decides ([#933](https://github.com/AlexanderNenninger/substrait-lean/issues/933)).
+
+### Decimal literals of up to 38 digits are written exactly
+
+A decimal literal of more than 28 digits was rounded to 28 by Python's default `Decimal` context and then refused as "does not fit" its type. The scaling now runs in one context wide enough for 38 digits (`sverify._decimals.scaled`), so such a literal, a bound of `10**34 - 1` for example, verifies and compares exactly. Other places that shared the rounding (the Ibis producer's literal width, the shown bounds of a decimal) use it too.
+
+### `lean_values` raises on filters and aggregates too
+
+`sverify.testing.lean_values` raises `LeanRaised` where the reference raises in a filter condition, a projection or an aggregate's groups and arguments, at any depth of the plan (`substrait-check --raises`). Joins and windows are not looked into.
+
+### `lean_values` raises where the reference raises
+
+The internal test oracle `sverify.testing.lean_values` returns `Rel.eval`'s rows, which have a value where the reference raises (a cast that does not fit gives `NULL` or an out-of-range integer). For a projection over a `VALUES` it now raises `LeanRaised` with the error (`substrait-check --outcomes`). Other plan shapes are not checked.
+
+### Snowflake: a `-0.0` literal keeps its sign
+
+Snowflake's SQL writes double literals as the other writers do (the base writer's `float_lit`): a `-0.0` literal is `CAST('-0.0' AS FLOAT)` and keeps its sign (D31), where it was written `0.0`; infinities are spelt `'Infinity'`. A sign-sensitive use of the literal (`atan2(-0.0, -1.0)`) now gives the reference's value on Snowflake. The DuckDB and Polars facts on `round`, `floor` and `ceil` now state the reference's `round_zero_sign` (left open; `eval` gives `+0.0`) and `zero_sign` (`ONE_ZERO`).
+
+### Snowflake: a regex search of the empty string
+
+Snowflake's SQL writes a regex search as `REGEXP_COUNT(s, p) > 0` instead of `REGEXP_INSTR(s, p) > 0`, which is false on an empty string even when the pattern matches it (`^$`, `x*`), so `re_search` of `''` now gives the reference's TRUE.
+
+### Spark no longer keeps a view for every change it merges into a state
+
+Merging an Arrow change into a view's state on Spark registered the change as a temporary view that nothing dropped, so the Spark JVM kept the rows of every refresh until the session ended. A pipeline with large changes ran the driver out of its default 1 GB heap, and the JVM then hung instead of failing. The change now goes to Spark as a frame that no view names.
+
+### Other changes
+
+- A `rows="sequence"` postcondition on an unsorted result now names its exits: sort the result with `order_by` on a key, or state `rows="multiset"`.
+
+- The float bounds page explains what a postcondition on a double asks of a route: a bounded column is refused with the exit `sv.approx`, an unbounded one lets a sign-only claim run and refuses a stated tolerance, and a threshold on a double refuses the plan. Notebook 05 shows the unbounded case.
+
+- A refresh after a small change to an Arrow-fed source no longer costs a pass over its input (#1329): on DuckDB the sealed input takes the change in place, as a view's state does, and the input is moved into the store at the first load. The refused delete names its row again ("cannot delete rows from `t`: no such row ...").
+
+- Arrow-fed sources (`StaticSource`, `sverify.io.Source`) now keep their rows in the store of the pipeline's engine, not as an Arrow table beside it (#1329): a refresh adds the change in the store, and a delete that finds no row raises "cannot delete rows from `t`: no such row" without naming the row.
+
+- Every guard a SQL writer emits (`Dialect.raise_`) now names the `Issue` it enforces, and a test ties each written guard to an issue the checker reports for the plan. A dialect that overrides `raise_` takes the extra `issue` argument. The substring-offset guards enforce `domain`, as `Safety` reports it; Snowflake's `SUM` check enforces `sumWraps`.
+
+- DuckDB's table states what it does at `list_null_order`: a NULL element sorts greatest, its `<` of lists is shimmed to the reference's NULL, and its MIN and MAX agree with the reference, so an integer `MAX` now transfers at DuckDB. Spark and Polars order a NULL element least; their rows wait for the option's scope to narrow to list arguments (ruling 171), because a refused row would refuse every MIN and MAX today.
+
+- The sverify-dbt measurement page declares the suggested `not_null` on `stg_orders.customer_id` (jaffle_shop: 14 of the project's 20 tests proved) and names the four Cal-ITP models with no compiled SQL.
+
+- Added `dbt/scripts/measure.py` and `docs/dbt-measurements.md`: sverify-dbt measured on jaffle_shop and Cal-ITP's warehouse (models read, tests proved, test queries skipped), with the column types supplied for Cal-ITP.
+
+- The guard of `UPPER`, `LOWER`, `ILIKE`, `reverse`, `ascii`, `levenshtein` and class regexes tests one predicate (`ascii_text`), shared with the ASCII precondition the report will infer; a regular expression with `\w`, `\d`, `\s` or `\b` also raises on a vertical tab, where Rust's classes and RE2's differ (`Text.classesDiffer`).
+
+- `UPPER`, `LOWER`, `ILIKE`, `reverse`, `ascii`, `levenshtein` and class regular expressions (`\w`, `\d`, `\s`, `\b`) on text that is not known to be ASCII are reported as the issue `non-ASCII text` (`Issue.nonAscii`, D43) and no longer proved: the report suggests the precondition that the column is ASCII (without a vertical tab for a class), and `Report.check_inputs` checks it on the data. The writers' guard raises on the same predicate as before.
+
+  A plan with one of these on a column the contract does not declare ASCII changes its verdict from proved to unproved under every `semantics`; declaring the column ASCII in `requires` (the report prints the condition) restores it. Under `semantics="substrait"` the new option `non_ascii_text` allows `COMPUTE`, so the functions of the new group `str.ascii` (`reverse`, `ascii`, `levenshtein`, `ilike` and the regular expressions) need the condition there too. Substrait's own `reverse` test cases on non-ASCII text are now disagreements of the ledger (`upstream/substrait-cases.json`).
+
+  Under `semantics="substrait"` the nine functions that can report the issue (`upper`, `lower`, `reverse`, `ascii`, `levenshtein`, `ilike` and the three regular-expression functions) are unproved on `non_ascii_text` with or without the ASCII condition declared: the transfer is static, as for `substring_range`.
+
+- A column of a narrow integer type (`TINYINT`, `SMALLINT`, `INTEGER`) is known to lie in its type's range, as a `BIGINT` column already was (D46). `CAST(i AS BIGINT) * 4` over an `INTEGER`, or an `INTEGER` substring offset, no longer needs an inferred precondition on the column's range; the run's schema check (#1540) holds the data to the declared type.
+
+- `CAST(i AS BIGINT) * 4` over an `INTEGER` column is now 64-bit arithmetic in the model and is proved with no bound. The parser read a cast to an integer type as the width of its operand and modelled the product as `WRAP32`.
+
+- In Ibis, the calendar functions of a UTC timestamp (`date()`, `time()`, the casts to a date and a time, `year()` and the other extracts, `epoch_seconds()`, `truncate`, `bucket` and `strftime`) now run on its UTC wall clock, whatever the session's time zone (D69, #1725). Arithmetic with intervals, the difference of two instants and the cast to a string stay refused.
+
+- The Spark engine's and the file scans' refusals end with what to do instead: run it with `engine='duckdb'`, split the query, declare the column's file type, or use a local file. The test that every refusal names a fix covers the engines.
+
+- Refusals of the Ibis and SQL frontends end with what to write instead: a literal in place of a column where a constant is needed, a column to order by, or a rewrite with a supported operation. A test checks that every frontend refusal does.
+
+- Refusals of the SQL writer end with what to do instead: a literal in place of a column where a constant is needed, or a rewrite of the step. A test checks that every writer refusal does.
+
+- A Polars left join raises where its condition raises on a pair that passes the other comparisons, as the inner, semi and anti joins and DuckDB do (#1857). The left join read its matches twice, which made Polars cache them and fuse the filter into a nested-loop join below the raise check, so the check never saw a pair the comparison rejects. It now reads them once.
+
+- A pipeline node refreshed on Spark keeps its view's state in Spark's store from its first state on (#1881). Before, the view was built on the DuckDB connection the stage reads its sources through, so its state was a DuckDB table and every merge moved the view's rows through DuckDB in the driver.
+
+- Ibis: a substring whose length comes from a column is refused with a message that says to use a constant length or `ifelse`. The replay ledgers are rewritten: the multi-quantile, mode, `count_distinct_star`, arbitrary, ordered first/last and expression-window rows now agree or are unproved.
+
+- A cast of an integer count of seconds, milliseconds or microseconds to a
+  timestamp now raises (`overflow`) where it lands outside 0001 to 9999, the
+  reference's timestamps (D32). Sverify reports it as an issue unless the
+  count's bounds rule it out, and the written SQL and the Polars plan raise at
+  run time. Before, such a cast was proved with no precondition (#1947).
+
+- `log(x, base)` with a NULL argument is NULL at DuckDB, Spark and Polars, also where the other argument would raise (`log(NULL, 0)`, `log(NULL, 1)`), as the reference reads a call with both arguments present only (#1990). DuckDB's written SQL raised there, since its raise helper does not return NULL for a NULL guard column; the shared writer and the Polars lowering now guard the domain check against a NULL argument. `log(1.0, 0)` still raises.
+
+- A plan whose timestamp, instant or time-of-day column has a precision other than microseconds (`precision_timestamp(9)`, `precision_time(3)`) is refused when it is read. The checker used to read a nanosecond count as microseconds, so a comparison of `precision_timestamp(9)` with `precision_timestamp(6)` compared raw counts of different units (#2004). Literals finer than microseconds are refused too. D61 is recorded in `docs/decisions.md`.
+
+- - Fixed: a postcondition that reads a list column was proved under a lens that ignores the order of a list's elements (`elements="multiset"`, the plan bound) though a lens-equal result can falsify it (`list_position(pair, a) = 1`). The report now lists `elements` among what the condition depends on and the observation ignores (#2005).
+
+- A typed decimal NULL literal in a Substrait plan reads with its declared decimal kind, so calls of only such NULLs (`negate`, `abs`, `add`, `coalesce`, `nullif` and the others) are read instead of refused as "a DECIMAL result of non-decimal arguments" (#2026).
+
+- The facts that DuckDB 2.0.1 changes were probed again (#2045), and 2.0.1 is still not a probed version: runs on it keep their `EngineVersionWarning` until the rest of its test tree is replayed. A constant `WHEN` that raises no longer raises while planning (DD-7 is fixed upstream), `MIN % -1` returns 0 instead of raising, `fsum` and `favg` of an infinity give the infinity, and `list_contains([], NULL)` gives FALSE where 2.0.0 and the model give NULL. The DuckDB writer now guards the needle of `list_contains`, so a plan gives NULL at both versions, and the report lists the construct when SQL is read natively. `string_split('', '')` is `[]` at 2.0.1 and `['']` at 2.0.0, and Lean no longer evaluates that cell. The 2.0.0 facts stay for users still on it.
+
+- Fixed: a CTE named like a table it reads (`WITH t AS (SELECT a FROM t) ...`) no longer crashes the SQL lift with a `RecursionError`. A CTE's body sees the tables and the CTEs defined before it, as in DuckDB.
+
+- A run-time check that fires during `sverify refresh` (a product that overflows to infinity, a guard of the plan) now holds the node: exit 7 and the held alert, which names the check and says what to state in `requires=`. It was an error, the code for a crash. A direct `Report.run` still raises the engine's error, and `sverify check` says as before that the plan raises at run time. The run stopped part-way, so the node's in-memory state is dropped: at its next refresh a node with a sink resumes from the sink, and a node without one starts from scratch.
+
+- A `BETWEEN` of a `BETWEEN` in a SQL query lifts to a plan whose size is linear in the nesting depth. Each level doubled the plan, so thirty levels never finished.
+
+- A Delta sink no longer refuses its own constraint on the refresh after an insert-only change when the node's ensures is `isnull() | (>= 0)` on a column that is never NULL: Delta stores that constraint without its `IS NULL` part, and the sink now compares the two as the same condition.
+
+- A fourth agent skill, `sverify-patterns`, writes common data engineering patterns with the contract each proves: deduplicating, sessionizing, reconciling and double entries, funnels, floating point aggregates, slowly changing dimensions, running balances and FIFO matching, counters and time-weighted averages, and gap filling. Each reference gives the rule in Ibis and SQL, and its code runs in the tests.
+
+- The dbt replay covers the projects inside `dbt-tests-adapter` 1.20.0's pytest classes (175 distinct projects, 128 tests: 8 proved, none unsound), beside dbt-utils and dbt-expectations ([#859](https://github.com/AlexanderNenninger/substrait-lean/issues/859)). sverify-dbt refuses a model whose compiled SQL does not tokenize, where it crashed.
+
+- The dbt replay ledgers are refreshed: dbt-utils now proves 3 tests (was 1) and dbt-expectations reads its row-level tests ([#859](https://github.com/AlexanderNenninger/substrait-lean/issues/859)). `replay/constructs.json` names the issue or design reason of each refusal.
+
+- `python -m sverify_dbt.replay --check` also reports a ledger entry that waits on a closed issue ([#859](https://github.com/AlexanderNenninger/substrait-lean/issues/859)).
+
+- sverify-dbt refuses a model that reads a table function such as `read_csv('…')`, naming it, before DuckDB plans the SQL: DuckDB opened the file or URL when it bound the function ([#891](https://github.com/AlexanderNenninger/substrait-lean/issues/891)). `range(…)` is still read.
+
+- The repository variable `AWS_RUNNERS=off` skips CI's `aws-probe`, so every job runs on GitHub's runners.
+
+- `UPPER` and `LOWER` map each Unicode scalar value as DuckDB, Polars and Spark all map it, and raise only on the scalars they map differently ([D51](docs/decisions.md)): 157 for `UPPER`, 57 for `LOWER` (the 56 that differ and every `Σ`, whose mapping depends on its context). The raise is the new issue `Issue.caseDiffers` (`text the engines' case mapping treats differently`) under the new option `case_mapping` (`ERROR`, `COMPUTE`; Substrait's is `COMPUTE`), no longer `Issue.nonAscii` under `non_ascii_text`. `ILIKE`, `reverse`, `ascii`, `levenshtein` and the regular expressions keep D43.
+
+  A plan with `UPPER` or `LOWER` on a column that is not declared ASCII is no longer unproved: the report suggests the precondition that the column is in the function's agreed alphabet, with none of the scalars it raises on (`upper_agreed`, `lower_agreed`; ASCII implies both); the checker's request names the declared text facts under the key `text`, a list per column, and `Report.check_inputs` checks it on the data on DuckDB, Polars and Spark, the supplementary-plane scalars included. `é`, `Ω` and the rest of the agreed alphabet pass. The reference's `Text.upper` and `Text.lower` are definitions over a generated table (`python -m sverify_dev.case_mapping`, `core/Sverify/Core/CaseTable.lean`), not black boxes.
+
+  Spark's writer calls `collate(upper(collate(x, 'UNICODE')), 'UTF8_BINARY')`, which does not follow the JVM's default locale. Snowflake's writer refuses `UPPER` and `LOWER` of anything but a literal until its case mapping is recorded. The guards of DuckDB and Spark raise on the same scalars the issue reports.
+
+- The case-mapping tables of DuckDB, Polars and Spark are recorded (`engines/<engine>/probes/case-tables.json`, `characterization/case-differences.json`, `sverify_dev.case_tables`): 213 Unicode scalar values differ between the engines (157 for `upper`, 56 for `lower`), all of them DuckDB's simple mapping against the full one Polars and Spark share, plus the final sigma as a context rule.
+
+  Spark's case mapping is recorded by its source: ICU's `UCharacter` under the default `spark.sql.icu.caseMappings.enabled`, the JVM's `String` under `false`, both in the JVM's default locale. The tables agree across pyspark 4.0 to 4.3, the two paths and the default locale; under a Turkish, Azeri or Lithuanian JVM locale `lower` (and, in a string with a non-ASCII scalar, `i` and `I`) map otherwise (`engines/spark/probes/case-tables-settings.json`). Polars's source is cited, and `tests/test_case_tables.py` re-probes DuckDB and Polars at the installed version.
+
+  Spark's writer form for `UPPER` and `LOWER` on text not proved ASCII is recorded as a fact (`spark-case-collated`): `collate(upper(collate(x, 'UNICODE')), 'UTF8_BINARY')` maps as the table under every JVM locale tried, on drivers and executors, on pyspark 4.0 to 4.3, and returns a byte-compared string. The plain functions follow the JVM's default locale, against their javadoc (upstream ledger entry SP-9).
+
+- The dbt replay of the adapter suite no longer builds the projects that define no test, and the `dbt` CI job's timeout is 30 minutes.
+
+- Delta sinks and sources work with newer `deltalake` releases, whose `DeltaTable.history` returns an iterator rather than a list.
+
+- On the ARM Hetzner runners, pull request runs only restore caches; `arm-cache.yml` saves the ARM caches on main.
+
+- CI can send its four longest jobs to a fixed Hetzner runner host (label `hetzner`) when the repository variable `HETZNER_RUNNERS` is `on`; off by default.
+
+- The Hetzner runner hosts are x86 (two servers in Helsinki): `hetzner` jobs ask for X64, and `arm-cache.yml` is gone.
+
+- Polars's reciprocal bound for a double division (`x / c`) is now stated only where the divisor is not subnormal, and for every divisor without a column reference, a constant expression included, not for literals alone. Below the smallest normal, `1 / c` overflows on Polars and the plan has no bound; a constant expression such as `7.0 * 7.0` gets the reciprocal's bound where it had the exact quotient's. `rule_div_le_recip` proves the reciprocal's bound is at least the exact one's, so a short frame, which Polars divides exactly, is covered too. Ruling 157.
+
 ## 0.8.0 (2026-11-09)
 
 Engines become packages of their own (`sverify-duckdb`, `sverify-polars`, `sverify-spark`), DataFusion is gone, and the reference's floating-point and window semantics are proved further. Some public names moved; the entries below say where.

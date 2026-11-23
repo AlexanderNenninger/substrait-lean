@@ -1,3 +1,0 @@
-### Ranges of double arithmetic are the exact result's, rounded at the ends
-
-The checker bounded a double `+`, `-` or `*` by the exact result widened by an error term, so `a / 8` of `a` in `[0, 8]` came out as `< 1.0000000000000009` and `amount * 3 + 1` of `amount` in `[0, 1e300)` as `≥ 0.0`. The ends are now rounded as the operation rounds them (rounding is monotone), and so is a quotient by one divisor: `a / 8`, `a * 0.125` and `(x + y) / 2` are in `[0, 1]`, `x + y` in `[0, 2]`, and `amount * 3 + 1 > 0` is proved ([#1485](https://github.com/AlexanderNenninger/substrait-lean/issues/1485), items 7 and 26). A bound with one end only (`amount >= 0`) still gives `any double`.

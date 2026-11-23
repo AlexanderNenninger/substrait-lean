@@ -1,1 +1,0 @@
-`CAST(i AS BIGINT) * 4` over an `INTEGER` column is now 64-bit arithmetic in the model and is proved with no bound. The parser read a cast to an integer type as the width of its operand and modelled the product as `WRAP32`.

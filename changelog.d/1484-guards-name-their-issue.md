@@ -1,1 +1,0 @@
-Every guard a SQL writer emits (`Dialect.raise_`) now names the `Issue` it enforces, and a test ties each written guard to an issue the checker reports for the plan. A dialect that overrides `raise_` takes the extra `issue` argument. The substring-offset guards enforce `domain`, as `Safety` reports it; Snowflake's `SUM` check enforces `sumWraps`.

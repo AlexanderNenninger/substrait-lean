@@ -1,1 +1,0 @@
-A Polars left join raises where its condition raises on a pair that passes the other comparisons, as the inner, semi and anti joins and DuckDB do (#1857). The left join read its matches twice, which made Polars cache them and fuse the filter into a nested-loop join below the raise check, so the check never saw a pair the comparison rejects. It now reads them once.
