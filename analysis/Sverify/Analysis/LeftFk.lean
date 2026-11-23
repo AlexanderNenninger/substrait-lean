@@ -1,5 +1,7 @@
 import Sverify.Analysis.Semantic
 import Sverify.Analysis.Contracts.Sound
+import Sverify.Analysis.AnalysisCongr
+import Sverify.Analysis.Knowledge
 
 /-!
 # A LEFT JOIN on a foreign key, for the contracts (#2512, ruling 276)
@@ -393,5 +395,57 @@ theorem contract_sound_all_fk {cat : Catalog} (hcat : cat.WF) {S : String → Li
     fun t row h => tableEnv_sound (hS t row h) (hpre t row h)
   exact contract_sound_all hcat hS hpre (Rel.fkLeft_wf Q hQ) hT hproved
     (Rel.fkLeft_orderAllowed hcat hA hF hT hR hQ hout)
+
+
+section Congr
+variable {c cat : Catalog}
+
+omit [Boxes.Ambient] in
+theorem Rel.originS_congr (h : ∀ t, (c t).arity = (cat t).arity) :
+    ∀ (r : Rel) (i : Nat), r.originS c i = r.originS cat i
+  | .read _, _ => rfl
+  | .filter r _, i | .fetch r _ _, i | .orderBy r _, i | .distinct r, i => originS_congr h r i
+  | .project r es, i => by
+      simp only [originS, arity_congr h r, originS_congr h r]
+  | .emit r m, i => by
+      have : r.originS c = r.originS cat := funext (originS_congr h r)
+      simp only [originS, this]
+  | .values _ _, _ | .unnest _ _, _ | .cross _ _, _ | .join _ _ _ _, _ | .unionAll _ _, _
+  | .window _ _ _ _, _ | .semi _ _ _ _, _ | .aggregate _ _ _, _ => rfl
+
+theorem Rel.fkMatchS_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
+    (F : String → List Fact) (T : WindowKeys) (R : ForeignKeys) (a b : Rel) (on : Expr) :
+    Rel.fkMatchS c A F T R a b on = Rel.fkMatchS cat A F T R a b on := by
+  simp only [fkMatchS, arity_congr h a, originS_congr h a, cover_congr h b,
+    aeval_congr₁ h A F T false a]
+
+theorem Rel.fkLeft_congr (h : ∀ t, (c t).arity = (cat t).arity) (A : String → List AVal)
+    (F : String → List Fact) (T : WindowKeys) (R : ForeignKeys) :
+    ∀ r : Rel, r.fkLeft c A F T R = r.fkLeft cat A F T R
+  | .read _ | .values _ _ => rfl
+  | .filter r _ | .project r _ | .emit r _ | .fetch r _ _ | .window r _ _ _ | .orderBy r _
+  | .distinct r | .aggregate r _ _ | .unnest r _ => by simp only [fkLeft, fkLeft_congr h A F T R r]
+  | .cross a b | .unionAll a b | .semi a b _ _ | .join a b .inner _ => by
+      simp only [fkLeft, fkLeft_congr h A F T R a, fkLeft_congr h A F T R b]
+  | .join a b .left on => by
+      simp only [fkLeft, fkLeft_congr h A F T R a, fkLeft_congr h A F T R b,
+        fkMatchS_congr h A F T R a b on]
+
+end Congr
+
+namespace Knowledge
+
+/-- **Contract soundness for every order, with the foreign keys that hold,
+for a knowledge environment.** `Knowledge.contract_sound_all` on the plan with
+its left joins on foreign keys read as inner joins. -/
+theorem contract_sound_all_fk {cat : Catalog} (hcat : cat.WF) {K : KnowledgeEnv}
+    (hK : K.Sound cat) {R : ForeignKeys} (hR : R.Hold cat) {Q : Rel} (hQ : Q.WF cat)
+    (hproved : ((Q.fkLeft cat K.cols K.facts (K.windows cat) R).analyse cat K).cols.all
+      AVal.certainlyTrue = true) :
+    ∀ {out : Relation}, Q.OrderAllowed cat out → ∀ row ∈ out, ∀ v ∈ row, v = .bool true :=
+  fun ho => Knowledge.contract_sound_all hcat hK (Rel.fkLeft_wf Q hQ) hproved
+    (Rel.fkLeft_orderAllowed hcat hK.cols hK.facts (hK.windows hcat) hR hQ ho)
+
+end Knowledge
 
 end Substrait
