@@ -478,4 +478,6 @@ end Substrait.Examples
 #print axioms Substrait.FloatCode.fadd_fin_of_zero
 #print axioms Substrait.FloatCode.fsub_fin_of_zero
 #print axioms Substrait.BinFn.shrinks_fin
+#print axioms Substrait.decQuotFinite_sound
+#print axioms Substrait.FloatCode.ofDecimal_zero
 #print axioms Substrait.Expr.mayIssues_sound
