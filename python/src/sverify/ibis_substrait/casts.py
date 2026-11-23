@@ -59,17 +59,31 @@ def _from_seconds(x: Exprs, op: Any, try_: bool, to: dt.DataType) -> Json | None
         # A precision sverify does not read: its own refusal names it (#323, D61).
         return None
     if try_ or to.timezone is not None or to.scale not in (None, 6):
-        what, hint = (
-            ("an integer", '; write .as_timestamp("s") for seconds since the epoch')
-            if t.is_integer()
-            else ("a double", "")
-        )
-        if nanos:
+        what = "an integer" if t.is_integer() else "a double"
+        cast = f"a {'try_' if try_ else ''}cast of {what}"
+        construct = "TRY_CAST" if try_ else "CAST"
+        if t.is_integer() and nanos:
             # Nanoseconds meet microseconds only through a cast (D61), after 1.0.
-            hint += " (#2318)"
+            raise Unsupported(
+                f'{cast} to {op.to} is not supported; write .as_timestamp("s") for seconds '
+                "since the epoch in microseconds (nanosecond casts wait on #2318)",
+                construct=construct,
+            )
+        if nanos:
+            raise Unsupported(
+                f"{cast} to {op.to} is not supported; nanosecond casts wait on #2318",
+                construct=construct,
+            )
+        if t.is_integer():
+            raise Unsupported(
+                f"{cast} to {op.to} is not supported; "
+                'write .as_timestamp("s") for seconds since the epoch',
+                construct=construct,
+            )
         raise Unsupported(
-            f"a {'try_' if try_ else ''}cast of {what} to {op.to} is not supported{hint}",
-            construct="TRY_CAST" if try_ else "CAST",
+            f"{cast} to {op.to} is not supported; "
+            "use `cast` to `timestamp`, with the column's bounds in `requires`",
+            construct=construct,
         )
     if t.is_integer():
         return from_unix(x, op.arg, "s", to)
