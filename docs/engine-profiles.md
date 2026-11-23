@@ -408,16 +408,15 @@ from its [facts](../engines/spark/facts/). Option by option:
 | `null_order` | the reference's | first for an ascending key ([null-order](../engines/spark/facts/spark-null-order.json)) | shim `null_order`, a written argument |
 | every other option | the reference's | the table | native, or the writer's shims |
 
-Spark gives the reference's value wherever the reference reports no issue
-(`Profile.spark_okImpl_faithful`), so a plan the reference proves runs on
-Spark as it is (`Engine.spark_sound`). Until the checker reports under
+Spark runs the plan its generated lowering writes (`Lowering.spark`), so a
+plan the reference proves runs on Spark (`Engine.spark_sound`). Until the checker reports under
 Spark's profile ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)),
 a `"profile": "spark"` request gets the reference's report, labelled
 `"reference"`, with `"pending": "spark"`. `power(±1, ±∞)` is NaN on Spark
 (`pow_one_inf`, [D40](decisions.md#d40-power1--is-cs-pow)) and `floor` and `ceil` of NaN are `0` (`float_to_int`);
-the writer refuses double `power` and passes NaN through `floor` and `ceil`
-(`Profile.sparkWritten`). `atan2` reads `-0.0` as `0.0` (`zero_sign`), and
-the writer refuses double `atan2`. Once the checker reports under the profile, a plan proved
+the lowering refuses double `power` and passes NaN through `floor` and `ceil`
+(`Lowering.spark_refuses`, `Spark.ffloorEntry`). `atan2` reads `-0.0` as
+`0.0` (`zero_sign`), and the lowering refuses double `atan2`. Once the checker reports under the profile, a plan proved
 under it runs on Spark by `native`, and on DuckDB by `transfer` where
 DuckDB's choices are within Spark's at every option the proof depends on.
 What is proved
@@ -431,10 +430,11 @@ What is proved
 - `Shim.avg_trunc`, `Shim.null_order`, `Shim.one_zero`: the other shims give
   the reference's value, by the lemmas Polars's shims share
   ([Shims.lean](../engines/Sverify/Engines/Shims.lean)).
-- `Profile.sparkWritten_okImpl_faithful` and `Rel.spark_sound`: Spark under
-  ANSI, as the writer writes it (`Profile.sparkWritten`), gives `Rel.eval`'s
-  rows for a plan whose only issues are assumed ones, as `Rel.polars_sound`
-  does for Polars. Its own values on the error side (NaN, a `date_add`
+- `Rel.spark_sound` and `Rel.spark_sound_or_raises`: Spark under ANSI, as its
+  generated lowering writes the plan (`Lowering.spark`), gives `Rel.eval`'s
+  rows on a catalog of doubles: for a plan whose only issues are assumed ones
+  and that calls no IEEE division, as `Rel.polars_sound` does for Polars, and
+  for any plan, every guard kept, where Spark does not raise (ruling 277). Its own values on the error side (NaN, a `date_add`
   wrapped past 2³¹ days, SP-2) are where the reference raises. The NaN
   values are rows of `Profile.spark.table`; the wrap is `sparkBin`'s
   `date_add` arm, within the table through the uncharacterized `date_range`

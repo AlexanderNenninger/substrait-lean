@@ -451,6 +451,7 @@ end Substrait.Examples
 #print axioms Substrait.Engine.duckdb_sound
 #print axioms Substrait.Rel.polars_sound
 #print axioms Substrait.Rel.spark_sound
+#print axioms Substrait.Rel.spark_sound_or_raises
 #print axioms Substrait.Engine.polars_sound
 #print axioms Substrait.Engine.spark_sound
 #print axioms Substrait.Engine.contract_sound

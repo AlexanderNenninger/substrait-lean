@@ -24,6 +24,10 @@ the flags say which (`Lowering.spark_exact_except`, `Lowering.spark_onDbl_only`)
 
 `power` and `atan2` of doubles are Java's, within an ulp of C's: the table is
 partial, and `Lowering.lowerRel?` refuses a plan that calls them, naming them.
+`ftod`, a double to a decimal, is native here, which Spark's own cast is not: it
+rounds the double's shortest text (`1.005` to `1.01`), the reference the product
+`x · 10ˢ`. The writer keeps the dialect's `decimal_cast`, which rounds the
+product, and never Spark's cast of the double (ruling 278).
 So the soundness (`Rel.spark_lowered_sound`) is `Lowering.lowerRel?_sound_dbl`:
 on a catalog of doubles, for a plan whose constants are doubles. Nothing runs
 the table yet: the writer still writes each function by hand (`Spark.written`),
