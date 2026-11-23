@@ -188,12 +188,6 @@ def test_groups_and_options() -> None:
             assert (_facts().facts_dir(engine) / f"{fact}.json").exists()
 
 
-#: Groups of `docs/core-semantics.md`'s table that `Functions.groups` does not
-#: have: decimal casts read no option in Lean yet (`dround`, `dtof` and `itof`
-#: have no row), so their row states the design only.
-_DOC_ONLY_GROUPS = {"cast.dec"}
-
-
 @needs_repo
 def test_core_semantics_groups_are_lean() -> None:
     """`docs/core-semantics.md`'s table of function groups is `Functions.groups`,
@@ -201,15 +195,16 @@ def test_core_semantics_groups_are_lean() -> None:
     names exactly the group's options (#2438: `cast.num` named `float_to_int`
     where Lean read nothing). A cell that starts with "none" names none; its
     note may mention an option out of reach. The relations' rows are read by
-    `Rel.reads`, outside the function groups, and are left out."""
+    `Rel.reads`, outside the function groups, and are left out. `cast.dec` named
+    `decimal_rescale` where `dround` read nothing (ruling 273)."""
     doc = (ROOT / "docs" / "core-semantics.md").read_text(encoding="utf-8")
     lean = lean_options()
     options = {o["id"] for o in lean["options"]}
     rows = re.findall(r"^\| ([a-z]+) \| `([a-z0-9._]+)` \| .* \| (.*) \|$", doc, re.M)
     doc_groups = {g for area, g, _ in rows if area != "relations"}
-    assert doc_groups - _DOC_ONLY_GROUPS == set(lean["groups"])
+    assert doc_groups == set(lean["groups"])
     for area, group, cell in rows:
-        if area == "relations" or group in _DOC_ONLY_GROUPS:
+        if area == "relations":
             continue
         named = [] if cell.startswith("none") else re.findall(r"`([a-z0-9_]+)`", cell)
         assert {o for o in named if o in options} == set(lean["groups"][group]), group

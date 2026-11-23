@@ -13,7 +13,8 @@
   ],
   "rows": [
     {"group": "dec.arith", "option": "overflow", "types": ["decimal"]},
-    {"group": "dec.arith", "option": "decimal_rescale", "types": ["decimal"]}
+    {"group": "dec.arith", "option": "decimal_rescale", "types": ["decimal"]},
+    {"group": "cast.dec", "option": "decimal_rescale", "types": ["decimal"]}
   ],
   "constructs": [
     "+",
