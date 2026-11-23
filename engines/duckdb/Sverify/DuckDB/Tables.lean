@@ -51,7 +51,9 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     -- `float_to_int` (ruling 273): a cast's conversion is the engine's own;
     -- elsewhere (`fp.round`, `fp.floor`) it stays uncharacterized.
     (none, "float_to_int", .loose ["TRUNCATE", "TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN"]),
-    (some "cast.num", "float_to_int", .oneOf ["TIE_AWAY_FROM_ZERO"]),
+    -- `CAST` of a double rounds half to even, of a decimal half away from zero
+    -- (duckdb-R9): `cast.num` holds both.
+    (some "cast.num", "float_to_int", .oneOf ["TIE_TO_EVEN", "TIE_AWAY_FROM_ZERO"]),
     (none, "nan_creation", .oneOf ["NAN"]),
     (none, "float_overflow", .oneOf ["INFINITY"]),
     (none, "zero_sign", .oneOf ["ONE_ZERO"]),
