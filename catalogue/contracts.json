@@ -879,7 +879,6 @@
       "spark": {
         "causes": [
           "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: fp.arith's rounding (#271)",
           "row tested: fp.arith's zero_sign (#271)"
         ],
         "class": "observed",
@@ -949,8 +948,7 @@
       },
       "spark": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding (#271)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -982,8 +980,7 @@
       },
       "spark": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding (#271)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
@@ -1392,8 +1389,7 @@
       },
       "spark": {
         "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.var's rounding (#271)"
+          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
         ],
         "class": "observed",
         "outcome": "tested"
