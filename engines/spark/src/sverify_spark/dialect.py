@@ -235,6 +235,11 @@ class SparkDialect(Dialect):
         # the double's own rounding (a halfway double prints as one).
         return f"ROUND({x})"
 
+    def float_round_even(self, x: str) -> str:
+        # `BROUND` is HALF_EVEN on the double's shortest decimal, which at zero digits is
+        # IEEE's half-to-even: a double prints as `k.5` only when it is `k + 0.5` (D55).
+        return f"BROUND({x})"
+
     def float_pow(self, a: str, b: str) -> str:
         raise self.to_duckdb(
             "Spark's POWER is Java's Math.pow, within 1 ulp of the C pow the Lean model uses "

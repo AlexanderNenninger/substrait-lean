@@ -192,7 +192,7 @@
       "checker: round: option rounding is not supported": 4,
       "checker: ceil of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
       "checker: floor of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1,
-      "checker: round: option rounding = [TIE_TO_EVEN] is not supported (the model does [TIE_AWAY_FROM_ZERO])": 1
+      "checker: round of FLOAT (fpN) values is not modelled; cast them to DOUBLE first": 1
     },
     "rounding_decimal": {
       "checker: round: option rounding is not supported": 5,

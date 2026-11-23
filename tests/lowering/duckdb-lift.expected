@@ -1583,10 +1583,22 @@
    "result": "fp64",
    "construct": "least(DOUBLE, DOUBLE)",
    "args": ["fp64", "fp64"]},
-  {"semantics": "duckdb",
+  {"template":
+   {"cast":
+    {"type": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "input":
+     {"scalarFunction":
+      {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "options": [{"preference": ["TIE_TO_EVEN"], "name": "rounding"}],
+       "functionReference": 47,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}}]}},
+     "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}},
+   "semantics": "duckdb",
    "result": "i64",
-   "refused":
-   "a SQL cast of a double rounds half to even (D55), which the model's casts (they truncate) cannot state until #322; write CAST(round(x) AS BIGINT), CAST(floor(x) AS BIGINT) or CAST(ceil(x) AS BIGINT), which mean the same on both",
    "construct": "CAST(DOUBLE AS BIGINT)",
    "args": ["fp64"]},
   {"template":
@@ -2140,10 +2152,22 @@
    "result": "fp64",
    "construct": "least(DOUBLE, DOUBLE)",
    "args": ["fp64", "fp64"]},
-  {"semantics": "reference",
+  {"template":
+   {"cast":
+    {"type": {"i64": {"nullability": "NULLABILITY_NULLABLE"}},
+     "input":
+     {"scalarFunction":
+      {"outputType": {"fp64": {"nullability": "NULLABILITY_NULLABLE"}},
+       "options": [{"preference": ["TIE_TO_EVEN"], "name": "rounding"}],
+       "functionReference": 47,
+       "arguments":
+       [{"value":
+         {"selection":
+          {"rootReference": {},
+           "directReference": {"structField": {"field": 0}}}}}]}},
+     "failureBehavior": "FAILURE_BEHAVIOR_THROW_EXCEPTION"}},
+   "semantics": "reference",
    "result": "i64",
-   "refused":
-   "a SQL cast of a double rounds half to even (D55), which the model's casts (they truncate) cannot state until #322; write CAST(round(x) AS BIGINT), CAST(floor(x) AS BIGINT) or CAST(ceil(x) AS BIGINT), which mean the same on both",
    "construct": "CAST(DOUBLE AS BIGINT)",
    "args": ["fp64"]},
   {"template":

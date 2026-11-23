@@ -35,10 +35,6 @@ abbrev Substrait.liftReference.addDouble : Substrait.LiftEntry Substrait.Semanti
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":42,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.bin Substrait.BinFn.fadd (Substrait.Expr.field 0) (Substrait.Expr.field 1),
     Substrait.LiftEntry.of₂ rfl Substrait.liftReference.addDouble_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.addDouble)
-  ((Lean.Json.parse (Substrait.liftReference.addDouble).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.addDouble).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.subDouble_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -54,10 +50,6 @@ abbrev Substrait.liftReference.subDouble : Substrait.LiftEntry Substrait.Semanti
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":43,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.bin Substrait.BinFn.fsub (Substrait.Expr.field 0) (Substrait.Expr.field 1),
     Substrait.LiftEntry.of₂ rfl Substrait.liftReference.subDouble_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.subDouble)
-  ((Lean.Json.parse (Substrait.liftReference.subDouble).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.subDouble).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.mulDouble_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -72,10 +64,6 @@ theorem Substrait.liftReference.mulDouble_agree : ∀ (x y : Substrait.Value),
 abbrev Substrait.liftReference.mulDouble : Substrait.LiftEntry Substrait.Semantics.reference Substrait.DuckFn.mulDouble :=
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":44,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.bin Substrait.BinFn.fmul (Substrait.Expr.field 0) (Substrait.Expr.field 1),
     Substrait.LiftEntry.of₂ rfl Substrait.liftReference.mulDouble_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.mulDouble)
-  ((Lean.Json.parse (Substrait.liftReference.mulDouble).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.mulDouble).tmpl
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.signBigint_agree : ∀ (x : Substrait.Value),
@@ -112,10 +100,6 @@ abbrev Substrait.liftReference.signBigint : Substrait.LiftEntry Substrait.Semant
         (Substrait.Expr.un Substrait.UnFn.isNull (Substrait.Expr.field 0)))
       (Substrait.Expr.lit (Substrait.Value.int 0)) (Substrait.Expr.lit Substrait.Value.null))),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.signBigint_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.signBigint)
-  ((Lean.Json.parse (Substrait.liftReference.signBigint).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.signBigint).tmpl
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.signDouble_agree : ∀ (x : Substrait.Value),
@@ -161,10 +145,6 @@ abbrev Substrait.liftReference.signDouble : Substrait.LiftEntry Substrait.Semant
       (Substrait.Expr.lit (Substrait.Value.int 0)) (Substrait.Expr.lit Substrait.Value.null))),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.signDouble_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.signDouble)
-  ((Lean.Json.parse (Substrait.liftReference.signDouble).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.signDouble).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.greatestBigint_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.bigint x →
@@ -179,10 +159,6 @@ theorem Substrait.liftReference.greatestBigint_agree : ∀ (x y : Substrait.Valu
 abbrev Substrait.liftReference.greatestBigint : Substrait.LiftEntry Substrait.Semantics.reference Substrait.DuckFn.greatestBigint :=
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":9,\"options\":[],\"outputType\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.bin Substrait.BinFn.greatest (Substrait.Expr.field 0) (Substrait.Expr.field 1),
     Substrait.LiftEntry.of₂ rfl Substrait.liftReference.greatestBigint_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.greatestBigint)
-  ((Lean.Json.parse (Substrait.liftReference.greatestBigint).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.greatestBigint).tmpl
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.leastBigint_agree : ∀ (x y : Substrait.Value),
@@ -199,10 +175,6 @@ abbrev Substrait.liftReference.leastBigint : Substrait.LiftEntry Substrait.Seman
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":11,\"options\":[],\"outputType\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.bin Substrait.BinFn.least (Substrait.Expr.field 0) (Substrait.Expr.field 1),
     Substrait.LiftEntry.of₂ rfl Substrait.liftReference.leastBigint_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.leastBigint)
-  ((Lean.Json.parse (Substrait.liftReference.leastBigint).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.leastBigint).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.greatestDouble_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -218,10 +190,6 @@ abbrev Substrait.liftReference.greatestDouble : Substrait.LiftEntry Substrait.Se
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":10,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.bin Substrait.BinFn.greatest (Substrait.Expr.field 0) (Substrait.Expr.field 1),
     Substrait.LiftEntry.of₂ rfl Substrait.liftReference.greatestDouble_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.greatestDouble)
-  ((Lean.Json.parse (Substrait.liftReference.greatestDouble).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.greatestDouble).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.leastDouble_agree : ∀ (x y : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -236,6 +204,38 @@ theorem Substrait.liftReference.leastDouble_agree : ∀ (x y : Substrait.Value),
 abbrev Substrait.liftReference.leastDouble : Substrait.LiftEntry Substrait.Semantics.reference Substrait.DuckFn.leastDouble :=
   ⟨"{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}},{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":1}},\"rootReference\":{}}}}],\"functionReference\":12,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.bin Substrait.BinFn.least (Substrait.Expr.field 0) (Substrait.Expr.field 1),
     Substrait.LiftEntry.of₂ rfl Substrait.liftReference.leastDouble_agree⟩
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.addDouble)
+  ((Lean.Json.parse (Substrait.liftReference.addDouble).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.addDouble).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.subDouble)
+  ((Lean.Json.parse (Substrait.liftReference.subDouble).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.subDouble).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.mulDouble)
+  ((Lean.Json.parse (Substrait.liftReference.mulDouble).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.mulDouble).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.signBigint)
+  ((Lean.Json.parse (Substrait.liftReference.signBigint).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.signBigint).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.signDouble)
+  ((Lean.Json.parse (Substrait.liftReference.signDouble).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.signDouble).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.greatestBigint)
+  ((Lean.Json.parse (Substrait.liftReference.greatestBigint).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.greatestBigint).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.leastBigint)
+  ((Lean.Json.parse (Substrait.liftReference.leastBigint).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.leastBigint).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.greatestDouble)
+  ((Lean.Json.parse (Substrait.liftReference.greatestDouble).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.greatestDouble).tmpl
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.leastDouble)
   ((Lean.Json.parse (Substrait.liftReference.leastDouble).json).toOption.getD Lean.Json.null) ==
