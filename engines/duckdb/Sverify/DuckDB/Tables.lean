@@ -35,6 +35,7 @@ namespace Substrait
 def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
   name := "duckdb"
   version := "2.0.0"
+  alsoProbed := ["2.0.1"]
   choices := [
     (none, "overflow", .asked ["ERROR"] ["ERROR"]),
     (none, "on_division_by_zero", .oneOf [if s.errorOnDivZero then "ERROR" else "NULL"]),

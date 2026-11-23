@@ -47,7 +47,7 @@ UnFn.decimal	native
 UnFn.dkind	native
 UnFn.dround	native
 UnFn.dtrunc	native
-UnFn.ftod	native
+UnFn.ftod	refused
 UnFn.dtof	native
 UnFn.structField	native
 UnFn.listElement	native

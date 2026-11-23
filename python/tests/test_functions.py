@@ -196,7 +196,7 @@ def test_core_semantics_groups_are_lean() -> None:
     where Lean read nothing). A cell that starts with "none" names none; its
     note may mention an option out of reach. The relations' rows are read by
     `Rel.reads`, outside the function groups, and are left out. `cast.dec` named
-    `decimal_rescale` where `dround` read nothing (ruling 273)."""
+    `decimal_rescale` where `dround` and `ftod` read nothing (rulings 273 and 278)."""
     doc = (ROOT / "docs" / "core-semantics.md").read_text(encoding="utf-8")
     lean = lean_options()
     options = {o["id"] for o in lean["options"]}
@@ -208,6 +208,21 @@ def test_core_semantics_groups_are_lean() -> None:
             continue
         named = [] if cell.startswith("none") else re.findall(r"`([a-z0-9_]+)`", cell)
         assert {o for o in named if o in options} == set(lean["groups"][group]), group
+
+
+@needs_repo
+@pytest.mark.parametrize(
+    ("engine", "status"), [("duckdb", "native"), ("polars", "refused"), ("spark", "refused")]
+)
+def test_each_profile_states_its_own_double_to_decimal(engine: str, status: str) -> None:
+    """A double cast to a decimal reads `decimal_rescale` (ruling 278): DuckDB's
+    profile takes the reference's cast, so its generated lowering writes the
+    native one; Polars's rounds the product half to even and Spark's rounds within
+    one unit, so their lowerings refuse it rather than write the native cast."""
+    name = {"duckdb": "DuckDB", "polars": "Polars", "spark": "Spark"}[engine]
+    table = ROOT / "engines" / engine / "Sverify" / name / "LoweringOn" / "Table.lean"
+    rows = re.findall(r'\("UnFn\.ftod", "([a-z]+)"', table.read_text(encoding="utf-8"))
+    assert rows == [status]
 
 
 @pytest.mark.parametrize("profile", sorted(fns.CHOICES))

@@ -590,6 +590,48 @@ def test_a_time_of_24_00_is_refused(tmp_path):
     )
 
 
+def _row(file, line, cls):
+    return {"file": file, "line": line, "sql": "SELECT 1", "cls": cls, "side": "", "reason": ""}
+
+
+def test_replaying_named_files_replaces_only_their_entries(tmp_path):
+    """`--files` (#2045): the entries of the files replayed alone replace the ones of the
+    same files, the rest of the area's ledger and its version stay, and the head says
+    which files are newer."""
+    old = [_row("a/x.test", 1, "agree"), _row("a/y.test", 1, "agree"), _row("a/y.test", 2, "agree")]
+    slt.write_ledger("a", "2.0.0", old, {"a/z.test": "require windows"}, tmp_path)
+    before = json.loads((tmp_path / "a.json").read_text())
+
+    new = [
+        _row("a/y.test", 1, "agree"),
+        _row("a/y.test", 2, "refused"),
+        _row("a/n.test", 1, "agree"),
+    ]
+    results, skipped, head = slt.refresh_ledger(
+        before, ["a/y.test", "a/n.test"], "2.0.1", new, {"a/n.test": "require x"}
+    )
+    path = slt.write_ledger("a", before["duckdb"], results, skipped, tmp_path, head=head)
+    after = json.loads(path.read_text())
+
+    assert after["duckdb"] == "2.0.0" and after["source"] == before["source"]
+    assert after["refreshed"] == {"a/n.test": "2.0.1", "a/y.test": "2.0.1"}
+    assert [(r["file"], r["line"], r["cls"]) for r in after["results"]] == [
+        ("a/n.test", 1, "agree"),
+        ("a/x.test", 1, "agree"),
+        ("a/y.test", 1, "agree"),
+        ("a/y.test", 2, "refused"),
+    ]
+    assert after["summary"] == {"agree": 3, "disagree": 0, "refused": 1, "skipped": 0}
+    assert after["skipped_files"] == {"a/n.test": "require x", "a/z.test": "require windows"}
+
+
+def test_a_new_area_is_written_whole_at_the_replayed_version():
+    results, skipped, head = slt.refresh_ledger(
+        None, ["b/x.test"], "2.0.1", [_row("b/x.test", 1, "agree")], {}
+    )
+    assert head is None and len(results) == 1 and skipped == {}
+
+
 def test_a_tagged_list_sum_raise_is_checked_against_its_domain_issue(monkeypatch):
     """`list_sum` past BIGINT raises sverify's tagged check; the report lists
     it as a domain error and the checker reports `Issue.domain` (#2162)."""

@@ -41,7 +41,7 @@ the tables only. The shim count per engine is D9's measure of few shims.
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 10 | 25 | 1 | 4 | 6 | 0 | 15 | 0 |
 | Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 15 | 14 | 1 | 6 | 10 | 2 | 17 | 7 |
-| Spark | 4.3.0 | `Engine.spark_sound` | `Engine.SparkSide` | 5 | 28 | 1 | 7 | 5 | 5 | 16 | 0 |
+| Spark | 4.3.0 | `Engine.spark_sound` | `Engine.SparkSide` | 6 | 28 | 1 | 7 | 5 | 5 | 16 | 0 |
 
 Rows per evidence level:
 
@@ -49,7 +49,7 @@ Rows per evidence level:
 |---|---|---|---|---|---|---|---|
 | DuckDB | 26 | 1 | 18 | 2 | 0 | 0 | 15 |
 | Polars | 39 | 0 | 12 | 0 | 0 | 0 | 17 |
-| Spark | 35 | 8 | 8 | 0 | 0 | 0 | 16 |
+| Spark | 35 | 8 | 9 | 0 | 0 | 0 | 16 |
 
 ## Shims
 
@@ -82,6 +82,7 @@ Rows per evidence level:
 | Polars | `strpos_chars` | expression | str.match: `string_positions` |
 | Spark | `decimal_negate_sub` | expression | dec.arith: `overflow` |
 | Spark | `int_sum_decimal` | expression | agg.isum: `overflow` |
+| Spark | `decimal_cast` | expression | cast.dec: `decimal_rescale` |
 | Spark | `int_avg_decimal` | expression | `avg_int_result` |
 | Spark | `null_order` | argument | `null_order` |
 | Spark | `sort on the keys` | sort | `clustered` |
@@ -242,7 +243,7 @@ Refused on Polars, with no expression there:
 
 ## Spark 4.3.0
 
-5 shims (1 argument, 3 expression, 1 sort). Its run is proved sound by `Engine.spark_sound`, under `Engine.SparkSide`.
+6 shims (1 argument, 4 expression, 1 sort). Its run is proved sound by `Engine.spark_sound`, under `Engine.SparkSide`.
 
 | Group | Option | Reference's tool | Reference | Spark | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -260,6 +261,7 @@ Refused on Polars, with no expression there:
 | every | `min_mod_neg_one` | choose | `ZERO` | `ZERO` | native | proof | proved `Rel.spark_sound`; [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | probe | tested: [spark-decimal-arith](../engines/spark/facts/spark-decimal-arith.json) |
+| cast.dec | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | shim `decimal_cast` (expression) | probe | tested: [spark-double-to-decimal](../engines/spark/facts/spark-double-to-decimal.json), [spark-decimal-arith](../engines/spark/facts/spark-decimal-arith.json) |
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | proof | proved `Rel.spark_sound`; [spark-double-arith](../engines/spark/facts/spark-double-arith.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native; stated `TIE_TO_EVEN`: not native | proof | proved `Rel.spark_sound`; [spark-round](../engines/spark/facts/spark-round.json) |
 | fp.atan2 | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | refused | proof | proved `Lowering.spark_refuses`; [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json) |

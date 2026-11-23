@@ -1124,8 +1124,10 @@ def elabGenerateLowering : CommandElab := fun stx => do
             let pats := " ".intercalate (k.args.toList.map toString)
             let rhs := match how with | .error _ => "none" | .ok _ => s!"some {tbl ++ k.short}"
             s!"    | {c} {pats} => {rhs}")
-      let xs := " ".intercalate ((List.range nargs).map (s!"a{·}"))
-      let rhs := if es.any (·.2.1 matches .error _) || es.isEmpty then "none"
+      let refusedHere := es.any (·.2.1 matches .error _) || es.isEmpty
+      -- A refused constructor binds none of its arguments (`ftod _ => none`).
+      let xs := " ".intercalate ((List.range nargs).map (if refusedHere then fun _ => "_" else (s!"a{·}")))
+      let rhs := if refusedHere then "none"
         else s!"some ({tbl ++ c.componentsRev.head!} {xs})"
       return s!"    | {c} {xs} => {rhs}"
     return "\n".intercalate lines
