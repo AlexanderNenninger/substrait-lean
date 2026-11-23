@@ -209,7 +209,7 @@ ORDER BY …) FILTER (WHERE x IS NOT NULL)`, the ordinal breaking ties as Lean's
 list order does) and `UNNEST` (a lateral `UNNEST(l) WITH ORDINALITY`, so an
 order-dependent operation above sees each row's elements in order).
 Snowflake and Spark refuse them; running them there is tracked in
-[an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/271).
+[an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/2540).
 
 Polars also runs struct fields, list elements, `cardinality` and the
 higher-order functions (the body on `pl.element()` in `list.eval`; a body's

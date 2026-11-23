@@ -173,7 +173,7 @@ states the condition (None: unset)."""
 #: The semantics a plan is verified under besides the installed profiles:
 #: portable (the reference profile, `Profile.reference`), and DuckDB's,
 #: reached through its SQL lift until the checker evaluates under DuckDB's
-#: run profile (#271, #1189).
+#: run profile (#2545, #1189).
 _LIFTED = ("portable", "duckdb")
 
 
@@ -554,7 +554,7 @@ def verify(
             (None), it is `"duckdb"` for a transformation whose SQL is all
             `sv.sql(..., semantics="duckdb")`, else `"portable"`.
             `"polars"` and `"spark"` name the engine's own profile, under
-            which the checker has no report yet (#271): `verify` warns
+            which the checker has no report yet (#2545): `verify` warns
             `ProfilePendingWarning` and returns the reference's report
             (`Report.semantics` is `"portable"`).
             `"substrait"` checks an Ibis transformation under Substrait's

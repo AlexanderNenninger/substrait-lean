@@ -1813,7 +1813,7 @@ the request (`DataMeets`).
 `check` analyses under the reference whatever profile the request names: a
 request for DuckDB's, Polars's or Spark's profile gets the reference's report,
 labelled `"reference"` and marked `"pending"` by `underProfile`
-(`SubstraitCheck.lean`), until #271 gives those engines reports of their own. A tolerance or an observation on the engine's doubles
+(`SubstraitCheck.lean`), until #2545 gives those engines reports of their own. A tolerance or an observation on the engine's doubles
 belongs to the engine's soundness (`Engine.Sound`), which starts from this
 conclusion.
 
