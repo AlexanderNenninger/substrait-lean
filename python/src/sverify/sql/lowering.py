@@ -72,6 +72,7 @@ _CALLS = {
     "bit:bitwise_xor": "xor",
     "ffloor": "FLOOR",
     "Substrait.UnFn.fround": "ROUND",
+    "Substrait.UnFn.froundEven": "ROUND_EVEN",
     "Substrait.UnFn.fceil": "CEIL",
 }
 
@@ -208,7 +209,9 @@ def render(
         if name in _BINARY:
             return f"({xs[0]} {_BINARY[name]} {xs[1]})"
         if name in _CALLS:
-            return f"{_CALLS[name]}({', '.join(xs)})"
+            # DuckDB's `round_even` takes its digits: zero (D55).
+            tail = ", 0" if name == "Substrait.UnFn.froundEven" else ""
+            return f"{_CALLS[name]}({', '.join(xs)}{tail})"
         raise ValueError(f"lowering table: no SQL for {name}")
 
     return go(tmpl)

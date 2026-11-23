@@ -346,6 +346,19 @@ theorem roundMag_form (m : Nat) : ∃ j, j ≤ m / K + 1 ∧ roundMag m = j * K 
   have : (m + K / 2) / K ≤ (m + K) / K := Nat.div_le_div_right (by omega)
   rw [Nat.add_div_right _ hK] at this; exact this
 
+theorem evenMag_fix {m : Nat} (h : K ∣ m) : evenMag m = m := by
+  have hK := K_pos
+  unfold evenMag evenQuot
+  have h0 : 2 * 0 < K := by omega
+  rw [Nat.mod_eq_zero_of_dvd h]
+  simp only [h0, ↓reduceIte]
+  exact Nat.div_mul_cancel h
+
+theorem evenMag_form (m : Nat) : ∃ j, j ≤ m / K + 1 ∧ evenMag m = j * K := by
+  refine ⟨evenQuot m, ?_, rfl⟩
+  unfold evenQuot
+  split <;> (try split) <;> (try split) <;> omega
+
 /-- `onMag` of maps that keep doubles' magnitudes keeps doubles. -/
 theorem dbl_onMag {pos neg : Nat → Nat}
     (hpb : ∀ m, m ≤ maxMag → pos m ≤ maxMag) (hnb : ∀ m, m ≤ maxMag → neg m ≤ maxMag)
@@ -382,6 +395,11 @@ theorem dbl_round {c : Int} (hc : Dbl c) : Dbl (round c) := by
   unfold round; exact dbl_onMag roundMag_bound roundMag_bound
     (fun _ => magDbl_roundK (fun _ h => roundMag_fix h) roundMag_form)
     (fun _ => magDbl_roundK (fun _ h => roundMag_fix h) roundMag_form) hc
+
+theorem dbl_roundEven {c : Int} (hc : Dbl c) : Dbl (roundEven c) := by
+  unfold roundEven; exact dbl_onMag evenMag_bound evenMag_bound
+    (fun _ => magDbl_roundK (fun _ h => evenMag_fix h) evenMag_form)
+    (fun _ => magDbl_roundK (fun _ h => evenMag_fix h) evenMag_form) hc
 
 /-! ## The other operations on doubles -/
 

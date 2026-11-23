@@ -21,6 +21,25 @@ local macro "lift_tac1" : tactic => `(tactic| lift_template 1 [Substrait.FMath.a
 local macro "lift_tac2" : tactic => `(tactic| lift_template 2 [Substrait.FMath.apply, Substrait.FMath.inDomain, Substrait.FMath.lo?, Substrait.FMath.hi?, Option.all, Substrait.Value.pick, Substrait.Value.ltB])
 
 set_option maxHeartbeats 800000 in
+theorem Substrait.liftReference.castDoubleBigint_agree : ∀ (x : Substrait.Value),
+  Substrait.DuckType.Has Substrait.DuckType.double x →
+    Substrait.Outcome.Agree
+      (Substrait.Expr.evalP Substrait.Profile.reference [x]
+        (Substrait.Expr.un Substrait.UnFn.ftoi
+          (Substrait.Expr.un Substrait.UnFn.froundEven (Substrait.Expr.field 0))))
+      (Substrait.DuckFn.eval Substrait.Semantics.reference Substrait.DuckFn.castDoubleBigint [x]) := by
+  lift_tac1
+
+abbrev Substrait.liftReference.castDoubleBigint : Substrait.LiftEntry Substrait.Semantics.reference Substrait.DuckFn.castDoubleBigint :=
+  ⟨"{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":47,\"options\":[{\"name\":\"rounding\",\"preference\":[\"TIE_TO_EVEN\"]}],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"type\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un Substrait.UnFn.ftoi
+  (Substrait.Expr.un Substrait.UnFn.froundEven (Substrait.Expr.field 0)),
+    Substrait.LiftEntry.of₁ rfl Substrait.liftReference.castDoubleBigint_agree⟩
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.castDoubleBigint)
+  ((Lean.Json.parse (Substrait.liftReference.castDoubleBigint).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.castDoubleBigint).tmpl
+
+set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.castBigintDouble_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.bigint x →
     Substrait.Outcome.Agree

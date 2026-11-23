@@ -117,11 +117,13 @@ def AvgOrder (b : Behaviour) (vs : List Value) (c : Int) : Prop :=
 
 /-- What a statistical aggregate gives under a `stat_algo` behaviour: the
 exact moments rounded once for `EXACT`, the reference's (D30). An engine's
-own algorithm (`WELFORD_CHAN`) is not modelled here: it meets the generic
-properties (`StatProps`), which is all this allows of it. -/
+own algorithm is not modelled here: it meets the generic properties
+(`StatProps`), which is all this allows of it, at Chan's constants for
+`WELFORD_CHAN` and Schubert and Gertz's for `SCHUBERT_GERTZ` (ruling 271). -/
 def StatAlgo (b : Behaviour) (f : AggFn) (vs : List Value) (v : Value) : Prop :=
   if b = "EXACT" then v = f.apply vs
-  else if b = "GENERIC" ∨ b = "WELFORD_CHAN" then StatProps f vs v else True
+  else if b = "GENERIC" ∨ b = "WELFORD_CHAN" then StatProps .chan f vs v
+  else if b = "SCHUBERT_GERTZ" then StatProps .sg f vs v else True
 
 /-- What `lo + (hi − lo)·w` (`LINEAR_DIFF`) gives beyond a
 double between the neighbours `nb`, each value conditioned on them: NaN where
