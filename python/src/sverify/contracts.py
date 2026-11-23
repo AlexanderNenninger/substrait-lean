@@ -1429,6 +1429,7 @@ def _prove_once(
         "max_rows": caps,
         "rows_per": per_key,
         "ranges": ranges,
+        "columns": {t: list(column_names(s)) for t, s in schemas.items()},
         "text": {t: _declared_text(names(t), cs) for t, cs in requires.items()},
     }
 

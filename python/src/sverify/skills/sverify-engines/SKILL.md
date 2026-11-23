@@ -72,8 +72,8 @@ any plan in sverify's internal form, and is outside the 1.x promise.
 
 ## Why a plan is refused
 
-`to_sql` and the engines raise `UnsupportedError` (with the reason) instead of
-answering differently from the model:
+`to_sql` and the engines raise `UnsupportedError`, with the reason, wherever
+their answer would differ from the model's:
 
 ```python
 @sv.transform()
@@ -86,15 +86,15 @@ print(numbered(orders).to_sql("snowflake")[:6])  # ties are open: the report is 
 # SELECT
 ```
 
-* **Snowflake and Spark tables have no row order.** Under the default
+* Snowflake and Spark tables have no row order. Under the default
   lenses (`rows="multiset"`) the SQL leaves ties and the rows of a
   `LIMIT` open, as the reference does, and writes no ordinal: a plan's last
   sort orders its result, and the report's `deterministic` says whether a
   rerun can return other rows. Lenses with `rows="sequence"` ask for
   the model's list order, which these engines refuse. `SUM` or `AVG` of
   doubles is Spark's own, within the plan's bound of the reference's sum.
-* **Snowflake has no interval type**: interval-valued expressions are refused.
-* **Warehouse setup the SQL assumes:** Snowflake time columns are
+* Snowflake has no interval type: interval-valued expressions are refused.
+* The warehouse setup the SQL assumes: Snowflake time columns are
   `TIMESTAMP_NTZ`, strings have no collation, names are quoted lower case;
   Spark sessions use `sverify_spark.dialect.SPARK_CONF` (ANSI mode, a pinned time
   zone, NTZ timestamps) and the `UTF8_BINARY` collation.

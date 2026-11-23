@@ -1,6 +1,8 @@
-"""Ibis's cast of an integer to a timestamp reads seconds since the epoch;
-the producer writes it as `as_timestamp("s")` (#860). The replay of Ibis's
-`test_integer_cast_to_timestamp_column` found the plan read microseconds."""
+"""Ibis's cast of a number to a timestamp reads seconds since the epoch. The
+producer writes an integer as `as_timestamp("s")` (#860): the replay of Ibis's
+`test_integer_cast_to_timestamp_column` found the plan read microseconds. A
+double is its microseconds `x * 1e6` as a double, rounded half to even, as
+DuckDB's `to_timestamp` gives (ruling 266, #1922)."""
 
 from __future__ import annotations
 
@@ -46,10 +48,62 @@ def test_an_integer_cast_to_a_timestamp_is_seconds(con, to) -> None:
     [
         lambda t: t.i.try_cast("timestamp"),
         lambda t: t.i.cast("timestamp('UTC')"),
+        lambda t: t.i.cast("timestamp(9)"),
     ],
-    ids=["try_cast", "time zone"],
+    ids=["try_cast", "time zone", "nanoseconds"],
 )
 def test_the_other_integer_casts_to_a_timestamp_are_refused(con, build) -> None:
     t = con.table("t")
     with pytest.raises(UnsupportedError, match="as_timestamp"):
         sv.verify(t.select(ts=build(t)), on_inferred="warn")
+
+
+#: Seconds as doubles: Ibis's `test_subsecond_cast_to_timestamp`, products of 1e6
+#: that are ties (2.5e-6 * 1e6 is 2.5 as a double), a fraction to round, -0.0.
+SECONDS = [1699109238.5, 2.5e-6, 1.5e-6, -1.5e-6, 0.1234567, -0.0, None]
+
+
+@pytest.mark.parametrize("engine", ["duckdb", "polars"])
+@pytest.mark.parametrize("to", ["timestamp", "timestamp(3)", "timestamp(6)"])
+def test_a_double_cast_to_a_timestamp_rounds_its_microseconds_half_to_even(engine, to) -> None:
+    con = sv.connect()
+    con.put("t", pa.table({"x": pa.array(SECONDS, pa.float64())}))
+    t = con.table("t")
+    # A double past ±9.2e12 seconds leaves 64 bits of microseconds: bound it.
+    report = sv.verify(
+        t.select(ts=t.x.cast(to)), requires={"t": ['"x" IS NULL OR "x" BETWEEN -1e10 AND 1e10']}
+    )
+    assert report.verdict == sv.Verdict.PROVED
+    ours = report.run(con, engine).column("ts").to_pylist()
+    epoch = dt.datetime(1970, 1, 1)
+    if to == "timestamp(3)":
+        # Floored to the millisecond, as every cast to one (D61). Ibis's DuckDB backend
+        # keeps the microseconds of `to_timestamp`, so it is not the oracle here.
+        assert ours[0] == dt.datetime(2023, 11, 4, 14, 47, 18, 500000)
+        assert ours[1:6] == [
+            epoch,
+            epoch,
+            epoch - dt.timedelta(milliseconds=1),
+            epoch.replace(microsecond=123000),
+            epoch,
+        ]
+        return
+    theirs = ibis.duckdb.connect().execute(ibis.memtable(con.get("t")).x.cast(to).name("ts"))
+    assert ours == [None if v is pd.NaT else v.to_pydatetime() for v in theirs]
+    micros = [2, 2, -2, 123457, 0]  # 2.5 and 1.5 round to 2, -1.5 to -2
+    assert ours[1:6] == [epoch + dt.timedelta(microseconds=us) for us in micros]
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda t: t.x.try_cast("timestamp"),
+        lambda t: t.x.cast("timestamp('UTC')"),
+        lambda t: t.x.cast("timestamp(9)"),
+    ],
+    ids=["try_cast", "time zone", "nanoseconds"],
+)
+def test_the_other_double_casts_to_a_timestamp_are_refused(build) -> None:
+    t = ibis.table({"x": "float64"}, name="t")
+    with pytest.raises(UnsupportedError, match="cast of a double"):
+        sv.verify(t.select(ts=build(t)), on_inferred="ignore")

@@ -527,6 +527,11 @@ class Report:
     did not return one."""
     _rewrites: list[str] = field(default_factory=list, repr=False)
     """The rewrites in `optimized`, such as "DISTINCT on a key"."""
+    _fk_joins: list[tuple[str, str, str, str, bool]] = field(default_factory=list, repr=False)
+    """The transformation's left joins on a foreign key, as (table, column,
+    referenced table, column, declared): the proofs read the declared ones as
+    inner joins, since every left row has a match (`contract_sound_all_fk`);
+    for the others, `references` would be what the join needs."""
     _run_plan: dict | None = field(default=None, repr=False)
     """The plan an engine runs on a route that rests on this report
     (`_plan_to_run`): the transformation rewritten by the rules the gate turns
@@ -1821,6 +1826,12 @@ class Report:
         extra = [(n.table, n.condition, n.label) for n in self._inferred_needs()]
         for i in self.issues:
             extra += [(t, c, label(c)) for t, cs in i.suggested_requires.items() for c in cs]
+        if self._unmet_ensures():
+            from sverify.conditions import References
+
+            for t, col, s, p in self._fk_candidates():
+                ref = References(cols=(col,), table=s, others=(p,))
+                extra.append((t, ref, label(ref)))
         for t, c, lab in extra:
             have = out.setdefault(t, [])
             if c is not None and lab not in {label(x) for x in have}:
@@ -2002,7 +2013,7 @@ class Report:
         if bad:
             lines += ["Not proved:", *[f"  {b}" for b in bad]]
         lines += self._trusts_lines()
-        notes = [*self._all_hints(), *self.notes]
+        notes = [*self._all_hints(), *self.notes, *self._fk_notes()]
         if notes:
             lines += ["Notes:", *[f"  {n}" for n in notes]]
         if self.facts or self.rows is not None:
@@ -2011,6 +2022,20 @@ class Report:
                 lines.append(f"  rows: at most {self.rows:,}")
             lines += [f"  {name}: {value}" for name, value in self.facts.items()]
         return "\n".join(lines)
+
+    def _fk_notes(self) -> list[str]:
+        """The left joins the proofs read through a declared foreign key."""
+        return [
+            f"left join on a foreign key, under references {t}.{c} -> {s}.{p}: every row of "
+            f"{t} has a match, so the columns of the right side are as non-NULL as its own"
+            for t, c, s, p, declared in self._fk_joins
+            if declared
+        ]
+
+    def _fk_candidates(self) -> list[tuple[str, str, str, str]]:
+        """The foreign keys whose declaration the unproved columns could use: the
+        left joins that would be inner joins if the left rows all had a match."""
+        return [(t, c, s, p) for t, c, s, p, declared in self._fk_joins if not declared]
 
     def _trusts_lines(self) -> list[str]:
         """One `trusts:` line per black box the plan calls, with its laws:
@@ -2069,6 +2094,11 @@ class Report:
                 more.append(f"counterexample: {c.counterexample}")
             if w := _would_hold(c):
                 more.append(w)
+            more += [
+                f"would hold if every {t}.{col} has a row in {s}.{p}: declare "
+                f"sv.references({col!r}, to=({s!r}, {p!r})) in the requires of {t!r}"
+                for t, col, s, p in self._fk_candidates()
+            ]
             why = c.why if not c.proved else _observation.why(c.ignores)
             out.append((f"{plain(c.label)}: {why}", more))
         out += [(n, []) for n in self._needs_lines()]

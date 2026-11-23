@@ -31,12 +31,14 @@ def binName : BinFn → String
   | .fdivIeee => "fdivIeee" | .fpow => "fpow" | .fatan2 => "fatan2" | .bit op => s!"bit:{op.name}"
   | f => reprStr f
 
-/-- A literal: a double by its code (`core/Sverify/Core/Float.lean`). -/
+/-- A literal: a double by its code (`core/Sverify/Core/Float.lean`), a date by
+its days since 1970-01-01. -/
 def litJson : Value → Json
   | .null => Json.mkObj [("null", true)]
   | .bool b => Json.mkObj [("bool", b)]
   | .int i => Json.mkObj [("int", toString i)]
   | .float c => Json.mkObj [("code", toString c)]
+  | .date d => Json.mkObj [("date", toString d)]
   | v => Json.mkObj [("unsupported", reprStr v)]
 
 /-- A template as JSON: fields, literals, calls and `CASE`s. -/

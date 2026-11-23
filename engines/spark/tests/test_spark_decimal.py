@@ -219,3 +219,21 @@ def test_a_product_after_a_wide_integer_decimal_cast_is_exact_on_spark() -> None
     out = spark_engine.run(plan, {"w": rows}, session())
     assert pa.types.is_decimal(out.schema.field("p").type)
     assert [int(v) for v in out.column("p").to_pylist()] == [2**70, -12]
+
+
+def test_a_double_to_decimal_cast_is_not_spark_native() -> None:
+    """Ruling 278: Spark's own cast of a double to a decimal rounds the double's
+    shortest text (1.005 → 1.01), the reference the product `1.005 · 100`, just
+    below 100.5 (→ 1.00). The generated lowering's `ftod` entry is native, so the
+    writer keeps the dialect's `decimal_cast` (`ROUND(x · 10ˢ)` in doubles) and
+    never Spark's cast of the double."""
+    from sverify_spark import engine as spark_engine
+
+    v = ibis.table({"x": "float64"}, name="v")
+    plan = to_substrait_json(v.select(r=v.x.cast("decimal(3, 2)")))
+    sql = to_sql(plan, "spark")
+    assert "ROUND(" in sql, sql
+    assert "CAST(`x` AS DECIMAL(3,2))" not in sql.replace(" ", ""), sql
+    tables = {"v": pa.table({"x": pa.array([1.005, -1.005, 2.675], pa.float64())})}
+    out = spark_engine.run(written_plan(plan), tables, session())
+    assert [str(r["r"]) for r in out.to_pylist()] == ["1.00", "-1.00", "2.68"]

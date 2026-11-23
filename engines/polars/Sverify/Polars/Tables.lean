@@ -131,12 +131,13 @@ def Profile.polars.obs : ObsTable := [
     "Each Float64 addition rounds to nearest, ties to even (polars-fp-ieee); streaming sums are sequential or pairwise trees of any shape, and mean divides the f64 sum once: StdModel.Summed and fl(s / n), which epsilon_sum_cr and epsilon_avg_cr bound for any rounding to nearest. Float32 sums run in single precision, which no bound covers: the checker marks their bound unproved (Epsilon.hasFp32)."),
   (none, "window_sum_algo", (ObsRow.approxWithin "plan"
     ["polars-window-agg", "polars-cum-sum-float", "polars-fp-ieee"]).tracking 900),
-  -- This row holds for `COVAR_*` and `CORR` (`agg.stat`): `COVAR_*` is proved
-  -- within `StatTol.sg` (`core_cov_polars`), `CORR` (`PearsonState`) not yet, so
-  -- the row stays tested until both are (ruling 271, #1808). `VAR_*` and
-  -- `STDDEV_*` read the `agg.var` row below.
+  -- This row holds for `COVAR_*` and `CORR` (`agg.stat`): `float-bounds` proves
+  -- `COVAR_*` within `StatTol.sg` (`core_cov_polars`) and `PearsonState`'s `CORR`,
+  -- `dp_xy / √(dp_xx · dp_yy)`, within `corrErr` (`core_corr_polars`), for two-pass
+  -- blocks, single pairs and Schubert and Gertz's merge in any tree (ruling 271,
+  -- #1808). `VAR_*` and `STDDEV_*` read the `agg.var` row below.
   (none, "stat_algo", ({ ObsRow.approxWithin "plan" ["polars-var-std-streaming", "polars-cov", "polars-corr", "polars-var-bound"] with
-    rerun := some { floats := .within "plan" } }).tracking 1808),
+    rerun := some { floats := .within "plan" } }).proved "FloatBounds.StdModel.core_cov_polars"),
   -- Two-pass blocks, Welford's update and Schubert and Gertz's merge in any
   -- tree meet `StatProps`: `float-bounds` proves `VAR_*` within `varTol`
   -- (`core_var_polars`, #1808), the fuzz (polars-var-bound) two orders of
@@ -203,6 +204,12 @@ def Profile.polars.obs : ObsTable := [
   (some "fp.arith", "zero_sign", ({ ObsRow.upTo { zeros := .canon }
     ["polars-zero-sign-streaming", "polars-zero-add"] with shim := some "one_zero" }).proved "Shim.one_zero"),
   (none, "float_overflow", (ObsRow.native ["polars-double-arith"]).proved "Shim.makes_infinite"),
+  -- A variance or covariance whose correctly rounded value overflows is `+inf`
+  -- (polars-nonfinite-aggregates, #1601); the guard flags it (`Polars.agg_makes_infinite`).
+  (some "agg.var", "float_overflow", (ObsRow.native ["polars-nonfinite-aggregates"]).proved
+    "Polars.agg_makes_infinite"),
+  (some "agg.stat", "float_overflow", (ObsRow.native ["polars-nonfinite-aggregates"]).proved
+    "Polars.agg_makes_infinite"),
   (none, "negative_start", (ObsRow.native ["polars-substring"]).proved "Lowering.polars_exact"),
   (none, "case_sensitivity", (ObsRow.native ["polars-match-functions"]).proved "Lowering.polars_exact"),
   (some "str.sub", "string_positions", (ObsRow.shimmed "substring_wrap" ["polars-substring"]).proved "Polars.substring_wrap"),

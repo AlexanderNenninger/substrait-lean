@@ -1,0 +1,116 @@
+UnFn.not	native
+UnFn.isNull	native
+UnFn.neg	native
+UnFn.itof	native
+UnFn.fneg	native
+UnFn.ffloor	hand-built entry: Substrait.Spark.ffloorEntry
+UnFn.fceil	hand-built entry: Substrait.Spark.fceilEntry
+UnFn.fround	native
+UnFn.froundEven	native
+UnFn.froundTo	native
+UnFn.ftoi	native
+UnFn.narrow	native
+UnFn.ftoiOrNull	native
+UnFn.narrowOrNull	native
+UnFn.wrap	native
+UnFn.itos	native
+UnFn.dtext	native
+UnFn.dtextFull	native
+UnFn.dwiden	native
+UnFn.widen	native
+UnFn.atUtc	native
+UnFn.upper	native
+UnFn.lower	native
+UnFn.length	native
+UnFn.reverse	native
+UnFn.ascii	native
+UnFn.replace	native
+UnFn.regexMatch	native
+UnFn.regexExtract	native
+UnFn.regexReplace	native
+UnFn.md5	native
+UnFn.sha256	native
+UnFn.datePart	native
+UnFn.dateTrunc	native
+UnFn.toDate	native
+UnFn.dayPart	native
+UnFn.dayTrunc	native
+UnFn.addMonths	native
+UnFn.timeOfDay	native
+UnFn.asTime	native
+UnFn.dateTime	native
+UnFn.epochUs	native
+UnFn.strftime	native
+UnFn.bucket	native
+UnFn.fmath .sqrt	hand-written schema: CASE WHEN #0 < lo(sqrt) THEN error('domain error', #0) ELSE fmath(#0) END
+UnFn.fmath .exp	fmath(#0)
+UnFn.fmath .ln	CASE WHEN (#0 = 0 OR #0 < 0) THEN error('domain error', #0) ELSE fmath(#0) END
+UnFn.fmath .log10	CASE WHEN (#0 = 0 OR #0 < 0) THEN error('domain error', #0) ELSE fmath(#0) END
+UnFn.fmath .log2	CASE WHEN (#0 = 0 OR #0 < 0) THEN error('domain error', #0) ELSE fmath(#0) END
+UnFn.fmath .sin	hand-written schema: CASE WHEN (#0 < lo(sin) OR (hi(sin) < #0 AND NOT (#0 = 'nan'))) THEN error('domain error', #0) ELSE fmath(#0) END
+UnFn.fmath .cos	hand-written schema: CASE WHEN (#0 < lo(cos) OR (hi(cos) < #0 AND NOT (#0 = 'nan'))) THEN error('domain error', #0) ELSE fmath(#0) END
+UnFn.fmath .tan	hand-written schema: CASE WHEN (#0 < lo(tan) OR (hi(tan) < #0 AND NOT (#0 = 'nan'))) THEN error('domain error', #0) ELSE fmath(#0) END
+UnFn.fmath .asin	hand-written schema: CASE WHEN (#0 < lo(asin) OR (hi(asin) < #0 AND NOT (#0 = 'nan'))) THEN error('domain error', #0) ELSE fmath(#0) END
+UnFn.fmath .acos	hand-written schema: CASE WHEN (#0 < lo(acos) OR (hi(acos) < #0 AND NOT (#0 = 'nan'))) THEN error('domain error', #0) ELSE fmath(#0) END
+UnFn.fmath .atan	fmath(#0)
+UnFn.decimal	native
+UnFn.dkind	native
+UnFn.dround	native
+UnFn.dtrunc	native
+UnFn.ftod	native
+UnFn.dtof	native
+UnFn.structField	native
+UnFn.listElement	native
+UnFn.cardinality	native
+UnFn.raise	native
+UnFn.fit	native
+UnFn.isNum	native
+UnFn.bbox	native
+UnFn.flatten	native
+UnFn.approx	native
+BinFn.add	native
+BinFn.sub	native
+BinFn.mul	native
+BinFn.eq	native
+BinFn.lt	native
+BinFn.and	native
+BinFn.or	native
+BinFn.fadd	hand-written schema: CASE WHEN ((#0 = 'inf' AND #1 = '-inf') OR (#0 = '-inf' AND #1 = 'inf')) THEN error('domain error', #1) ELSE fadd(#0, #1) END
+BinFn.fsub	hand-written schema: CASE WHEN ((#0 = 'inf' AND #1 = 'inf') OR (#0 = '-inf' AND #1 = '-inf')) THEN error('domain error', #1) ELSE fsub(#0, #1) END
+BinFn.fmul	hand-written schema: CASE WHEN ((#0 = 0 AND (#1 = 'inf' OR #1 = '-inf')) OR ((#0 = 'inf' OR #0 = '-inf') AND #1 = 0)) THEN error('domain error', #1) ELSE fmul(#0, #1) END
+BinFn.fdiv	hand-written schema: CASE WHEN ((#0 = 'inf' OR #0 = '-inf') AND (#1 = 'inf' OR #1 = '-inf')) THEN error('domain error', #1) ELSE fdiv(#0, #1) END
+BinFn.fdivIeee	derived from fdiv: Substrait.Spark.ref_fdiv_fdivIeee
+BinFn.fmod	hand-written schema: CASE WHEN ((#0 = 'inf' OR #0 = '-inf') AND NOT (#1 = 'nan')) THEN error('domain error', #1) ELSE fmod(#0, #1) END
+BinFn.idiv	native
+BinFn.imod	native
+BinFn.ipow	native
+BinFn.fpow	refused
+BinFn.concat	native
+BinFn.strpos	native
+BinFn.startsWith	native
+BinFn.endsWith	native
+BinFn.like	native
+BinFn.substr	native
+BinFn.trim	native
+BinFn.strRepeat	native
+BinFn.ilike	native
+BinFn.levenshtein	native
+BinFn.dateAdd	hand-written schema: date_add: error past the reference's dates
+BinFn.dateDiff	native
+BinFn.fatan2	refused
+BinFn.flogb	native
+BinFn.bit .and	bit(#0, #1)
+BinFn.bit .or	bit(#0, #1)
+BinFn.bit .xor	bit(#0, #1)
+BinFn.bit .shl	hand-written schema: shl: error outside 0-63
+BinFn.bit .shr	hand-written schema: shr: error outside 0-63
+BinFn.dadd	native
+BinFn.dsub	native
+BinFn.dmul	native
+BinFn.ddiv	native
+BinFn.pair	native
+BinFn.greatest	native
+BinFn.least	native
+BinFn.bbox2	native
+BinFn.listFn	native
+[exit 0]

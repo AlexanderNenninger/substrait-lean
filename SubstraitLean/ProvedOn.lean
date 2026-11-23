@@ -141,16 +141,39 @@ theorem check_proved_on_polars {input : Json} {R : Request} {rep : Report}
     (by simp [Engine.polars, hr, Except.toOption]) (check_guardFreeSide hR hc hD hT hsm hg)
 
 /-- **A proved postcondition holds on Spark's model**: proved, closed and
-guard-free in the report. -/
+guard-free in the report, on a catalog of doubles, for a plan whose constants
+are doubles (the checker's check) and that Spark's table lowers exactly (no
+IEEE division), on the plan the table lowers (ruling 277, the first branch). -/
 theorem check_proved_on_spark {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data)
     {T : Plan} (hT : R.transform = some T) {k : Nat} {p : Post} (hp : R.posts[k]? = some p)
     (hproved : ∀ e ∈ rep.ensures.getD k [], e.2.1 = true) (hclosed : rep.closed = true)
-    (hsm : T.root.Small data) (hg : rep.guardFree = true) :
-    ∀ row ∈ postRows p.exprs p.mapping (T.root.eval data Engine.spark.impl),
+    (hsm : T.root.Small data) (hg : rep.guardFree = true) (hdbl : data.Dbl)
+    (hcd : T.root.constsDblB = true) (hx : T.root.ExactOnB Lowering.spark = true) {r' : Rel}
+    (hr : Lowering.spark.lowerRel? T.root = .ok r') :
+    ∀ row ∈ postRows p.exprs p.mapping (r'.eval data Engine.spark.impl),
       ∀ v ∈ row, v = .bool true :=
-  check_proved_on Engine.spark_sound hR hc hD hT hp hproved hclosed rfl
-    (check_guardFreeSide hR hc hD hT hsm hg)
+  check_proved_on Engine.spark_sound hR hc hD hT hp hproved hclosed
+    (by simp [Engine.spark, hr, Except.toOption])
+    ⟨hdbl, Rel.constsDbl_of_constsDblB hcd, .inl ⟨hx, check_guardFreeSide hR hc hD hT hsm hg⟩⟩
+
+/-- **A proved postcondition holds on Spark's model where Spark does not
+raise**: proved and closed in the report, on a catalog of doubles, for a plan
+whose constants are doubles, on the plan Spark's table lowers with every guard
+kept (ruling 277, the second branch: a plan with IEEE division). -/
+theorem check_proved_on_spark_or_raises {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) {k : Nat} {p : Post} (hp : R.posts[k]? = some p)
+    (hproved : ∀ e ∈ rep.ensures.getD k [], e.2.1 = true) (hclosed : rep.closed = true)
+    (hdbl : data.Dbl) (hcd : T.root.constsDblB = true) {r' : Rel}
+    (hr : Lowering.spark.lowerRel? T.root = .ok r') (hn : ¬r'.Raises Profile.spark data) :
+    ∀ row ∈ postRows p.exprs p.mapping (r'.eval data Engine.spark.impl),
+      ∀ v ∈ row, v = .bool true :=
+  check_proved_on Engine.spark_sound hR hc hD hT hp hproved hclosed
+    (by simp [Engine.spark, hr, Except.toOption])
+    ⟨hdbl, Rel.constsDbl_of_constsDblB hcd, .inr fun r'' hl => by
+      rw [Engine.spark_lower hl] at hr; cases hr; exact hn⟩
 
 end Substrait.ContractCheck

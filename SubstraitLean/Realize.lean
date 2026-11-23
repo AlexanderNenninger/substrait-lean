@@ -418,6 +418,8 @@ inductive PProb
   | unbounded (col : String) (why : Option String)
   /-- A column a postcondition reads, held to the reference's exact value: the condition's index. -/
   | held (col : String) (cond : Nat)
+  /-- A column with no bound that a postcondition reads: the condition's index. -/
+  | heldUnbounded (col : String) (cond : Nat) (why : Option String)
   /-- A column whose bounds meet none of the stated tolerance's kinds. -/
   | notMet (col : String)
   deriving BEq
@@ -428,7 +430,10 @@ def planBound (stated : Fl) (eps : List (String × EpsCol)) (held : List (String
     List (PProb × EpsCol) × Bool :=
   eps.foldl (init := ([], false)) fun (ps, unp) (col, e) =>
     if e.unbounded then
-      (match stated with | .within _ => ps ++ [(.unbounded col e.why, e)] | _ => ps, true)
+      -- A tolerance is not met; a postcondition that reads the column is held to a value
+      -- the engine's is only near (#1045), as for a column with a bound.
+      let ps := match stated with | .within _ => ps ++ [(.unbounded col e.why, e)] | _ => ps
+      (match held.lookup col with | some i => ps ++ [(.heldUnbounded col i e.why, e)] | none => ps, true)
     else if !e.positive then (ps, unp)
     else match held.lookup col with
       | some i => (ps ++ [(.held col i, e)], unp)
@@ -485,6 +490,8 @@ def PProb.json : PProb × EpsCol → Json
     match p with
     | .unbounded col why => Json.mkObj [("code", toJson "unbounded"), ("column", toJson col),
         ("why", toJson why)]
+    | .heldUnbounded col i why => Json.mkObj [("code", toJson "held_unbounded"),
+        ("column", toJson col), ("condition", toJson i), ("why", toJson why)]
     | .held col i => Json.mkObj [("code", toJson "held"), ("column", toJson col),
         ("condition", toJson i), ("bounds", bounds)]
     | .notMet col => Json.mkObj [("code", toJson "not_met"), ("column", toJson col),

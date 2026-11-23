@@ -29,7 +29,7 @@ instead.
 - The verdict. `report.verdict` is a `sverify.Verdict`: `proved` when
   every postcondition holds, under the observation where `ensures` states
   one, no runtime error is possible, no needed precondition is missing, the
-  chosen tolerance is one some engine's doubles actually meet, and, under
+  chosen tolerance is one some engine's doubles meet, and, under
   `semantics="substrait"`, the reference's proof carries over, and the
   report assumes nothing that a run checks on the data. `proved_with_checks`
   is the same with `report.assumed` non-empty: every run that finishes
