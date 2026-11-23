@@ -2005,7 +2005,7 @@ def _decided(c: Expr) -> Expr:
             a = _decided(a)
             return (
                 Lit(not a.value, "bool")
-                if isinstance(a, Lit) and a.kind == "bool"
+                if isinstance(a, Lit) and a.kind == "bool" and a.value is not None
                 else Un("not", a)
             )
     return c
@@ -2800,9 +2800,8 @@ class _Parser:
                 # A double literal is its code in Lean, which `lean_expr_kind`
                 # calls an integer; its declared kind says double (`doubleJ`).
                 has_float = any(
-                    lean_expr_kind(e, cols.lean) == "float"
-                    or (isinstance(e, Lit) and e.kind == "float")
-                    for e in parsed
+                    lean_expr_kind(e, cols.lean) == "float" or _declared_double(self.fns, a)
+                    for a, e in zip(arg_js, parsed, strict=True)
                 )
                 float_call = name in floats and (out == "float" or has_float or name in DOUBLE_FNS)
                 if fmod_ext and not float_call:
@@ -2836,6 +2835,7 @@ class _Parser:
                         if lean_expr_kind(e, cols.lean) == "int"
                         and not keep_int(k)
                         and not isinstance(e, Lit)
+                        and not _declared_double(self.fns, arg_js[k])
                         else e
                         for k, e in enumerate(parsed)
                     ]
@@ -5826,9 +5826,10 @@ class _Writer:
                 plain = _nan_ruled_out(op, a, b) and op not in ("fdiv", "fmod")
                 consts = [_float_lit(a), _float_lit(b)]
                 # A finite number divided by a constant of at least 1 in size, or
-                # multiplied by one of at most 1, has no larger magnitude: no overflow.
-                # Nor divided by an integer as a double: zero raises first, and
-                # any other is at least 1 in size (`Expr.mayInfBin_sound`, #1787).
+                # multiplied by one of at most 1, has no larger magnitude: no overflow
+                # (`BinFn.shrinks_fin`). Nor divided by an integer as a double: zero
+                # raises first, and any other is at least 1 in size
+                # (`Expr.mayInfBin_sound`, #1787).
                 shrinks = (
                     (op in ("fdiv", "fdivIeee") and abs(consts[1] or 0.0) >= 1.0)
                     or (op == "fmul" and any(c is not None and abs(c) <= 1.0 for c in consts))

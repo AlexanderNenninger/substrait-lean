@@ -181,7 +181,8 @@ def _history(dt: DeltaTable) -> Iterator[dict[str, Any]]:
     each time."""
     n, seen = 1, 0
     while True:
-        commits = dt.history(n)
+        # Newer deltalake returns an iterator, older ones a list.
+        commits = list(dt.history(n))
         yield from commits[seen:]
         if len(commits) < n:
             return

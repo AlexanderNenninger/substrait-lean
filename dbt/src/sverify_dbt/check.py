@@ -810,7 +810,7 @@ def _unique_on(t: Any) -> set[str] | None:
     if base == "unique" and t.column:
         return {t.column}
     if base == "unique_combination_of_columns":
-        return set(t.kwargs.get("combination_of_columns") or []) or None
+        return set(t.columns or ()) or None
     return None
 
 

@@ -26,7 +26,7 @@ def ones(s):
 
 
 def last(uri: str) -> dict:
-    return DeltaTable(uri).history(1)[0]
+    return list(DeltaTable(uri).history(1))[0]
 
 
 @pytest.mark.parametrize("engine", ["duckdb", "polars"])
