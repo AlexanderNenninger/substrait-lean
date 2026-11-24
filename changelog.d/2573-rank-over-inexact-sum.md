@@ -1,0 +1,3 @@
+### A rank over a double sum is refused where the sum is inexact
+
+A rank, top-n or partition over a double `SUM` or `AVG` was proved on Polars and Spark and tested on DuckDB, although an engine that adds in another order ranks two near-equal sums the other way round. The checker's error bound now names every double output column, with no bound where it cannot bound one, and a window's partition and sort keys count as row decisions. Such a plan is refused where the sum is inexact, and runs as before with integer amounts ([#2573](https://github.com/AlexanderNenninger/substrait-lean/issues/2573)).
