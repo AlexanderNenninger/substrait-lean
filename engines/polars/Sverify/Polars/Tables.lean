@@ -29,7 +29,9 @@ def Profile.polars.table : ProfileTable where
     (some "int.mod", "division_type", .oneOf ["FLOOR"]),
     (none, "min_mod_neg_one", .oneOf ["ZERO"]),
     (none, "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
-    (some "fp.round", "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
+    -- `round` rounds half to even unless asked `mode="half_away_from_zero"`, which it
+    -- gives as asked (polars-round; ruling 282's C8, M2): the lowering asks it (`Polars.asks`).
+    (some "fp.round", "rounding", .asked ["TIE_TO_EVEN", "TIE_AWAY_FROM_ZERO"] ["TIE_TO_EVEN"]),
     -- `float_to_int` (ruling 273): a cast's conversion is the engine's own;
     -- elsewhere (`fp.round`, `fp.floor`) it stays uncharacterized.
     (none, "float_to_int", .loose ["TRUNCATE", "TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN"]),
@@ -89,11 +91,16 @@ def Profile.polars.table : ProfileTable where
     -- round a product, a quotient and a rescale half to even
     -- (polars-decimal-arith, polars-decimal-casts).
     (some "dec.arith", "overflow", .oneOf ["ERROR"]),
-    (none, "decimal_rescale", .oneOf ["TIE_TO_EVEN"])] ++ uncharacterized prototypeSlice
+    (none, "decimal_rescale", .oneOf ["TIE_TO_EVEN"]),
+    -- `pl.concat_str` without `ignore_nulls` is NULL where an input is
+    -- (polars-concat), the form the translation writes for `str_concat` (ruling 282).
+    (some "str.concat", "null_handling", .oneOf ["ACCEPT_NULLS"])] ++ uncharacterized prototypeSlice
   missing := (["md5", "sha256", "levenshtein", "repeat", "ascii", "like", "ilike"].map
     (·, ["polars-string-functions-missing"]))
 
 def Profile.polars.obs : ObsTable := [
+  -- `concat_str` propagates NULL (polars-concat), the reference's ACCEPT_NULLS (ruling 282).
+  (some "str.concat", "null_handling", (ObsRow.native ["polars-concat"]).proved "Lowering.polars_exact"),
   (none, "overflow", (ObsRow.native ["polars-int-arith", "polars-int-divide"]).proved "Rel.polars_sound"),
   (some "agg.isum", "overflow", (ObsRow.native ["polars-sum-int"]).proved "Polars.sum_leaves_i64"),
   (none, "on_division_by_zero", (ObsRow.native ["polars-int-divide", "polars-int-modulus"]).proved "Rel.polars_sound"),

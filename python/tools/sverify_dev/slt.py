@@ -875,7 +875,7 @@ class Replay:
         expected ones."""
         from sverify.engine import run_checker, run_plan, written_plan
         from sverify.testing import LeanRaised, lean_values
-        from sverify_dev.checked import checked
+        from sverify_dev.checked import ambiguous, checked
 
         code, out, err = run_checker((), plan)
         if code != 0 or "well-formed: yes" not in out:
@@ -983,9 +983,11 @@ class Replay:
                     # The written plan's own check of a reported assumption
                     # (ruling 230): the report lists it and Lean finds it.
                     data = json.dumps(_typed_inline(json.loads(written_plan(plan)), rows, self.con))
-                    if why := checked(str(e), listed(), data):
+                    issues = listed()
+                    if why := checked(str(e), issues, data):
                         res.cls, res.reason = "agree", why
                         return res
+                    res.reason = ambiguous(str(e), issues)
 
         if lean_ok and engine_ok is not False:
             res.cls = "agree"
@@ -1259,16 +1261,10 @@ class Known:
 #: `engines/duckdb/tests/test_unexplained.py` fails on a `disagree` entry of a
 #: ledger that none matches, and on an entry here that no ledger needs.
 KNOWN: tuple[Known, ...] = (
-    # DuckDB widens an integer SUM to HUGEINT; the reference raises past i64.
-    Known(
-        "duckdb-R6",
-        (
-            "aggregate/aggregates/test_sum.test",
-            "aggregate/aggregates/test_sum_fastpath.test",
-            "aggregate/sparse_clustered_aggregation.test",
-            "sql_export/aggregate_results.test",
-        ),
-    ),
+    # Two SUMs in one query: the written plan's tagged check raises (the sum leaves 64 bits, as
+    # DuckDB's HUGEINT sum does), and the harness cannot tell which of the two listed issues
+    # raised (`checked.AMBIGUOUS`, ruling 236, C1). One SUM of the same shape agrees (#2162).
+    Known("#2162", ("aggregate/sparse_clustered_aggregation.test",), r"sum\(.*sum\("),
     # `AND` runs in order in DuckDB's filter, and `CASE` and `COALESCE` run an operand only on
     # the rows that reach it; in the reference both `AND` operands run, and the written plan's
     # raising operand raises.
@@ -1296,6 +1292,11 @@ KNOWN: tuple[Known, ...] = (
         "duckdb-double-overflow",
         ("aggregate/aggregates/test_stddev.test", "overflow/test_numeric_overflow.test"),
     ),
+    # `ascii` of a non-ASCII character, and `upper`/`lower` of characters the engines map
+    # differently: DuckDB gives a value, the reference raises (D43, D51), as does the written
+    # plan's guard.
+    Known("duckdb-ascii", ("function/string/test_ascii.test",), r"\bascii\("),
+    Known("duckdb-case-mapping", ("function/string/test_caseconvert.test",), r"\b(upper|lower)\("),
     # The written plan does not raise on a length past 32 bits.
     Known("duckdb-substring-range", ("function/string/test_substring.test",), r"4294967296"),
     # Trigonometry of ±inf: NaN in DuckDB, a domain error in the reference.

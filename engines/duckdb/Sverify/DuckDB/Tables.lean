@@ -86,10 +86,16 @@ def Profile.duckdb.table (s : DuckDBSettings) : ProfileTable where
     (none, "stat_algo", .oneOf ["WELFORD_CHAN"]),
     (none, "quantile_interp", .oneOf ["LINEAR"]),
     -- Not characterized on DuckDB yet: the core's behaviours.
-    (none, "decimal_rescale", .loose ["TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN", "TRUNCATE"])] ++
+    (none, "decimal_rescale", .loose ["TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN", "TRUNCATE"]),
+    -- `||` is NULL where an input is (duckdb-null-concat), the form every writer
+    -- emits for `str_concat`; DuckDB's `concat` skips NULLs, and no plan writes it
+    -- (ruling 282).
+    (some "str.concat", "null_handling", .oneOf ["ACCEPT_NULLS"])] ++
     uncharacterized prototypeSlice
 
 def Profile.duckdb.obs : ObsTable := [
+  -- `||` propagates NULL (duckdb-null-concat), the reference's ACCEPT_NULLS (ruling 282).
+  (some "str.concat", "null_handling", (ObsRow.native ["duckdb-null-concat"]).proved "Lowering.duckdb_exact"),
   -- A default row covers every group that takes its option: `proved` where the
   -- listed facts support the model at each of them; a group they do not cover
   -- has a row of its own (ruling 185).

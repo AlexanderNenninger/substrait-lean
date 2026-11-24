@@ -177,11 +177,11 @@ cd python && uv run python -m sverify_dev.slt --jobs 2
 ```
 
 <!-- slt:start -->
-Totals over 49198 queries of DuckDB's tests: 13260 agree, 42 disagree, 22830 refused, 13066 skipped (1238 files skipped whole). The fuzzer's ledgers (`fuzz/*`) hold 75299 generated queries: 75299 agree, 0 disagree.
+Totals over 49225 queries of DuckDB's tests: 13332 agree, 39 disagree, 22780 refused, 13074 skipped (1237 files skipped whole). The fuzzer's ledgers (`fuzz/*`) hold 75299 generated queries: 75299 agree, 0 disagree.
 
 | Area | Agree | Oracle A only | Disagree | Disagree side | Refused | Skipped | Files skipped | Refused by |
 |---|---:|---:|---:|---|---:|---:|---:|---|
-| [aggregate](../replay/aggregate.json) | 893 | 6 | 9 | both 2, engine 6, lean 1 | 1470 | 943 | 17 | lift 1386, checker 71 |
+| [aggregate](../replay/aggregate.json) | 898 | 6 | 4 | both 2, engine 1, lean 1 | 1470 | 943 | 17 | lift 1386, checker 71 |
 | [alter](../replay/alter.json) | 137 | 35 | 0 |  | 42 | 129 | 2 | lift 40, tables 2 |
 | [attach](../replay/attach.json) | 9 | 0 | 0 |  | 181 | 113 | 18 | lift 114, tables 67 |
 | [binder](../replay/binder.json) | 65 | 1 | 0 |  | 141 | 105 | 3 | lift 132, checker 9 |
@@ -202,7 +202,7 @@ Totals over 49198 queries of DuckDB's tests: 13260 agree, 42 disagree, 22830 ref
 | [explain](../replay/explain.json) | 3 | 0 | 0 |  | 3 | 5 | 0 | lift 3 |
 | [export](../replay/export.json) | 4 | 2 | 0 |  | 8 | 52 | 11 | lift 8 |
 | [extensions](../replay/extensions.json) | 0 | 0 | 0 |  | 408 | 12 | 9 | lift 408 |
-| [filter](../replay/filter.json) | 124 | 0 | 0 |  | 87 | 57 | 5 | lift 87 |
+| [filter](../replay/filter.json) | 125 | 0 | 0 |  | 86 | 57 | 5 | lift 48, tables 28 |
 | [function](../replay/function.json) | 1 | 0 | 0 |  | 4 | 0 | 0 | lift 4 |
 | [function/array](../replay/function__array.json) | 13 | 0 | 0 |  | 77 | 11 | 0 | lift 75, checker 1 |
 | [function/autocomplete](../replay/function__autocomplete.json) | 0 | 0 | 0 |  | 0 | 0 | 26 |  |
@@ -217,7 +217,7 @@ Totals over 49198 queries of DuckDB's tests: 13260 agree, 42 disagree, 22830 ref
 | [function/nested](../replay/function__nested.json) | 0 | 0 | 0 |  | 32 | 10 | 0 | lift 32 |
 | [function/numeric](../replay/function__numeric.json) | 58 | 0 | 2 | both 2 | 257 | 199 | 1 | lift 253, checker 3 |
 | [function/operator](../replay/function__operator.json) | 68 | 2 | 0 |  | 105 | 95 | 0 | lift 105 |
-| [function/string](../replay/function__string.json) | 388 | 1 | 1 | engine 1 | 1277 | 242 | 5 | lift 1174, checker 97 |
+| [function/string](../replay/function__string.json) | 452 | 0 | 5 | both 4, engine 1 | 1228 | 250 | 4 | lift 1134, checker 88 |
 | [function/struct](../replay/function__struct.json) | 0 | 0 | 0 |  | 5 | 4 | 0 | lift 5 |
 | [function/table](../replay/function__table.json) | 0 | 0 | 0 |  | 12 | 10 | 0 | lift 12 |
 | [function/time](../replay/function__time.json) | 0 | 0 | 0 |  | 67 | 79 | 0 | lift 67 |
@@ -263,7 +263,7 @@ Totals over 49198 queries of DuckDB's tests: 13260 agree, 42 disagree, 22830 ref
 | [setops](../replay/setops.json) | 83 | 0 | 0 |  | 38 | 173 | 0 | lift 38 |
 | [settings](../replay/settings.json) | 10 | 1 | 0 |  | 775 | 84 | 8 | lift 775 |
 | [show_select](../replay/show_select.json) | 1 | 0 | 0 |  | 30 | 0 | 1 | lift 28, tables 2 |
-| [sql_export](../replay/sql_export.json) | 208 | 1 | 2 | engine 2 | 669 | 1197 | 9 | lift 659, tables 8 |
+| [sql_export](../replay/sql_export.json) | 210 | 1 | 0 |  | 669 | 1197 | 9 | lift 659, tables 8 |
 | [storage](../replay/storage.json) | 3068 | 37 | 0 |  | 1135 | 518 | 216 | tables 566, lift 469 |
 | [storage_version](../replay/storage_version.json) | 0 | 0 | 0 |  | 5 | 0 | 0 | tables 5 |
 | [subquery](../replay/subquery.json) | 131 | 0 | 0 |  | 634 | 462 | 3 | lift 625, checker 8 |
