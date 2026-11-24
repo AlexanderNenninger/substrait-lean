@@ -1,0 +1,46 @@
+{
+  "id": "duckdb-ascii",
+  "engine": "duckdb",
+  "engine_version": "2.0.0",
+  "title": "`ascii`: the first character's code point, also past ASCII",
+  "verdict": "`ascii` of a non-ASCII first character is its code point; the reference raises (`non_ascii_text: ERROR`, D43)",
+  "area": "strings",
+  "options": [
+    "non_ascii_text"
+  ],
+  "rows": [
+    {
+      "group": "str.ascii",
+      "option": "non_ascii_text",
+      "types": [
+        "string"
+      ]
+    }
+  ],
+  "constructs": [
+    "ascii"
+  ],
+  "settings": {},
+  "description": [
+    "`ascii(s)` is the Unicode code point of the first character of `s`, whether or not it is ASCII: `ascii('Ω')` and `ascii('ΩΩ')` are 937, `ascii('Ä')` is 196, `ascii('ABC')` is 65."
+  ],
+  "reference": [
+    "`ascii` of text with a character past ASCII raises `Issue.nonAscii` under `non_ascii_text: ERROR` (D43), where the engines can differ; on ASCII text it is the code point, as DuckDB's. The written SQL raises on the same predicate."
+  ],
+  "status": "shimmed",
+  "evidence": "engine_test",
+  "provenance": [
+    {
+      "checked_at": "2026-11-24",
+      "method": "engine-test",
+      "checked_by": "claude/replay-2135-2443 (#2135): the 2.0.1 replay of function/string",
+      "evidence": [
+        {
+          "url": "https://github.com/duckdb/duckdb/blob/v2.0.1/test/sql/function/string/test_ascii.test#L20-L33",
+          "note": "ASCII('Ω') → 937, ASCII('ΩΩ') → 937, ASCII('Ä') → 196; the file is the same at v2.0.0"
+        }
+      ],
+      "notes": "Replayed at 2.0.1 by `sverify_dev.slt`: DuckDB's control gives the expected values; Lean raises nonAscii and the written plan's guard raises, so the ledger records the three queries as disagree (both), explained by this fact."
+    }
+  ]
+}
