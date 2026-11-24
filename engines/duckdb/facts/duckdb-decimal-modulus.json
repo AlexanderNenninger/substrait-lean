@@ -10,6 +10,22 @@
     "division_type",
     "on_division_by_zero"
   ],
+  "rows": [
+    {
+      "group": "dec.mod",
+      "option": "on_division_by_zero",
+      "types": [
+        "decimal"
+      ]
+    },
+    {
+      "group": "dec.mod",
+      "option": "division_type",
+      "types": [
+        "decimal"
+      ]
+    }
+  ],
   "constructs": [
     "%"
   ],

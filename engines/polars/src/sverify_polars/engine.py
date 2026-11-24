@@ -563,15 +563,15 @@ def decimal_mod(a: Val, b: Val, p: int, s: int, floor: bool = False) -> Val:
     """`a % b` of decimals at scale `s` (`BinFn.dmod`, D62): the remainder with
     the dividend's sign, on the unscaled values at that scale. Polars's `%`
     takes the divisor's (polars-decimal-modulus, polars-int128-remainder): the
-    shim `int_mod_trunc`, or Polars's own with `floor` (`division_type` FLOOR,
-    `Profile.polars`). The types bound both operands to 38 digits at scale
+    generated table's template (`Polars.dmodTemplate`), or Polars's own with `floor`
+    (`division_type` FLOOR, `Profile.polars`). The types bound both operands to 38 digits at scale
     `s` (`_decimals.mod`), so they fit 128 bits. Polars raises for a zero
     divisor, which the issue raises as the reference does."""
     (_, s1), (_, s2) = decimal_of(a.dtype, "modulus"), decimal_of(b.dtype, "modulus")
     x, y = unscaled(a) * i128(10 ** (s - s1)), unscaled(b) * i128(10 ** (s - s2))
     zero = y == 0
     safe = pl.when(zero).then(i128(1)).otherwise(y)
-    u = x % safe if floor else shims.int_mod_trunc(x, safe)
+    u = x % safe if floor else lowered("dmod", x, safe)
     out = fit_decimal(u, p, s, "modulus", a, b)
     return Val(out.expr, out.dtype, (*out.issues, issue(zero, DivisionByZero, "modulus by zero")))
 
