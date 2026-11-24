@@ -418,6 +418,41 @@ scale (`LoweringSearch.polarsSchemas`). Exact on every value. -/
 def droundEntry (k : Nat) : UnEntry Profile.polars (.dround k) :=
   .ofAgree (droundAwayT k) (by simp [droundAwayT, Expr.must]) (dround_agree k)
 
+/-! ## `&`, `|` and `^`
+
+Polars has them (`&`, `|`, `^` of Int64), but not `<<` and `>>`, so the
+regeneration names `BinFn.bit` among the functions Polars lacks
+(`scripts/RegenLoweringPolars.lean`) and these three take the native call as
+a hand-written schema. -/
+
+/-- `#0 & #1`. -/
+def bitAndT : Expr := .bin (.bit .and) (.field 0) (.field 1)
+/-- `#0 | #1`. -/
+def bitOrT : Expr := .bin (.bit .or) (.field 0) (.field 1)
+/-- `#0 ^ #1`. -/
+def bitXorT : Expr := .bin (.bit .xor) (.field 0) (.field 1)
+
+omit [Boxes.Ambient] in
+theorem bitAndT_must : 0 ∈ bitAndT.must ∧ 1 ∈ bitAndT.must := by simp [bitAndT, Expr.must]
+omit [Boxes.Ambient] in
+theorem bitOrT_must : 0 ∈ bitOrT.must ∧ 1 ∈ bitOrT.must := by simp [bitOrT, Expr.must]
+omit [Boxes.Ambient] in
+theorem bitXorT_must : 0 ∈ bitXorT.must ∧ 1 ∈ bitXorT.must := by simp [bitXorT, Expr.must]
+
+/-- Polars's bitwise functions are the reference's. -/
+theorem bit_native_agree (op : BitOp) (x y : Value) :
+    ((Expr.bin (.bit op) (.field 0) (.field 1)).evalP Profile.polars [x, y]).Agree
+      (Profile.reference.bin (.bit op) x y) := by
+  simp only [Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind]
+  exact Outcome.agree_refl _
+
+theorem bit_and_agree (x y : Value) : (bitAndT.evalP Profile.polars [x, y]).Agree
+    (Profile.reference.bin (.bit .and) x y) := bit_native_agree .and x y
+theorem bit_or_agree (x y : Value) : (bitOrT.evalP Profile.polars [x, y]).Agree
+    (Profile.reference.bin (.bit .or) x y) := bit_native_agree .or x y
+theorem bit_xor_agree (x y : Value) : (bitXorT.evalP Profile.polars [x, y]).Agree
+    (Profile.reference.bin (.bit .xor) x y) := bit_native_agree .xor x y
+
 /-! ## `>>` -/
 
 /-- `#1 < 0 OR NOT #1 < n`. -/
