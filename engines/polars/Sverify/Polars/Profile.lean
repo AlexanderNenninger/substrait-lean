@@ -12,6 +12,9 @@ elsewhere. Per option (D21, `docs/engine-profiles.md`, "Polars as a profile"):
 
 * `division_type`: `FLOOR`, Polars's own. Integer `//` floors and `%` takes
   the divisor's sign (polars-int-divide, polars-int-modulus).
+* `decimal_rescale`: `TIE_TO_EVEN`, Polars's own. A decimal cast to a smaller
+  scale and a double cast to a decimal round half to even
+  (polars-decimal-casts, ruling 278 and its addendum).
 * `±∞`: a double that overflows is `±∞`, as in the reference (#575), with no
   precondition (polars-double-arith), as under DuckDB's profile.
 * The error side stays the reference's: an integer that overflows, a zero
@@ -100,17 +103,33 @@ def ftodEvenT (s : Nat) : Expr :=
   .ifThen (.un .not (.bin .eq (.un .fround (ftodProduct s)) (.un .froundEven (ftodProduct s))))
     (.un .ftoi (.un .froundEven (ftodProduct s))) (.un (.ftod s) (.field 0))
 
+/-- Polars's cast of a decimal, the argument as field 0, to a scale `k` digits
+smaller: half to even (polars-decimal-casts), where the reference rounds half
+away from zero (`roundDiv10`, `decimal_rescale`, ruling 278's addendum). With
+`t` the quotient truncated toward zero, the two differ only at an exact tie,
+where the remainder `x - t·10ᵏ` is `±10ᵏ/2`, and `t` is even: there the cast
+gives `t`. Everywhere else, `NULL` included, it is the reference's rescale. -/
+def droundEvenT (k : Nat) : Expr :=
+  let t : Expr := .un (.dtrunc k) (.field 0)
+  let twiceRem : Expr :=
+    .bin .dmul (.bin .dsub (.field 0) (.bin .dmul t (.lit (.int (10 ^ k))))) (.lit (.int 2))
+  .ifThen (.bin .and
+      (.bin .or (.bin .eq twiceRem (.lit (.int (10 ^ k)))) (.bin .eq twiceRem (.lit (.int (-(10 ^ k))))))
+      (.bin .eq (.bin .imod t (.lit (.int 2))) (.lit (.int 0))))
+    t (.un (.dround k) (.field 0))
+
 end Polars
 
 /-- The unary functions where Polars's profile differs from the reference: its
 template, in the reference's operations. `round` and `ceil` give `-0.0`
-(polars-round); a double cast to a decimal rounds the product half to even
-(polars-decimal-casts). -/
+(polars-round); a double cast to a decimal and a decimal cast to a smaller
+scale round half to even (polars-decimal-casts). -/
 def UnFn.polarsTmpl : UnFn → Option Expr
   | .fround => some (Polars.negZeroT .fround)
   | .froundEven => some (Polars.negZeroT .froundEven)
   | .fceil => some (Polars.negZeroT .fceil)
   | .ftod s => some (Polars.ftodEvenT s)
+  | .dround k => some (Polars.droundEvenT k)
   | _ => none
 
 /-- The functions where Polars's profile differs from the reference: its
@@ -125,8 +144,9 @@ variable [Boxes.Ambient]
 /-- **Polars's profile**: `//` and `%` floor (`division_type` =
 `FLOOR`), of integers and, for `%`, of doubles; `round` and `ceil` give `-0.0`
 for a negative value that rounds to zero (`round_zero_sign`); a double cast to a
-decimal rounds the product half to even (`decimal_rescale`); every other
-function is the reference's. -/
+decimal rounds the product half to even, and a decimal cast to a smaller scale
+rounds half to even (`decimal_rescale`); every other function is the
+reference's. -/
 def Profile.polars : Profile where
   un f v := match f.polarsTmpl with
     | some t => t.evalP Profile.reference [v]
@@ -341,7 +361,8 @@ theorem untmpl_subst_eval {f : UnFn} {t : Expr} (h : f.polarsTmpl = some t) (a :
   cases ha : a.evalP Profile.reference row with
   | error k =>
     cases f <;> simp only [UnFn.polarsTmpl, reduceCtorEq, Option.some.injEq] at h <;> subst h <;>
-      simp [negZeroT, ftodEvenT, ftodProduct, Expr.subst, Expr.evalP, ha, bind, Except.bind]
+      simp [negZeroT, ftodEvenT, ftodProduct, droundEvenT, Expr.subst, Expr.evalP, ha, bind,
+        Except.bind]
   | ok x =>
     simp only [bind, Except.bind]
     exact Expr.evalP_subst (vs := [x]) (fun i => by
@@ -480,18 +501,23 @@ theorem Profile.polars_un_negZero {f : UnFn} {g : Int → Int}
     by_cases hneg : c < 0 <;> by_cases hr0 : g c = 0 <;>
       simp [heq', h0, hr, hneg, hr0, hb, FloatCode.canon_zero, and3, Value.isTrue]
 
-/-- On a value that is not a double, Polars's unary functions are the
-reference's. -/
-theorem Profile.polars_un_not_float (f : UnFn) (v : Value) (hv : ∀ c, v ≠ .float c) :
+/-- On a value that is not a double, Polars's unary functions other than the
+decimal rescale are the reference's. -/
+theorem Profile.polars_un_not_float (f : UnFn) (v : Value) (hv : ∀ c, v ≠ .float c)
+    (hd : ∀ k, f ≠ .dround k) :
     Profile.polars.un f v = Profile.reference.un f v := by
   unfold Profile.polars; dsimp only
   cases hf : f.polarsTmpl with
   | none => rfl
   | some t =>
-    have : f = .fround ∨ f = .fceil ∨ f = .froundEven ∨ ∃ s, f = .ftod s := by
+    have : f = .fround ∨ f = .fceil ∨ f = .froundEven ∨ (∃ s, f = .ftod s) ∨ ∃ k, f = .dround k := by
       cases f <;> simp_all [UnFn.polarsTmpl]
-    rcases this with rfl | rfl | rfl | ⟨s, rfl⟩ <;> simp only [UnFn.polarsTmpl, Option.some.injEq] at hf <;>
-      subst hf <;> cases v <;> first | rfl | exact absurd rfl (hv _)
+    obtain rfl | rfl | rfl | ⟨s, rfl⟩ | ⟨k, rfl⟩ := this
+    all_goals first
+      | exact absurd rfl (hd _)
+      | (simp only [UnFn.polarsTmpl, Option.some.injEq] at hf
+         subst hf
+         cases v <;> first | rfl | exact absurd rfl (hv _))
 
 /-- `round` on Polars, through `Lowering.zeroTemplate`, agrees with the
 reference: the lowering's entry for `round` (`round_zero_sign`). -/
@@ -571,5 +597,27 @@ theorem Polars.fceil_agree (x : Value) :
     | .ok (.int m) => m == polars | _ => false) &&
   (match Profile.reference.un (.ftod s) (.float (FloatCode.ofFloat x)) with
     | .ok (.int m) => m == ref | _ => false)
+
+-- A decimal cast to a smaller scale (polars-decimal-casts, ruling 278's
+-- addendum): `0.125` and `-0.125` at scale 3 to scale 2 are `0.12` and `-0.12`,
+-- `0.250` at scale 3 to scale 1 is `0.2`, where the reference gives `0.13`,
+-- `-0.13` and `0.3`; `0.135` is `0.14` on both. On every unscaled value of
+-- `-300` to `300` and a rescale by 0 to 3 digits, the profile's cast is
+-- `Polars.rescaleEven`, the trusted model of Polars's (`Polars/Shims.lean`).
+#guard letI := Boxes.Ambient.none
+  [(125, 1, 12, 13), (-125, 1, -12, -13), (250, 2, 2, 3), (135, 1, 14, 14)].all
+    fun (i, k, polars, ref) =>
+  (match Profile.polars.un (.dround k) (.dec 3 i) with
+    | .ok (.int m) => m == polars | _ => false) &&
+  (match Profile.reference.un (.dround k) (.dec 3 i) with
+    | .ok (.int m) => m == ref | _ => false)
+#guard letI := Boxes.Ambient.none
+  (List.range 4).all fun k => (List.range 601).all fun j =>
+    match Profile.polars.un (.dround k) (.dec 3 ((j : Int) - 300)) with
+    | .ok (.int m) => m == Polars.rescaleEven k ((j : Int) - 300)
+    | _ => false
+#guard letI := Boxes.Ambient.none
+  [Value.null, .str "a", .float 0].all fun v =>
+    match Profile.polars.un (.dround 1) v with | .ok .null => true | _ => false
 
 end Substrait

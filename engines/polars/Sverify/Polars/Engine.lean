@@ -142,8 +142,9 @@ theorem Polars.errBin_within (f : BinFn) (v w : Value) :
 /-- **`Profile.polars`'s unary functions are within Polars's table** (S1,
 ruling 235): each is the reference's, but `round` and `ceil`'s IEEE `-0.0`
 for a negative value that rounds to zero, in the scope of `round_zero_sign`,
-which Polars's table allows (`IEEE`, D34), and a double cast to a decimal, in
-the scope of `decimal_rescale` (`TIE_TO_EVEN`, ruling 278). -/
+which Polars's table allows (`IEEE`, D34), and a double cast to a decimal and
+a decimal cast to a smaller scale, in the scope of `decimal_rescale`
+(`TIE_TO_EVEN`, ruling 278 and its addendum). -/
 theorem Profile.polars_un_within (f : UnFn) (v w : Value) (h : Profile.polars.un f v = .ok w) :
     w = f.apply v ∨ CallExtra Profile.polars.table (.un f) [v] := by
   have hx : ∀ g : UnFn, g = .fround ∨ g = .froundEven ∨ g = .fceil →
@@ -152,9 +153,10 @@ theorem Profile.polars_un_within (f : UnFn) (v w : Value) (h : Profile.polars.un
   cases hf : f.polarsTmpl with
   | none => simp only [Profile.polars, hf] at h; exact .inl (raiseIf_ok h)
   | some t =>
-    have hfc : f = .fround ∨ f = .froundEven ∨ f = .fceil ∨ ∃ s, f = .ftod s := by
+    have hfc : f = .fround ∨ f = .froundEven ∨ f = .fceil ∨ (∃ s, f = .ftod s) ∨
+        ∃ k, f = .dround k := by
       cases f <;> simp only [UnFn.polarsTmpl, reduceCtorEq] at hf <;> simp
-    rcases hfc with rfl | rfl | rfl | ⟨s, rfl⟩
+    rcases hfc with rfl | rfl | rfl | ⟨s, rfl⟩ | ⟨k, rfl⟩
     · cases v
       case float c =>
         rw [Profile.polars_un_negZero (f := .fround) rfl (fun _ => rfl) FloatCode.round_negZero
@@ -167,7 +169,8 @@ theorem Profile.polars_un_within (f : UnFn) (v w : Value) (h : Profile.polars.un
               FloatCode.isZeroCode, hc.2]))
         · simp only [hc, ↓reduceIte, Option.getD_none, Except.ok.injEq] at h
           exact .inl (by rw [← h]; rfl)
-      all_goals exact .inl (raiseIf_ok ((Profile.polars_un_not_float _ _ (fun _ h => by cases h)).symm.trans h))
+      all_goals exact .inl (raiseIf_ok ((Profile.polars_un_not_float _ _ (fun _ h => by cases h)
+        (fun _ h => by cases h)).symm.trans h))
     · cases v
       case float c =>
         rw [Profile.polars_un_negZero (f := .froundEven) rfl (fun _ => rfl) FloatCode.roundEven_negZero
@@ -180,7 +183,8 @@ theorem Profile.polars_un_within (f : UnFn) (v w : Value) (h : Profile.polars.un
               FloatCode.isZeroCode, hc.2]))
         · simp only [hc, ↓reduceIte, Option.getD_none, Except.ok.injEq] at h
           exact .inl (by rw [← h]; rfl)
-      all_goals exact .inl (raiseIf_ok ((Profile.polars_un_not_float _ _ (fun _ h => by cases h)).symm.trans h))
+      all_goals exact .inl (raiseIf_ok ((Profile.polars_un_not_float _ _ (fun _ h => by cases h)
+        (fun _ h => by cases h)).symm.trans h))
     · cases v
       case float c =>
         rw [Profile.polars_un_negZero (f := .fceil) rfl (fun _ => rfl) FloatCode.ceil_negZero
@@ -193,10 +197,15 @@ theorem Profile.polars_un_within (f : UnFn) (v w : Value) (h : Profile.polars.un
               FloatCode.isZeroCode, hc.2]))
         · simp only [hc, ↓reduceIte, Option.getD_none, Except.ok.injEq] at h
           exact .inl (by rw [← h]; rfl)
-      all_goals exact .inl (raiseIf_ok ((Profile.polars_un_not_float _ _ (fun _ h => by cases h)).symm.trans h))
+      all_goals exact .inl (raiseIf_ok ((Profile.polars_un_not_float _ _ (fun _ h => by cases h)
+        (fun _ h => by cases h)).symm.trans h))
     · -- Every double cast to a decimal is in `decimal_rescale`'s scope.
       have hd : extraAtB Profile.polars.table (.un (.ftod s)) "decimal_rescale" = true :=
         (show extraAtB Profile.polars.table (.un (.ftod 0)) "decimal_rescale" = true by decide)
+      exact .inr (callExtra_of_at hd (by simp [optionScope]))
+    · -- Every decimal cast to a smaller scale is in `decimal_rescale`'s scope.
+      have hd : extraAtB Profile.polars.table (.un (.dround k)) "decimal_rescale" = true :=
+        (show extraAtB Profile.polars.table (.un (.dround 0)) "decimal_rescale" = true by decide)
       exact .inr (callExtra_of_at hd (by simp [optionScope]))
 
 /-! ## `Profile.polars`'s binary functions are within Polars's table (S1) -/
@@ -361,7 +370,7 @@ theorem Lowering.polars_un_tmpl (f : UnFn) (en : UnEntry Profile.polars f)
   cases f <;> simp only [Lowering.polars, polarsOn, Option.some.injEq, reduceCtorEq] at h <;>
     subst h <;>
     simp [UnEntry.native, UnEntry.ofAgree, Expr.ctors, Lowering.froundTemplate, Lowering.froundEvenTemplate,
-      Lowering.fceilTemplate, Lowering.zeroTemplate]
+      Lowering.fceilTemplate, Lowering.zeroTemplate, Polars.droundEntry, Polars.droundAwayT]
 
 theorem Lowering.polars_bin_tmpl (f : BinFn) (en : BinEntry Profile.polars f)
     (h : Lowering.polars.bin f = some en) : Functions.Ctor.bin .fmod ∉ en.tmpl.ctors := by
@@ -462,5 +471,43 @@ theorem Engine.polars_contract_example :
     Engine.guardFreeSide_example
 
 end Example
+
+-- Every function the generated lowering writes natively reads the reference's
+-- behaviour from the table at each of its options (`nativeOffReference`, ruling
+-- 278's addendum), but at the pending functions and options listed. Ruling 282 (F282)
+-- accepts the list: it only shrinks (the guard fails on a new entry and on a fixed
+-- one), and a pending function stays on the hand-written translation path until
+-- its entry is resolved. Each entry's class is ruling 282's: C1 a scope artefact,
+-- C2 absorbed by an `upTo canon` observation, C3 absorbed by the plan's bound, C4
+-- likely real.
+#guard letI := Boxes.Ambient.none
+  nativeOffIs Profile.polars.table Lowering.polars.nativeUn Lowering.polars.nativeBin
+    [-- C1: `not`, `and`, `or`, `isNull` read `zero_sign` only through their group.
+     (.un .not, "zero_sign"), (.un .isNull, "zero_sign"), (.bin .and, "zero_sign"),
+     (.bin .or, "zero_sign"),
+     -- C2: functions of doubles, whose zero the observation reads through canon.
+     (.un .fneg, "zero_sign"), (.bin .fadd, "zero_sign"), (.bin .fsub, "zero_sign"),
+     (.bin .fmul, "zero_sign"), (.bin .fdiv, "zero_sign"), (.bin .fpow, "zero_sign"),
+     (.bin .fatan2, "zero_sign"), (.bin .eq, "zero_sign"), (.bin .lt, "zero_sign"),
+     (.bin .greatest, "zero_sign"), (.bin .least, "zero_sign"),
+     (.un (.fmath .sqrt), "zero_sign"), (.un (.fmath .exp), "zero_sign"),
+     (.un (.fmath .sin), "zero_sign"), (.un (.fmath .cos), "zero_sign"),
+     (.un (.fmath .tan), "zero_sign"), (.un (.fmath .asin), "zero_sign"),
+     (.un (.fmath .acos), "zero_sign"), (.un (.fmath .atan), "zero_sign"),
+     -- C3: `/` by a literal as `x · (1/c)`, carried in the plan's ε.
+     (.bin .fdiv, "rounding"),
+     -- C4: `round(x, d)` half to even.
+     (.un (.froundTo 0), "rounding"),
+     -- C4: zero-based characters and bytes.
+     (.bin .strpos, "string_positions"), (.bin .startsWith, "string_positions"),
+     (.bin .endsWith, "string_positions"), (.bin .like, "string_positions"),
+     (.bin (.substr none true), "string_positions"), (.un (.replace "" ""), "string_positions"),
+     -- C4: a result past 38 digits that rescales.
+     (.bin .dadd, "decimal_rescale"), (.bin .dsub, "decimal_rescale"),
+     (.bin .dmul, "decimal_rescale"),
+     -- C4: a loose row whose first behaviour is `ERROR`.
+     (.bin (.bit .shl), "shift_range"), (.bin (.bit .shr), "shift_range"),
+     -- C4: a loose row whose first behaviour is `IGNORE_NULLS`.
+     (.bin .concat, "null_handling")]
 
 end Substrait

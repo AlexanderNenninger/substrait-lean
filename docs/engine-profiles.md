@@ -351,6 +351,7 @@ and the plan runs on Polars by the translated route until then.
 | `on_division_by_zero` (integers) | `ERROR` | `NULL` | tightened, as the reference |
 | `nan_creation`, `on_domain_error` | `ERROR` | `NAN` | tightened, as the reference |
 | `decimal_rescale` (a double to a decimal) | `TIE_TO_EVEN` on the product `x · 10ˢ` (`Polars.ftodEvenT`) | the same ([decimal-casts](../engines/polars/facts/polars-decimal-casts.json)) | Polars's own value; the translation writes the reference's half away from zero (`double_to_decimal`), and the lowering refuses the cast (ruling 278) |
+| `decimal_rescale` (a decimal to a smaller scale) | `TIE_TO_EVEN` (`Polars.droundEvenT`) | the same ([decimal-casts](../engines/polars/facts/polars-decimal-casts.json)) | Polars's own value; the translation writes the reference's half away from zero (`decimal_round_half_away`), and so does the lowering, from Polars's truncation (`Polars.droundEntry`, ruling 278's addendum, [#2566](https://github.com/AlexanderNenninger/substrait-lean/issues/2566)) |
 | every other option | the reference's | the table above | the translation keeps its written arguments and shims there |
 
 A plan states the choice: under `semantics="polars"` the Ibis producer

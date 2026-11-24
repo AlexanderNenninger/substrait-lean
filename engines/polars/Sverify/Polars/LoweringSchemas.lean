@@ -7,7 +7,9 @@ import Sverify.Polars.LoweringLemmas
 The constructs the lowering search does not reach on `Profile.polars`, for
 `generate_lowering … hand_written polarsSchemas`
 (`scripts/RegenLoweringPolars.lean`): `round` and `ceil`, which give IEEE's
-`-0.0` on Polars, and integer `//` and `%`, which floor. Each comes with its
+`-0.0` on Polars, integer `//` and `%`, which floor, and a decimal cast to a
+smaller scale, which rounds half to even (a hand-built entry, `Polars.droundEntry`,
+whose template's literals depend on the scale). Each comes with its
 proof, `Polars.<construct>_agree` (`Sverify.Polars.LoweringLemmas`,
 `Sverify.Polars.Profile`), which the kernel checks. `%` of doubles floors too
 and has no exact template from Polars's functions: the table has no entry
@@ -35,5 +37,6 @@ def polarsSchemas : Schemas where
         "a % b truncated: Polars's % by -b where the signs differ")
     | _ => none
   proofs := `Substrait.Polars
+  entries := [(``UnFn.dround, ``Polars.droundEntry)]
 
 end Substrait.LoweringSearch
