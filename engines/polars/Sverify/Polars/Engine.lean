@@ -14,8 +14,9 @@ import Sverify.Engines.Sound
 result where the profile keeps the reference's raise (ruling 255): a wrapped
 integer, `NULL` for a zero divisor, NaN. `Polars.impl_within` proves those
 within Polars's table, and `Engine.polars_sound` that the run is sound under
-guard elimination's side condition (`Engine.GuardFreeSide`), by
-`Rel.polars_sound`.
+`Engine.PolarsSide` (ruling 277's form): guard-free for a plan lowered by
+exact entries (`Rel.polars_sound`), and with every guard kept where the
+lowered plan does not raise (`Rel.polars_sound_or_raises`).
 -/
 
 namespace Substrait
