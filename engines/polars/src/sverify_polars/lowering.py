@@ -51,9 +51,21 @@ _BINARY: dict[str, Callable[[pl.Expr, pl.Expr], pl.Expr]] = {
 _UNARY: dict[str, Callable[[pl.Expr], pl.Expr]] = {
     "not": lambda a: ~a,
     "isNull": lambda a: a.is_null(),
-    "Substrait.UnFn.fround": lambda a: a.round(0, mode="half_away_from_zero"),
+    "Substrait.UnFn.fround": lambda a: a.round(0, mode=_asked_mode("Substrait.UnFn.fround")),
     "Substrait.UnFn.fceil": lambda a: a.ceil(),
 }
+
+
+#: Polars's `round` mode for each rounding behaviour an entry may ask for.
+_ROUND_MODES = {"TIE_AWAY_FROM_ZERO": "half_away_from_zero", "TIE_TO_EVEN": "half_to_even"}
+
+
+def _asked_mode(fn: str) -> str:
+    """The `mode=` of Polars's `round` that `fn`'s rendering asks for, as the
+    table states it once (`Polars.asks`, ruling 282's C8)."""
+    from sverify.sql import lowering as table_export
+
+    return _ROUND_MODES[table_export.asks("polars")[(fn, "rounding")]]
 
 
 def render(fn: str, args: Sequence[pl.Expr]) -> pl.Expr | None:
