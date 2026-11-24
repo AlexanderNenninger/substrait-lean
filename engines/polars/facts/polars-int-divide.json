@@ -11,21 +11,54 @@
     "overflow"
   ],
   "rows": [
-    {"group": "int.div", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]},
-    {"group": "int.div", "option": "on_division_by_zero", "types": ["i8", "i16", "i32", "i64"]},
-    {"group": "int.div", "option": "division_type", "types": ["i8", "i16", "i32", "i64"]}
+    {
+      "group": "int.div",
+      "option": "overflow",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    },
+    {
+      "group": "int.div",
+      "option": "on_division_by_zero",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    },
+    {
+      "group": "int.div",
+      "option": "division_type",
+      "types": [
+        "i8",
+        "i16",
+        "i32",
+        "i64"
+      ]
+    }
   ],
   "constructs": [
     "//",
     "floordiv",
     "truncdiv"
   ],
-  "settings": {"engine": ["in-memory", "streaming"]},
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
   "description": [
     "`//` on integers is floor division (`wrapping_floor_div_mod`): `-7 // 2` is -4, `1 // -2` is -1. A zero divisor gives NULL (the result's validity masks it), and `MIN // -1` wraps to `MIN`.",
     "`Expr.truncdiv` divides rounding toward zero (`Operator::TruncDivide`, the kernel `prim_wrapping_trunc_div`), on both engines: `-7 truncdiv 2` is -3. It shares the rest with `//`: a zero divisor gives NULL and `MIN truncdiv -1` wraps to `MIN`. The result type is that of `//`.",
     "So sverify could translate Substrait's integer `divide` to `truncdiv` in place of its floor-division shim (`int_div_trunc` in `_polars_shims.py`), keeping the guards for a zero divisor and `MIN / -1`. `/` on integers is a division of doubles (polars-int-true-divide).",
-    "The docs are silent on a zero divisor giving NULL and on `MIN // -1` wrapping: a docs gap."
+    "The docs are silent on a zero divisor giving NULL and on `MIN // -1` wrapping: a docs gap.",
+    "`Int128` `//` floors too, and gives `NULL` for a zero divisor without failing the query (`Polars.dmulQuot`'s quotients)."
   ],
   "reference": "`divide` on integers truncates toward zero, with `on_division_by_zero: ERROR` when the plan omits it (`NULL` when asked) and `overflow: ERROR` at `MIN / -1`. Polars's `//` differs on every quotient of operands of opposite signs that is not exact (26 of the 121 rows of the `NULL` candidate).",
   "status": "open",
@@ -161,6 +194,20 @@
         {
           "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_arithmetic.py#L238-L243",
           "note": "Int32 // 5 matches numpy's floor (eager)"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-24",
+      "method": "probe",
+      "checked_by": "session lean-d (#2586, ruling 282)",
+      "evidence": [
+        {
+          "test": "engines/polars/tests/test_lowering_agrees.py::test_int128_product_exact_below_2_127"
+        },
+        {
+          "sql": "pl.select(pl.lit(2**126 - 1, pl.Int128) // pl.Series([7, -7, 2**63, -(2**63) - 5, 0], dtype=pl.Int128))",
+          "observed": "Python's floor division of each, and NULL for 0"
         }
       ]
     }

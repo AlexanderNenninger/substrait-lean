@@ -385,6 +385,21 @@ theorem Lowering.polars_no_fmod {r r' : Rel} (hr : Lowering.polars.lowerRel? r =
   obtain ⟨e, t, ht, rfl⟩ := Lowering.mem_lowerRel? hr he'
   exact Lowering.lower_not_mem_ctors (Lowering.polars_un_tmpl) (Lowering.polars_bin_tmpl) ht
 
+-- Ruling 282's T1: Polars's Int128 `*` (`dmul`) is exact below `2¹²⁷` only, and no
+-- template of the table calls it but `dmul`'s own, whose bound is proved
+-- (`Polars.dmul_bound`).
+#guard letI := Boxes.Ambient.none
+  (LoweringExport.unFns.all fun f => (Lowering.polars.un f).all fun e =>
+    !e.tmpl.ctors.contains (Functions.Ctor.bin .dmul)) &&
+  LoweringExport.binFns.all fun f => f == .dmul || (Lowering.polars.bin f).all fun e =>
+    !e.tmpl.ctors.contains (Functions.Ctor.bin .dmul)
+
+omit [Boxes.Ambient] in
+/-- The same for the decimal casts' entry, whose parameter the check above
+cannot list (`Polars.droundEntry`). -/
+example (k : Nat) : Functions.Ctor.bin .dmul ∉ (Polars.droundAwayT k).ctors := by
+  simp [Polars.droundAwayT, Expr.ctors]
+
 /-- **`Polars.impl` is within Polars's table**: where the profile gives a
 value, the profile's (`Profile.polars_un_within`, `Profile.polars_bin_within`),
 and Polars's own elsewhere (`Polars.errBin_within`). -/

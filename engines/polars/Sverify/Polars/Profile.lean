@@ -146,7 +146,10 @@ variable [Boxes.Ambient]
 for a negative value that rounds to zero (`round_zero_sign`); a double cast to a
 decimal rounds the product half to even, and a decimal cast to a smaller scale
 rounds half to even (`decimal_rescale`); every other function is the
-reference's. -/
+reference's. The product of decimals' unscaled integers (`dmul`) is the
+reference's exact one, which Polars's Int128 `*` gives only below `2¹²⁷`: past
+it Polars wraps (polars-int-arith), and the lowering's template raises before
+(`Polars.dmul_bound`, ruling 282's T3). -/
 def Profile.polars : Profile where
   un f v := match f.polarsTmpl with
     | some t => t.evalP Profile.reference [v]

@@ -250,7 +250,13 @@ Sverify's words claim no more than these theorems give
   `IS NOT NULL` included, and the Polars translator. The interpreters of the
   generated lowering tables are among them: `sverify/sql/lowering.py` writes a
   DuckDB template as SQL, and `sverify_polars/lowering.py` a Polars template
-  as a `pl.Expr` (#271). Golden, round-trip and
+  as a `pl.Expr` (#271). Polars's writes rest on two claims about Int128,
+  where `Profile.polars` takes the reference's exact integers: `dadd` and
+  `dsub` are exact on 64-bit operands, and `dmul` is exact below `2¹²⁷`
+  ([polars-int-arith](../engines/polars/facts/polars-int-arith.json)). Every
+  template calls `dmul` within a proved bound (`Polars.dmul_bound`, and a
+  `#guard` that no other template calls it, `Polars/Engine.lean`; ruling 282).
+  Golden, round-trip and
   differential tests cover them
   ([the translations](engine-profiles.md#the-translations-today)).
 - The CLI's glue, `Main.lean`, `SubstraitCheck.lean`, `ContractCheck.lean` and `ShardCheck.lean`:

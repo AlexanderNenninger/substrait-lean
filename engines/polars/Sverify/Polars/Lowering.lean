@@ -13,7 +13,11 @@ reference, an entry is a template over Polars's functions: `round` and `ceil`
 without IEEE's `-0.0` (`Lowering.froundTemplate`), the truncating `//` and
 `%` from Polars's floored ones (`Polars.idivTemplate`, `Polars.imodTemplate`),
 and a decimal cast to a smaller scale rounded half away from zero from
-Polars's truncation (`Polars.droundEntry`); elsewhere the native function. A
+Polars's truncation (`Polars.droundEntry`), `<<` and `>>` in Polars's 64-bit
+functions (`Polars.shlTemplate`, `Polars.shrTemplate`), and a product of
+decimals under a guard that raises before Polars's Int128 `*` could leave 128
+bits (`Polars.dmulEntry`, the one entry that is not exact,
+`Lowering.polars_exact_except`); elsewhere the native function. A
 double cast to a decimal has no entry (ruling 278). `%` of doubles floors and has no exact
 template: the table is partial, and `Lowering.lowerRel?` refuses a plan that
 calls it, naming it.
@@ -34,11 +38,15 @@ variable [Boxes.Ambient]
 /-- The generated lowering to Polars. -/
 def Lowering.polars : Lowering Profile.polars := polarsOn
 
-/-- Every entry is exact (`Lowering.AllExact`): the generator's own proof, which
-it leaves to a table with a hand-built entry (`Polars.droundEntry`). -/
-theorem Lowering.polars_allExact : Lowering.polars.AllExact :=
+/-- **The entries that are not exact** (ruling 282): the product of decimals
+alone (`Polars.dmulEntry`), whose guard raises where its Int128 product could
+leave 128 bits. -/
+theorem Lowering.polars_exact_except :
+    (∀ f, (Lowering.polars.un f).all (·.exact) = true) ∧
+      ∀ f, (Lowering.polars.bin f).all (·.exact) = true ∨ f = .dmul :=
   ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
-   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩
+   fun f => by cases f <;> repeat (first | exact .inl rfl | exact .inr rfl | (rename_i a; cases a))⟩
+
 
 /-- No entry is stated on doubles only (`Lowering.NoneOnDbl`). -/
 theorem Lowering.polars_noneOnDbl : Lowering.polars.NoneOnDbl :=

@@ -17,6 +17,9 @@ reference's half away from zero from Polars's truncation (`Polars.droundEntry`,
 ruling 278's addendum). `>>` and `<<`, which Polars lacks, are `Polars.shrTemplate`, the floor
 division by `2ᵏ` (`Polars.bit_shr_agree`), and `Polars.shlTemplate`, the
 low bits times `2ᵏ` with the next bit as the sign (`Polars.bit_shl_agree`).
+A product of decimals is `Polars.dmulTemplate`, Polars's Int128 `*` under a
+guard that keeps it below `2¹²⁶` (`Polars.dmul_bound`), and an overflow
+elsewhere: one-sided (`Polars.dmulEntry`, ruling 282).
 -/
 
 namespace Substrait
@@ -938,6 +941,186 @@ theorem bit_shl_agree (x y : Value) :
     case int b => exact shl_int a b
     all_goals exact shl_notInt (.inr fun _ h => by cases h)
   all_goals exact shl_notInt (.inl fun _ h => by cases h)
+
+/-! ## `dmul` -/
+
+/-- `#i` as its unscaled integer (`dadd` with `0`): the comparisons of the
+guard read integers. -/
+def dmulArg (i : Nat) : Expr := .bin .dadd (.field i) (.lit (.int 0))
+
+/-- `-2⁶³ < e < 2⁶³`. -/
+def dmulSmall (e : Expr) : Expr :=
+  .bin .and (.bin .lt (.lit (.int (-2 ^ 63))) e) (.bin .lt e (.lit (.int (2 ^ 63))))
+
+/-- `(2¹²⁶ - 1) // e`, by the operand of `e`'s sign: Polars's `//` of operands
+of one sign, whose quotient is within 64 bits for `|e| ≥ 2⁶³`. -/
+def dmulQuot (e : Expr) : Expr :=
+  .ifThen (.bin .lt (.lit (.int 0)) e) (.bin .idiv (.lit (.int (2 ^ 126 - 1))) e)
+    (.bin .idiv (.lit (.int (-(2 ^ 126 - 1)))) e)
+
+/-- `|b| ≥ 2⁶³ ∧ -q ≤ a ≤ q` for `q = dmulQuot b`; the quotient only where
+`|b| ≥ 2⁶³`. -/
+def dmulWide (a b : Expr) : Expr :=
+  .ifThen (.un .not (dmulSmall b))
+    (.bin .and (.un .not (.bin .lt (dmulQuot b) a))
+      (.un .not (.bin .lt a (.bin .dsub (.lit (.int 0)) (dmulQuot b)))))
+    (.lit (.bool false))
+
+/-- The guard: `|x · y| ≤ 2¹²⁶ - 1` by three cases (Fable's G-a, G-b, G-c). -/
+def dmulFits : Expr :=
+  .bin .or (.bin .and (dmulSmall (dmulArg 0)) (dmulSmall (dmulArg 1)))
+    (.bin .or (dmulWide (dmulArg 0) (dmulArg 1)) (dmulWide (dmulArg 1) (dmulArg 0)))
+
+/-- `CASE WHEN NOT fits THEN error ELSE #0 * #1 END` for decimals' unscaled
+integers (`dmul`), with `fits` Fable's three cases (ruling 282): both within
+64 bits, or one at least `2⁶³` in size and the other within `(2¹²⁶ - 1) // it`,
+a quotient within 64 bits. Where it holds, `|x · y| ≤ 2¹²⁶ - 1`
+(`dmul_bound`), so Polars's Int128 `*` is exact; elsewhere it raises an
+overflow, also on products below `2¹²⁷` the reference computes: the entry is
+one-sided (`dmulEntry`). -/
+def dmulTemplate : Expr :=
+  .ifThen (.un .not dmulFits) (.un (.raise "overflow") (.field 1)) (.bin .dmul (.field 0) (.field 1))
+
+omit [Boxes.Ambient] in
+theorem dmulTemplate_must : 0 ∈ dmulTemplate.must ∧ 1 ∈ dmulTemplate.must := by
+  simp [Expr.must, dmulTemplate, dmulFits, dmulSmall, dmulArg, dmulWide, dmulQuot]
+
+/-! ### It agrees with the reference where it gives a value -/
+
+theorem polars_dmul : Profile.polars.bin .dmul = Profile.reference.bin .dmul := rfl
+
+/-- Where the template gives a value, it is the reference's: it raises, or
+multiplies as the reference does. -/
+theorem dmul_agreeOrRaises (x y : Value) :
+    (dmulTemplate.evalP Profile.polars [x, y]).AgreeOrRaises (Profile.reference.bin .dmul x y) := by
+  simp only [dmulTemplate, Expr.evalP]
+  cases dmulFits.evalP Profile.polars [x, y] with
+  | error _ => trivial
+  | ok g =>
+    simp only [Outcome.ok_bind, polars_not_ok, polars_raise_ok, List.getD_cons_zero,
+      List.getD_cons_succ, polars_dmul]
+    generalize Profile.reference.bin .dmul x y = o
+    split <;> cases o <;> (try split) <;> simp [Outcome.AgreeOrRaises]
+
+omit [Boxes.Ambient] in
+/-- **G-b's bound**: for `0 < j` and `|i| ≤ N / j`, `|i · j| ≤ N`. -/
+theorem wide_bound {i j N : Int} (hj : 0 < j) (h1 : -(N / j) ≤ i) (h2 : i ≤ N / j) :
+    -N ≤ i * j ∧ i * j ≤ N := by
+  have hq : N / j * j ≤ N := Int.ediv_mul_le N (by omega)
+  have u : i * j ≤ N / j * j := Int.mul_le_mul_of_nonneg_right h2 (by omega)
+  have l : -(N / j) * j ≤ i * j := Int.mul_le_mul_of_nonneg_right h1 (by omega)
+  rw [Int.neg_mul] at l
+  omega
+
+omit [Boxes.Ambient] in
+/-- G-a's bound. -/
+theorem small_bound {i j : Int} (hi : -2 ^ 63 < i ∧ i < 2 ^ 63) (hj : -2 ^ 63 < j ∧ j < 2 ^ 63) :
+    -(2 ^ 126 - 1) ≤ i * j ∧ i * j ≤ 2 ^ 126 - 1 := by
+  have ha : i.natAbs < 2 ^ 63 := by omega
+  have hb : j.natAbs < 2 ^ 63 := by omega
+  have hab : i.natAbs * j.natAbs < 2 ^ 63 * 2 ^ 63 :=
+    Nat.mul_lt_mul_of_lt_of_le ha (Nat.le_of_lt hb) (by omega)
+  have e : (i * j).natAbs = i.natAbs * j.natAbs := Int.natAbs_mul i j
+  have : (i * j).natAbs < 2 ^ 126 := by rw [e]; exact Nat.lt_of_lt_of_eq hab (by decide)
+  generalize i * j = m at this
+  omega
+
+theorem polars_dadd_ok (x y : Value) : Profile.polars.bin .dadd x y = .ok (BinFn.apply .dadd x y) :=
+  Lowering.ref_dadd x y
+theorem polars_dsub_ok (x y : Value) : Profile.polars.bin .dsub x y = .ok (BinFn.apply .dsub x y) :=
+  Lowering.ref_dsub x y
+
+theorem apply_dsub_int (a b : Int) : BinFn.apply .dsub (.int a) (.int b) = .int (a - b) := rfl
+
+theorem dmulArg_eval {row : Row} {i : Nat} {c : Int} (h : (row.getD i .null).unscaled? = some c) :
+    (dmulArg i).evalP Profile.polars row = .ok (.int c) := by
+  simp only [dmulArg, Expr.evalP, Outcome.ok_bind, polars_dadd_ok, apply_dadd_of h, Int.add_zero]
+
+theorem dmulSmall_eval {e : Expr} {row : Row} {a : Int} (he : e.evalP Profile.polars row = .ok (.int a)) :
+    (dmulSmall e).evalP Profile.polars row =
+      .ok (.bool (decide (-2 ^ 63 < a) && decide (a < 2 ^ 63))) := by
+  simp only [dmulSmall, Expr.evalP, he, Outcome.ok_bind, polars_lt_ok, apply_lt_int, polars_and_ok,
+    and3_bool]
+
+/-- `dmulWide` is a truth value or raises, and where it is true, `|a · b| ≤ N`. -/
+theorem dmulWide_eval {ea eb : Expr} {row : Row} {a b : Int}
+    (ha : ea.evalP Profile.polars row = .ok (.int a)) (hb : eb.evalP Profile.polars row = .ok (.int b)) :
+    (∃ k, (dmulWide ea eb).evalP Profile.polars row = .error k) ∨
+      ∃ w : Bool, (dmulWide ea eb).evalP Profile.polars row = .ok (.bool w) ∧
+        (w = true → -(2 ^ 126 - 1) ≤ a * b ∧ a * b ≤ 2 ^ 126 - 1) := by
+  simp only [dmulWide, Expr.evalP, dmulSmall_eval hb, Outcome.ok_bind, polars_not_ok, isTrue_bool]
+  by_cases hs : (decide (-2 ^ 63 < b) && decide (b < 2 ^ 63)) = true
+  · simp only [hs, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
+    exact .inr ⟨false, rfl, by simp⟩
+  · have hs' : (!(decide (-2 ^ 63 < b) && decide (b < 2 ^ 63))) = true := by
+      revert hs; cases (decide (-2 ^ 63 < b) && decide (b < 2 ^ 63)) <;> simp
+    simp only [hs', ↓reduceIte, dmulQuot, Expr.evalP, hb, ha, Outcome.ok_bind, polars_lt_ok,
+      apply_lt_int, isTrue_bool]
+    have hb' : b ≤ -2 ^ 63 ∨ 2 ^ 63 ≤ b := by
+      by_cases h1 : -2 ^ 63 < b
+      · by_cases h2 : b < 2 ^ 63
+        · simp only [h1, h2, decide_true, Bool.and_self, not_true_eq_false] at hs
+        · omega
+      · omega
+    by_cases hp : 0 < b
+    · simp only [decide_eq_true hp, ↓reduceIte]
+      rw [polars_idiv_same (by omega) (by omega), ref_idiv_eq _ _ (by omega)]
+      split
+      · simp only [Outcome.ok_bind, apply_lt_int, polars_dsub_ok, apply_dsub_int, polars_and_ok,
+          and3_bool]
+        refine .inr ⟨_, rfl, fun h => ?_⟩
+        simp only [Int.zero_sub, Bool.and_eq_true, Bool.not_eq_true', decide_eq_false_iff_not,
+          Int.not_lt] at h
+        rw [Int.tdiv_eq_ediv_of_nonneg (by omega)] at h
+        exact wide_bound hp h.2 h.1
+      · exact .inl ⟨_, rfl⟩
+    · simp only [decide_eq_false hp, Bool.false_eq_true, ↓reduceIte]
+      rw [polars_idiv_same (by omega) (by omega), ref_idiv_eq _ _ (by omega)]
+      split
+      · simp only [Outcome.ok_bind, apply_lt_int, polars_dsub_ok, apply_dsub_int, polars_and_ok,
+          and3_bool]
+        refine .inr ⟨_, rfl, fun h => ?_⟩
+        simp only [Int.zero_sub, Bool.and_eq_true, Bool.not_eq_true', decide_eq_false_iff_not,
+          Int.not_lt] at h
+        rw [Int.neg_tdiv, ← Int.tdiv_neg, Int.tdiv_eq_ediv_of_nonneg (by omega)] at h
+        have := wide_bound (i := -a) (j := -b) (N := 2 ^ 126 - 1) (by omega) (by omega) (by omega)
+        rw [Int.neg_mul_neg] at this
+        exact this
+      · exact .inl ⟨_, rfl⟩
+
+/-- **The product the template computes is within `±(2¹²⁶ - 1)`** (ruling
+282's T1): wherever it gives a value for two numbers, the guard held, so
+Polars's Int128 product, exact below `2¹²⁷` (polars-int-arith), is the
+exact one. -/
+theorem dmul_bound {x y v : Value} {i j : Int} (hx : x.unscaled? = some i)
+    (hy : y.unscaled? = some j) (h : dmulTemplate.evalP Profile.polars [x, y] = .ok v) :
+    -(2 ^ 126 - 1) ≤ i * j ∧ i * j ≤ 2 ^ 126 - 1 := by
+  have h0 : (dmulArg 0).evalP Profile.polars [x, y] = .ok (.int i) := dmulArg_eval (by simpa using hx)
+  have h1 : (dmulArg 1).evalP Profile.polars [x, y] = .ok (.int j) := dmulArg_eval (by simpa using hy)
+  simp only [dmulTemplate, dmulFits, Expr.evalP, dmulSmall_eval h0, dmulSmall_eval h1,
+    Outcome.ok_bind, polars_and_ok, and3_bool] at h
+  rcases dmulWide_eval h0 h1 with ⟨k, e1⟩ | ⟨w1, e1, b1⟩
+  · simp [e1, bind, Except.bind] at h
+  rcases dmulWide_eval h1 h0 with ⟨k, e2⟩ | ⟨w2, e2, b2⟩
+  · simp [e1, e2, bind, Except.bind] at h
+  simp only [e1, e2, Outcome.ok_bind, polars_or_ok, or3_bool, polars_not_ok, isTrue_bool] at h
+  by_cases hg : ((decide (-2 ^ 63 < i) && decide (i < 2 ^ 63)) &&
+      (decide (-2 ^ 63 < j) && decide (j < 2 ^ 63)) || (w1 || w2)) = true
+  · simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at hg
+    rcases hg with ⟨hi, hj⟩ | hw | hw
+    · exact small_bound hi hj
+    · exact b1 hw
+    · rw [Int.mul_comm]; exact b2 hw
+  · simp only [Bool.not_eq_true] at hg
+    simp only [hg, Bool.not_false, ↓reduceIte, polars_raise_ok] at h
+    cases h
+
+/-- **Polars's entry for `dmul`**, hand-built and one-sided (`exact = false`,
+ruling 282): the product where the guard holds, the reference's, and an
+overflow raised elsewhere, where the reference has a value. -/
+def dmulEntry : BinEntry Profile.polars .dmul :=
+  ⟨dmulTemplate, dmulTemplate_must, false, false, fun x y _ => dmul_agreeOrRaises x y,
+    fun h => absurd h (by decide)⟩
 
 end Polars
 
