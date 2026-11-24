@@ -350,8 +350,8 @@ theorem toInt?_of_range {c : Int} (hlo : castLo ≤ c) (hhi : c ≤ castHi) :
 
 /-! ## Truncating first
 
-A cast that rounds half to even (DuckDB's `CAST(x AS BIGINT)`, duckdb-R9) of a
-value truncated first is the reference's truncating cast (ruling 284 D2): the
+A cast that rounds half to even (`float_to_int`'s `TIE_TO_EVEN`) of a value
+truncated first is the reference's truncating cast (ruling 284 D2): the
 truncated magnitude is a multiple of `K`, which `evenMag` keeps. -/
 
 theorem mag_code (m : Nat) : mag (code m) = m := by
