@@ -133,7 +133,7 @@ theorem Profile.spark_withinOk : Profile.spark.WithinOk Profile.spark.table := b
           · rename_i hz
             refine .inr (callExtra_of_at (o := "zero_sign") (extraAt_of_all Profile.spark_extras (by decide)) ?_)
             rcases hz with rfl | rfl <;>
-              simp [optionScope, Value.anyZero, Value.hasZero, FloatCode.isZeroCode]
+              simp [optionScope, zeroSignReads, Value.anyZero, Value.hasZero, FloatCode.isZeroCode]
           · cases hs
       case h_9 | h_10 =>
         split at hs
@@ -267,12 +267,10 @@ end Example
 -- 278's addendum), but at the pending groups and options listed. Ruling 282 (F282)
 -- accepts the list: it only shrinks (the guard fails on a new entry and on a fixed
 -- one), and a pending function stays on the hand-written translation path until
--- its entry is resolved. Each entry's class is ruling 282's: C1 a scope artefact,
--- C2 absorbed by an `upTo canon` observation, C3 absorbed by the plan's bound, C4
--- likely real.
+-- its entry is resolved. The check reads options per function (C1) and skips those
+-- the observation row absorbs (C2, C3); Spark has none left.
 #guard letI := Boxes.Ambient.none
-  nativeOffIs Profile.spark.table Lowering.spark.nativeUn Lowering.spark.nativeBin
-    [-- C4: a loose row whose first behaviour is `IGNORE_NULLS`.
-     ("str.concat", "null_handling")]
+  nativeOffIs Profile.spark.table Profile.spark.obs Lowering.spark.nativeUn Lowering.spark.nativeBin
+    []
 
 end Substrait

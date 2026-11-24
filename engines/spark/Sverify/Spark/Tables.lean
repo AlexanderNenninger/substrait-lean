@@ -82,10 +82,15 @@ def Profile.spark.table : ProfileTable where
     -- A double to a decimal rounds the double's shortest decimal text half up,
     -- no tie mode of the product the reference rounds (spark-double-to-decimal,
     -- ruling 278): loose, as `Spark.doubleToDecimal` states it.
-    (some "cast.dec", "decimal_rescale", .loose ["TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN", "TRUNCATE"])] ++
+    (some "cast.dec", "decimal_rescale", .loose ["TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN", "TRUNCATE"]),
+    -- `||` is NULL where an input is (spark-concat), the form the writer emits for
+    -- `str_concat`; `concat_ws` skips NULLs, and no plan writes it (ruling 282).
+    (some "str.concat", "null_handling", .oneOf ["ACCEPT_NULLS"])] ++
     uncharacterized prototypeSlice
 
 def Profile.spark.obs : ObsTable := [
+  -- `||` propagates NULL (spark-concat), the reference's ACCEPT_NULLS (ruling 282).
+  (some "str.concat", "null_handling", (ObsRow.native ["spark-concat"]).proved "Lowering.spark_exact_except"),
   (none, "overflow", (ObsRow.native ["spark-int-arith", "spark-int-abs"]).proved "Rel.spark_sound"),
   -- A `BIGINT` partial sum raises by the order of the rows; the writer sums
   -- exact `DECIMAL(38,0)` values (`Spark.partial_sums_fit`).
