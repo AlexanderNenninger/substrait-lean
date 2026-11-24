@@ -455,6 +455,17 @@ omit [Boxes.Ambient] in
 theorem Lowering.ftoiTruncT_must (f : UnFn) : 0 ∈ (Lowering.ftoiTruncT f).must := by
   simp [Expr.must, Lowering.ftoiTruncT]
 
+/-- The templates as constants, for the generator (`LoweringSearch.duckdbSchemas`),
+which finds a template's strictness by its name (`_must`). -/
+def Lowering.ftoiTemplate : Expr := Lowering.ftoiTruncT .ftoi
+def Lowering.ftoiOrNullTemplate : Expr := Lowering.ftoiTruncT .ftoiOrNull
+
+omit [Boxes.Ambient] in
+theorem Lowering.ftoiTemplate_must : 0 ∈ Lowering.ftoiTemplate.must := Lowering.ftoiTruncT_must _
+omit [Boxes.Ambient] in
+theorem Lowering.ftoiOrNullTemplate_must : 0 ∈ Lowering.ftoiOrNullTemplate.must :=
+  Lowering.ftoiTruncT_must _
+
 omit [Boxes.Ambient] in
 theorem DuckDBSQL.castOut_congr {a b : Int}
     (h : FloatCode.toInt? (FloatCode.canon a) = FloatCode.toInt? (FloatCode.canon b)) :
@@ -514,12 +525,12 @@ theorem Lowering.ftoiTrunc_code (s : DuckDBSettings) (c : Int) :
 
 /-- **`CAST(x AS BIGINT)` on DuckDB, truncated first, is the reference's.** -/
 theorem Lowering.ftoi_agree (s : DuckDBSettings) (x : Value) :
-    ((Lowering.ftoiTruncT .ftoi).evalP (Profile.duckdb s) [x]).Agree
+    (Lowering.ftoiTemplate.evalP (Profile.duckdb s) [x]).Agree
       (Profile.reference.un .ftoi x) := by
   cases x
   case float c =>
     obtain ⟨d, hd, hcast⟩ := Lowering.ftoiTrunc_code s c
-    simp only [Lowering.ftoiTruncT, Expr.evalP, bind, Except.bind] at hd ⊢
+    simp only [Lowering.ftoiTemplate, Lowering.ftoiTruncT, Expr.evalP, bind, Except.bind] at hd ⊢
     rw [hd]
     simp only [Profile.duckdb, duckUn, Option.getD_some, DuckDBSQL.ref_ftoi_castOut,
       DuckDBSQL.castOut_congr hcast]
@@ -528,12 +539,13 @@ theorem Lowering.ftoi_agree (s : DuckDBSettings) (x : Value) :
 
 /-- **`TRY_CAST(x AS BIGINT)` on DuckDB, truncated first, is the reference's.** -/
 theorem Lowering.ftoiOrNull_agree (s : DuckDBSettings) (x : Value) :
-    ((Lowering.ftoiTruncT .ftoiOrNull).evalP (Profile.duckdb s) [x]).Agree
+    (Lowering.ftoiOrNullTemplate.evalP (Profile.duckdb s) [x]).Agree
       (Profile.reference.un .ftoiOrNull x) := by
   cases x
   case float c =>
     obtain ⟨d, hd, hcast⟩ := Lowering.ftoiTrunc_code s c
-    simp only [Lowering.ftoiTruncT, Expr.evalP, bind, Except.bind] at hd ⊢
+    simp only [Lowering.ftoiOrNullTemplate, Lowering.ftoiTruncT, Expr.evalP, bind, Except.bind]
+      at hd ⊢
     rw [hd]
     simp only [Profile.duckdb, duckUn, Option.getD_some, DuckDBSQL.ref_ftoiOrNull_float,
       DuckDBSQL.castOrNull_congr hcast]

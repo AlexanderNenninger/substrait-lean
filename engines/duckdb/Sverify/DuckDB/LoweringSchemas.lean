@@ -58,11 +58,9 @@ def schema? : UnFn → Option Tm
   -- DuckDB's `CAST(x AS BIGINT)` of a double rounds half to even (duckdb-R9): the
   -- value is truncated first, `CEIL` below zero and `FLOOR` elsewhere
   -- (`Lowering.ftoi_agree`, ruling 284 D2).
-  | .ftoi => some (.expr (Lowering.ftoiTruncT .ftoi)
-      (Lean.mkApp (Lean.mkConst ``Lowering.ftoiTruncT) (Lean.mkConst ``UnFn.ftoi))
+  | .ftoi => some (.expr Lowering.ftoiTemplate (Lean.mkConst ``Lowering.ftoiTemplate)
       "CAST(x AS BIGINT) of x truncated first (DuckDB's cast rounds half to even)")
-  | .ftoiOrNull => some (.expr (Lowering.ftoiTruncT .ftoiOrNull)
-      (Lean.mkApp (Lean.mkConst ``Lowering.ftoiTruncT) (Lean.mkConst ``UnFn.ftoiOrNull))
+  | .ftoiOrNull => some (.expr Lowering.ftoiOrNullTemplate (Lean.mkConst ``Lowering.ftoiOrNullTemplate)
       "TRY_CAST(x AS BIGINT) of x truncated first (DuckDB's cast rounds half to even)")
   | _ => none
 
