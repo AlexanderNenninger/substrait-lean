@@ -2652,6 +2652,16 @@ Snowflake's SQL writes a regex search as `REGEXP_COUNT(s, p) > 0` instead of `RE
 
 Merging an Arrow change into a view's state on Spark registered the change as a temporary view that nothing dropped, so the Spark JVM kept the rows of every refresh until the session ended. A pipeline with large changes ran the driver out of its default 1 GB heap, and the JVM then hung instead of failing. The change now goes to Spark as a frame that no view names.
 
+### A Polars window SUM or AVG over only `-0.0` gives `0.0`
+
+On Polars, a window `SUM` or `AVG` whose frame holds only `-0.0` returned
+`-0.0`, where the reference's correctly rounded sum of an exact zero is `0.0`.
+The zero compared equal at the output, but a sign-reading function downstream
+(`1 / x`, `atan2`) saw the other sign. The translation now reads the window's
+result with one zero, as it already read a grouped one. DuckDB and Spark give
+`0.0` natively
+([#2587](https://github.com/AlexanderNenninger/substrait-lean/issues/2587)).
+
 ### Other changes
 
 - A `rows="sequence"` postcondition on an unsorted result now names its exits: sort the result with `order_by` on a key, or state `rows="multiset"`.
