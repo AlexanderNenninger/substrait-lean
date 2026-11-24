@@ -812,16 +812,6 @@ abbrev Substrait.polarsOn.flogb : Substrait.BinEntry Substrait.Profile.polars Su
   Substrait.BinEntry.native Substrait.BinFn.flogb
   (Substrait.Lowering.bin_agree_of_eq Substrait.polarsOn.flogb_native)
 
-theorem Substrait.polarsOn.bit_native : ∀ (op : Substrait.BitOp) (x y : Substrait.Value),
-  Substrait.Profile.bin Substrait.Profile.polars (Substrait.BinFn.bit op) x y =
-    Substrait.Profile.bin Substrait.Profile.reference (Substrait.BinFn.bit op) x y := by
-  native_tac
-
-abbrev Substrait.polarsOn.bit : (op : Substrait.BitOp) → Substrait.BinEntry Substrait.Profile.polars (Substrait.BinFn.bit op) :=
-  fun op =>
-  Substrait.BinEntry.native (Substrait.BinFn.bit op)
-    (Substrait.Lowering.bin_agree_of_eq (Substrait.polarsOn.bit_native op))
-
 theorem Substrait.polarsOn.dadd_native : ∀ (x y : Substrait.Value),
   Substrait.Profile.bin Substrait.Profile.polars Substrait.BinFn.dadd x y =
     Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.dadd x y := by
