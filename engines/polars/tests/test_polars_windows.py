@@ -371,6 +371,36 @@ def test_a_moving_sum_of_doubles_sums_each_frames_own_values():
     ]  # fmt: skip
 
 
+@pytest.mark.parametrize("agg", ["fsum", "avg"])
+def test_a_frame_of_only_negative_zero_sums_to_positive_zero(agg, monkeypatch):
+    """A frame whose only value is `-0.0` sums to `0.0`, the reference's
+    correctly rounded exact zero (ruling 285, #2587). Polars gives such a
+    frame's sum as `-0.0` on some builds and paths (the Wheels run's falsifying
+    example: a partition on two columns, a frame from the current row to the
+    end), so the fold is made to give `-0.0` here, and the window's SUM and AVG
+    read it through `one_zero`."""
+    from sverify_polars import engine
+
+    fold = engine.Windows.fold
+
+    def negative_zero_fold(self, x, fr, op):
+        out = fold(self, x, fr, op)
+        return (
+            pl.when(out == 0.0).then(pl.lit(-0.0, pl.Float64)).otherwise(out)
+            if op == "sum"
+            else out
+        )
+
+    monkeypatch.setattr(engine.Windows, "fold", negative_zero_fold)
+    rows = [(None, None, None, None), (None, None, None, None), (0, None, None, None),
+            (1, None, None, None), (None, None, None, None), (None, None, None, None),
+            (None, None, 0, -0.0)]  # fmt: skip
+    fn = {"fn": "agg", "name": "sum" if agg == "fsum" else "avg", "agg": agg, "col": 3,
+          "frame": (False, ("preceding", 0), ("unbounded", 0))}  # fmt: skip
+    out = run(["int", "int", "int", "float"], rows, [0, 2], [], fn)
+    assert out[6] == 0.0 and math.copysign(1.0, out[6]) == 1.0, out
+
+
 @pytest.mark.parametrize("width", [1, 2, 3, 7, 8, 9, 40])
 def test_block_sums_cover_frames_of_every_width(width):
     """A `ROWS` frame of `width` rows over 100 rows, summed by blocks."""
