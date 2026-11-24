@@ -79,7 +79,7 @@ def Substrait.polarsOn : Substrait.Lowering (Substrait.Profile.polars) :=
     | Substrait.UnFn.dkind a0 a1 => some (Substrait.polarsOn.dkind a0 a1)
     | Substrait.UnFn.dround a0 => some (Substrait.polarsOn.dround a0)
     | Substrait.UnFn.dtrunc a0 => some (Substrait.polarsOn.dtrunc a0)
-    | Substrait.UnFn.ftod a0 => some (Substrait.polarsOn.ftod a0)
+    | Substrait.UnFn.ftod _ => none
     | Substrait.UnFn.dtof a0 => some (Substrait.polarsOn.dtof a0)
     | Substrait.UnFn.structField a0 => some (Substrait.polarsOn.structField a0)
     | Substrait.UnFn.listElement a0 => some (Substrait.polarsOn.listElement a0)
@@ -183,9 +183,9 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("UnFn.fmath", "native", 0),
   ("UnFn.decimal", "native", 0),
   ("UnFn.dkind", "native", 0),
-  ("UnFn.dround", "native", 0),
+  ("UnFn.dround", "hand-built entry: Substrait.Polars.droundEntry", 0),
   ("UnFn.dtrunc", "native", 0),
-  ("UnFn.ftod", "native", 0),
+  ("UnFn.ftod", "refused", 0),
   ("UnFn.dtof", "native", 0),
   ("UnFn.structField", "native", 0),
   ("UnFn.listElement", "native", 0),
@@ -238,13 +238,3 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("BinFn.least", "native", 0),
   ("BinFn.bbox2", "native", 0),
   ("BinFn.listFn", "native", 0)]
-
-/-- Every entry is exact (`Lowering.AllExact`). -/
-theorem Substrait.polarsOn.allExact : (Substrait.polarsOn).AllExact :=
-  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
-   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩
-
-/-- No entry is stated on doubles only (`Lowering.NoneOnDbl`). -/
-theorem Substrait.polarsOn.noneOnDbl : (Substrait.polarsOn).NoneOnDbl :=
-  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
-   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩

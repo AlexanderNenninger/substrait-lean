@@ -304,6 +304,16 @@ structure Lowering (p : Profile) where
   un : (f : UnFn) → Option (UnEntry p f)
   bin : (f : BinFn) → Option (BinEntry p f)
 
+/-- Does the table write `f` as the engine's own function, its entry the native
+call (`UnEntry.native`)? Such an entry states that the profile's `f` is the
+reference's (`nativeOffReference`). -/
+def Lowering.nativeUn {p : Profile} (L : Lowering p) (f : UnFn) : Bool :=
+  (L.un f).any (·.tmpl == .un f (.field 0))
+
+/-- `Lowering.nativeUn` of a binary function (`BinEntry.native`). -/
+def Lowering.nativeBin {p : Profile} (L : Lowering p) (f : BinFn) : Bool :=
+  (L.bin f).any (·.tmpl == .bin f (.field 0) (.field 1))
+
 /-- The lowering that writes every function as it is: correct for the
 reference itself. -/
 def UnEntry.native {p : Profile} (f : UnFn) (h : ∀ x, (p.un f x).Agree (Profile.reference.un f x)) :

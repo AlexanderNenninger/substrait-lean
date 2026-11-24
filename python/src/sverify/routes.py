@@ -60,10 +60,12 @@ from __future__ import annotations
 
 import functools
 import json
+import math
 import re
 import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 from sverify._engines import translations
@@ -639,11 +641,32 @@ _ISSUES = "https://github.com/AlexanderNenninger/substrait-lean/issues"
 _KINDS = ("abs", "rel", "ulps")
 
 
+class Printed(float):
+    """A number as the checker printed it: the nearest double, and the text it came from
+    (`json.loads(..., parse_float=Printed)`)."""
+
+    text: str
+
+    def __new__(cls, text: str) -> Printed:
+        self = super().__new__(cls, text)
+        self.text = text
+        return self
+
+
+def _up(value: float) -> float:
+    """The least double at or above a printed bound. Each bound is an upper bound on an
+    error, printed rounded up; its nearest double may lie below it, and a double `s` is
+    at least the bound exactly when it is at least this one."""
+    d = Decimal(getattr(value, "text", None) or repr(float(value)))
+    f = float(d)
+    return math.nextafter(f, math.inf) if Decimal(f) < d else f
+
+
 def _bounds(eps: Mapping[str, Any]) -> dict[str, tuple[float, bool]]:
     """A column's `ε` as `{kind: (value, proved)}`, as the checker normalises
     it (`Realize.epsBounds`: `"epsilon_bounds"`, or an engine's
     `"epsilon"`, where `proved` is that engine's)."""
-    return {k: (float(b["value"]), bool(b["proved"])) for k, b in eps["bounds"].items()}
+    return {k: (_up(b["value"]), bool(b["proved"])) for k, b in eps["bounds"].items()}
 
 
 def _plan_bound(
@@ -655,7 +678,6 @@ def _plan_bound(
         "state sv.equivalent(floats={tol}) or looser in ensures, "
         "or sv.equivalent({plan}) for the plan's own bound"
     ),
-    held: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Any], list[str], bool]:
     """An observation without a plan-dependent float bound (`{"floats": {"bound":
     "plan"}}`), the problems with that bound, and whether the bound that
@@ -683,13 +705,15 @@ def _plan_bound(
             # No bound on the column (a double `SUM` without a row cap, a value
             # computed from one, a window aggregate of doubles): nothing proves
             # it, and a stated tolerance is not met. `why` names what lifts it.
-            # A postcondition on it runs: the checker knows only its sign
-            # there (`floatBound`'s signed part), which a sum of values of one
-            # sign keeps in every order but Kahan's
-            # (`FloatBounds.StdModel.TreeSum.sign`), a variance by its clamp.
+            # A postcondition that holds of every value near the reference's
+            # (`robust`: a sign, which a sum of values of one sign keeps in
+            # every order but Kahan's, `FloatBounds.StdModel.TreeSum.sign`; a
+            # variance by its clamp) is not held, and runs. One that reads the
+            # value (`avg <= 100`, proved of the exact mean) is held, as for a
+            # column with a bound: the engine's value is only near it.
             unproved = True
+            why = f" ({eps['why']})" if eps.get("why") else ""
             if isinstance(stated, Within):
-                why = f" ({eps['why']})" if eps.get("why") else ""
                 problems.append(
                     f"{col} has no bound on its distance to the reference{why}, and the "
                     f'postcondition asks {stated}: state sv.equivalent(floats="plan") '
@@ -697,16 +721,6 @@ def _plan_bound(
                 )
             continue
         if not any(v for v, _ in bounds.values()):
-            continue
-        if held and col in held:
-            # A postcondition reads the column: it is proved of the
-            # reference's exact value, which the engine's is only near.
-            shown = ", ".join(f"{k}={v:g}" for k, (v, _) in bounds.items())
-            problems.append(
-                f"the postcondition {held[col]} reads {col}, which is within {shown} "
-                f"{against.split(',')[0]}: write it as sv.approx({held[col]}), or state "
-                f"sv.equivalent(floats={_smallest(bounds)}) in ensures"
-            )
             continue
         shown = ", ".join(
             f"{k}={v:g}" + ("" if proved else " (tested)") for k, (v, proved) in bounds.items()
@@ -772,10 +786,12 @@ def _smallest(bounds: Mapping[str, tuple[float, bool]]) -> str:
     return f"sv.within({kind}={smallest:g})"
 
 
-#: Why #568's threshold rule refuses a plan, as `realization` words it.
+#: Why #568's threshold rule refuses a plan, as `realization` words it; ruling 275
+#: extends it to a projection that rounds, casts or compares a double.
 _THRESHOLD = (
-    "a filter, grouping key or sort on a double may keep other rows on {engine} than "
-    "the reference: its threshold lies within the doubles' bound of their range; "
+    "a filter, grouping key or sort on a double, or a projection that rounds, casts or "
+    "compares one, may keep other rows or give other values on {engine} than the "
+    "reference: its threshold lies within the doubles' bound of their range; "
     "for a constant threshold, state a precondition that keeps the values away from it; "
     "for a threshold computed from the data (a mean, a sum), compare exact columns: "
     "for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact "
@@ -796,25 +812,15 @@ def verdict(report: Report, engine: str) -> Mapping[str, Any] | None:
     return (report._engines or {}).get(engine)
 
 
-def realization(
-    engine: str,
-    verdict: Mapping[str, Any] | None,
-    observed: Lenses,
-    epsilon: Mapping[str, Mapping[str, float]] | None = None,
-    held: Mapping[str, str] | None = None,
-) -> Realized:
+def realization(engine: str, verdict: Mapping[str, Any] | None, report: Report) -> Realized:
     """How `engine` realizes the plan, from the checker's verdict (`verdict`,
     `SubstraitLean/Realize.lean`): its class over the options the proof
-    depends on, the evidence, the shims and what refuses it (the threshold
-    rule), with the observation the postcondition names applied to the
-    options the engine realizes only up to an observation (`"observed"`):
-    where that does not refine the postcondition's, the row's shim makes it
-    canonical (class `shim`), or the plan is refused there.
-
-    A row whose observation bounds the doubles per plan (`{"floats": {"bound":
-    "plan"}}`, Polars's `sum_order`) is checked against `epsilon`, the
-    contract's per-column `ε`; a bound that meets the postcondition only
-    where Lean does not prove it makes the evidence tested.
+    depends on, the evidence, the shims and what refuses it, met against the
+    observation the postcondition names (`"realized"`). Where the options'
+    observation does not refine the postcondition's, the row's shim makes it
+    canonical (class `shim`), or the plan is refused there; a row that bounds
+    the doubles per plan (Polars's `sum_order`) is met against the plan's `ε`.
+    The checker gives the problems as data, and this words them.
 
     Returns:
         The class, the evidence, the shims written, the problems that refuse
@@ -831,76 +837,85 @@ def realization(
             (),
             [f"the checker gave no verdict on {engine} for this plan: verify it again"],
         )
-    # The engine's own `ε`: a statistic's bound is proved on the engines its
-    # theorem covers (`"proved_on"`, D30).
-    epsilon = verdict.get("epsilon", epsilon)
-    worst: Class = verdict["class"]
+    got = verdict.get("realized") or verdict
+    worst: Class = got["class"]
     if worst not in CLASSES:
         raise ValueError(f"the checker gave an unknown class {worst!r} on {engine}")
-    evidence: Evidence = "proved" if verdict.get("evidence") == "proved" else "tested"
-    shims = [f"{_where(x['group'], x['option'])}: {x['shim']}" for x in verdict.get("shims", ())]
-    problems: list[str] = []
-    for p in verdict.get("problems", ()):
-        if p.get("code") == "option_refused":
-            where = _where(p.get("group"), p["option"])
-            problems.append(f"{where} is refused on {engine}{_cited(p.get('facts'))}")
-        elif p.get("code") == "threshold":
-            problems.append(_THRESHOLD.format(engine=engine))
-        else:
-            problems.append(f"{p.get('code')} on {engine}")
-    seen: list[Lenses] = []
-    proved: list[bool] = []
-    told: set[str] = set()
-    for r in verdict.get("observed", ()):
-        where, cited, shim = _where(r["group"], r["option"]), _cited(r.get("facts")), r.get("shim")
-        obs = r["observation"]
-        rest, bounded, untested = _plan_bound(obs, observed, epsilon, held=held)
-        if untested:
-            # The bound that meets the tolerance is not proved in Lean.
-            evidence = "tested"
-        q = from_json(rest)
-        gives = _with_bound(q, obs, epsilon)
-        seen.append(gives)
-        if isinstance(gives.floats, Within):
-            proved.append(not untested and _all_proved(epsilon))
-        missed = q.coarser_than(_resolve(observed, epsilon))
-        # A shim makes the components the row's observation leaves open
-        # exact (`missed`), never its bound on doubles: no row's shim lifts
-        # the plan's bound (DuckDB's VAR row's `nan_through` handles NaN only),
-        # so a bound the postcondition's tolerance does not meet refuses the
-        # plan, shim or not.
-        if missed and shim:
-            worst = max(worst, "shim", key=CLASSES.index)
-            shims.append(f"{where}: {shim}")
-        elif missed:
-            problems.append(
-                f"{where}: {engine} agrees with the reference only up to {q}, and "
-                f"the postcondition observes its {', '.join(missed)} ({observed}); state "
-                f"{', '.join(missed)} in sv.equivalent(...) or shim it{cited}"
-            )
-        # A SUM's `sum_order` and `rounding` rows rest on the same bound: say
-        # each problem once, at the first row that meets it.
-        new = [p for p in bounded if p not in told]
-        told.update(new)
-        problems += [f"{where}: {p}{cited}" for p in new]
-    gives = None
-    if worst == "observed" and seen:
-        gives = seen[0]
-        for x in seen[1:]:
-            gives = _coarsest(gives, x)
+    shims = [f"{_where(x['group'], x['option'])}: {x['shim']}" for x in got.get("shims", ())]
+    problems = [_problem(engine, p, report) for p in got.get("problems", ())]
+    seen = got.get("observation")
     return Realized(
         worst,
-        evidence,
+        "proved" if got.get("evidence") == "proved" else "tested",
         tuple(shims),
         problems,
-        gives,
-        all(proved) if proved else None,
+        None if seen is None else from_json(seen),
+        got.get("bound_proved"),
         tuple(verdict.get("facts", ())),
         tuple(verdict.get("theorems", ())),
         verdict.get("version") or probed_version(engine),
         tuple(verdict.get("issues", ())),
         tuple(verdict.get("proved_facts", ())),
     )
+
+
+def _problem(engine: str, p: Mapping[str, Any], report: Report) -> str:
+    """A problem of the checker's realization (`Realize.lean`) in words."""
+    from sverify.observation import Within, from_json
+
+    code = p.get("code")
+    if code == "option_refused":
+        where = _where(p.get("group"), p["option"])
+        return f"{where} is refused on {engine}{_cited(p.get('facts'))}"
+    if code == "threshold":
+        return _THRESHOLD.format(engine=engine)
+    if code not in ("observation_missed", "unbounded", "held", "held_unbounded", "not_met"):
+        return f"{code} on {engine}"
+    where, cited, stated = _where(p["group"], p["option"]), _cited(p.get("facts")), seen_by(report)
+    if code == "observation_missed":
+        missed = ", ".join(p["components"])
+        return (
+            f"{where}: {engine} agrees with the reference only up to {from_json(p['observed'])}, "
+            f"and the postcondition observes its {missed} ({stated}); state "
+            f"{missed} in sv.equivalent(...) or shim it{cited}"
+        )
+    col = p["column"]
+    if code == "unbounded":
+        why = f" ({p['why']})" if p.get("why") else ""
+        text = (
+            f"{col} has no bound on its distance to the reference{why}, and the "
+            f'postcondition asks {stated.floats}: state sv.equivalent(floats="plan") '
+            "or drop the tolerance"
+        )
+        return f"{where}: {text}{cited}"
+    if code == "held_unbounded":
+        label = report.ensures[p["condition"]].label
+        why = f" ({p['why']})" if p.get("why") else ""
+        text = (
+            f"the postcondition {label} reads {col}, which has no bound on its distance to "
+            f"the reference{why}: write it as sv.approx({label}), or bound the column with "
+            "sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in "
+            "ensures"
+        )
+        return f"{where}: {text}{cited}"
+    bounds = {b["kind"]: (_up(b["value"]), bool(b["proved"])) for b in p["bounds"]}
+    if code == "held":
+        label = report.ensures[p["condition"]].label
+        shown = ", ".join(f"{k}={v:g}" for k, (v, _) in bounds.items())
+        text = (
+            f"the postcondition {label} reads {col}, which is within {shown} of the "
+            f"reference: write it as sv.approx({label}), or state "
+            f"sv.equivalent(floats={_smallest(bounds)}) in ensures"
+        )
+        return f"{where}: {text}{cited}"
+    shown = ", ".join(f"{k}={v:g}" + ("" if ok else " (tested)") for k, (v, ok) in bounds.items())
+    want = str(stated.floats) if isinstance(stated.floats, Within) else "exact doubles"
+    text = (
+        f"{col} is within {shown} of the reference, and the postcondition asks {want}: "
+        f"state sv.equivalent(floats={_smallest(bounds)}) or looser in ensures, "
+        'or sv.equivalent(floats="plan") for the plan\'s own bound'
+    )
+    return f"{where}: {text}{cited}"
 
 
 class Realized(NamedTuple):
@@ -924,24 +939,6 @@ class Realized(NamedTuple):
     """The facts the proved rows' theorems rest on (`"proved_facts"`)."""
 
 
-def _with_bound(q: Lenses, raw: Mapping[str, Any], epsilon: Mapping[str, Any] | None) -> Lenses:
-    """A row's observation with a per-plan bound on doubles written out as
-    the tolerance the plan's `ε` gives (the largest over its columns)."""
-    from sverify.observation import Within
-
-    floats = raw.get("floats")
-    if not (isinstance(floats, Mapping) and floats.get("bound") == "plan"):
-        return q
-    found = [_bounds(e) for e in (epsilon or {}).values()]
-    found = [b for b in found if any(v for v, _ in b.values())]
-    kinds = [k for k in _KINDS if found and all(k in b for b in found)]
-    if not kinds:
-        return replace(q, floats="plan")
-    most = {k: max(b[k][0] for b in found) for k in kinds}
-    ulps = None if "ulps" not in most else int(most["ulps"])
-    return replace(q, floats=Within(most.get("abs"), most.get("rel"), ulps))
-
-
 def plan_bound(epsilon: Mapping[str, Mapping[str, Any]] | None) -> Within | None:
     """The plan's bound on its doubles as one tolerance: per kind every
     column has, the largest of the columns' `ε` (`Report._epsilon`). None
@@ -963,21 +960,17 @@ def floats_on(report: Report) -> dict[str, list[str]]:
     tolerance), per engine the reference translates to and has a choices
     table for, the problems that observation meets on the engine's doubles
     and the plan's bound (`epsilon`) does not: empty where the engine meets
-    it. Empty under any profile but the reference's (a native route is
-    exact), and for a plan without doubles."""
-    observation = report.lenses
-    if observation.floats == "plan" or report.semantics != "portable":
+    it (the checker's `"floats_added"`). Empty under any profile but the
+    reference's (a native route is exact), and for a plan without doubles."""
+    if report.lenses.floats == "plan" or report.semantics != "portable":
         return {}
     if not any(getattr(t, "is_floating", bool)() for t in report.output.values()):
         return {}
-    looser = replace(observation, floats="plan")
     out: dict[str, list[str]] = {}
     for e in translations():
         if (v := verdict(report, e)) is None or v.get("profile") is False:
             continue
-        asked = realization(e, v, observation, report._epsilon)
-        base = realization(e, v, looser, report._epsilon)
-        out[e] = [p for p in asked.problems if p not in base.problems]
+        out[e] = [_problem(e, p, report) for p in v.get("floats_added", ())]
     return out
 
 
@@ -989,12 +982,11 @@ def evidence_on(report: Report) -> dict[str, Realized]:
     verified under another profile."""
     if report.semantics != "portable" or not verified(report):
         return {}
-    seen, held = observed(report)
     out: dict[str, Realized] = {}
     for e in translations():
         if (v := verdict(report, e)) is None or v.get("profile") is False:
             continue
-        got = realization(e, v, seen, report._epsilon, held)
+        got = realization(e, v, report)
         out[e] = got._replace(evidence=translated_evidence(v, got))
     return out
 
@@ -1007,46 +999,15 @@ def translated_evidence(v: Mapping[str, Any], got: Realized) -> Evidence | None:
     return "tested" if got.evidence == "proved" and v.get("tested_because") else got.evidence
 
 
-def _all_proved(epsilon: Mapping[str, Any] | None) -> bool:
-    return bool(epsilon) and all(
-        all(p for _, p in _bounds(e).values()) for e in (epsilon or {}).values()
-    )
-
-
-def _coarsest(a: Lenses, b: Lenses) -> Lenses:
-    """The coarser of two observations on each component."""
-    from sverify.observation import _COMPONENTS
-
-    out = {}
-    for name, levels in _COMPONENTS:
-        x, y = getattr(a, name), getattr(b, name)
-        if name == "floats":
-            out[name] = y if replace(a, floats=x).coarser_than(replace(a, floats=y)) == [] else x
-        else:
-            out[name] = max(x, y, key=levels.index)
-    return Lenses(**out)
-
-
-def observed(report: Report) -> tuple[Lenses, dict[str, str]]:
+def seen_by(report: Report) -> Lenses:
     """What a run checks the engine's result against: the report's
     observation (`ensures`'s, or else rows as a multiset, doubles within
-    the plan's bound and other values exact, `PLAN_BOUND`). Under the
-    plan's bound (`floats="plan"`, stated or not), the double columns a
-    postcondition reads are held to their exact value
-    (by column, the postcondition's label): a condition proved of the
-    reference's value need not hold of a value near it. One that holds of
-    every value near it is not held (`Postcondition.robust`)."""
-    if report.lenses.floats != "plan":
-        return report.lenses, {}
-    held: dict[str, str] = {}
-    doubles = [c for c, t in report.output.items() if getattr(t, "is_floating", bool)()]
-    for c in report.ensures:
-        if c.approx or not c.proved or getattr(c, "robust", False):
-            continue
-        for col in doubles if c.reads is None else c.reads:
-            if col in doubles:
-                held.setdefault(col, c.label)
-    return replace(report.lenses, bound=None), held
+    the plan's bound and other values exact, `PLAN_BOUND`), without the
+    bound the report prints. Under the plan's bound (`floats="plan"`), the
+    checker holds the double columns a postcondition reads to their exact
+    value (`"held"`): a condition proved of the reference's value need not
+    hold of a value near it."""
+    return replace(report.lenses, bound=None)
 
 
 # -- the re-check -------------------------------------------------------------
@@ -1448,7 +1409,8 @@ def choose(
     if report.lenses.rows == "sequence" and not report._sequence_determined:
         return refuse(
             "the postcondition observes the rows as a sequence, and the plan does not fix their "
-            "order: its result is not sorted on a key of its input"
+            "order: its result is not sorted on a key of its input; sort the result with "
+            'order_by on a key, or state sv.equivalent(rows="multiset")'
         )
     from sverify.sql.core import _base
 
@@ -1475,9 +1437,9 @@ def choose(
                 unprobed_version=unprobed,
                 settings=read,
             )
-        seen, held = observed(report)
+        seen = seen_by(report)
         v = verdict(report, e)
-        got = realization(e, v, seen, report._epsilon, held)
+        got = realization(e, v, report)
         if got.problems:
             cap = max_rows_fix(report, e, seen)
             return replace(refuse("; ".join(got.problems) + _cap_text(cap)), suggested=cap)

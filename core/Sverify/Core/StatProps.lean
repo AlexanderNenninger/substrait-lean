@@ -42,7 +42,7 @@ merge in any tree, in the order of operations that `chanVar_rel` and
 `core_var_chan`, `core_cov_chan` and `core_corr_chan` the
 properties themselves, the `CORR` formula of `core_corr_chan` included), and
 for two-pass blocks with Schubert and Gertz's merge (`SCHUBERT_GERTZ`) at `StatTol.sg`
-(`core_var_polars`, `core_cov_polars`), all in `float-bounds/`. The textbook formula `Σx² − (Σx)²/n`
+(`core_var_polars`, `core_cov_polars`, `core_corr_polars`), all in `float-bounds/`. The textbook formula `Σx² − (Σx)²/n`
 cancels catastrophically and is not covered. A NaN or an infinity among the
 values gives the reference's own value. Finite values outside the range above
 (`Stat.fits`) allow any double: the reference's value there is the exact moments
@@ -98,7 +98,7 @@ def StatTol.chan : StatTol := ⟨71, 447, 11883, 2379⟩
 
 /-- Two-pass blocks with Schubert and Gertz's merge (`SCHUBERT_GERTZ`,
 `core_cov_polars`, whose co-moment's leading constant is 106). Its `CORR`
-constants are Chan's until #1808 proves `CORR` under this merge. -/
+constants are Chan's: the co-moments fit them (`core_corr_polars`). -/
 def StatTol.sg : StatTol := ⟨107, 447, 11883, 2379⟩
 
 /-- The error bound of `COVAR_*`, `C / d`, for `r₁ ≥ √(Q'_x S_yy)`,

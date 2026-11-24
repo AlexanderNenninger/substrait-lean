@@ -469,16 +469,6 @@ abbrev Substrait.sparkOn.dtrunc : (k : Nat) → Substrait.UnEntry Substrait.Prof
   Substrait.UnEntry.native (Substrait.UnFn.dtrunc k)
     (Substrait.Lowering.un_agree_of_eq (Substrait.sparkOn.dtrunc_native k))
 
-theorem Substrait.sparkOn.ftod_native : ∀ (s : Nat) (x : Substrait.Value),
-  Substrait.Profile.un Substrait.Profile.spark (Substrait.UnFn.ftod s) x =
-    Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.ftod s) x := by
-  native_tac
-
-abbrev Substrait.sparkOn.ftod : (s : Nat) → Substrait.UnEntry Substrait.Profile.spark (Substrait.UnFn.ftod s) :=
-  fun s =>
-  Substrait.UnEntry.native (Substrait.UnFn.ftod s)
-    (Substrait.Lowering.un_agree_of_eq (Substrait.sparkOn.ftod_native s))
-
 theorem Substrait.sparkOn.dtof_native : ∀ (s : Nat) (x : Substrait.Value),
   Substrait.Profile.un Substrait.Profile.spark (Substrait.UnFn.dtof s) x =
     Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.dtof s) x := by

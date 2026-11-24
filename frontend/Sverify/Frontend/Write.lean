@@ -828,11 +828,43 @@ def withCommon (kind : String) (body : List (String × Json)) (emit : Option (Li
     else obj [("project", obj [common m, ("input", obj [(kind, obj body)]),
       ("expressions", Json.arr #[])])]
 
+/-- The number of nodes of an expression. -/
+def exprSize : Expr → Nat
+  | .lit _ | .field _ => 1
+  | .un _ a => exprSize a + 1
+  | .bin _ a b => exprSize a + exprSize b + 1
+  | .ifThen c t e => exprSize c + exprSize t + exprSize e + 1
+  | .hof _ l b => exprSize l + exprSize b + 1
+
+/-- The most nodes `unbindProject` lets a projection's expressions reach. -/
+def unbindBudget : Nat := 2048
+
+/-- The expressions of a projection over `below` with the columns that the
+projections under it bind (`Rel.bindStep`) written back in, level by level
+while they stay within `unbindBudget` nodes: a binding exists because an
+argument repeats, so each level can double them (#2338). The expressions as
+they stand when the next level would pass the budget, which find no declared
+kinds. -/
+def unbindProject (cat : Catalog) : Nat → Rel → List Expr → List Expr
+  | fuel + 1, .project r ss, es =>
+    let es' := es.map (·.subst ((List.range (r.arity cat)).map .field ++ ss))
+    if (es'.map exprSize).foldl (· + ·) 0 > unbindBudget then es
+    else unbindProject cat fuel r es'
+  | _, _, es => es
+
 /-- The kinds of a projection's expressions over columns of kinds `ks`:
 `wkind`, or the kind the source plan declares where `Parse.projectKey`
 records one (a projected `0.0`, timestamp or typed `NULL`, #96). -/
-def projKinds (schemas : Schemas) (ks : List WKind) (es : List Expr) : List WKind :=
+def projKinds (schemas : Schemas) (cat : Catalog) (below : Rel) (ks : List WKind)
+    (es : List Expr) : List WKind :=
   let declared := Parse.schemaKinds (schemas (Parse.projectKey es) 0)
+  -- The plan the writer prints binds the arguments of nested calls as columns
+  -- (`Rel.bindArgs`, #821), so this projection's expressions read them and
+  -- are not the ones the source plan declared kinds for: substituting the
+  -- bound columns back gives those (`Rel.bindStep_spec`, #2102).
+  let declared := if declared.isEmpty then
+      Parse.schemaKinds (schemas (Parse.projectKey (unbindProject cat 64 below es)) 0)
+    else declared
   es.zipIdx.map fun (e, i) => match declared[i]? with
     | some k => if k == .other then wkind ks e else .ofKind k
     | none => wkind ks e
@@ -879,7 +911,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
   | .filter r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ => relKinds schemas cat r
   | .project r es =>
       let ks := relKinds schemas cat r
-      ks ++ projKinds schemas ks es
+      ks ++ projKinds schemas cat r ks es
   | .emit r m =>
       let ks := relKinds schemas cat r
       m.map (ks.getD · .other)
@@ -1096,7 +1128,7 @@ def writeRel (schemas : Schemas) (cat : Catalog)
       ("input", writeRel schemas cat [] r none),
       ("expressions",
         let ks := relKinds schemas cat r
-        Json.arr ((es.zip (projKinds schemas ks es)).zipIdx.map fun ((e, k), i) =>
+        Json.arr ((es.zip (projKinds schemas cat r ks es)).zipIdx.map fun ((e, k), i) =>
           writeExpr ks (if k == .other then hint.getD (ks.length + i) .other else k) e).toArray)] out
   | .cross a b, out => withCommon "cross" [
       ("left", writeRel schemas cat [] a none), ("right", writeRel schemas cat [] b none)] out

@@ -5,9 +5,9 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_temporal",
   "summary": {
-    "agree": 117,
+    "agree": 120,
     "disagree": 0,
-    "refused": 25,
+    "refused": 22,
     "unproved": 12,
     "skipped": 11
   },
@@ -281,19 +281,13 @@
       "issue": 323
     },
     "test_subsecond_cast_to_timestamp[duckdb-timestamp(3)]": {
-      "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: cannot cast this value to a timestamp. Lean's model does not cover it yet: rewrite the step, or f",
-      "issue": 1922
+      "outcome": "agree"
     },
     "test_subsecond_cast_to_timestamp[duckdb-timestamp(6)]": {
-      "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: cannot cast this value to a timestamp. Lean's model does not cover it yet: rewrite the step, or f",
-      "issue": 1922
+      "outcome": "agree"
     },
     "test_subsecond_cast_to_timestamp[duckdb-timestamp]": {
-      "outcome": "refused",
-      "construct": "UnsupportedError: substrait-check --contract refuses the plan: cannot cast this value to a timestamp. Lean's model does not cover it yet: rewrite the step, or f",
-      "issue": 1922
+      "outcome": "agree"
     },
     "test_temporal_binop[duckdb-date-add-interval]": {
       "outcome": "agree"
@@ -520,8 +514,8 @@
     },
     "test_timestamp_precision_output[duckdb-ns]": {
       "outcome": "refused",
-      "construct": "Unsupported: only second, millisecond and microsecond timestamps are supported (#323); cast the column to microseconds before sverify reads the table",
-      "issue": 323
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: cast to a timestamp of precision N is not supported: timestamps are read at microsecond precision",
+      "issue": 2318
     },
     "test_timestamp_precision_output[duckdb-us]": {
       "outcome": "agree"

@@ -5,6 +5,8 @@ state of the source, and keep it.
 
 Lean: `Substrait.Refresh.quiet`, in
 [`analysis/Sverify/Analysis/Refresh.lean`](../../analysis/Sverify/Analysis/Refresh.lean).
+Twin for a source that cannot restore: `RefreshSnap.quiet`, in
+[`RefreshSnapshot.lean`](../../analysis/Sverify/Analysis/RefreshSnapshot.lean).
 Layer: the refresh protocol as a transition system. Axioms: `propext`,
 `Classical.choice`, `Quot.sound` ([trusted-base.md](../trusted-base.md)).
 

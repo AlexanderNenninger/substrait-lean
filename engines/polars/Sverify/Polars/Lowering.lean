@@ -10,9 +10,11 @@ The table for Polars's profile, `polarsOn`, is generated: the search
 it found, with its proof, to `engines/polars/Sverify/Polars/LoweringOn`, which a
 build checks without searching. Where `Profile.polars` differs from the
 reference, an entry is a template over Polars's functions: `round` and `ceil`
-without IEEE's `-0.0` (`Lowering.froundTemplate`), and the truncating `//` and
-`%` from Polars's floored ones (`Polars.idivTemplate`, `Polars.imodTemplate`);
-elsewhere the native function. `%` of doubles floors and has no exact
+without IEEE's `-0.0` (`Lowering.froundTemplate`), the truncating `//` and
+`%` from Polars's floored ones (`Polars.idivTemplate`, `Polars.imodTemplate`),
+and a decimal cast to a smaller scale rounded half away from zero from
+Polars's truncation (`Polars.droundEntry`); elsewhere the native function. A
+double cast to a decimal has no entry (ruling 278). `%` of doubles floors and has no exact
 template: the table is partial, and `Lowering.lowerRel?` refuses a plan that
 calls it, naming it.
 
@@ -32,8 +34,16 @@ variable [Boxes.Ambient]
 /-- The generated lowering to Polars. -/
 def Lowering.polars : Lowering Profile.polars := polarsOn
 
-theorem Lowering.polars_allExact : Lowering.polars.AllExact := polarsOn.allExact
-theorem Lowering.polars_noneOnDbl : Lowering.polars.NoneOnDbl := polarsOn.noneOnDbl
+/-- Every entry is exact (`Lowering.AllExact`): the generator's own proof, which
+it leaves to a table with a hand-built entry (`Polars.droundEntry`). -/
+theorem Lowering.polars_allExact : Lowering.polars.AllExact :=
+  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
+   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩
+
+/-- No entry is stated on doubles only (`Lowering.NoneOnDbl`). -/
+theorem Lowering.polars_noneOnDbl : Lowering.polars.NoneOnDbl :=
+  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
+   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩
 
 /-- **A lowered expression is exact on Polars**, wherever the table lowers it
 (every function but `%` of doubles). -/

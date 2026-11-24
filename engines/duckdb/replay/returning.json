@@ -4,8 +4,10 @@
   "license": "test/sql \u00a9 Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
   "area": "returning",
   "summary": {"agree": 16, "disagree": 0, "refused": 1, "skipped": 0},
+  "agree_oracle_a_only": 0,
   "disagree_sides": {},
   "skipped_files": {},
+  "refreshed": {"returning/returning_update.test": "2.0.1"},
   "results": [
     {"file": "returning/no_crash_when_no_returning_columns.test", "line": 14, "sql": "SELECT * FROM v0;", "expected": "[]", "duckdb": "[]", "lean": "[]", "engine": "[]", "cls": "agree"},
     {"file": "returning/no_crash_when_no_returning_columns.test", "line": 28, "sql": "select * from v0 where c1 = 0;", "expected": "[\"0\"]", "duckdb": "[[\"0\"]]", "lean": "[[\"0\"]]", "engine": "[[\"0\"]]", "cls": "agree"},
@@ -21,8 +23,8 @@
     {"file": "returning/returning_delete.test", "line": 729, "sql": "SELECT * FROM indexed_returning WHERE amount = 225;", "expected": "[\"2\", \"tx_b\", \"225\"]", "duckdb": "[[\"2\", \"tx_b\", \"225\"]]", "lean": "[[\"2\", \"tx_b\", \"225\"]]", "engine": "[[\"2\", \"tx_b\", \"225\"]]", "cls": "agree"},
     {"file": "returning/returning_delete.test", "line": 735, "sql": "SELECT * FROM indexed_returning WHERE id = 2;", "expected": "[\"2\", \"tx_b\", \"225\"]", "duckdb": "[[\"2\", \"tx_b\", \"225\"]]", "lean": "[[\"2\", \"tx_b\", \"225\"]]", "engine": "[[\"2\", \"tx_b\", \"225\"]]", "cls": "agree"},
     {"file": "returning/returning_large.test", "line": 11, "sql": "SELECT count(*) FROM table1;", "expected": "[\"4000\"]", "duckdb": "[[\"4000\"]]", "lean": "[[\"4000\"]]", "engine": "[[\"4000\"]]", "cls": "agree"},
-    {"file": "returning/returning_update.test", "line": 128, "sql": "SELECT a3, b3, c3 IN (1, 2, 3, 100, 200) FROM table3;", "expected": "[\"1\", \"4\", \"1\", \"2\", \"6\", \"1\", \"8\", \"8\", \"1\"]", "duckdb": "[[\"1\", \"4\", \"true\"], [\"2\", \"6\", \"true\"], [\"8\", \"8\", \"true\"]]", "lean": "[[\"1\", \"4\", \"true\"], [\"2\", \"6\", \"true\"], [\"8\", \"8\", \"true\"]]", "engine": "[[\"1\", \"4\", \"true\"], [\"2\", \"6\", \"true\"], [\"8\", \"8\", \"true\"]]", "cls": "agree"},
-    {"file": "returning/returning_update.test", "line": 299, "sql": "SELECT * FROM table4;", "expected": "[\"4\", \"5\", \"6\", \"7\", \"8\", \"9\", \"1\", \"10\", \"3\"]", "duckdb": "[[\"4\", \"5\", \"6\"], [\"7\", \"8\", \"9\"], [\"1\", \"10\", \"3\"]]", "lean": "[[\"4\", \"5\", \"6\"], [\"7\", \"8\", \"9\"], [\"1\", \"10\", \"3\"]]", "engine": "[[\"4\", \"5\", \"6\"], [\"7\", \"8\", \"9\"], [\"1\", \"10\", \"3\"]]", "cls": "agree"},
-    {"file": "returning/returning_update.test", "line": 306, "sql": "SELECT count(*) FROM table1;", "expected": "[\"4000\"]", "duckdb": "[[\"4000\"]]", "lean": "[[\"4000\"]]", "engine": "[[\"4000\"]]", "cls": "agree"}
+    {"file": "returning/returning_update.test", "line": 143, "sql": "SELECT a3, b3, c3 IN (1, 200) FROM table3;", "expected": "[\"1\", \"4\", \"1\", \"2\", \"6\", \"1\", \"8\", \"8\", \"1\"]", "duckdb": "[[\"1\", \"4\", \"true\"], [\"2\", \"6\", \"true\"], [\"8\", \"8\", \"true\"]]", "lean": "[[\"1\", \"4\", \"true\"], [\"2\", \"6\", \"true\"], [\"8\", \"8\", \"true\"]]", "engine": "[[\"1\", \"4\", \"true\"], [\"2\", \"6\", \"true\"], [\"8\", \"8\", \"true\"]]", "cls": "agree"},
+    {"file": "returning/returning_update.test", "line": 314, "sql": "SELECT * FROM table4;", "expected": "[\"4\", \"5\", \"6\", \"7\", \"8\", \"9\", \"1\", \"10\", \"3\"]", "duckdb": "[[\"4\", \"5\", \"6\"], [\"7\", \"8\", \"9\"], [\"1\", \"10\", \"3\"]]", "lean": "[[\"4\", \"5\", \"6\"], [\"7\", \"8\", \"9\"], [\"1\", \"10\", \"3\"]]", "engine": "[[\"4\", \"5\", \"6\"], [\"7\", \"8\", \"9\"], [\"1\", \"10\", \"3\"]]", "cls": "agree"},
+    {"file": "returning/returning_update.test", "line": 321, "sql": "SELECT count(*) FROM table1;", "expected": "[\"4000\"]", "duckdb": "[[\"4000\"]]", "lean": "[[\"1000\"]]", "engine": "[[\"1000\"]]", "cls": "agree", "reason": "condensed to 1000 rows"}
   ]
 }

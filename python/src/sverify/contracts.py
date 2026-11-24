@@ -173,7 +173,7 @@ states the condition (None: unset)."""
 #: The semantics a plan is verified under besides the installed profiles:
 #: portable (the reference profile, `Profile.reference`), and DuckDB's,
 #: reached through its SQL lift until the checker evaluates under DuckDB's
-#: run profile (#271, #1189).
+#: run profile (#2545, #1189).
 _LIFTED = ("portable", "duckdb")
 
 
@@ -292,6 +292,36 @@ def _squeeze(code: str) -> str:
     """Ibis code without spaces or one pair of outer parentheses."""
     code = "".join(code.split())
     return code[1:-1] if code.startswith("(") and code.endswith(")") else code
+
+
+def _result_schema(transform: Transform, schemas: Mapping[str, Any], semantics: Semantics):
+    """The schema of the transform's result: SQL's types come from the lift, so a
+    timestamp is described as one (#452)."""
+    from sverify.ibis_substrait import sql_model_schema
+
+    if isinstance(transform, str):
+        return sql_model_schema(transform, schemas, semantics)
+    return transform.schema()
+
+
+def _observation_json(obs: _observation.Lenses) -> dict[str, Any]:
+    """The observation as the checker reads it (`Seen.ofJson?`): each component by name,
+    a tolerance on doubles as the exact decimal of each double the run compares with."""
+    from decimal import Decimal
+
+    out: dict[str, Any] = {
+        name: getattr(obs, name) for name, _ in _observation._COMPONENTS if name != "floats"
+    }
+    f = obs.floats
+    out["floats"] = (
+        f
+        if isinstance(f, str)
+        else {
+            **{k: str(Decimal(v)) for k in ("abs", "rel") if (v := getattr(f, k)) is not None},
+            **({"ulps": f.ulps} if f.ulps is not None else {}),
+        }
+    )
+    return out
 
 
 def _declared_text(columns: Sequence[str], conds: Sequence[Condition]) -> dict[str, list[str]]:
@@ -524,7 +554,7 @@ def verify(
             (None), it is `"duckdb"` for a transformation whose SQL is all
             `sv.sql(..., semantics="duckdb")`, else `"portable"`.
             `"polars"` and `"spark"` name the engine's own profile, under
-            which the checker has no report yet (#271): `verify` warns
+            which the checker has no report yet (#2545): `verify` warns
             `ProfilePendingWarning` and returns the reference's report
             (`Report.semantics` is `"portable"`).
             `"substrait"` checks an Ibis transformation under Substrait's
@@ -1399,6 +1429,7 @@ def _prove_once(
         "max_rows": caps,
         "rows_per": per_key,
         "ranges": ranges,
+        "columns": {t: list(column_names(s)) for t, s in schemas.items()},
         "text": {t: _declared_text(names(t), cs) for t, cs in requires.items()},
     }
 
@@ -1407,6 +1438,7 @@ def _prove_once(
     # ContractCheck.lean): the observation, the columns each table condition
     # reads, and whether it allows for a tolerance.
     obs = observed or _observation.PLAN_BOUND
+    result_schema = _result_schema(transform, schemas, semantics)
     contract["observation"] = {
         "coarsens": [c for c in obs.ignored()],
         # The rows level by name: the plan to run may refine the plan
@@ -1415,6 +1447,24 @@ def _prove_once(
         "floats_plan": obs.floats == "plan",
         "approx": [isinstance(c, Approx) for c in ensures if not isinstance(c, TableCondition)],
         "sql": isinstance(transform, str),
+        # The observation the checker meets each engine's rows against, and what each
+        # postcondition reads (`Realize.lean`, #1071). A tolerance goes as the exact
+        # decimal of the double the run compares with.
+        "lenses": _observation_json(obs),
+        "ensures_meta": [
+            {
+                "kind": "unique"
+                if isinstance(c, Unique)
+                else "other"
+                if isinstance(c, TableCondition)
+                else "expr",
+                "approx": isinstance(c, Approx),
+                "reads": None
+                if (r := _reads(c, dict(result_schema.items()))) is None
+                else [out_cols.index(n) for n in r if n in out_cols],
+            }
+            for c in ensures
+        ],
         "table_reads": [
             {
                 "reads": None
@@ -1441,7 +1491,11 @@ def _prove_once(
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
     if code not in (0, 4):
         raise checker_failed("--contract", stderr)
-    out = json.loads(stdout)
+    # A bound keeps the text it was printed as (`Printed`): its nearest double may
+    # lie below it.
+    from sverify.routes import Printed
+
+    out = json.loads(stdout, parse_float=Printed)
     if semantics in _profile_requests() and out.get("pending") == semantics:
         # The engine's profile is its own, with no report under it yet
         # (#1288): the reference's report, labelled as such.
@@ -1457,14 +1511,7 @@ def _prove_once(
             f'the checker in use has no profile "{semantics}": install the package that '
             "registers it (sverify.profiles), or set SVERIFY_CHECKER to a checker built with it"
         )
-    # SQL's types come from the lift, so a timestamp is described as one (#452).
-    from sverify.ibis_substrait import sql_model_schema
-
-    result = (
-        sql_model_schema(transform, schemas, semantics)
-        if isinstance(transform, str)
-        else transform.schema()
-    )
+    result = _result_schema(transform, schemas, semantics)
     dtypes = _checker_decimals(dict(result.items()), out.get("outputKinds"))
 
     def describe(f: dict) -> ColumnFacts:

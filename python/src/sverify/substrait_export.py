@@ -1365,6 +1365,9 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
                 f"and the postconditions observe its {', '.join(missed)} ({report.lenses}); "
                 f"state {', '.join(missed)} in sv.equivalent(...)"
             )
+        # A cast of a double to a decimal: Substrait leaves open which value is
+        # rounded too, so the assumption and the refusal name it (ruling 278).
+        ftod = g == "cast.dec" and _substrait_shims.double_to_decimal(typer)
         if shims == "annotate":
             h.assumptions.append(
                 {
@@ -1372,7 +1375,8 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
                     "option": o,
                     **({"gap": gap} if gap else {}),
                     "assumes": uses,
-                    "text": f"the consumer gives {', '.join(uses)} at {where}",
+                    "text": f"the consumer gives {', '.join(uses)} at {where}"
+                    + (f", and {_substrait_shims.DOUBLE_TO_DECIMAL}" if ftod else ""),
                 }
             )
             continue
@@ -1385,6 +1389,11 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
         problems.append(
             f"{where}: Substrait allows {', '.join(f.get('to') or ['any behaviour'])} where the "
             f"proof uses {', '.join(uses)}"
+            + (
+                "; a cast of a double to a decimal leaves open which value is rounded and how"
+                if ftod
+                else ""
+            )
             + (f" ({gap}, upstream/bugs/{gap}.json)" if gap else "")
             + (
                 "; no shim writes it for this plan: export with shims='annotate' to ship it "

@@ -10,8 +10,17 @@ name for `UnsupportedError`.
 from collections.abc import Mapping
 from typing import ClassVar
 
-#: Where #271 is, for refusals: an engine that does not run a function yet.
-ISSUE_271 = "see #271, https://github.com/AlexanderNenninger/substrait-lean/issues/271"
+#: Where #2540 is, for refusals: an engine whose writer does not run a function yet.
+ISSUE_2540 = "see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540"
+#: Snowflake's, for the same: its profile is out of tree, with no public issue.
+SNOWFLAKE_OUT_OF_TREE = "Snowflake is out of tree (private profile)"
+
+
+def not_yet(engine: str) -> str:
+    """What a refusal of a function `engine` does not run yet names."""
+    return SNOWFLAKE_OUT_OF_TREE if engine.lower() == "snowflake" else ISSUE_2540
+
+
 #: Where #1725 is: an engine that has no map for a UTC-zoned timestamp (an instant) yet.
 ISSUE_1725 = "see #1725, https://github.com/AlexanderNenninger/substrait-lean/issues/1725"
 #: Why a quantile of a DECIMAL is refused (by design, ruling 191, #1921): both
@@ -35,7 +44,7 @@ DECIMAL_MOD_38 = (
     "supported; cast an operand to a DECIMAL with fewer digits"
 )
 #: The end of a refusal of what only DuckDB runs: its exit.
-DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_271})"
+DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_2540})"
 
 #: The start of the message of a RANGE frame's guard (#805): a bound that
 #: leaves its integer key's type. An engine whose dialect raises writes it

@@ -13,7 +13,8 @@
   ],
   "rows": [
     {"group": "dec.arith", "option": "overflow", "types": ["decimal"]},
-    {"group": "dec.arith", "option": "decimal_rescale", "types": ["decimal"]}
+    {"group": "dec.arith", "option": "decimal_rescale", "types": ["decimal"]},
+    {"group": "cast.dec", "option": "decimal_rescale", "types": ["decimal", "fp64"]}
   ],
   "constructs": [
     "+",
@@ -135,6 +136,15 @@
       "evidence": [
         {"sql": "SELECT CAST(2.5::DECIMAL(3,1) AS BIGINT), CAST(-2.5::DECIMAL(3,1) AS BIGINT), CAST(1.25::DECIMAL(4,2) AS DECIMAL(4,1)), CAST(-0.125::DECIMAL(4,3) AS DECIMAL(4,2))", "observed": "3, -3, 1.3, -0.13"},
         {"file": "engines/duckdb/probes/decimal_rescale.py", "note": "12300 random cases, 0 mismatches: CAST(dec AS DECIMAL(p,t)) for t < s and CAST(dec AS BIGINT), p up to 38 and shapes (4,3) to (38,38): every result is half away from zero, as `ROUND_HALF_UP`. The SQL lift reads a decimal cast to an integer as the rescale to scale 0 and the exact cast."}
+      ]
+    },
+    {
+      "checked_at": "2026-11-23",
+      "method": "probe",
+      "checked_by": "session Types and casts (ruling 278, #2523), duckdb 2.0.1, Python 3.12, macOS arm64",
+      "evidence": [
+        {"file": "engines/duckdb/probes/double_to_decimal.py", "note": "Exact ties: CAST(x::DOUBLE AS DECIMAL(3,2)) of 0.125, -0.125 and 0.375 is 0.13, -0.13 and 0.38; to DECIMAL(2,0), 2.5, -2.5 and 3.5 are 3, -3 and 4; ±(2^51 + 0.5) to DECIMAL(17,0) is ±2251799813685249. The same values as decimals, rescaled to the same scale, round the same way: half away from zero."},
+        {"file": "engines/duckdb/probes/double_to_decimal_near_ties.py", "note": "Near-ties: -2.675 and 2.675 to DECIMAL(4,2) are -2.68 and 2.68; 1.005 and 0.285 to DECIMAL(3,2) are 1.00 and 0.28; 8.345 to DECIMAL(4,2) is 8.35: the double product x · 10^s is rounded, as the reference's `FloatCode.toDecimal?`. `Profile.duckdb`'s cast is the reference's, so the lowering's native entry stays proved."}
       ]
     }
   ],

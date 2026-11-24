@@ -39,17 +39,17 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Sound by | Under | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 9 | 25 | 1 | 4 | 4 | 0 | 15 | 0 |
-| Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 15 | 13 | 1 | 6 | 8 | 2 | 17 | 7 |
-| Spark | 4.3.0 | `Engine.spark_sound` | `Engine.GuardFreeSide` | 5 | 27 | 1 | 7 | 3 | 5 | 16 | 0 |
+| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 10 | 26 | 1 | 4 | 6 | 0 | 15 | 0 |
+| Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 15 | 15 | 1 | 6 | 10 | 2 | 17 | 7 |
+| Spark | 4.3.0 | `Engine.spark_sound` | `Engine.SparkSide` | 6 | 29 | 1 | 7 | 5 | 5 | 16 | 0 |
 
 Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 25 | 1 | 16 | 2 | 0 | 0 | 15 |
-| Polars | 35 | 1 | 12 | 0 | 0 | 0 | 17 |
-| Spark | 18 | 16 | 14 | 0 | 0 | 0 | 16 |
+| DuckDB | 27 | 1 | 18 | 2 | 0 | 0 | 15 |
+| Polars | 40 | 0 | 12 | 0 | 0 | 0 | 17 |
+| Spark | 36 | 8 | 9 | 0 | 0 | 0 | 16 |
 
 ## Shims
 
@@ -64,6 +64,7 @@ Rows per evidence level:
 | DuckDB | `quantile_guard` | expression | `quantile_interp` |
 | DuckDB | `null_order` | argument | `null_order` |
 | DuckDB | `ORDER BY the keys` | sort | `clustered` |
+| DuckDB | `trunc before the cast` | expression | cast.num: `float_to_int` |
 | Polars | `int_mod_trunc` | expression | `division_type`, int.mod: `division_type` |
 | Polars | `int_div_trunc` | expression | int.div: `division_type` |
 | Polars | `decimal_round_half_away` | expression | `decimal_rescale` |
@@ -81,13 +82,14 @@ Rows per evidence level:
 | Polars | `strpos_chars` | expression | str.match: `string_positions` |
 | Spark | `decimal_negate_sub` | expression | dec.arith: `overflow` |
 | Spark | `int_sum_decimal` | expression | agg.isum: `overflow` |
+| Spark | `decimal_cast` | expression | cast.dec: `decimal_rescale` |
 | Spark | `int_avg_decimal` | expression | `avg_int_result` |
 | Spark | `null_order` | argument | `null_order` |
 | Spark | `sort on the keys` | sort | `clustered` |
 
 ## DuckDB 2.0.0
 
-9 shims (1 argument, 7 expression, 1 sort). Its run is proved sound by `Engine.duckdb_sound`, under `Engine.NoRaiseSide`.
+10 shims (1 argument, 8 expression, 1 sort). Its run is proved sound by `Engine.duckdb_sound`, under `Engine.NoRaiseSide`.
 
 | Group | Option | Reference's tool | Reference | DuckDB | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -126,7 +128,8 @@ Rows per evidence level:
 | every | `case_mapping` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-string-match-case](../engines/duckdb/facts/duckdb-string-match-case.json) |
 | every | `char_set` | choose | `UTF8` | `UTF8`, `ASCII_ONLY` | not characterized | missing |  |
-| every | `null_handling` | choose | `ACCEPT_NULLS` | `IGNORE_NULLS`, `ACCEPT_NULLS` | not characterized | missing |  |
+| every | `null_handling` | choose | `ACCEPT_NULLS` | none | not characterized | missing |  |
+| str.concat | `null_handling` | choose | `ACCEPT_NULLS` | `ACCEPT_NULLS` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-null-concat](../engines/duckdb/facts/duckdb-null-concat.json) |
 | every | `date_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `time_interval_months` | raise | none | `DROP_MONTHS`, `ERROR` | not characterized | missing |  |
 | every | `list_null_order` | choose | `NULL` | `GREATEST` | shim `list_lt` (expression) | engine_test | tested: [duckdb-R11](../engines/duckdb/facts/duckdb-R11.json) |
@@ -144,10 +147,13 @@ Rows per evidence level:
 | every | `clustered` | open | `ADJACENT` | `ADJACENT` | shim `ORDER BY the keys` (sort) | proof | proved `Rel.duckdb_refines` |
 | every | `ntile_spread` | choose | `STANDARD` | `STANDARD` | not characterized | missing |  |
 | every | `float_to_int` | choose | `TRUNCATE` | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | not characterized | missing |  |
+| cast.num | `float_to_int` | choose | `TRUNCATE` | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO` | shim `trunc before the cast` (expression) | proof | proved `Lowering.duckdb_exact`; [duckdb-R9](../engines/duckdb/facts/duckdb-R9.json) |
 | every | `cast_failure` | raise | `THROW_EXCEPTION` | `THROW_EXCEPTION`, `RETURN_NULL` | not characterized | missing |  |
 | every | `distribution` | choose | `SAMPLE` | `SAMPLE`, `POPULATION` | not characterized | missing |  |
 | every | `empty_group_aggregates` | choose | `NULL` | `NULL` | native | probe | tested: [duckdb-sum-double](../engines/duckdb/facts/duckdb-sum-double.json), [duckdb-avg-int](../engines/duckdb/facts/duckdb-avg-int.json) |
 | every | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | fuzz | tested: [duckdb-R15-double-arith](../engines/duckdb/facts/duckdb-R15-double-arith.json) |
+| agg.var | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | probe | tested: [duckdb-double-overflow](../engines/duckdb/facts/duckdb-double-overflow.json) |
+| agg.stat | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | probe | tested: [duckdb-double-overflow](../engines/duckdb/facts/duckdb-double-overflow.json) |
 | every | `null_join_keys` | choose | `NO_MATCH` | `NO_MATCH` | native | probe | tested: [duckdb-null-keys](../engines/duckdb/facts/duckdb-null-keys.json) |
 | every | `string_positions` | choose | `ONE_BASED_CHARS` | `ONE_BASED_CHARS` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-string-match-case](../engines/duckdb/facts/duckdb-string-match-case.json), [duckdb-R13](../engines/duckdb/facts/duckdb-R13.json) |
 
@@ -174,7 +180,7 @@ Rows per evidence level:
 | every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | proof | proved `Lowering.polars_exact`; [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json), [polars-ieee-arith-macos-arm64](../engines/polars/facts/polars-ieee-arith-macos-arm64.json), [polars-ieee-arith-linux-x86-64](../engines/polars/facts/polars-ieee-arith-linux-x86-64.json) |
 | fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_TO_EVEN` | shim `round_half_away` (argument) | proof | proved `Polars.round_half_away`; [polars-round](../engines/polars/facts/polars-round.json) |
 | fp.div | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN`, `RECIPROCAL` | observed: within the plan's bound | probe | tested: [polars-scalar-divisor](../engines/polars/facts/polars-scalar-divisor.json) |
-| agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json), [polars-sum-float-streaming](../engines/polars/facts/polars-sum-float-streaming.json), [polars-mean-float-streaming](../engines/polars/facts/polars-mean-float-streaming.json), [polars-sum-float](../engines/polars/facts/polars-sum-float.json), [polars-mean-float](../engines/polars/facts/polars-mean-float.json) |
+| agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json), [polars-sum-float-streaming](../engines/polars/facts/polars-sum-float-streaming.json), [polars-mean-float-streaming](../engines/polars/facts/polars-mean-float-streaming.json) |
 | fp.log | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | probe | tested: [polars-log-base](../engines/polars/facts/polars-log-base.json), [polars-ulp-libm](../engines/polars/facts/polars-ulp-libm.json) |
 | every | `on_domain_error` | raise | `ERROR` | `NAN` | precondition: every argument is in its function's domain | proof | proved `Rel.polars_sound`; [polars-double-divide](../engines/polars/facts/polars-double-divide.json) |
 | int.div | `on_domain_error` | raise | `NAN`, `NULL`, `ERROR` | `NAN`, `NULL`, `ERROR` | native | proof | proved `Rel.polars_sound`; [polars-double-divide](../engines/polars/facts/polars-double-divide.json) |
@@ -196,13 +202,14 @@ Rows per evidence level:
 | every | `case_mapping` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | proof | proved `Lowering.polars_exact`; [polars-match-functions](../engines/polars/facts/polars-match-functions.json) |
 | every | `char_set` | choose | `UTF8` | `UTF8`, `ASCII_ONLY` | not characterized | missing |  |
-| every | `null_handling` | choose | `ACCEPT_NULLS` | `IGNORE_NULLS`, `ACCEPT_NULLS` | not characterized | missing |  |
+| every | `null_handling` | choose | `ACCEPT_NULLS` | none | not characterized | missing |  |
+| str.concat | `null_handling` | choose | `ACCEPT_NULLS` | `ACCEPT_NULLS` | native | proof | proved `Lowering.polars_exact`; [polars-concat](../engines/polars/facts/polars-concat.json) |
 | every | `date_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `time_interval_months` | raise | none | `DROP_MONTHS`, `ERROR` | not characterized | missing |  |
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
 | agg.order | `list_null_order` | choose | `GREATEST` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
-| every | `sum_order` | choose | `EXACT` | `SEQUENTIAL`, `ANY`, `COMPENSATED` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-sum-float](../engines/polars/facts/polars-sum-float.json), [polars-mean-float](../engines/polars/facts/polars-mean-float.json) |
-| every | `stat_algo` | choose | `EXACT` | `SCHUBERT_GERTZ` | observed: within the plan's bound | fuzz | tested: [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-cov](../engines/polars/facts/polars-cov.json), [polars-corr](../engines/polars/facts/polars-corr.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json) |
+| every | `sum_order` | choose | `EXACT` | `SEQUENTIAL`, `ANY` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [polars-sum-float-streaming](../engines/polars/facts/polars-sum-float-streaming.json), [polars-mean-float-streaming](../engines/polars/facts/polars-mean-float-streaming.json) |
+| every | `stat_algo` | choose | `EXACT` | `SCHUBERT_GERTZ` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.core_cov_polars`; [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-cov](../engines/polars/facts/polars-cov.json), [polars-corr](../engines/polars/facts/polars-corr.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json) |
 | agg.var | `stat_algo` | choose | `EXACT` | `SCHUBERT_GERTZ` | shim `nan_through` (expression) | proof | proved `FloatBounds.StdModel.core_var_polars`; [polars-var-std-streaming](../engines/polars/facts/polars-var-std-streaming.json), [polars-var-bound](../engines/polars/facts/polars-var-bound.json), [polars-var-pop-one-nan](../engines/polars/facts/polars-var-pop-one-nan.json) |
 | every | `window_sum_algo` | choose | `RECOMPUTE` | `RUNNING_ADD`, `TREE` | observed: within the plan's bound | probe | tested: [polars-window-agg](../engines/polars/facts/polars-window-agg.json), [polars-cum-sum-float](../engines/polars/facts/polars-cum-sum-float.json), [polars-fp-ieee](../engines/polars/facts/polars-fp-ieee.json) |
 | every | `stat_degenerate` | choose | `NULL` | `NULL`, `NAN`, `ERROR` | not characterized | missing |  |
@@ -214,10 +221,13 @@ Rows per evidence level:
 | every | `clustered` | open | `ADJACENT` | `ADJACENT` | shim `sort on the keys` (sort) | probe | tested: [polars-clustered](../engines/polars/facts/polars-clustered.json) |
 | every | `ntile_spread` | choose | `STANDARD` | `STANDARD` | not characterized | missing |  |
 | every | `float_to_int` | choose | `TRUNCATE` | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | not characterized | missing |  |
+| cast.num | `float_to_int` | choose | `TRUNCATE` | `TRUNCATE` | native | proof | proved `Rel.polars_sound`; [polars-cast-double-to-int](../engines/polars/facts/polars-cast-double-to-int.json) |
 | every | `cast_failure` | raise | `THROW_EXCEPTION` | `THROW_EXCEPTION`, `RETURN_NULL` | not characterized | missing |  |
 | every | `distribution` | choose | `SAMPLE` | `SAMPLE`, `POPULATION` | not characterized | missing |  |
 | every | `empty_group_aggregates` | choose | `NULL` | `ZERO` | shim `sum_empty_null` (expression) | proof | proved `Shim.sum_empty_null`; [polars-sum-int](../engines/polars/facts/polars-sum-int.json) |
 | every | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | proof | proved `Shim.makes_infinite`; [polars-double-arith](../engines/polars/facts/polars-double-arith.json) |
+| agg.var | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | proof | proved `Polars.agg_makes_infinite`; [polars-nonfinite-aggregates](../engines/polars/facts/polars-nonfinite-aggregates.json) |
+| agg.stat | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | proof | proved `Polars.agg_makes_infinite`; [polars-nonfinite-aggregates](../engines/polars/facts/polars-nonfinite-aggregates.json) |
 | every | `null_join_keys` | choose | `NO_MATCH` | `NO_MATCH` | native | probe | tested: [polars-null-keys](../engines/polars/facts/polars-null-keys.json) |
 | every | `string_positions` | choose | `ONE_BASED_CHARS` | none | not characterized | missing |  |
 | str.sub | `string_positions` | choose | `ONE_BASED_CHARS` | `ZERO_BASED_CHARS` | shim `substring_wrap` (expression) | proof | proved `Polars.substring_wrap`; [polars-substring](../engines/polars/facts/polars-substring.json) |
@@ -235,7 +245,7 @@ Refused on Polars, with no expression there:
 
 ## Spark 4.3.0
 
-5 shims (1 argument, 3 expression, 1 sort). Its run is proved sound by `Engine.spark_sound`, under `Engine.GuardFreeSide`.
+6 shims (1 argument, 4 expression, 1 sort). Its run is proved sound by `Engine.spark_sound`, under `Engine.SparkSide`.
 
 | Group | Option | Reference's tool | Reference | Spark | Case | Level | Evidence |
 |---|---|---|---|---|---|---|---|
@@ -244,19 +254,20 @@ Refused on Polars, with no expression there:
 | dec.arith | `overflow` | raise | `ERROR` | `ERROR` | shim `decimal_negate_sub` (expression) | proof | proved `Spark.decimal_negate_sub`; [spark-decimal-negate](../engines/spark/facts/spark-decimal-negate.json), [spark-decimal-arith](../engines/spark/facts/spark-decimal-arith.json) |
 | agg.isum | `overflow` | raise | `ERROR` | `ERROR` | shim `int_sum_decimal` (expression) | proof | proved `Shim.sum_empty_null`; [spark-sum-int](../engines/spark/facts/spark-sum-int.json), [spark-exec-parallel](../engines/spark/facts/spark-exec-parallel.json) |
 | int.div | `overflow` | raise | `ERROR` | `ERROR` | native | proof | proved `Rel.spark_sound`; [spark-int-divide](../engines/spark/facts/spark-int-divide.json) |
-| every | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `NULL`: not native | proof | proved `Rel.spark_sound`; [spark-int-divide](../engines/spark/facts/spark-int-divide.json), [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
-| fp.div | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `IEEE`, `NULL`, `LIMIT`: not native | proof | proved `Rel.spark_sound`; [spark-double-divide](../engines/spark/facts/spark-double-divide.json) |
-| every | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native | probe | tested: [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
-| int.div | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | fuzz | tested: [spark-int-divide](../engines/spark/facts/spark-int-divide.json) |
-| int.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | probe | tested: [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
-| fp.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | probe | tested: [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
-| every | `min_mod_neg_one` | choose | `ZERO` | `ZERO` | native | probe | tested: [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
+| every | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `NULL`: not native | proof | proved `Rel.spark_sound_or_raises`; [spark-int-divide](../engines/spark/facts/spark-int-divide.json), [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
+| fp.div | `on_division_by_zero` | raise | `ERROR` | `ERROR` | native; stated `IEEE`, `NULL`, `LIMIT`: not native | proof | proved `Rel.spark_sound_or_raises`; [spark-double-divide](../engines/spark/facts/spark-double-divide.json) |
+| every | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native | proof | proved `Rel.spark_sound`; [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
+| int.div | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | proof | proved `Rel.spark_sound`; [spark-int-divide](../engines/spark/facts/spark-int-divide.json) |
+| int.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | proof | proved `Rel.spark_sound`; [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
+| fp.mod | `division_type` | choose | `TRUNCATE` | `TRUNCATE` | native; stated `FLOOR`: not native | proof | proved `Rel.spark_sound`; [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
+| every | `min_mod_neg_one` | choose | `ZERO` | `ZERO` | native | proof | proved `Rel.spark_sound`; [spark-int-modulus](../engines/spark/facts/spark-int-modulus.json) |
 | every | `shift_range` | raise | `DROP_BITS` | `ERROR`, `ZERO`, `DROP_BITS` | not characterized | missing |  |
 | every | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native | probe | tested: [spark-decimal-arith](../engines/spark/facts/spark-decimal-arith.json) |
-| every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | fuzz | tested: [spark-double-arith](../engines/spark/facts/spark-double-arith.json) |
-| fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native; stated `TIE_TO_EVEN`: not native | fuzz | tested: [spark-round](../engines/spark/facts/spark-round.json) |
-| fp.atan2 | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | refused | fuzz | tested: [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json) |
-| fp.pow | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | refused | fuzz | tested: [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json) |
+| cast.dec | `decimal_rescale` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN`, `TRUNCATE` | shim `decimal_cast` (expression) | probe | tested: [spark-double-to-decimal](../engines/spark/facts/spark-double-to-decimal.json), [spark-decimal-arith](../engines/spark/facts/spark-decimal-arith.json) |
+| every | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | native | proof | proved `Rel.spark_sound`; [spark-double-arith](../engines/spark/facts/spark-double-arith.json) |
+| fp.round | `rounding` | choose | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` | native; stated `TIE_TO_EVEN`: not native | proof | proved `Rel.spark_sound`; [spark-round](../engines/spark/facts/spark-round.json) |
+| fp.atan2 | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | refused | proof | proved `Lowering.spark_refuses`; [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json) |
+| fp.pow | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | refused | proof | proved `Lowering.spark_refuses`; [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json) |
 | fp.elem | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | fuzz | tested: [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json), [spark-ulp-libm](../engines/spark/facts/spark-ulp-libm.json) |
 | fp.log | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | fuzz | tested: [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json), [spark-ulp-libm](../engines/spark/facts/spark-ulp-libm.json) |
 | agg.fsum | `rounding` | choose | `TIE_TO_EVEN` | `TIE_TO_EVEN` | observed: within the plan's bound | proof | proved `FloatBounds.StdModel.epsilon_sum_cr`; [spark-double-arith](../engines/spark/facts/spark-double-arith.json), [spark-sum-double](../engines/spark/facts/spark-sum-double.json), [spark-avg-double](../engines/spark/facts/spark-avg-double.json) |
@@ -266,20 +277,21 @@ Refused on Polars, with no expression there:
 | every | `on_log_zero` | raise | `ERROR` | `NAN`, `ERROR`, `MINUS_INFINITY` | not characterized | missing |  |
 | every | `nan_creation` | raise | `ERROR` | `NAN` | precondition: no operation makes a NaN of non-NaN values (∞ − ∞, 0 · ∞, ∞ / ∞, #257) | proof | proved `Rel.spark_sound`; [spark-double-arith](../engines/spark/facts/spark-double-arith.json), [spark-nonfinite-aggregates](../engines/spark/facts/spark-nonfinite-aggregates.json) |
 | every | `zero_sign` | choose | `ONE_ZERO` | `ONE_ZERO` | native | fuzz | tested: [spark-zero-sign](../engines/spark/facts/spark-zero-sign.json), [spark-zero-order](../engines/spark/facts/spark-zero-order.json) |
-| fp.atan2 | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | refused | fuzz | tested: [spark-zero-sign](../engines/spark/facts/spark-zero-sign.json), [spark-float-power-atan2](../engines/spark/facts/spark-float-power-atan2.json) |
-| fp.elem | `zero_sign` | choose | `ONE_ZERO` | `ONE_ZERO` | native | probe | tested: [spark-unary-zero-sign](../engines/spark/facts/spark-unary-zero-sign.json) |
-| every | `round_zero_sign` | open | `ANY` | `POSITIVE` | native | fuzz | tested: [spark-round](../engines/spark/facts/spark-round.json), [spark-floor-ceil-bigint](../engines/spark/facts/spark-floor-ceil-bigint.json) |
-| every | `pow_one_inf` | choose | `ONE` | `NAN` | refused | fuzz | tested: [spark-math-domain](../engines/spark/facts/spark-math-domain.json), [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json) |
+| fp.atan2 | `zero_sign` | choose | `ONE_ZERO` | `IEEE` | refused | proof | proved `Lowering.spark_refuses`; [spark-zero-sign](../engines/spark/facts/spark-zero-sign.json), [spark-float-power-atan2](../engines/spark/facts/spark-float-power-atan2.json) |
+| fp.elem | `zero_sign` | choose | `ONE_ZERO` | `ONE_ZERO` | native | proof | proved `Rel.spark_sound`; [spark-unary-zero-sign](../engines/spark/facts/spark-unary-zero-sign.json) |
+| every | `round_zero_sign` | open | `ANY` | `POSITIVE` | native | proof | proved `Rel.spark_sound`; [spark-round](../engines/spark/facts/spark-round.json), [spark-floor-ceil-bigint](../engines/spark/facts/spark-floor-ceil-bigint.json) |
+| every | `pow_one_inf` | choose | `ONE` | `NAN` | refused | proof | proved `Lowering.spark_refuses`; [spark-math-domain](../engines/spark/facts/spark-math-domain.json), [spark-elem-rounding](../engines/spark/facts/spark-elem-rounding.json) |
 | every | `nan_equality` | choose | `NAN_IS_NAN` | `NAN_IS_NAN` | native | probe | tested: [spark-nan-equality](../engines/spark/facts/spark-nan-equality.json) |
 | every | `nan_order` | choose | `GREATEST` | `GREATEST` | native | probe | tested: [spark-nan-order](../engines/spark/facts/spark-nan-order.json) |
 | every | `nan_kind` | choose | `ONE_NAN` | `IEEE` | observed: up to zeros canon | fuzz | tested: [spark-nan-sign](../engines/spark/facts/spark-nan-sign.json) |
-| every | `negative_start` | choose | `WRAP_FROM_END` | `WRAP_FROM_END` | native; stated `LEFT_OF_BEGINNING`: not native | fuzz | tested: [spark-substring](../engines/spark/facts/spark-substring.json) |
+| every | `negative_start` | choose | `WRAP_FROM_END` | `WRAP_FROM_END` | native; stated `LEFT_OF_BEGINNING`: not native | proof | proved `Rel.spark_sound`; [spark-substring](../engines/spark/facts/spark-substring.json) |
 | every | `substring_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `non_ascii_text` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `case_mapping` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
-| every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | probe | tested: [spark-match-functions](../engines/spark/facts/spark-match-functions.json) |
+| every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | proof | proved `Rel.spark_sound`; [spark-match-functions](../engines/spark/facts/spark-match-functions.json) |
 | every | `char_set` | choose | `UTF8` | `UTF8`, `ASCII_ONLY` | not characterized | missing |  |
-| every | `null_handling` | choose | `ACCEPT_NULLS` | `IGNORE_NULLS`, `ACCEPT_NULLS` | not characterized | missing |  |
+| every | `null_handling` | choose | `ACCEPT_NULLS` | none | not characterized | missing |  |
+| str.concat | `null_handling` | choose | `ACCEPT_NULLS` | `ACCEPT_NULLS` | native | proof | proved `Lowering.spark_exact_except`; [spark-concat](../engines/spark/facts/spark-concat.json) |
 | every | `date_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `time_interval_months` | raise | none | `DROP_MONTHS`, `ERROR` | not characterized | missing |  |
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
@@ -297,9 +309,12 @@ Refused on Polars, with no expression there:
 | every | `clustered` | open | `ADJACENT` | `ADJACENT` | shim `sort on the keys` (sort) | probe | tested: [spark-clustered](../engines/spark/facts/spark-clustered.json) |
 | every | `ntile_spread` | choose | `STANDARD` | `STANDARD` | not characterized | missing |  |
 | every | `float_to_int` | choose | `TRUNCATE` | `TRUNCATE`, `TIE_AWAY_FROM_ZERO`, `TIE_TO_EVEN` | not characterized | missing |  |
+| cast.num | `float_to_int` | choose | `TRUNCATE` | `TRUNCATE` | native | proof | proved `Rel.spark_sound`; [spark-cast-double-to-int](../engines/spark/facts/spark-cast-double-to-int.json) |
 | every | `cast_failure` | raise | `THROW_EXCEPTION` | `THROW_EXCEPTION`, `RETURN_NULL` | not characterized | missing |  |
 | every | `distribution` | choose | `SAMPLE` | `SAMPLE`, `POPULATION` | not characterized | missing |  |
 | every | `empty_group_aggregates` | choose | `NULL` | `NULL` | native | fuzz | tested: [spark-sum-int](../engines/spark/facts/spark-sum-int.json), [spark-sum-double](../engines/spark/facts/spark-sum-double.json) |
 | every | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | proof | proved `Shim.makes_infinite`; [spark-double-arith](../engines/spark/facts/spark-double-arith.json) |
+| agg.var | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | fuzz | tested: [spark-nonfinite-aggregates](../engines/spark/facts/spark-nonfinite-aggregates.json) |
+| agg.stat | `float_overflow` | raise | `ERROR` | `INFINITY` | precondition: no finite double operation overflows to ±∞: proved from the bounds, or checked on the data (#575) | fuzz | tested: [spark-nonfinite-aggregates](../engines/spark/facts/spark-nonfinite-aggregates.json) |
 | every | `null_join_keys` | choose | `NO_MATCH` | `NO_MATCH` | native | probe | tested: [spark-null-keys](../engines/spark/facts/spark-null-keys.json) |
-| every | `string_positions` | choose | `ONE_BASED_CHARS` | `ONE_BASED_CHARS` | native | fuzz | tested: [spark-strpos](../engines/spark/facts/spark-strpos.json), [spark-substring](../engines/spark/facts/spark-substring.json) |
+| every | `string_positions` | choose | `ONE_BASED_CHARS` | `ONE_BASED_CHARS` | native | proof | proved `Rel.spark_sound`; [spark-strpos](../engines/spark/facts/spark-strpos.json), [spark-substring](../engines/spark/facts/spark-substring.json) |

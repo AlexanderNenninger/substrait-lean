@@ -6,7 +6,8 @@
   "summary": {"agree": 0, "disagree": 0, "refused": 0, "skipped": 22},
   "agree_oracle_a_only": 0,
   "disagree_sides": {},
-  "skipped_files": {},
+  "skipped_files": {"types/alias/parquet_variant_cast.test": "require parquet"},
+  "refreshed": {"types/alias/parquet_variant_cast.test": "2.0.1"},
   "results": [
     {"file": "types/alias/nested_alias.test", "line": 11, "sql": "SELECT [42]::my_int_list", "cls": "skipped", "reason": "setting collation or macro"},
     {"file": "types/alias/test_alias_functions.test", "line": 8, "sql": "SELECT upper('hello'::str_alias)", "cls": "skipped", "reason": "setting collation or macro"},

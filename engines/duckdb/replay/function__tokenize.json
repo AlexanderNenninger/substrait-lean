@@ -7,6 +7,7 @@
   "agree_oracle_a_only": 0,
   "disagree_sides": {},
   "skipped_files": {"function/tokenize/operator_tokenize.test": "require no_extension_autoloading \"FIXME: autocomplete is not included in auto loading tests\"", "function/tokenize/simple_tokenize.test": "require no_extension_autoloading \"FIXME: autocomplete is not included in auto loading tests\""},
+  "refreshed": {"function/tokenize/simple_tokenize.test": "2.0.1"},
   "results": [
 
   ]

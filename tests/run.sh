@@ -33,7 +33,7 @@ for req in tests/contracts/*.json; do
   fi
 done
 # The generated lowerings (#241, #271): which constructs are native, which guarded.
-for engine in duckdb polars; do
+for engine in duckdb polars spark; do
   expected=tests/lowering/$engine.expected
   if [ "$engine" = duckdb ]; then
     actual=$("$bin" --lowering-coverage 2>&1; echo "[exit $?]")

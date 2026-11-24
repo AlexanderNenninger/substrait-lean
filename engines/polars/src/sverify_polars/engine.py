@@ -36,8 +36,8 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   the integer `AVG`, one zero, each sort key's NULL placement and stable
   ties. `SUM` and `AVG` of a group run as Polars's own aggregations, with
   those shims; Polars adds doubles in its own order (`sum_order`:
-  `SEQUENTIAL`, `ANY` or `COMPENSATED`), within the plan's bound of the
-  reference's correctly rounded sum (D25).
+  `SEQUENTIAL` or `ANY`, polars-sum-float-streaming), within the plan's bound
+  of the reference's correctly rounded sum (D25).
 * Runtime errors are the `Issue`s of `analysis/Sverify/Analysis/Safety.lean`, which a
   checked plan is proved free of. Each expression carries a per-row flag for
   each issue, masked by `CASE` as `Expr.issues` masks it (both sides of
@@ -2175,7 +2175,7 @@ class Measure:
             )
         if self.fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
             # `AggFn.var` (#54) with Polars's algorithm (`stat_algo =
-            # WELFORD_CHAN`, polars-var-std-streaming), within the plan's bound
+            # SCHUBERT_GERTZ`, polars-var-std-streaming), within the plan's bound
             # of the exact moments rounded once (D30); a sample of one is NULL
             # in both. An infinity makes
             # a deviation NaN (#257); finite values may overflow (#575).
@@ -2202,6 +2202,12 @@ class Measure:
                   f"{self.fn} of finite values: Polars's algorithm overflows to NaN")),
             )  # fmt: skip
         return None
+
+
+#: The aggregates whose algorithm the profile states for the streaming engine
+#: only (`sum_order`, `stat_algo`): refused beside a list in one grouping,
+#: which Polars runs on the in-memory engine.
+_STREAMED_ONLY = frozenset({"fsum", "avg", "var_samp", "var_pop", "std_samp", "std_pop"})
 
 
 @dataclass(frozen=True)
@@ -2935,6 +2941,15 @@ class Translator:
                 key = _float_key(v) if m.arg.dtype == pl.Float64 else v
                 v = key.unique(maintain_order=True)
             values.append(v)
+        if groups and values and (bad := [m.fn for m in ms if m.fn in _STREAMED_ONLY]):
+            # A list per group puts the whole grouping on the in-memory engine
+            # (`ALLOWED_FALLBACKS`), whose double sums are Kahan's
+            # (polars-sum-float) and whose variances its own (polars-var-std),
+            # which `sum_order` and `stat_algo` do not allow (#2411, #2507).
+            raise Unsupported(
+                f"{bad[0]} of doubles beside a list in one Polars grouping, which "
+                "Polars runs on the in-memory engine (polars-exec-streaming-fallback)"
+            )
         if groups and multiset:
             # A bag: the groups in any order, each key the class's canonical
             # value (`ordered`), with no row index and no `first()` per group.

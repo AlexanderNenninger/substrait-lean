@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 from sverify import _case_tables, _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
-from sverify._support import DUCKDB_ONLY, ISSUE_271
+from sverify._support import ISSUE_2540
 from sverify._unsupported import DECIMAL_38_38, DECIMAL_MOD_38, ISSUE_1725
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify.black_box import BlackBox
@@ -78,6 +78,8 @@ _RAISED: dict[str, GuardIssue] = {
     "domain error": "domain",
     "negative exponent": "negExponent",
     "integer overflow": "wraps",
+    # A date past the reference's calendar (`rangeIssue`, Spark's `date_add` template).
+    "overflow": "overflow",
 }
 
 
@@ -189,15 +191,20 @@ class Dialect:
     the model's exact one does not (ruling 200 A4(2)), so only the aggregates
     keep the check. `False` writes none."""
 
-    def to_duckdb(self, reason: str, issue: str = ISSUE_271, rewrite: str = "") -> Unsupported:
+    not_yet: ClassVar[str] = ISSUE_2540
+    """What this dialect's refusals of what its writer does not write yet
+    name: #2540, or the dialect's own."""
+
+    def to_duckdb(self, reason: str, issue: str | None = None, rewrite: str = "") -> Unsupported:
         """A refusal of this dialect for `reason`, where DuckDB's writer
         writes the construct: the exit is `rewrite` (a change to the plan),
         when there is one, or `engine="duckdb"`; `issue` tracks this
-        dialect's."""
+        dialect's (`not_yet` by default)."""
+        issue = issue or self.not_yet
         exit_ = f"{rewrite}, or run it" if rewrite else "run it"
         return Unsupported(f"{reason}: {exit_} with engine='duckdb' ({issue})")
 
-    def not_written(self, what: str, issue: str = ISSUE_271) -> Unsupported:
+    def not_written(self, what: str, issue: str | None = None) -> Unsupported:
         """The refusal of `what`, a construct this dialect's writer does not
         write yet (`to_duckdb`)."""
         return self.to_duckdb(f"the {self.name} writer does not write {what} yet", issue)
@@ -222,7 +229,7 @@ class Dialect:
     def fit_int(self, mode: str, bits: int, op: str, args: list[str]) -> str:
         """`overflow` = `mode` (`SILENT` or `SATURATE`) of `op` (`+`, `-`, `*`, or
         `-` negating one argument) at `bits` bits (`UnFn.fit`, #241)."""
-        raise self.not_written(f"overflow = {mode}", "see #271")
+        raise self.not_written(f"overflow = {mode}")
 
     def lowered(
         self, fn: str, args: list[str], kind: Kind, consts: Sequence[float | int | None] = ()
@@ -529,12 +536,12 @@ class Dialect:
     def float_to_int_or_null(self, x: str) -> str:
         """`TRY_CAST(x AS BIGINT)` (`UnFn.ftoiOrNull`, #58): truncation toward
         zero, NULL for NaN, ±inf and values outside 64 bits."""
-        raise Unsupported(f"TRY_CAST is not yet supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"TRY_CAST is not yet supported on {self.name}")
 
     def narrow_or_null(self, x: str, bits: int) -> str:
         """`TRY_CAST(x AS INT)` to `bits` bits (`UnFn.narrowOrNull`, #58): `x`,
         or NULL where it does not fit."""
-        raise Unsupported(f"TRY_CAST is not yet supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"TRY_CAST is not yet supported on {self.name}")
 
     def is_nan(self, x: str) -> str:
         """TRUE for NaN, NULL for NULL."""
@@ -630,15 +637,11 @@ class Dialect:
     def time_add(self, t: str, micros: int) -> str:
         """A time of day plus `0 ≤ micros` < a day, wrapping around midnight
         (`Time.timeOfDay` of the sum)."""
-        raise Unsupported(
-            f"a time of day plus an interval is not yet supported on {self.name}; " + DUCKDB_ONLY
-        )
+        raise self.to_duckdb(f"a time of day plus an interval is not yet supported on {self.name}")
 
     def time_trunc(self, unit: str, t: str) -> str:
         """`Time.trunc` of a time of day, to a unit of an hour or less."""
-        raise Unsupported(
-            f"truncating a time of day is not yet supported on {self.name}; " + DUCKDB_ONLY
-        )
+        raise self.to_duckdb(f"truncating a time of day is not yet supported on {self.name}")
 
     def time_of_day(self, ts: str) -> str:
         """`Time.timeOfDay`: the TIME of a timestamp."""
@@ -659,15 +662,11 @@ class Dialect:
 
     def date_time(self, d: str) -> str:
         """`UnFn.dateTime`: a DATE as the TIMESTAMP of its midnight (#807)."""
-        raise Unsupported(
-            f"a DATE as a TIMESTAMP is not yet supported on {self.name}; " + DUCKDB_ONLY
-        )
+        raise self.to_duckdb(f"a DATE as a TIMESTAMP is not yet supported on {self.name}")
 
     def epoch_us(self, ts: str) -> str:
         """`UnFn.epochUs`: a timestamp's microseconds since 1970-01-01 (#809)."""
-        raise Unsupported(
-            f"a timestamp's microseconds are not yet supported on {self.name}; " + DUCKDB_ONLY
-        )
+        raise self.to_duckdb(f"a timestamp's microseconds are not yet supported on {self.name}")
 
     def zero_pad(self, n: str, width: int) -> str:
         """The integer `n ≥ 0` in decimal, padded with zeros to `width` digits
@@ -792,27 +791,27 @@ class Dialect:
         """`source` joined with the elements of its list column `lst`, as
         `alias(e, i)`: element and 1-based position, no row for a NULL or
         empty list (`Rel.unnest`, #94)."""
-        raise Unsupported(f"unnest is not yet supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"unnest is not yet supported on {self.name}")
 
     def list_lit(self, items: list[str], kind: Lst) -> str:
         """A list literal of the SQL items, of kind `kind` (#94)."""
-        raise Unsupported(f"lists are not yet supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"lists are not yet supported on {self.name}")
 
     def list_element(self, x: str, offset: int) -> str:
         """`UnFn.listElement`: zero-based, from the end for a negative offset,
         NULL out of range (#94)."""
-        raise Unsupported(f"lists are not yet supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"lists are not yet supported on {self.name}")
 
     def cardinality(self, x: str) -> str:
         """`UnFn.cardinality`: the number of elements, NULL ones included."""
-        raise Unsupported(f"lists are not yet supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"lists are not yet supported on {self.name}")
 
     def list_fn(self, name: str, args: list[str]) -> str:
         """DuckDB's list functions (#810, #812): `list_prepend`,
         `list_concat`, `list_contains`, `list_position` (`BinFn` of the same
         names) and `flatten` (`UnFn.flatten`). New functions run on DuckDB
         only (#271)."""
-        raise Unsupported(f"{name} is not supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"{name} is not supported on {self.name}")
 
     def list_lt(self, a: str, b: str) -> str:
         """`Value.listLt3`: `a < b` of two lists, lexicographically; a proper
@@ -976,15 +975,13 @@ class Dialect:
         """`AggFn.pick` over the frame `w` (#811): the frame's first or last
         non-NULL value of `v` in the window's order, NULL without one
         (`FIRST_VALUE(v IGNORE NULLS)`). New on DuckDB only (#271)."""
-        raise Unsupported(f"{fn} over a window is not supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"{fn} over a window is not supported on {self.name}")
 
     def window_string_agg(self, v: str, sep: str, order: Sequence[str], w: str) -> str:
         """`AggFn.concat` over the frame `w` (#1915): the frame's non-NULL
         strings ordered by `order` (the window's sort keys), joined by `sep`; NULL without values.
         New on DuckDB only (#271)."""
-        raise Unsupported(
-            f"string_agg over a window is not supported on {self.name}; " + DUCKDB_ONLY
-        )
+        raise self.to_duckdb(f"string_agg over a window is not supported on {self.name}")
 
     def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
         """`AggFn.concat` (#55): the strings of the column `v`, NULLs skipped,
@@ -1026,7 +1023,7 @@ class Dialect:
     def float_extreme(self, fn: str, v: str, over: str) -> str:
         """`AggFn.min`/`max` (`fn` is `MIN` or `MAX`) of the doubles of `v`, over
         the window `over` or the group: by their codes, NaN above `+∞` (#371)."""
-        raise Unsupported(f"{fn} of doubles is not yet supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"{fn} of doubles is not yet supported on {self.name}")
 
     # Three-valued logic and comparisons (NULL-propagating)
 

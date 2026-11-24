@@ -1,0 +1,58 @@
+{
+  "id": "duckdb-struct-cast-by-name",
+  "engine": "duckdb",
+  "engine_version": "2.0.1",
+  "title": "A cast between struct types pairs the fields by name; 2.0.0 reported a failing one as an INTERNAL Error",
+  "verdict": "DuckDB casts `STRUCT(a, b)` to a struct of other field order by field name, at 2.0.0 and 2.0.1; a field that does not fit raises `Conversion Error ... out of range` at 2.0.1 and an `INTERNAL Error` (which invalidates the database) at 2.0.0",
+  "area": "casts",
+  "constructs": [
+    "CAST",
+    "TRY_CAST"
+  ],
+  "description": [
+    "The values are the same at both versions: `CAST(s AS STRUCT(b SMALLINT, a BIGINT))` of `{'a': 100000, 'b': 1}` is `{'b': 1, 'a': 100000}`, a target field the source lacks is NULL, a source field the target lacks is dropped, and `TRY_CAST` turns a field that does not fit into NULL. What moved is the error side (D70): `CAST(s AS STRUCT(b BIGINT, a SMALLINT))` raises `Conversion Error: Type INT32 with value 100000 can't be cast because the value is out of range for the target type INT16` at 2.0.1, and at 2.0.0 `INTERNAL Error: Scalar function \"__cast\" threw an execution error, but the function is not marked as can-throw`, after which the connection is invalidated. The 2.0.1 test `cast/struct_cast_can_throw.test` names the cause: the cast fallibility analysis paired the fields by position, where execution pairs them by name. The same holds for a struct inside a LIST or a MAP.",
+    "The core's struct kind carries field kinds without names, so a cast of a list of structs to a target of the same field kinds (`STRUCT(b SMALLINT, a INTEGER)[]` of `STRUCT(a INTEGER, b SMALLINT)[]`) is read as the identity: the Lean evaluator keeps the source values. A direct struct cast is refused by design (ruling 186, `Parse.lean`). The replay of `cast/struct_cast_can_throw.test` (`engines/duckdb/replay/cast.json`, ledger lines 901 and 902; test lines 79 and 84) gives `[{'b': 100000, 'a': 1}]` from the Lean evaluator, `[{'a': 100000, 'b': 1}]` from the engine run of the written plan, and DuckDB's `[{'b': 1, 'a': 100000}]` (or the conversion error). All three differ, and DuckDB's values are the same at both versions, so this is a gap of the lift and the model, not a 2.0.1 change (#2376); it is recorded here because the replay at 2.0.1 is where it shows."
+  ],
+  "reference": "A cast of a list of structs between targets of the same field kinds is the identity (the field names are not modelled), where DuckDB pairs the fields by name.",
+  "status": "deviation",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-22",
+      "method": "probe",
+      "checked_by": "session for #2045, duckdb 2.0.0 and 2.0.1 in Python, one connection per statement",
+      "evidence": [
+        {
+          "sql": "CREATE TABLE structs(s STRUCT(a INTEGER, b TINYINT)); INSERT INTO structs VALUES ({'a': 100000, 'b': 1}); SELECT CAST(s AS STRUCT(b BIGINT, a SMALLINT)) FROM structs",
+          "observed": "2.0.0: INTERNAL Error: Scalar function \"__cast\" threw an execution error, but the function is not marked as can-throw; 2.0.1: Conversion Error: Type INT32 with value 100000 can't be cast because the value is out of range for the target type INT16"
+        },
+        {
+          "sql": "SELECT CAST(s AS STRUCT(b SMALLINT, a BIGINT)) FROM structs",
+          "observed": "{'b': 1, 'a': 100000} at 2.0.0 and 2.0.1"
+        },
+        {
+          "sql": "SELECT TRY_CAST(s AS STRUCT(b BIGINT, a SMALLINT)) FROM structs",
+          "observed": "{'b': 1, 'a': NULL} at 2.0.0 and 2.0.1"
+        },
+        {
+          "sql": "SELECT CAST(l AS STRUCT(b SMALLINT, a BIGINT)[]) FROM struct_lists  -- l STRUCT(a INTEGER, b TINYINT)[] holding [{'a': 100000, 'b': 1}]",
+          "observed": "[{'b': 1, 'a': 100000}] at 2.0.0 and 2.0.1"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-22",
+      "method": "replay",
+      "checked_by": "session for #2045, `sverify_dev.slt --files` at duckdb 2.0.1",
+      "evidence": [
+        {
+          "file": "engines/duckdb/replay/cast.json"
+        }
+      ]
+    }
+  ],
+  "issues": [
+    2045,
+    2376
+  ]
+}

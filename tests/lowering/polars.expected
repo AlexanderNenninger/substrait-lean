@@ -45,9 +45,9 @@ UnFn.bucket	native
 UnFn.fmath	native
 UnFn.decimal	native
 UnFn.dkind	native
-UnFn.dround	native
+UnFn.dround	hand-built entry: Substrait.Polars.droundEntry
 UnFn.dtrunc	native
-UnFn.ftod	native
+UnFn.ftod	refused
 UnFn.dtof	native
 UnFn.structField	native
 UnFn.listElement	native

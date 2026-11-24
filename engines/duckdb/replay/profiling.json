@@ -1,0 +1,13 @@
+{
+  "duckdb": "2.0.1",
+  "source": "duckdb/duckdb@v2.0.1 (8d78114e90a53823803660bf821f6073ac87da8c)",
+  "license": "test/sql \u00a9 Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
+  "area": "profiling",
+  "summary": {"agree": 0, "disagree": 0, "refused": 0, "skipped": 0},
+  "agree_oracle_a_only": 0,
+  "disagree_sides": {},
+  "skipped_files": {"profiling/test_failed_query_profile.test": "require json", "profiling/test_io_time_metrics.test": "require parquet", "profiling/test_spilled_bytes_metric.test": "require json"},
+  "results": [
+
+  ]
+}
