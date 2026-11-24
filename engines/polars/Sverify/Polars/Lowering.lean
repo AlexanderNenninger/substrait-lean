@@ -48,6 +48,13 @@ theorem Lowering.polars_exact_except :
    fun f => by cases f <;> repeat (first | exact .inl rfl | exact .inr rfl | (rename_i a; cases a))⟩
 
 
+-- The hand-written entries are in the table, not the native call: a regeneration
+-- that drops `excluding [BinFn.bit]` (`scripts/RegenLoweringPolars.lean`) would
+-- make Polars's shifts, which it lacks, native again, and fails here.
+#guard letI := Boxes.Ambient.none
+  (Lowering.polars.bin (.bit .shl)).any (·.tmpl == Polars.shlTemplate) &&
+    (Lowering.polars.bin (.bit .shr)).any (·.tmpl == Polars.shrTemplate)
+
 /-- No entry is stated on doubles only (`Lowering.NoneOnDbl`). -/
 theorem Lowering.polars_noneOnDbl : Lowering.polars.NoneOnDbl :=
   ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
@@ -71,5 +78,28 @@ theorem Rel.polars_lowered_sound {cat : Catalog} {r r' : Rel}
 
 /-- The Polars table, exported: its entries that are not the native call. -/
 def Lowering.polarsTableJson : Lean.Json := LoweringExport.tableJson polarsOn
+
+/-- **What Polars's rendering of a function asks for** (ruling 282's C8, M4): the
+option and the behaviour its call states, written once. `round` is rendered
+`round(0, mode="half_away_from_zero")`, Polars's own function with its mode
+argument, which `Profile.polars` states (`Polars.negZeroT .fround`) and
+`sverify_polars.lowering` reads from this list (`--lowering-table`'s
+`"polars_asks"`). -/
+def Polars.asks : List (Functions.Ctor × String × Behaviour) :=
+  [(.un .fround, "rounding", "TIE_AWAY_FROM_ZERO")]
+
+-- Each ask is a behaviour Polars gives when asked, and the reference's (M2): the
+-- table and the rendering agree.
+#guard Polars.asks.all fun (c, o, b) => match Functions.rowOf c with
+  | some r => Profile.polars.table.allows r.group o [b] == [b] &&
+      Profile.reference.table.allows r.group o [] == [b]
+  | none => false
+
+/-- `Polars.asks` for Python: each function's name as the templates write it. -/
+def Lowering.polarsAsksJson : Lean.Json :=
+  Lean.Json.arr (Polars.asks.toArray.map fun (c, o, b) => Lean.Json.mkObj [
+    ("fn", Lean.Json.str (match c with
+      | .un f => LoweringExport.unName f | .bin f => LoweringExport.binName f | _ => "")),
+    ("option", Lean.Json.str o), ("behaviour", Lean.Json.str b)])
 
 end Substrait

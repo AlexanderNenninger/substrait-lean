@@ -669,8 +669,8 @@ def commands (entries : List EngineEntry) : List (Flag (Unit → IO UInt32)) :=
        return 0 },
    prints "--lowering-table" .tables
      "the DuckDB lowering's templates, Polars's under \"polars\" and Spark's under \"spark\", as JSON (#241, #271)" fun _ =>
-     ((Lowering.duckdbTableJson.setObjVal! "polars" Lowering.polarsTableJson).setObjVal! "spark"
-       Lowering.sparkTableJson).compress ++ "\n",
+     (((Lowering.duckdbTableJson.setObjVal! "polars" Lowering.polarsTableJson).setObjVal! "spark"
+       Lowering.sparkTableJson).setObjVal! "polars_asks" Lowering.polarsAsksJson).compress ++ "\n",
    prints "--lowering-cache" .tables "a new LoweringCache.lean from this build's coverage (#242)"
      fun _ => loweringCacheSource,
    prints "--lift-table" .tables "what each DuckDB SQL function lifts to, as JSON (#268)" fun _ =>

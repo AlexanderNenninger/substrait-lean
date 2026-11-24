@@ -2464,7 +2464,10 @@ class Windows:
             odd = self.total((x.is_infinite() | x.is_nan()).fill_null(False).cast(pl.Int64), fr)
             self.issues.append(issue(some & (odd == 0) & s.is_infinite(), InfiniteAggregate,
                                      f"{f.agg} overflows to infinity"))  # fmt: skip
-            return pl.when(some).then(s if f.agg == "fsum" else s / n)
+            # Polars returns a one-row frame's `-0.0` as its sum, where the reference's
+            # correctly rounded sum of an exact zero is `0.0` (ruling 285, #2587): one
+            # zero, as the grouped `float_sum` (`Shim.one_zero`).
+            return pl.when(some).then(shims.one_zero(s if f.agg == "fsum" else s / n))
         if f.agg in ("fmin", "fmax"):
             # By the codes' order: NaN above every double, and one zero.
             nan = self.total(v.is_nan().fill_null(False).cast(pl.Int64), fr)

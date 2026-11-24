@@ -67,19 +67,22 @@ PYTHONPATH=$(cd "$work/python/tools" && { pwd -W 2>/dev/null || pwd; })
 export PYTHONPATH
 cd "$work/python"
 
-# DuckDB at the version `uv.lock` locks: the engine facts are probed at one
-# version, and an install without the lock would take the newest.
-duckdb=$(awk '$0 == "name = \"duckdb\"" { getline; gsub(/[^0-9.]/, "", $3); print $3; exit }' "$here/uv.lock")
-[ -n "$duckdb" ] || { echo "wheel_tests.sh: no duckdb in uv.lock" >&2; exit 2; }
+# Each engine at the version `uv.lock` locks: the engine facts are probed at one version,
+# and an install without the lock would take the newest of its range (#2592).
+locked() {
+  awk -v n="\"$1\"" '$0 == "name = " n { getline; gsub(/[^0-9.]/, "", $3); print $3; exit }' "$here/uv.lock"
+}
 
 # The engine release canary (#2053) tests one engine release unpinned from the lock:
 # WHEEL_TESTS_ENGINE is its requirement (`duckdb==2.0.2`, `polars==2.1.1`), which replaces
-# DuckDB's pin or adds the engine's.
-pins=(--with "duckdb==$duckdb")
-if [ -n "${WHEEL_TESTS_ENGINE:-}" ]; then
-  case "$WHEEL_TESTS_ENGINE" in duckdb==*) pins=() ;; esac
-  pins+=(--with "$WHEEL_TESTS_ENGINE")
-fi
+# that engine's pin.
+pins=()
+for pkg in duckdb polars pyspark; do
+  v=$(locked "$pkg")
+  [ -n "$v" ] || { echo "wheel_tests.sh: no $pkg in uv.lock" >&2; exit 2; }
+  case "${WHEEL_TESTS_ENGINE:-}" in "$pkg"==*) ;; *) pins+=(--with "$pkg==$v") ;; esac
+done
+[ -z "${WHEEL_TESTS_ENGINE:-}" ] || pins+=(--with "$WHEEL_TESTS_ENGINE")
 
 # The test dependencies the installed package doesn't bring. Add one here
 # when a test needs it, or skip the test with `pytest.importorskip`.
