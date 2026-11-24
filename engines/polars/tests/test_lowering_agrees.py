@@ -36,11 +36,11 @@ def run(exprs: dict[str, pl.Expr], cols: dict[str, pl.Series]) -> dict[str, list
 
 
 def test_the_table_covers_what_polars_computes_its_own_way():
-    """`round`, `round_even`, `ceil`, integer `//` and `%` have templates; `%` of doubles has
-    no entry (refused); everything else is native, and `render` gives None."""
+    """`round`, `round_even`, `ceil`, integer `//` and `%` and `>>` have templates; `%` of
+    doubles has no entry (refused); everything else is native, and `render` gives None."""
     assert set(table_export.table("polars")) == {
         "Substrait.UnFn.fround", "Substrait.UnFn.froundEven", "Substrait.UnFn.fceil",
-        "idiv", "imod",
+        "idiv", "imod", "bit:bitwise_shift_right",
     }  # fmt: skip
     assert lowering.render("fadd", [pl.col("a"), pl.col("b")]) is None
 
@@ -71,6 +71,37 @@ def test_division_truncates():
     )
     assert got["div"] == [_tdiv(x, y) for x, y in pairs] + [None, None]
     assert got["mod"] == [x - y * _tdiv(x, y) for x, y in pairs] + [None, None]
+
+
+def test_shift_right_floors_and_raises_outside_0_to_63():
+    """`>>` is the arithmetic shift for every count 0–63 at the edges of 64
+    bits (`BitOp.apply`, `a >> k` in Python), raises on an integer shifted by
+    a count outside them, and is NULL where either argument is. Polars computes
+    every branch on every row: the counts outside `0`–`63` must not fail the
+    query (polars-int-pow-exponent)."""
+    values = [MIN, MIN + 1, -(2**62), -5, -1, 0, 1, 3, 2**62, MAX - 1, MAX]
+    counts = [*range(64), -1, -64, 64, 65, MIN, MAX]
+    pairs = [(a, k) for a in values for k in counts]
+    pairs += [(None, -1), (None, 3), (None, 64), (5, None), (None, None)]
+    cols = {
+        "a": pl.Series([a for a, _ in pairs], dtype=pl.Int64),
+        "k": pl.Series([k for _, k in pairs], dtype=pl.Int64),
+    }
+    raised: list[tuple[str, pl.Expr]] = []
+    out = lowering.render(
+        "bit:bitwise_shift_right",
+        [pl.col("a"), pl.col("k")],
+        lambda m, rows: raised.append((m, rows)),
+    )
+    assert out is not None and [m for m, _ in raised] == ["domain error"]
+    got = run({"v": out, "raises": raised[0][1]}, cols)
+
+    def ok(a: int | None, k: int | None) -> bool:
+        return a is None or k is None or 0 <= k < 64
+
+    assert got["v"] == [a >> k if ok(a, k) and a is not None and k is not None else None
+                        for a, k in pairs]  # fmt: skip
+    assert got["raises"] == [not ok(a, k) for a, k in pairs]
 
 
 def _round(x: float) -> float:
