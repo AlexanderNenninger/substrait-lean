@@ -16,8 +16,8 @@ reference's.
 Each call is written as `Profile.polars` states Polars computes it: `//` and
 `%` floor, `round` rounds halves away from zero (the `rounding` shim's
 argument, as `shims.round_half_away` writes it), the 128-bit `dadd` and
-`dsub` are exact on 64-bit operands, `&` is on 64 bits and `**` of integers is
-exact where the reference's does not raise. Native expressions only, no Python
+`dsub` are exact on 64-bit operands, and `&`, `+`, `-`, `*` and `**` of
+integers are Int64's, exact where the reference's do not raise. Native expressions only, no Python
 per row.
 
 A template's `raise` is no Polars expression: `render` gives the rows that
@@ -26,7 +26,8 @@ the translation turns into an issue flag (as `sverify.sql.lowering`'s `raise_`
 writes an `error(...)`), and the value there is `NULL`. Polars computes every
 branch of a `pl.when` on every row, so a template never calls a function that
 fails the query on a row its branch does not take: `>>` gives `**` an exponent
-in `0`–`62` only (`Polars.shrPow`, polars-int-pow-exponent).
+in `0`–`62` only (`Polars.shrPow`, polars-int-pow-exponent), whatever
+the other argument.
 
 This interpreter is trusted, as the SQL one is: keep it small.
 """
@@ -57,6 +58,11 @@ _BINARY: dict[str, Callable[[pl.Expr, pl.Expr], pl.Expr]] = {
     "imod": lambda a, b: a % b,
     "dadd": lambda a, b: _wide(a) + _wide(b),
     "dsub": lambda a, b: _wide(a) - _wide(b),
+    # Int64's `+`, `-`, `*`, which wrap past 64 bits (polars-int-arith): the
+    # profile raises there, and the templates call them only inside 64 bits.
+    "add": lambda a, b: a + b,
+    "sub": lambda a, b: a - b,
+    "Substrait.BinFn.mul": lambda a, b: a * b,
     "bit:bitwise_and": lambda a, b: a & b,
     "Substrait.BinFn.ipow": lambda a, b: a.pow(b),
 }

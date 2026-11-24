@@ -363,7 +363,7 @@ and CI runs that build as the guard. The modules below import it as
 | `Polars/Tables.lean` | Polars's choice table and observation rows, refining the core |
 | `Polars/Shims.lean` | The Polars shims, proved against a model of Polars's functions |
 | `Polars/Profile.lean` | `Profile.polars`, the semantics `semantics="polars"` will check under (pending, #2545): its floored `//` and `%`, and `round` and `ceil` with IEEE's `-0.0` |
-| `Polars/LoweringLemmas.lean` | The truncating `//` and `%` from Polars's floored ones, and `>>` from the floored `//` by `2ᵏ`, on every value (`Polars.idiv_agree`, `Polars.imod_agree`, `Polars.bit_shr_agree`) |
+| `Polars/LoweringLemmas.lean` | The truncating `//` and `%` from Polars's floored ones, and `>>` and `<<` in Polars's 64-bit functions, on every value (`Polars.idiv_agree`, `Polars.imod_agree`, `Polars.bit_shr_agree`, `Polars.bit_shl_agree`) |
 | `Polars/LoweringSchemas.lean` | Polars's hand-written template schemas, for the search |
 | `Polars/Lowering.lean` | The Polars lowering's table (partial: `%` of doubles refused), `Lowering.polars_exact`, `Rel.polars_lowered_sound` and its export |
 | `Polars/LoweringOn/*.lean` | The Polars lowering's entries, one module per area (generated) |

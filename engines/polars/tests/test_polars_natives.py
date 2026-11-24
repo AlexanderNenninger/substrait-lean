@@ -20,17 +20,6 @@ def _run(df: pl.DataFrame, expr: pl.Expr) -> list:
     return df.lazy().select(expr.alias("o")).collect(engine="streaming")["o"].to_list()
 
 
-def test_shift_left_is_pythons():
-    """`BitOp.shl` for every count 0–63 (polars-int-arith), at the edges of 64
-    bits. `>>` is the generated table's (`test_lowering_agrees.py`)."""
-    values = [0, 1, -1, 3, -5, 2**62, -(2**62), I64_MIN, I64_MAX, 123456789, -987654321]
-    rows = [(a, k) for a in values for k in range(64)]
-    df = pl.DataFrame({"a": [a for a, _ in rows], "k": [k for _, k in rows]},
-                      schema={"a": pl.Int64, "k": pl.Int64})  # fmt: skip
-    left = _run(df, E.shift_left(pl.col("a"), pl.col("k")))
-    assert left == [((a << k) + 2**63) % 2**64 - 2**63 for a, k in rows]
-
-
 def _doubles() -> list[float]:
     rng = random.Random(1270)
     edges = [0.0, -0.0, 0.5, -0.5, 1.5, 2.5, -2.5, 2.675, 1.005, 0.125, 1e-300, 5e-324]

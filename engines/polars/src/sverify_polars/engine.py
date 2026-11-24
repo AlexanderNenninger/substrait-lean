@@ -698,14 +698,6 @@ BITWISE = (
 )  # fmt: skip
 
 
-def shift_left(a: pl.Expr, k: pl.Expr) -> pl.Expr:
-    """`BitOp.shl` for `k` in 0–63: the bits shifted out are lost. Polars has
-    no shift (polars-int-shift); `a · 2^k` wraps at 64 bits (polars-int-arith),
-    which drops them, and `2^63` itself wraps to `-2^63`, the same factor
-    modulo `2^64`."""
-    return a * pl.lit(2, pl.Int64).pow(k.cast(pl.UInt32))
-
-
 def like_regex(p: str, fold: bool = False) -> str:
     """`Text.like`'s pattern, or with `fold` `Text.ilike`'s, as a regular
     expression of the `regex` crate (polars-regex): `%` any characters, `_`
@@ -1610,19 +1602,16 @@ class Exprs:
             if name in ("bitwise_and", "bitwise_or", "bitwise_xor"):
                 out = {"bitwise_and": x & y, "bitwise_or": x | y, "bitwise_xor": x ^ y}[name]
                 return Val(out, pl.Int64, issues(a, b))
-            if name == "bitwise_shift_right":
-                errs: list[Issue] = []
+            # `<<` and `>>` are the generated table's: Polars has no shift
+            # (polars-int-shift). Only a shift of an integer raises
+            # (`BinFn.issue`): `NULL >> -1` is NULL.
+            errs: list[Issue] = []
 
-                def raised(message: str, rows: pl.Expr) -> None:
-                    errs.append(issue(rows, RAISED[message], f"{name} outside its domain"))
+            def raised(message: str, rows: pl.Expr) -> None:
+                errs.append(issue(rows, RAISED[message], f"{name} outside its domain"))
 
-                out = lowered("bit:bitwise_shift_right", x, y, raise_=raised)
-                return Val(out, pl.Int64, (*issues(a, b), *errs))
-            # Only a shift of an integer raises (`BinFn.issue`): `NULL << -1` is NULL.
-            bad = x.is_not_null() & ((y < 0) | (y > 63))
-            n = pl.when(bad).then(0).otherwise(y)
-            shifted = pl.when(x.is_null() | n.is_null()).then(None).otherwise(shift_left(x, n))
-            return self.domain(bad, shifted, pl.Int64, name, a, b)
+            out = lowered(f"bit:{name}", x, y, raise_=raised).cast(pl.Int64)
+            return Val(out, pl.Int64, (*issues(a, b), *errs))
         floats = ("add", "subtract", "multiply", "divide", "divide_ieee", "modulus", "power")
         if name in floats and pl.Float64 in (ta, tb):
             if unify(ta, tb, name) != pl.Float64:

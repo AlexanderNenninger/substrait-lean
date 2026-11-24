@@ -36,11 +36,11 @@ def run(exprs: dict[str, pl.Expr], cols: dict[str, pl.Series]) -> dict[str, list
 
 
 def test_the_table_covers_what_polars_computes_its_own_way():
-    """`round`, `round_even`, `ceil`, integer `//` and `%` and `>>` have templates; `%` of
-    doubles has no entry (refused); everything else is native, and `render` gives None."""
+    """`round`, `round_even`, `ceil`, integer `//` and `%`, `<<` and `>>` have templates; `%`
+    of doubles has no entry (refused); everything else is native, and `render` gives None."""
     assert set(table_export.table("polars")) == {
         "Substrait.UnFn.fround", "Substrait.UnFn.froundEven", "Substrait.UnFn.fceil",
-        "idiv", "imod", "bit:bitwise_shift_right",
+        "idiv", "imod", "bit:bitwise_shift_left", "bit:bitwise_shift_right",
     }  # fmt: skip
     assert lowering.render("fadd", [pl.col("a"), pl.col("b")]) is None
 
@@ -73,35 +73,40 @@ def test_division_truncates():
     assert got["mod"] == [x - y * _tdiv(x, y) for x, y in pairs] + [None, None]
 
 
-def test_shift_right_floors_and_raises_outside_0_to_63():
-    """`>>` is the arithmetic shift for every count 0–63 at the edges of 64
-    bits (`BitOp.apply`, `a >> k` in Python), raises on an integer shifted by
-    a count outside them, and is NULL where either argument is. Polars computes
-    every branch on every row: the counts outside `0`–`63` must not fail the
-    query (polars-int-pow-exponent)."""
-    values = [MIN, MIN + 1, -(2**62), -5, -1, 0, 1, 3, 2**62, MAX - 1, MAX]
+def _shl(a: int, k: int) -> int:
+    """`BitOp.shl`: `a · 2ᵏ` wrapped at 64 bits."""
+    return ((a << k) + 2**63) % 2**64 - 2**63
+
+
+@pytest.mark.parametrize(
+    ("fn", "op"),
+    [("bit:bitwise_shift_left", _shl), ("bit:bitwise_shift_right", lambda a, k: a >> k)],
+    ids=["shl", "shr"],
+)
+def test_shifts_agree_and_raise_outside_0_to_63(fn, op):
+    """`<<` and `>>` are the reference's for every count 0–63 at the edges of 64
+    bits (`BitOp.apply`), raise on an integer shifted by a count outside them,
+    and are NULL where either argument is. Polars computes every branch on
+    every row: the counts outside `0`–`63` must not fail the query
+    (polars-int-pow-exponent)."""
+    values = [MIN, MIN + 1, -(2**62), -5, -1, 0, 1, 3, 2**62, 2**62 + 1, MAX - 1, MAX]
     counts = [*range(64), -1, -64, 64, 65, MIN, MAX]
-    pairs = [(a, k) for a in values for k in counts]
-    pairs += [(None, -1), (None, 3), (None, 64), (5, None), (None, None)]
+    pairs: list[tuple[int | None, int | None]] = [(a, k) for a in values for k in counts]
+    pairs += [(None, -1), (None, 3), (None, 64), (None, MIN), (5, None), (None, None)]
     cols = {
         "a": pl.Series([a for a, _ in pairs], dtype=pl.Int64),
         "k": pl.Series([k for _, k in pairs], dtype=pl.Int64),
     }
     raised: list[tuple[str, pl.Expr]] = []
-    out = lowering.render(
-        "bit:bitwise_shift_right",
-        [pl.col("a"), pl.col("k")],
-        lambda m, rows: raised.append((m, rows)),
-    )
+    out = lowering.render(fn, [pl.col("a"), pl.col("k")], lambda m, rows: raised.append((m, rows)))
     assert out is not None and [m for m, _ in raised] == ["domain error"]
-    got = run({"v": out, "raises": raised[0][1]}, cols)
+    got = run({"v": out.cast(pl.Int64), "raises": raised[0][1]}, cols)
 
-    def ok(a: int | None, k: int | None) -> bool:
-        return a is None or k is None or 0 <= k < 64
+    def want(a: int | None, k: int | None) -> int | None:
+        return None if a is None or k is None or not 0 <= k < 64 else op(a, k)
 
-    assert got["v"] == [a >> k if ok(a, k) and a is not None and k is not None else None
-                        for a, k in pairs]  # fmt: skip
-    assert got["raises"] == [not ok(a, k) for a, k in pairs]
+    assert got["v"] == [want(a, k) for a, k in pairs]
+    assert got["raises"] == [a is not None and k is not None and not 0 <= k < 64 for a, k in pairs]
 
 
 def _round(x: float) -> float:
