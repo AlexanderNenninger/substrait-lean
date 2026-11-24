@@ -35,8 +35,11 @@ FINITE = {"t": [_.f >= -1.5e308, _.f <= 1.5e308]}
 
 
 def _verify(shape: str) -> sv.Report:
-    requires = FINITE if shape.split("-")[0] in ("fsum", "variance") else None
-    return sv.verify(SHAPES[shape](), requires=requires, ensures=EXACT)
+    doubles = shape.split("-")[0] in ("fsum", "variance")
+    # An aggregate of doubles has no bound without a row cap, so exact doubles are not met
+    # on any engine (#2486); these tests are about the overflow check, not the doubles' lens.
+    ensures = [sv.equivalent(floats="plan")] if doubles else EXACT
+    return sv.verify(SHAPES[shape](), requires=FINITE if doubles else None, ensures=ensures)
 
 
 T = ibis.table({"a": "int64", "x": "int64", "f": "float64"}, name="t")

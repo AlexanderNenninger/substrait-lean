@@ -882,10 +882,11 @@ def _problem(engine: str, p: Mapping[str, Any], report: Report) -> str:
     col = p["column"]
     if code == "unbounded":
         why = f" ({p['why']})" if p.get("why") else ""
+        asks = stated.floats if isinstance(stated.floats, Within) else "exact doubles"
         text = (
             f"{col} has no bound on its distance to the reference{why}, and the "
-            f'postcondition asks {stated.floats}: state sv.equivalent(floats="plan") '
-            "or drop the tolerance"
+            f'postcondition asks {asks}: state sv.equivalent(floats="plan"), bound the '
+            "column with sv.max_rows(n) in requires, or run with unverified=True"
         )
         return f"{where}: {text}{cited}"
     if code == "held_unbounded":

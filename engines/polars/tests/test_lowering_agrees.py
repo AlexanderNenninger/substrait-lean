@@ -144,3 +144,19 @@ def test_rounding_gives_the_reference_value():
     want_ceil = [v if not math.isfinite(v) else math.ceil(v) + 0.0 for v in xs] + [None]
     assert all(same(p, q) for p, q in zip(got["round"], want_round, strict=True)), got["round"]
     assert all(same(p, q) for p, q in zip(got["ceil"], want_ceil, strict=True)), got["ceil"]
+
+
+def test_round_asks_half_away_from_zero_once():
+    """Ruling 282's C8 (M3): the mode of Polars's `round` is written once, in
+    `Polars.asks`, and the rendering carries it; Polars rounds half to even unless
+    asked (polars-round)."""
+    assert table_export.asks("polars") == {
+        ("Substrait.UnFn.fround", "rounding"): "TIE_AWAY_FROM_ZERO"
+    }
+    assert lowering._asked_mode("Substrait.UnFn.fround") == "half_away_from_zero"
+    # The ties tell the modes apart: half to even would give 0.0, 2.0 and -2.0.
+    got = run(
+        {"r": lowered("Substrait.UnFn.fround", pl.col("x"))},
+        {"x": pl.Series([0.5, 2.5, -2.5] * 400)},
+    )
+    assert got["r"][:3] == [1.0, 3.0, -3.0]
