@@ -474,7 +474,7 @@ end Example
 
 -- Every function the generated lowering writes natively reads the reference's
 -- behaviour from the table at each of its options (`nativeOffReference`, ruling
--- 278's addendum), but at the pending groups and options listed. Ruling 282 (F282)
+-- 278's addendum), but at the pending functions and options listed. Ruling 282 (F282)
 -- accepts the list: it only shrinks (the guard fails on a new entry and on a fixed
 -- one), and a pending function stays on the hand-written translation path until
 -- its entry is resolved. Each entry's class is ruling 282's: C1 a scope artefact,
@@ -482,23 +482,32 @@ end Example
 -- likely real.
 #guard letI := Boxes.Ambient.none
   nativeOffIs Profile.polars.table Lowering.polars.nativeUn Lowering.polars.nativeBin
-    [-- C1 for `not`, `and`, `or`, `isNull`, which read it only through their group;
-     -- C2 for `=`, `<`, `greatest`, `least` of doubles.
-     ("cmp", "zero_sign"),
+    [-- C1: `not`, `and`, `or`, `isNull` read `zero_sign` only through their group.
+     (.un .not, "zero_sign"), (.un .isNull, "zero_sign"), (.bin .and, "zero_sign"),
+     (.bin .or, "zero_sign"),
      -- C2: functions of doubles, whose zero the observation reads through canon.
-     ("fp.neg", "zero_sign"), ("fp.arith", "zero_sign"), ("fp.div", "zero_sign"),
-     ("fp.pow", "zero_sign"), ("fp.elem", "zero_sign"), ("fp.atan2", "zero_sign"),
+     (.un .fneg, "zero_sign"), (.bin .fadd, "zero_sign"), (.bin .fsub, "zero_sign"),
+     (.bin .fmul, "zero_sign"), (.bin .fdiv, "zero_sign"), (.bin .fpow, "zero_sign"),
+     (.bin .fatan2, "zero_sign"), (.bin .eq, "zero_sign"), (.bin .lt, "zero_sign"),
+     (.bin .greatest, "zero_sign"), (.bin .least, "zero_sign"),
+     (.un (.fmath .sqrt), "zero_sign"), (.un (.fmath .exp), "zero_sign"),
+     (.un (.fmath .sin), "zero_sign"), (.un (.fmath .cos), "zero_sign"),
+     (.un (.fmath .tan), "zero_sign"), (.un (.fmath .asin), "zero_sign"),
+     (.un (.fmath .acos), "zero_sign"), (.un (.fmath .atan), "zero_sign"),
      -- C3: `/` by a literal as `x · (1/c)`, carried in the plan's ε.
-     ("fp.div", "rounding"),
+     (.bin .fdiv, "rounding"),
      -- C4: `round(x, d)` half to even.
-     ("fp.round", "rounding"),
+     (.un (.froundTo 0), "rounding"),
      -- C4: zero-based characters and bytes.
-     ("str.match", "string_positions"), ("str.sub", "string_positions"),
+     (.bin .strpos, "string_positions"), (.bin .startsWith, "string_positions"),
+     (.bin .endsWith, "string_positions"), (.bin .like, "string_positions"),
+     (.bin (.substr none true), "string_positions"), (.un (.replace "" ""), "string_positions"),
      -- C4: a result past 38 digits that rescales.
-     ("dec.arith", "decimal_rescale"),
+     (.bin .dadd, "decimal_rescale"), (.bin .dsub, "decimal_rescale"),
+     (.bin .dmul, "decimal_rescale"),
      -- C4: a loose row whose first behaviour is `ERROR`.
-     ("int.shift", "shift_range"),
+     (.bin (.bit .shl), "shift_range"), (.bin (.bit .shr), "shift_range"),
      -- C4: a loose row whose first behaviour is `IGNORE_NULLS`.
-     ("str.concat", "null_handling")]
+     (.bin .concat, "null_handling")]
 
 end Substrait

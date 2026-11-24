@@ -71,9 +71,9 @@ function's group reads: this lists each pair of a native function and an
 option where `t` allows another
 behaviour (`extraAtB`), but where the reference raises (`refRaisesAt`), allows
 any behaviour (`refAnyAt`), or the loose choice delivers the reference's
-(`looseAtReference`). Each engine checks its list's groups and options
-(`nativeOffGroups`, a `#guard` in its `Engine.lean`) against those pending a
-ruling. Polars's decimal rescale was one, where `Profile.polars` stated the
+(`looseAtReference`). Each engine checks the list against the pairs pending a
+ruling (`nativeOffIs`, a `#guard` in its `Engine.lean`), function by function, so
+a function newly native in a pending group fails it too. Polars's decimal rescale was one, where `Profile.polars` stated the
 reference's cast while its table picked `TIE_TO_EVEN`. -/
 def nativeOffReference (t : ProfileTable) (un : UnFn → Bool) (bin : BinFn → Bool) :
     List (Functions.Ctor × String) :=
@@ -85,16 +85,11 @@ def nativeOffReference (t : ProfileTable) (un : UnFn → Bool) (bin : BinFn → 
       else none
     | none => []
 
-/-- The groups and options of `nativeOffReference`, each once. -/
-def nativeOffGroups (t : ProfileTable) (un : UnFn → Bool) (bin : BinFn → Bool) :
-    List (String × String) :=
-  ((nativeOffReference t un bin).map fun (c, o) =>
-    (((Functions.rowOf c).map (·.group)).getD "", o)).eraseDups
-
-/-- Are `nativeOffGroups t un bin` exactly the pairs `pending` lists? -/
+/-- Are `nativeOffReference t un bin` exactly the pairs of a function and an
+option that `pending` lists? -/
 def nativeOffIs (t : ProfileTable) (un : UnFn → Bool) (bin : BinFn → Bool)
-    (pending : List (String × String)) : Bool :=
-  let off := nativeOffGroups t un bin
+    (pending : List (Functions.Ctor × String)) : Bool :=
+  let off := nativeOffReference t un bin
   off.length == pending.length && off.all pending.contains
 
 /-- The native functions whose group reads an option: those `nativeOffReference`
