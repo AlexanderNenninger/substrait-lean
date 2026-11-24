@@ -121,7 +121,7 @@ def test_a_double_to_bigint_truncates(monkeypatch, table):
     want = [3, -3, 2, -2, 0, 0, 2, -2]
     con = duckdb.connect()
     for write in (D.float_to_int, D.float_to_int_or_null):
-        got = [con.execute(f"SELECT {write(f'CAST({x!r} AS DOUBLE)')}").fetchone()[0] for x in xs]
-        assert got == want, write.__name__
+        got = [con.execute(f"SELECT {write(f'CAST({x!r} AS DOUBLE)')}").fetchone() for x in xs]
+        assert got == [(w,) for w in want], write.__name__
     nan = "CAST('NaN' AS DOUBLE)"
     assert con.execute(f"SELECT {D.float_to_int_or_null(nan)}").fetchone() == (None,)
