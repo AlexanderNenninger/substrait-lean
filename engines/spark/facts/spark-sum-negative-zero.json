@@ -1,0 +1,42 @@
+{
+  "id": "spark-sum-negative-zero",
+  "engine": "spark",
+  "engine_version": "4.3.0",
+  "title": "SUM and AVG of only `-0.0` give `+0.0`",
+  "verdict": "+0.0 in every case",
+  "area": "aggregates",
+  "constructs": [
+    "SUM",
+    "AVG",
+    "SUM OVER",
+    "AVG OVER"
+  ],
+  "settings": {
+    "platform": "macOS arm64",
+    "spark.sql.ansi.enabled": "true"
+  },
+  "description": [
+    "`SUM` and `AVG` of `{-0.0}` and `{-0.0, -0.0}`, ungrouped, grouped, over a partition and as a running window, under ANSI, all give `+0.0`, the reference's value."
+  ],
+  "reference": "The reference's SUM is D25's exact sum rounded once (`floatSumCR`), so a sum of only -0.0 is the exact zero, +0.0; AVG divides it, +0.0 (ruling 285, F285). `agg.fsum` reads no `zero_sign`.",
+  "status": "no-finding",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-24",
+      "method": "probe",
+      "checked_by": "session types-casts (#2587, ruling 285 F2), engines/polars/probes/negzero_sum.py",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/negzero_sum.py",
+          "sql": "SUM and AVG of a double column holding {-0.0} and {-0.0, -0.0}: ungrouped, GROUP BY, a PARTITION window and a running window",
+          "observed": "+0.0 in all 14 cases"
+        }
+      ],
+      "notes": "spark 4.3.0 Python package, macOS arm64, Python 3.12."
+    }
+  ],
+  "issues": [
+    2587
+  ]
+}

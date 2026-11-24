@@ -23,6 +23,7 @@ import sqlglot
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from _repo import needs_repo
 from sverify._fired import fired_check
 from sverify.engine import connect, put_table, run_plan, substrait_json, written_plan
 from sverify.sql import Unsupported, to_sql
@@ -137,6 +138,7 @@ def _reads(node) -> list:
     return []
 
 
+@needs_repo  # the fixtures are the repository's `tests/fixtures`
 @pytest.mark.parametrize(
     "name", ["df_asof", "df_order_by", "df_order_by_limit", "df_window", "union_fetch"]
 )

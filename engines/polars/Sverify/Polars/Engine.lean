@@ -217,8 +217,6 @@ theorem Profile.polars_bin_ok {f : BinFn} {t : Expr} (ht : f.polarsTmpl = some t
   simp only [Profile.polars, ht] at h
   exact Expr.evalP_reference_ok h
 
-theorem Polars.apply_lt_int (x y : Int) :
-    BinFn.apply .lt (.int x) (.int y) = .bool (decide (x < y)) := rfl
 theorem Polars.apply_add_int (x y : Int) : BinFn.apply .add (.int x) (.int y) = .int (x + y) := rfl
 theorem Polars.apply_sub_int (x y : Int) : BinFn.apply .sub (.int x) (.int y) = .int (x - y) := rfl
 theorem Polars.apply_idiv_ne {x y : Int} (hy : y ≠ 0) :
@@ -405,9 +403,12 @@ theorem Lowering.polars_un_tmpl (f : UnFn) (en : UnEntry Profile.polars f)
 
 theorem Lowering.polars_bin_tmpl (f : BinFn) (en : BinEntry Profile.polars f)
     (h : Lowering.polars.bin f = some en) : Functions.Ctor.bin .fmod ∉ en.tmpl.ctors := by
-  cases f <;> simp only [Lowering.polars, polarsOn, Option.some.injEq, reduceCtorEq] at h <;>
+  cases f <;> (try cases ‹BitOp›) <;>
+    simp only [Lowering.polars, polarsOn, Option.some.injEq, reduceCtorEq] at h <;>
     subst h <;>
     simp [BinEntry.native, BinEntry.ofAgree, Expr.ctors, Polars.idivTemplate, Polars.imodTemplate,
+      Polars.bitAndT, Polars.bitOrT, Polars.bitXorT, Polars.shlTemplate, Polars.shrTemplate,
+      Polars.shlLow, Polars.shlK, Polars.shrOutside, Polars.shrPow,
       Polars.dmodTemplate]
 
 /-- **Polars's lowering calls no `%` of doubles** (R1): the table has no entry
@@ -518,9 +519,7 @@ end Example
      -- C4: zero-based characters and bytes.
      (.bin .strpos, "string_positions"), (.bin (.substr none true), "string_positions"),
      -- C4: Polars's `*` of decimals rounds to `max(s₁, s₂)` half to even.
-     (.bin .dmul, "decimal_rescale"),
-     -- C4: a loose row whose first behaviour is `ERROR`.
-     (.bin (.bit .shl), "shift_range"), (.bin (.bit .shr), "shift_range")]
+     (.bin .dmul, "decimal_rescale")]
     -- C7: `+` and `-` of decimals are at `max(s₁, s₂)` on Polars and never rescale.
     [(.bin .dadd, "decimal_rescale", "polars-decimal-arith"),
      (.bin .dsub, "decimal_rescale", "polars-decimal-arith")]

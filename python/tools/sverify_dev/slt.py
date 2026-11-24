@@ -1261,15 +1261,6 @@ class Known:
 #: `engines/duckdb/tests/test_unexplained.py` fails on a `disagree` entry of a
 #: ledger that none matches, and on an entry here that no ledger needs.
 KNOWN: tuple[Known, ...] = (
-    # DuckDB widens an integer SUM to HUGEINT; the reference raises past i64.
-    Known(
-        "duckdb-R6",
-        (
-            "aggregate/aggregates/test_sum.test",
-            "aggregate/aggregates/test_sum_fastpath.test",
-            "sql_export/aggregate_results.test",
-        ),
-    ),
     # Two SUMs in one query: the written plan's tagged check raises (the sum leaves 64 bits, as
     # DuckDB's HUGEINT sum does), and the harness cannot tell which of the two listed issues
     # raised (`checked.AMBIGUOUS`, ruling 236, C1). One SUM of the same shape agrees (#2162).

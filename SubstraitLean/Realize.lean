@@ -414,7 +414,7 @@ def EpsCol.positive (e : EpsCol) : Bool := e.bounds.any fun (_, v, _) => v.manti
 /-- What a bound that rows give per plan (`"floats": {"bound": "plan"}`) meets or misses of
 the postcondition (`_plan_bound`): the problems, as data for Python to word. -/
 inductive PProb
-  /-- A column with no bound, under a stated tolerance. -/
+  /-- A column with no bound, under a stated tolerance or exact doubles (#2486). -/
   | unbounded (col : String) (why : Option String)
   /-- A column a postcondition reads, held to the reference's exact value: the condition's index. -/
   | held (col : String) (cond : Nat)
@@ -432,7 +432,7 @@ def planBound (stated : Fl) (eps : List (String × EpsCol)) (held : List (String
     if e.unbounded then
       -- A tolerance is not met; a postcondition that reads the column is held to a value
       -- the engine's is only near (#1045), as for a column with a bound.
-      let ps := match stated with | .within _ => ps ++ [(.unbounded col e.why, e)] | _ => ps
+      let ps := match stated with | .plan => ps | _ => ps ++ [(.unbounded col e.why, e)]
       (match held.lookup col with | some i => ps ++ [(.heldUnbounded col i e.why, e)] | none => ps, true)
     else if !e.positive then (ps, unp)
     else match held.lookup col with
@@ -450,7 +450,7 @@ def planBound (stated : Fl) (eps : List (String × EpsCol)) (held : List (String
 largest. `plan` where none does. -/
 def planTol (eps : List (String × EpsCol)) : Fl :=
   let found := (eps.map (·.2)).filter (·.positive)
-  let kinds := epsKinds.filter fun k => !found.isEmpty && found.all fun e => e.bounds.any (·.1 == k)
+  let kinds := if eps.any (·.2.unbounded) then [] else epsKinds.filter fun k => !found.isEmpty && found.all fun e => e.bounds.any (·.1 == k)
   if kinds.isEmpty then .plan
   else
     let most (k : String) : Option Lean.JsonNumber :=
@@ -459,7 +459,7 @@ def planTol (eps : List (String × EpsCol)) : Fl :=
           | none => some v | some w => if w.toRat < v.toRat then some v else some w) none
     .within { abs := if kinds.contains "abs" then most "abs" else none
               rel := if kinds.contains "rel" then most "rel" else none
-              ulps := if kinds.contains "ulps" then (most "ulps").map fun n => n.toRat.floor.toNat
+              ulps := if kinds.contains "ulps" then (most "ulps").map fun n => n.toRat.ceil.toNat
                 else none }
 
 /-- Every bound of every column is proved, and there is a column (`_all_proved`). -/

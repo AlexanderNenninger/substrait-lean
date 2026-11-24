@@ -5,6 +5,7 @@ import Sverify.Polars.LoweringOn.Native
 import Sverify.Polars.LoweringOn.Math
 import Sverify.Polars.LoweringOn.Other
 import Sverify.Polars.LoweringOn.Integers
+import Sverify.Polars.LoweringOn.Bits
 
 /-!
 # Substrait.polarsOn: the table
@@ -122,7 +123,11 @@ def Substrait.polarsOn : Substrait.Lowering (Substrait.Profile.polars) :=
     | Substrait.BinFn.dateDiff  => some (Substrait.polarsOn.dateDiff )
     | Substrait.BinFn.fatan2  => some (Substrait.polarsOn.fatan2 )
     | Substrait.BinFn.flogb  => some (Substrait.polarsOn.flogb )
-    | Substrait.BinFn.bit a0 => some (Substrait.polarsOn.bit a0)
+    | Substrait.BinFn.bit Substrait.BitOp.and => some Substrait.polarsOn.bit_and
+    | Substrait.BinFn.bit Substrait.BitOp.or => some Substrait.polarsOn.bit_or
+    | Substrait.BinFn.bit Substrait.BitOp.xor => some Substrait.polarsOn.bit_xor
+    | Substrait.BinFn.bit Substrait.BitOp.shl => some Substrait.polarsOn.bit_shl
+    | Substrait.BinFn.bit Substrait.BitOp.shr => some Substrait.polarsOn.bit_shr
     | Substrait.BinFn.dadd  => some (Substrait.polarsOn.dadd )
     | Substrait.BinFn.dsub  => some (Substrait.polarsOn.dsub )
     | Substrait.BinFn.dmul  => some (Substrait.polarsOn.dmul )
@@ -227,7 +232,11 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("BinFn.dateDiff", "native", 0),
   ("BinFn.fatan2", "native", 0),
   ("BinFn.flogb", "native", 0),
-  ("BinFn.bit", "native", 0),
+  ("BinFn.bit .and", "hand-written schema: native: #0 & #1", 0),
+  ("BinFn.bit .or", "hand-written schema: native: #0 | #1", 0),
+  ("BinFn.bit .xor", "hand-written schema: native: #0 ^ #1", 0),
+  ("BinFn.bit .shl", "hand-written schema: shl: error outside 0-63, else the low 63-k bits of #0 & -1 times 2^k, the next bit the sign", 0),
+  ("BinFn.bit .shr", "hand-written schema: shr: error outside 0-63, else (#0 & -1) // 2^#1 floored", 0),
   ("BinFn.dadd", "native", 0),
   ("BinFn.dsub", "native", 0),
   ("BinFn.dmul", "native", 0),
