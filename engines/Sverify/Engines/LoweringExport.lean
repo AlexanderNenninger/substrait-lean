@@ -63,7 +63,9 @@ def floorJson : Json :=
 
 /-- The constructs a table's export looks at: every function with finite
 parameters, from the types themselves (`finite_values%`). A function with an
-infinite parameter (a message, a decimal scale) is native in every table. -/
+infinite parameter (a message, a decimal scale) is left out: native, refused, or
+hand-built (Polars's decimal rescale, `Polars.droundEntry`), and the
+translations write it themselves. -/
 def unFns : List UnFn := finite_values% UnFn
 def binFns : List BinFn := finite_values% BinFn
 

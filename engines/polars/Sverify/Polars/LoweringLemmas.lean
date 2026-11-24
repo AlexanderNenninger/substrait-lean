@@ -11,7 +11,10 @@ floored and truncated agree, and handles operands of opposite signs with
 exact arithmetic (`dadd`, `dsub`, the 128-bit integers of decimals), so no
 step raises where the reference gives a value, on integers of any width.
 `round` and `ceil` are `Lowering.froundTemplate` and `fceilTemplate`
-(`Polars.fround_agree`, `Polars.fceil_agree`).
+(`Polars.fround_agree`, `Polars.fceil_agree`). A decimal cast to a smaller
+scale, which rounds half to even on Polars, is `Polars.droundAwayT`, the
+reference's half away from zero from Polars's truncation (`Polars.droundEntry`,
+ruling 278's addendum).
 -/
 
 namespace Substrait
@@ -337,6 +340,78 @@ theorem imod_agree (x y : Value) :
     case int b => exact imodTemplate_int a b
     all_goals exact imodTemplate_notInt (.inr fun _ h => by cases h)
   all_goals exact imodTemplate_notInt (.inl fun _ h => by cases h)
+
+/-! ## A decimal cast to a smaller scale: half away from zero (ruling 278's addendum) -/
+
+/-- The reference's decimal cast to a scale `k` digits smaller, from Polars's
+functions, as `shims.decimal_round_half_away` writes it: `x ± 10ᵏ/2` in 128-bit
+integers (`dadd`, `dsub`), by `x`'s sign, truncated toward zero (`dtrunc`).
+Polars's own cast rounds half to even (`Profile.polars`, polars-decimal-casts).
+The sign is that of `x + 0`, `x`'s unscaled value as an integer. -/
+def droundAwayT (k : Nat) : Expr :=
+  let h : Expr := .lit (.int ((10 ^ k / 2 : Nat) : Int))
+  .ifThen (.bin .lt (.bin .dadd (.field 0) (.lit (.int 0))) (.lit (.int 0)))
+    (.un (.dtrunc k) (.bin .dsub (.field 0) h)) (.un (.dtrunc k) (.bin .dadd (.field 0) h))
+
+omit [Boxes.Ambient] in
+/-- `roundDiv10` through truncation: `i ± 10ᵏ/2`, by `i`'s sign, truncated
+toward zero. -/
+theorem roundDiv10_tdiv (k : Nat) (i : Int) :
+    roundDiv10 k i = if i < 0 then (i - ((10 ^ k / 2 : Nat) : Int)).tdiv (10 ^ k)
+      else (i + ((10 ^ k / 2 : Nat) : Int)).tdiv (10 ^ k) := by
+  have hp : ((10 ^ k : Nat) : Int) = 10 ^ k := by norm_cast
+  unfold roundDiv10
+  generalize 10 ^ k / 2 = H
+  by_cases hi : i < 0
+  · have hn : (i.natAbs : Int) = -i := Int.ofNat_natAbs_of_nonpos (by omega)
+    have e : i - (H : Int) = -((i.natAbs + H : Nat) : Int) := by push_cast; omega
+    simp only [hi, ↓reduceIte, e, Int.neg_tdiv, ← hp, Int.neg_inj]
+    exact Int.ofNat_tdiv _ _
+  · have hn : (i.natAbs : Int) = i := Int.natAbs_of_nonneg (by omega)
+    have e : i + (H : Int) = ((i.natAbs + H : Nat) : Int) := by push_cast; omega
+    simp only [hi, ↓reduceIte, e, ← hp]
+    exact Int.ofNat_tdiv _ _
+
+theorem apply_dadd_of {x : Value} {i : Int} (hx : x.unscaled? = some i) (j : Int) :
+    BinFn.apply .dadd x (.int j) = .int (i + j) := by
+  cases x <;> simp only [Value.unscaled?, Option.some.injEq, reduceCtorEq] at hx <;> subst hx <;> rfl
+
+theorem apply_dsub_of {x : Value} {i : Int} (hx : x.unscaled? = some i) (j : Int) :
+    BinFn.apply .dsub x (.int j) = .int (i - j) := by
+  cases x <;> simp only [Value.unscaled?, Option.some.injEq, reduceCtorEq] at hx <;> subst hx <;> rfl
+
+/-- `droundAwayT` of a decimal or an integer is the reference's rescale of its
+unscaled value. -/
+theorem droundAwayT_eval (k : Nat) {x : Value} {i : Int} (hx : x.unscaled? = some i) :
+    (droundAwayT k).evalP Profile.polars [x] = .ok (.int (roundDiv10 k i)) := by
+  have hdt : ∀ j : Int, Profile.polars.un (.dtrunc k) (.int j) = .ok (.int (j.tdiv (10 ^ k))) :=
+    fun _ => rfl
+  have hadd : ∀ j : Int, Profile.polars.bin .dadd x (.int j) = .ok (.int (i + j)) := fun j => by
+    show Profile.reference.bin .dadd x (.int j) = _
+    rw [Lowering.ref_dadd, apply_dadd_of hx]
+  have hsub : ∀ j : Int, Profile.polars.bin .dsub x (.int j) = .ok (.int (i - j)) := fun j => by
+    show Profile.reference.bin .dsub x (.int j) = _
+    rw [Lowering.ref_dsub, apply_dsub_of hx]
+  simp only [droundAwayT, Expr.evalP, List.getD_cons_zero, Outcome.ok_bind, hadd, hsub,
+    polars_lt_int, hdt, isTrue_bool, Int.add_zero, roundDiv10_tdiv]
+  by_cases hi : i < 0 <;> simp [hi]
+
+/-- **Polars's lowering of a decimal cast to a smaller scale** (`droundAwayT`)
+agrees with the reference's on every value: the shim
+`decimal_round_half_away`, which `Polars.decimal_round_half_away` proves of the
+written expression. -/
+theorem dround_agree (k : Nat) (x : Value) :
+    ((droundAwayT k).evalP Profile.polars [x]).Agree (Profile.reference.un (.dround k) x) := by
+  cases x
+  case int i => rw [droundAwayT_eval k (i := i) rfl]; rfl
+  case dec s i => rw [droundAwayT_eval k (i := i) rfl]; rfl
+  all_goals rfl
+
+/-- **Polars's entry for a decimal cast to a smaller scale**, hand-built: the
+generator's search does not reach `droundAwayT`, whose literals depend on the
+scale (`LoweringSearch.polarsSchemas`). Exact on every value. -/
+def droundEntry (k : Nat) : UnEntry Profile.polars (.dround k) :=
+  .ofAgree (droundAwayT k) (by simp [droundAwayT, Expr.must]) (dround_agree k)
 
 end Polars
 

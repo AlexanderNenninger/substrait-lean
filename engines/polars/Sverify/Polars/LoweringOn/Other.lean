@@ -36,3 +36,6 @@ abbrev Substrait.polarsOn.froundEven : Substrait.UnEntry Substrait.Profile.polar
   (Substrait.Lowering.froundEvenTemplate)
   (by exact Substrait.Lowering.froundEvenTemplate_must) Substrait.polarsOn.froundEven_agree
 
+abbrev Substrait.polarsOn.dround : (k : Nat) → Substrait.UnEntry Substrait.Profile.polars (Substrait.UnFn.dround k) :=
+  Substrait.Polars.droundEntry
+

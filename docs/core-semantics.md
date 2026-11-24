@@ -349,7 +349,11 @@ decimal of scale `s`: the reference rounds the double product `x · 10ˢ` half a
 from zero, and Substrait leaves open both which value is rounded and how (ST-8,
 ruling 278). Each engine's profile states its own: Polars rounds the product half
 to even, and Spark's native cast rounds the double's shortest decimal text, within
-one unit of the product's rounding. The other decimal casts have no row yet: to a
+one unit of the product's rounding. Polars rounds `dround` half to even too, and
+DuckDB and Spark half away from zero, as the reference does (ruling 278's addendum,
+[#2566](https://github.com/AlexanderNenninger/substrait-lean/issues/2566)). A
+lowering writes a function natively only where its engine's table gives the
+reference's behaviour at each option the function reads (`nativeOffReference`). The other decimal casts have no row yet: to a
 larger scale and from an integer they are exact, and a decimal to a double
 (`dtof`) is correctly rounded.
 `tests/test_functions.py` checks this table against `Functions.groups`.
