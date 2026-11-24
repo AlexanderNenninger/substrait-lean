@@ -716,8 +716,8 @@ def _plan_bound(
             if isinstance(stated, Within):
                 problems.append(
                     f"{col} has no bound on its distance to the reference{why}, and the "
-                    f'postcondition asks {stated}: state sv.equivalent(floats="plan") '
-                    "or drop the tolerance"
+                    f'postcondition asks {stated}: state sv.equivalent(floats="plan"), bound '
+                    "the column with sv.max_rows(n) in requires, or drop the tolerance"
                 )
             continue
         if not any(v for v, _ in bounds.values()):
