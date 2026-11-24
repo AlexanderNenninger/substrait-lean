@@ -39,17 +39,17 @@ the tables only. The shim count per engine is D9's measure of few shims.
 
 | Engine | Version | Sound by | Under | Shims | native | observed | observed (tolerance) | precondition | refused | not characterized | Refused functions |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 10 | 25 | 1 | 4 | 6 | 0 | 15 | 0 |
-| Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 15 | 14 | 1 | 6 | 10 | 2 | 17 | 7 |
-| Spark | 4.3.0 | `Engine.spark_sound` | `Engine.SparkSide` | 6 | 28 | 1 | 7 | 5 | 5 | 16 | 0 |
+| DuckDB | 2.0.0 | `Engine.duckdb_sound` | `Engine.NoRaiseSide` | 10 | 26 | 1 | 4 | 6 | 0 | 15 | 0 |
+| Polars | 2.1.0 | `Engine.polars_sound` | `Engine.GuardFreeSide` | 15 | 15 | 1 | 6 | 10 | 2 | 17 | 7 |
+| Spark | 4.3.0 | `Engine.spark_sound` | `Engine.SparkSide` | 6 | 29 | 1 | 7 | 5 | 5 | 16 | 0 |
 
 Rows per evidence level:
 
 | Engine | proof | fuzz | probe | engine_test | source | docs | missing |
 |---|---|---|---|---|---|---|---|
-| DuckDB | 26 | 1 | 18 | 2 | 0 | 0 | 15 |
-| Polars | 39 | 0 | 12 | 0 | 0 | 0 | 17 |
-| Spark | 35 | 8 | 9 | 0 | 0 | 0 | 16 |
+| DuckDB | 27 | 1 | 18 | 2 | 0 | 0 | 15 |
+| Polars | 40 | 0 | 12 | 0 | 0 | 0 | 17 |
+| Spark | 36 | 8 | 9 | 0 | 0 | 0 | 16 |
 
 ## Shims
 
@@ -128,7 +128,8 @@ Rows per evidence level:
 | every | `case_mapping` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-string-match-case](../engines/duckdb/facts/duckdb-string-match-case.json) |
 | every | `char_set` | choose | `UTF8` | `UTF8`, `ASCII_ONLY` | not characterized | missing |  |
-| every | `null_handling` | choose | `ACCEPT_NULLS` | `IGNORE_NULLS`, `ACCEPT_NULLS` | not characterized | missing |  |
+| every | `null_handling` | choose | `ACCEPT_NULLS` | none | not characterized | missing |  |
+| str.concat | `null_handling` | choose | `ACCEPT_NULLS` | `ACCEPT_NULLS` | native | proof | proved `Lowering.duckdb_exact`; [duckdb-null-concat](../engines/duckdb/facts/duckdb-null-concat.json) |
 | every | `date_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `time_interval_months` | raise | none | `DROP_MONTHS`, `ERROR` | not characterized | missing |  |
 | every | `list_null_order` | choose | `NULL` | `GREATEST` | shim `list_lt` (expression) | engine_test | tested: [duckdb-R11](../engines/duckdb/facts/duckdb-R11.json) |
@@ -201,7 +202,8 @@ Rows per evidence level:
 | every | `case_mapping` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | proof | proved `Lowering.polars_exact`; [polars-match-functions](../engines/polars/facts/polars-match-functions.json) |
 | every | `char_set` | choose | `UTF8` | `UTF8`, `ASCII_ONLY` | not characterized | missing |  |
-| every | `null_handling` | choose | `ACCEPT_NULLS` | `IGNORE_NULLS`, `ACCEPT_NULLS` | not characterized | missing |  |
+| every | `null_handling` | choose | `ACCEPT_NULLS` | none | not characterized | missing |  |
+| str.concat | `null_handling` | choose | `ACCEPT_NULLS` | `ACCEPT_NULLS` | native | proof | proved `Lowering.polars_exact`; [polars-concat](../engines/polars/facts/polars-concat.json) |
 | every | `date_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `time_interval_months` | raise | none | `DROP_MONTHS`, `ERROR` | not characterized | missing |  |
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |
@@ -288,7 +290,8 @@ Refused on Polars, with no expression there:
 | every | `case_mapping` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `case_sensitivity` | choose | `CASE_SENSITIVE` | `CASE_SENSITIVE` | native | proof | proved `Rel.spark_sound`; [spark-match-functions](../engines/spark/facts/spark-match-functions.json) |
 | every | `char_set` | choose | `UTF8` | `UTF8`, `ASCII_ONLY` | not characterized | missing |  |
-| every | `null_handling` | choose | `ACCEPT_NULLS` | `IGNORE_NULLS`, `ACCEPT_NULLS` | not characterized | missing |  |
+| every | `null_handling` | choose | `ACCEPT_NULLS` | none | not characterized | missing |  |
+| str.concat | `null_handling` | choose | `ACCEPT_NULLS` | `ACCEPT_NULLS` | native | proof | proved `Lowering.spark_exact_except`; [spark-concat](../engines/spark/facts/spark-concat.json) |
 | every | `date_range` | raise | `ERROR` | `ERROR`, `COMPUTE` | not characterized | missing |  |
 | every | `time_interval_months` | raise | none | `DROP_MONTHS`, `ERROR` | not characterized | missing |  |
 | every | `list_null_order` | choose | `NULL` | `NULL`, `GREATEST`, `LEAST` | not characterized | missing |  |

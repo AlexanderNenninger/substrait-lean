@@ -127,11 +127,6 @@ EXCLUDED: dict[str, str] = {
         "the query takes 13-17 s against the replay's 10 s DuckDB timeout: it agrees "
         "on a fast machine and is interrupted (refused) on CI's runners"
     ),
-    "join/asof/test_asof_join_list_partition_key.test": (
-        "two ASOF joins on list keys, condensed to 1,000 rows, take 63 s each on homelab and "
-        "100-120 s on CI's runners: the file passes the replay's 300 s timeout there, so it is "
-        "skipped (the 2.0.1 replay of #2045 recorded it as agree)"
-    ),
 }
 
 
