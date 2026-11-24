@@ -2,6 +2,8 @@
 
 ## 0.9.0 (2026-11-23)
 
+Known issue: a `RANK`, a top-n or a window partition over a double `SUM` or `AVG` can be reported proved on Polars and Spark, although the engine may order near-equal sums differently ([#2573](https://github.com/AlexanderNenninger/substrait-lean/issues/2573)). It is present since 0.8.0, and the fix is planned for 0.9.1.
+
 The last release before 1.0's candidate: the public API has one name for each concept, with no deprecated aliases, the exit codes run from the best to the worst, each engine is an extra of its own, and every format sverify writes is bumped once. "Breaking changes" collects what a job has to change, and the breaking entries follow it, before the others.
 
 ### Breaking changes
