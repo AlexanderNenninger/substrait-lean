@@ -78,16 +78,6 @@ abbrev Substrait.polarsOn.ffloor : Substrait.UnEntry Substrait.Profile.polars Su
   Substrait.UnEntry.native Substrait.UnFn.ffloor
   (Substrait.Lowering.un_agree_of_eq Substrait.polarsOn.ffloor_native)
 
-theorem Substrait.polarsOn.froundTo_native : ∀ (d : Int) (x : Substrait.Value),
-  Substrait.Profile.un Substrait.Profile.polars (Substrait.UnFn.froundTo d) x =
-    Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.froundTo d) x := by
-  native_tac
-
-abbrev Substrait.polarsOn.froundTo : (d : Int) → Substrait.UnEntry Substrait.Profile.polars (Substrait.UnFn.froundTo d) :=
-  fun d =>
-  Substrait.UnEntry.native (Substrait.UnFn.froundTo d)
-    (Substrait.Lowering.un_agree_of_eq (Substrait.polarsOn.froundTo_native d))
-
 theorem Substrait.polarsOn.ftoi_native : ∀ (x : Substrait.Value),
   Substrait.Profile.un Substrait.Profile.polars Substrait.UnFn.ftoi x =
     Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.ftoi x := by

@@ -367,10 +367,19 @@ theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polar
 
 theorem Lowering.polars_un_tmpl (f : UnFn) (en : UnEntry Profile.polars f)
     (h : Lowering.polars.un f = some en) : Functions.Ctor.bin .fmod ∉ en.tmpl.ctors := by
-  cases f <;> simp only [Lowering.polars, polarsOn, Option.some.injEq, reduceCtorEq] at h <;>
-    subst h <;>
-    simp [UnEntry.native, UnEntry.ofAgree, Expr.ctors, Lowering.froundTemplate, Lowering.froundEvenTemplate,
-      Lowering.fceilTemplate, Lowering.zeroTemplate, Polars.droundEntry, Polars.droundAwayT]
+  -- `round(x, d)`'s entry is partial (`Polars.froundToEntry`): native where it is some.
+  cases f
+  case froundTo d =>
+    simp only [Lowering.polars, polarsOn, Substrait.polarsOn.froundTo, Polars.froundToEntry] at h
+    split at h
+    · simp only [Option.some.injEq] at h; subst h; simp [UnEntry.native, UnEntry.ofAgree, Expr.ctors]
+    · cases h
+  all_goals
+    simp only [Lowering.polars, polarsOn, Option.some.injEq, reduceCtorEq] at h <;>
+      subst h <;>
+      simp [UnEntry.native, UnEntry.ofAgree, Expr.ctors, Lowering.froundTemplate,
+        Lowering.froundEvenTemplate, Lowering.fceilTemplate, Lowering.zeroTemplate, Polars.droundEntry,
+        Polars.droundAwayT]
 
 theorem Lowering.polars_bin_tmpl (f : BinFn) (en : BinEntry Profile.polars f)
     (h : Lowering.polars.bin f = some en) : Functions.Ctor.bin .fmod ∉ en.tmpl.ctors := by
@@ -481,9 +490,7 @@ end Example
 -- the observation row absorbs (C2, C3); what is left is ruling 282's C4, likely real.
 #guard letI := Boxes.Ambient.none
   nativeOffIs Profile.polars.table Profile.polars.obs Lowering.polars.nativeUn Lowering.polars.nativeBin
-    [-- C4: `round(x, d)` half to even.
-     (.un (.froundTo 0), "rounding"),
-     -- C4: zero-based characters and bytes.
+    [-- C4: zero-based characters and bytes.
      (.bin .strpos, "string_positions"), (.bin (.substr none true), "string_positions"),
      -- C4: Polars's `*` of decimals rounds to `max(s₁, s₂)` half to even.
      (.bin .dmul, "decimal_rescale"),
@@ -492,5 +499,7 @@ end Example
     -- C7: `+` and `-` of decimals are at `max(s₁, s₂)` on Polars and never rescale.
     [(.bin .dadd, "decimal_rescale", "polars-decimal-arith"),
      (.bin .dsub, "decimal_rescale", "polars-decimal-arith")]
+    -- C8: `round(x, d)` asks for half away from zero (`Polars.asks`).
+    Polars.asks
 
 end Substrait
