@@ -3,7 +3,7 @@
 > Sverify is a working prototype. Its Lean proofs, its checker and its Python
 > code still need a human audit before anyone relies on their results.
 >
-> [How this project is built](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-this-is-built.md)
+> [How this project is built](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-this-is-built.md)
 > says who writes it and what you can check yourself.
 
 Sverify proves a data pipeline's contracts in Lean before it runs, keeps the
@@ -14,10 +14,10 @@ It finds the bugs that tests on sample data miss:
 
 * A duplicate that arrives late, or a payment that is reversed, in an incremental job ([the tour's first notebook](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/published/notebooks/01_duplicate_payments.py)).
 * Ties and NaN readings that change a window's result, and SQL that only runs alike on some engines ([second notebook](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/published/notebooks/02_sensor_alerts.py)).
-* A dbt test on a point-in-time join to a type-2 dimension, proved as a contract, and the promises a left join's NULL padding breaks ([third notebook](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/published/notebooks/03_orders_mart.py), [what a left join keeps](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/proved-theorems.md#contracts)).
-* Division by zero, integer overflow and bad casts ([the runtime-error theorems](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/proved-theorems.md#runtime-errors)).
+* A dbt test on a point-in-time join to a type-2 dimension, proved as a contract, and the promises a left join's NULL padding breaks ([third notebook](https://molab.marimo.io/github/AlexanderNenninger/substrait-lean/blob/published/notebooks/03_orders_mart.py), [what a left join keeps](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proved-theorems.md#contracts)).
+* Division by zero, integer overflow and bad casts ([the runtime-error theorems](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/proved-theorems.md#runtime-errors)).
 
-[How sverify compares](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/comparison.md) with dbt tests, Great Expectations, Soda and data contracts says what it does not do.
+[How sverify compares](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/comparison.md) with dbt tests, Great Expectations, Soda and data contracts says what it does not do.
 
 ## In thirty lines
 
@@ -58,7 +58,7 @@ print(big_orders.report)
 
 `print(big_orders.report.details())` goes on with the evidence for each engine, and `sverify check` prints the same contract.
 A postcondition that does not follow is refused before anything runs, with the precondition that would make it hold
-([Contracts](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-contracts.md)).
+([Contracts](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-contracts.md)).
 
 ## Install
 
@@ -70,18 +70,18 @@ pip install 'sverify[all]'         # with every engine in the 1.x promise and bo
 ```
 
 Linux and macOS (Python 3.12 and later); Windows through WSL2.
-[Install](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-install.md) has the extras, the wheels and the nightly builds.
+[Install](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-install.md) has the extras, the wheels and the nightly builds.
 
-In CI, `sverify check pipelines/orders.py` proves every transform and node in the file and exits 0 when all are proved, 1 when one is not, and 3 when a construct is outside sverify's model; `--format sarif` writes a report for GitHub's code scanning ([the command line](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-command-line.md#the-command-line)).
+In CI, `sverify check pipelines/orders.py` proves every transform and node in the file and exits 0 when all are proved, 1 when one is not, and 3 when a construct is outside sverify's model; `--format sarif` writes a report for GitHub's code scanning ([the command line](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-command-line.md#the-command-line)).
 
 ## Go on from here
 
-* [Getting started](https://alexandernenninger.github.io/substrait-lean/examples/examples.html), ten steps from a first contract to Substrait's own semantics, and [the tour](https://github.com/AlexanderNenninger/substrait-lean/tree/v0.9.0/notebooks), three guides that run locally with `uvx marimo edit --sandbox notebooks`.
-* [The how-to pages](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/tasks.md), one task each, and [what sverify proves](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/what-sverify-proves.md).
+* [Getting started](https://alexandernenninger.github.io/substrait-lean/examples/examples.html), ten steps from a first contract to Substrait's own semantics, and [the tour](https://github.com/AlexanderNenninger/substrait-lean/tree/main/notebooks), three guides that run locally with `uvx marimo edit --sandbox notebooks`.
+* [The how-to pages](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/tasks.md), one task each, and [what sverify proves](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/what-sverify-proves.md).
 * [The site](https://alexandernenninger.github.io/substrait-lean/): the API reference of the released version, the [ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/) of upstream bugs and engine facts, and [skills](https://alexandernenninger.github.io/substrait-lean/skills.html) for coding agents.
-* [Status](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/stability.md#status) and the [repository](https://github.com/AlexanderNenninger/substrait-lean), to work on sverify.
+* [Status](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#status) and the [repository](https://github.com/AlexanderNenninger/substrait-lean), to work on sverify.
 
 ## License
 
-Sverify is licensed under the [Mozilla Public License 2.0](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/LICENSE) (MPL-2.0), file by file: your own code stays yours, and a modified version of sverify's own files stays under the MPL with its source shared.
-`python/src/sverify/ibis_substrait/` is derived from [ibis-substrait](https://github.com/ibis-project/ibis-substrait) and stays under the [Apache License 2.0](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/python/src/sverify/ibis_substrait/LICENSE).
+Sverify is licensed under the [Mozilla Public License 2.0](https://github.com/AlexanderNenninger/substrait-lean/blob/main/LICENSE) (MPL-2.0), file by file: your own code stays yours, and a modified version of sverify's own files stays under the MPL with its source shared.
+`python/src/sverify/ibis_substrait/` is derived from [ibis-substrait](https://github.com/ibis-project/ibis-substrait) and stays under the [Apache License 2.0](https://github.com/AlexanderNenninger/substrait-lean/blob/main/python/src/sverify/ibis_substrait/LICENSE).

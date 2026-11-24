@@ -1,6 +1,6 @@
 [project]
 name = "sverify"
-version = "0.9.0"
+version = "0.10.0.dev0"
 description = "Contracts and incremental views, proven in Lean, on DuckDB, Polars, Spark and Snowflake"
 readme = "README.md"
 # MPL-2.0 for sverify; the vendored `ibis_substrait` keeps its Apache-2.0.
@@ -16,7 +16,7 @@ dependencies = [
     # DuckDB's engine package (`engines/duckdb/`, #1189), released with sverify
     # at its version, without DuckDB itself: it writes DuckDB's SQL, which
     # `verify` needs. Running plans on DuckDB is the `duckdb` extra (#1288).
-    "sverify-duckdb==0.9.0",
+    "sverify-duckdb==0.10.0.dev0",
     "ibis-framework>=12.0.0",
     # Ibis imports both unconditionally (its Arrow formats, its SQL compilers);
     # only its DuckDB extra brought them.
@@ -39,16 +39,16 @@ dependencies = [
 # DuckDB is a package of its own (`engines/duckdb/`, #1189), released with
 # sverify at its version; `run` brings `duckdb`. Ibis reads and writes tables
 # through its DuckDB backend.
-duckdb = ["sverify-duckdb[run]==0.9.0", "ibis-framework[duckdb]>=12.0.0"]
+duckdb = ["sverify-duckdb[run]==0.10.0.dev0", "ibis-framework[duckdb]>=12.0.0"]
 # Polars is a package of its own (`engines/polars/`, #1189), released with
 # sverify at its version; `run` brings `polars` and `numpy`. A connection on
 # Polars holds Arrow tables and needs no DuckDB (#1764).
-polars = ["sverify-polars[run]==0.9.0"]
+polars = ["sverify-polars[run]==0.10.0.dev0"]
 # Spark is a package of its own (`engines/spark/`, #1189), released with
 # sverify at its version; `run` brings PySpark. Spark runs plans over a
 # connection's tables but does not hold them (it is not a local engine), so a
 # connection needs DuckDB or Polars: this extra brings DuckDB (#1764).
-spark = ["sverify-spark[run]==0.9.0", "sverify[duckdb]"]
+spark = ["sverify-spark[run]==0.10.0.dev0", "sverify[duckdb]"]
 delta = ["deltalake>=1.6.6"]
 # `sql-sqlite` opens a local catalog (`IcebergSink(catalog="sqlite:///...")`).
 iceberg = ["pyiceberg[pyarrow,sql-sqlite]>=0.12.0"]
