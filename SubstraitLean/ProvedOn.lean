@@ -127,18 +127,37 @@ theorem check_guardFreeSide {input : Json} {R : Request} {rep : Report}
   R.guardFreeSide hD hT hsm (by rwa [(Request.check_ok (check_parse hR hc)).guardFree] at hg)
 
 /-- **A proved postcondition holds on Polars's model**: proved, closed and
-guard-free in the report, on the plan Polars's table lowers. -/
+guard-free in the report, for a plan Polars's table lowers exactly (the
+report's `exact_lowering`, false where the plan multiplies decimals), on the
+plan the table lowers (ruling 277's first branch). -/
 theorem check_proved_on_polars {input : Json} {R : Request} {rep : Report}
     (hR : parse input = .ok R) (hc : check input = .ok rep)
     {data : Catalog} (hD : DataMeets R data)
     {T : Plan} (hT : R.transform = some T) {k : Nat} {p : Post} (hp : R.posts[k]? = some p)
     (hproved : ∀ e ∈ rep.ensures.getD k [], e.2.1 = true) (hclosed : rep.closed = true)
-    (hsm : T.root.Small data) (hg : rep.guardFree = true) {r' : Rel}
+    (hsm : T.root.Small data) (hg : rep.guardFree = true)
+    (hx : T.root.ExactOnB Lowering.polars = true) {r' : Rel}
     (hr : Lowering.polars.lowerRel? T.root = .ok r') :
     ∀ row ∈ postRows p.exprs p.mapping (r'.eval data Engine.polars.impl),
       ∀ v ∈ row, v = .bool true :=
   check_proved_on Engine.polars_sound hR hc hD hT hp hproved hclosed
-    (by simp [Engine.polars, hr, Except.toOption]) (check_guardFreeSide hR hc hD hT hsm hg)
+    (by simp [Engine.polars, hr, Except.toOption]) (.inl ⟨hx, check_guardFreeSide hR hc hD hT hsm hg⟩)
+
+/-- **A proved postcondition holds on Polars's model where the lowered plan
+does not raise**: proved and closed in the report, on the plan Polars's table
+lowers with every guard kept (ruling 277's second branch: a plan with a
+decimal multiply, whose guard may raise where the reference has a value). -/
+theorem check_proved_on_polars_or_raises {input : Json} {R : Request} {rep : Report}
+    (hR : parse input = .ok R) (hc : check input = .ok rep)
+    {data : Catalog} (hD : DataMeets R data)
+    {T : Plan} (hT : R.transform = some T) {k : Nat} {p : Post} (hp : R.posts[k]? = some p)
+    (hproved : ∀ e ∈ rep.ensures.getD k [], e.2.1 = true) (hclosed : rep.closed = true) {r' : Rel}
+    (hr : Lowering.polars.lowerRel? T.root = .ok r') (hn : ¬r'.Raises Profile.polars data) :
+    ∀ row ∈ postRows p.exprs p.mapping (r'.eval data Engine.polars.impl),
+      ∀ v ∈ row, v = .bool true :=
+  check_proved_on Engine.polars_sound hR hc hD hT hp hproved hclosed
+    (by simp [Engine.polars, hr, Except.toOption])
+    (.inr fun r'' hl => by rw [Engine.polars_lower hl] at hr; cases hr; exact hn)
 
 /-- **A proved postcondition holds on Spark's model**: proved, closed and
 guard-free in the report, on a catalog of doubles, for a plan whose constants
