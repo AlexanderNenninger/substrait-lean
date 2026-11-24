@@ -103,25 +103,6 @@ def ftodEvenT (s : Nat) : Expr :=
   .ifThen (.un .not (.bin .eq (.un .fround (ftodProduct s)) (.un .froundEven (ftodProduct s))))
     (.un .ftoi (.un .froundEven (ftodProduct s))) (.un (.ftod s) (.field 0))
 
-/-- The product `x · 10^d` of the argument as field 0, for `d ≤ 22`, where `10^d`
-is a double exactly, so the reference's multiplier (`Float.pow 10 d`,
-`FloatCode.roundTo`) and Polars's (`powi`) are this one (polars-round-digits). -/
-def roundToProduct (d : Nat) : Expr := .bin .fmul (.field 0) (.lit (.float (FloatCode.ofInt (10 ^ d))))
-
-/-- Polars's own `round(x, d)` of a double, the argument as field 0, for
-`0 ≤ d ≤ 22`: the product `x · 10^d` rounded half to even, then divided by `10^d`
-(polars-round), where the reference rounds the product half away from zero
-(`FloatCode.roundTo`). The two differ only at an exact tie whose neighbour away
-from zero is odd, where `round` and `round(mode='half_to_even')` of the product
-differ: there it is the even neighbour over `10^d`. Everywhere else, NaN, `±∞` and
-a product that overflows included, it is the reference's `round(x, d)`. The
-translation asks `mode="half_away_from_zero"` (`round_to`), which no lowering
-entry states: `froundTo` has no generated entry on Polars (ruling 282, B1). -/
-def roundToEvenT (d : Nat) : Expr :=
-  .ifThen (.un .not (.bin .eq (.un .fround (roundToProduct d)) (.un .froundEven (roundToProduct d))))
-    (.bin .fdiv (.un .froundEven (roundToProduct d)) (.lit (.float (FloatCode.ofInt (10 ^ d)))))
-    (.un (.froundTo d) (.field 0))
-
 /-- Polars's cast of a decimal, the argument as field 0, to a scale `k` digits
 smaller: half to even (polars-decimal-casts), where the reference rounds half
 away from zero (`roundDiv10`, `decimal_rescale`, ruling 278's addendum). With
@@ -142,15 +123,13 @@ end Polars
 /-- The unary functions where Polars's profile differs from the reference: its
 template, in the reference's operations. `round` and `ceil` give `-0.0`
 (polars-round); a double cast to a decimal and a decimal cast to a smaller
-scale round half to even (polars-decimal-casts); `round(x, d)` rounds its
-product half to even (polars-round). -/
+scale round half to even (polars-decimal-casts). -/
 def UnFn.polarsTmpl : UnFn → Option Expr
   | .fround => some (Polars.negZeroT .fround)
   | .froundEven => some (Polars.negZeroT .froundEven)
   | .fceil => some (Polars.negZeroT .fceil)
   | .ftod s => some (Polars.ftodEvenT s)
   | .dround k => some (Polars.droundEvenT k)
-  | .froundTo d => if 0 ≤ d ∧ d ≤ 22 then some (Polars.roundToEvenT d.toNat) else none
   | _ => none
 
 /-- The functions where Polars's profile differs from the reference: its
@@ -381,10 +360,9 @@ theorem untmpl_subst_eval {f : UnFn} {t : Expr} (h : f.polarsTmpl = some t) (a :
           t.evalP Profile.reference [x]) := by
   cases ha : a.evalP Profile.reference row with
   | error k =>
-    cases f <;> simp only [UnFn.polarsTmpl, reduceCtorEq, Option.some.injEq] at h <;>
-      (try split at h) <;> (try simp only [reduceCtorEq, Option.some.injEq] at h) <;> subst h <;>
-      simp [negZeroT, ftodEvenT, ftodProduct, droundEvenT, roundToEvenT, roundToProduct, Expr.subst,
-        Expr.evalP, ha, bind, Except.bind]
+    cases f <;> simp only [UnFn.polarsTmpl, reduceCtorEq, Option.some.injEq] at h <;> subst h <;>
+      simp [negZeroT, ftodEvenT, ftodProduct, droundEvenT, Expr.subst, Expr.evalP, ha, bind,
+        Except.bind]
   | ok x =>
     simp only [bind, Except.bind]
     exact Expr.evalP_subst (vs := [x]) (fun i => by
@@ -532,21 +510,14 @@ theorem Profile.polars_un_not_float (f : UnFn) (v : Value) (hv : ∀ c, v ≠ .f
   cases hf : f.polarsTmpl with
   | none => rfl
   | some t =>
-    have : f = .fround ∨ f = .fceil ∨ f = .froundEven ∨ (∃ s, f = .ftod s) ∨ (∃ k, f = .dround k) ∨
-        ∃ d, f = .froundTo d := by
+    have : f = .fround ∨ f = .fceil ∨ f = .froundEven ∨ (∃ s, f = .ftod s) ∨ ∃ k, f = .dround k := by
       cases f <;> simp_all [UnFn.polarsTmpl]
-    obtain rfl | rfl | rfl | ⟨s, rfl⟩ | ⟨k, rfl⟩ | ⟨d, rfl⟩ := this
+    obtain rfl | rfl | rfl | ⟨s, rfl⟩ | ⟨k, rfl⟩ := this
     all_goals first
       | exact absurd rfl (hd _)
       | (simp only [UnFn.polarsTmpl, Option.some.injEq] at hf
          subst hf
          cases v <;> first | rfl | exact absurd rfl (hv _))
-      | (simp only [UnFn.polarsTmpl] at hf
-         split at hf
-         · simp only [Option.some.injEq] at hf
-           subst hf
-           cases v <;> first | rfl | exact absurd rfl (hv _)
-         · cases hf)
 
 /-- `round` on Polars, through `Lowering.zeroTemplate`, agrees with the
 reference: the lowering's entry for `round` (`round_zero_sign`). -/
