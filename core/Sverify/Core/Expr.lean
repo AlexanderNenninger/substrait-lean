@@ -1022,8 +1022,7 @@ def Expr.floorModOf (a b : Expr) : Expr :=
         (.bin .imod a b))
       (.bin .imod a b))
 
-/-- `a % b` of decimals at one scale with `division_type` = `FLOOR` (D62;
-Polars's decimal `%`, polars-decimal-modulus): the truncated remainder `r`
+/-- `a % b` of decimals at one scale with `division_type` = `FLOOR` (D62): the truncated remainder `r`
 of the unscaled integers, plus the divisor where `r` is not zero and its sign
 differs from the divisor's, so the result takes the divisor's sign. The
 divisor is compared as its unscaled integer (`b + 0`), since a decimal and

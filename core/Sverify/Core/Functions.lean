@@ -394,8 +394,8 @@ def groups : List (String × List String) := [
   ("int.mod", ["overflow", "on_division_by_zero", "division_type", "min_mod_neg_one"]),
   ("int.bit", []), ("int.shift", ["shift_range"]),
   ("dec.arith", ["overflow", "decimal_rescale"]), ("dec.div", []),
-  -- D62: Polars's remainder takes the divisor's sign, and Spark's is NULL for a zero divisor
-  -- with ANSI off (polars-decimal-modulus, spark-decimal-modulus).
+  -- D62: a floored remainder takes the divisor's sign, and a zero divisor gives NULL or an error
+  -- as `on_division_by_zero` says.
   ("dec.mod", ["on_division_by_zero", "division_type"]),
   ("fp.arith", ["rounding", "nan_creation", "zero_sign", "float_overflow"]),
   ("fp.neg", ["zero_sign"]),
