@@ -102,7 +102,7 @@ on 2026-11-07.
 | "E agrees with the reference only up to q" | Lenses | State it in `sv.equivalent(...)` |
 | "the postcondition X reads c, which is within ..." | Tolerance | `sv.approx(X)` or `sv.equivalent(floats=...)` |
 | "c is within ...", a stated `within` the bound does not meet | Tolerance | A looser tolerance, or `sv.max_rows(N)` |
-| "c has no bound on its distance to the reference" | Tolerance | `floats="plan"` or drop the tolerance; lifted by [#1032] and [#85] |
+| "c has no bound on its distance to the reference" | Tolerance | `floats="plan"`, a row cap (`sv.max_rows(n)`) or drop the tolerance; lifted by [#1032] and [#85] |
 | "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values" | Tolerance | A constant threshold: a precondition away from it. A threshold computed from the data: exact columns, for a mean of integers `x * COUNT(y) > SUM(y)`, another query that compares the exact mean, not the rounded one, and its product must fit `BIGINT`, which a bound on `y` and a row cap (`sv.max_rows`) prove; refuses the whole plan: [#1045] |
 | "observes the rows as a sequence, and the plan's result is not sorted" | Lenses | `order_by` on a key of the input, or `rows="multiset"` |
 | "a rerun must give the same result: ... ties stay open at ..." | Ties | `sv.unique(...)` in `requires`, or an `order_by` before `LIMIT` |

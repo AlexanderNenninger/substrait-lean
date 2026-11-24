@@ -1,3 +1,0 @@
-### Fixed: `rows="sequence"` needs a sort without ties
-
-A postcondition that observes the rows as a sequence (`sv.equivalent(rows="sequence")`) used to run on an engine whenever the plan's result was sorted, also when the sort keys tied and the engines may order the ties differently. The checker now proves the sequence (`sequence_determined`, `check_sequence_determined_sound`) when the sort's columns contain a key of its input, none clustered, and the route refuses it otherwise. A contract that sorts on a non-key under `rows="sequence"` states a key (`sv.unique`) or observes `rows="ties permuted"` ([#1285](https://github.com/AlexanderNenninger/substrait-lean/issues/1285)).
