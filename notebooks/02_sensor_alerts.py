@@ -6,7 +6,7 @@
 #     "marimo",
 #     "pyarrow==26.0.1",
 #     "pyiceberg[sql-sqlite]",
-#     "sverify[polars,iceberg]==0.8.0",
+#     "sverify[duckdb,polars,iceberg]==0.9.0",
 # ]
 # ///
 
@@ -45,7 +45,7 @@ def _(mo):
 
     The sensors write a reading per device per minute to an Iceberg table,
     and the rule is `iot-consecutive-threshold` in the
-    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.8.0/catalogue/INDEX.md) (Azure Stream Analytics'
+    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/catalogue/INDEX.md) (Azure Stream Analytics'
     `MATCH_RECOGNIZE` example). In SQL that is two `LAG`s over a window.
     Window queries are where engines disagree, and we'll run into three
     causes:
@@ -88,7 +88,7 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from pyiceberg.catalog.sql import SqlCatalog
-    from sverify.engines import ENGINES, UnsupportedError, to_sql
+    from sverify.engines import ENGINES, UnsupportedError
     from sverify.errors import PreconditionError
     from sverify.io import IcebergSink, IcebergSource
 
@@ -141,7 +141,6 @@ def _():
         readings_batch,
         readings_table,
         sv,
-        to_sql,
     )
 
 
@@ -214,7 +213,7 @@ def _(mo):
     two readings with the same `ts`, which one is "previous" depends on how
     the engine breaks the tie, and a rerun may page you twice. The catalogue
     found this in 44 of its 139 queries (dedup, top-N, `LAG` over equal
-    timestamps; see its [findings](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.8.0/catalogue/FINDINGS.md)), and it is the
+    timestamps; see its [findings](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/catalogue/FINDINGS.md)), and it is the
     most common way for engines to disagree.
 
     The fix is to state what the source promises: at most one reading per
@@ -316,7 +315,7 @@ def _(IcebergSource, alerts, catalog, sv, three_high):
     naive = readings.pipe(three_high)  # a plain function: no contract
     alerts_node = readings.pipe(alerts)
     report = alerts.report
-    assert report.proved and report.deterministic
+    assert report.verdict == sv.Verdict.PROVED and report.deterministic
     sv.group(naive, alerts_node).refresh()
     assert sorted(naive.to_arrow()["device_id"].to_pylist()) == [1, 3]
     assert alerts_node.to_arrow()["device_id"].to_pylist() == [1]
@@ -348,17 +347,17 @@ def _(mo):
 
     The alerts may run on a laptop today and in a warehouse tomorrow.
     DuckDB and Polars run the checked plan with the same rows, whichever
-    `engine=` the node is refreshed with ([the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines)). Snowflake
-    and Spark tables have no row order, so sverify refuses to write a window
-    for them unless you promise that the order keys have no ties. The
-    report's `deterministic` is that promise, proved from the key, so it can
-    be passed on:
+    `engine=` the node is refreshed with ([the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/stability.md#engines)). Snowflake
+    and Spark tables have no row order, so the SQL sverify writes for them
+    leaves ties in a window open, as the reference does. The report's
+    `deterministic` says whether a rerun can return other rows, and it is
+    proved from the key:
     """)
     return
 
 
 @app.cell
-def _(ENGINES, UnsupportedError, alerts, alerts_node, readings, report, to_sql):
+def _(ENGINES, alerts, alerts_node, naive, readings):
     _rows = {}
     for _engine in ENGINES:
         _node = readings.pipe(alerts)
@@ -366,28 +365,23 @@ def _(ENGINES, UnsupportedError, alerts, alerts_node, readings, report, to_sql):
         _rows[_engine] = sorted(map(repr, _node.to_arrow().to_pylist()))
     assert len({repr(r) for r in _rows.values()}) == 1
 
-    try:
-        to_sql(alerts_node.internal_plan, "snowflake")
-    except UnsupportedError as e:
-        refused = str(e)
-    _sql = to_sql(alerts_node.internal_plan, "snowflake", deterministic=report.deterministic)
-    assert _sql.startswith("SELECT")
-    refused
+    assert naive.to_sql("snowflake").startswith("SELECT")
+    assert alerts_node.to_sql("snowflake").startswith("SELECT")
     return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    With `deterministic=True` the SQL is written. Without the key, `deterministic`
-    would be `False`, and passing `deterministic=True` anyway would be an
-    unproved promise.
+    The key proved `deterministic`, so `alerts_node.to_sql("snowflake")` gives
+    the same rows on every run. The plain function has no such proof: its
+    node writes the SQL too, with ties open.
 
     ## 6. New readings, and a sensor that sends twice
 
     Windows that share one `PARTITION BY` recompute only the partitions a
     batch touches, for inputs without ties on the partition and sort columns
-    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)). The
+    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-nodes.md#nodes-composing-storing-refreshing)). The
     node's status says how it is refreshed, and its change flows to the
     sink and to nodes downstream:
     """)

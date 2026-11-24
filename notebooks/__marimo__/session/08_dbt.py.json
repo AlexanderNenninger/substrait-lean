@@ -1,0 +1,219 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "e73c31846d4715ca1bdd651012b9d017"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "fa037b88076bb94c77c87fb4a2ebce06",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "d908f43bb548c1139c7c96019c143369",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 7. <a href=\"?file=07_engines.py\">Engines</a></span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "724b7186aa93f82ff2c082c39d402f4a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"8-your-dbt-project\">8. Your dbt project</h1>\n<span class=\"paragraph\">Say your analytics team runs <code>dbt build</code> every hour, and the project has\ngrown to hundreds of tests. Each one is a query against the warehouse,\non every build, and most of them have never failed. A few of them will\nfail the day an upstream table changes, and the dashboard will show\nthe gap before anyone reads the log.</span>\n<span class=\"paragraph\">We'll write a small dbt project, compile it, and have sverify-dbt prove\nwhich tests hold on every run before the models run. Then we'll read\nwhat it can't prove, fix the model, and list the tests <code>dbt build</code> can\nskip.</span>\n<h2 id=\"1-a-project-with-tests\">1. A project with tests</h2>\n<span class=\"paragraph\">The project reads a source table, <code>orders</code>, and its tests say what we\nknow of the data: the keys are never NULL, the order id is unique, a\nstatus is one of three. A model, <code>orders_by_customer</code>, totals each\ncustomer's orders, and tests its own result:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "5954bfb1433c50561289c4e8f9fa6fed",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "7a25a5c4713af22b067d4891f13da0f3",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The model's tests, <code>models/orders_by_customer.yml</code>:</span>\n<div class=\"language-yaml codehilite\"><pre><span></span><code><span class=\"nt\">version</span><span class=\"p\">:</span><span class=\"w\"> </span><span class=\"l l-Scalar l-Scalar-Plain\">2</span>\n<span class=\"w\">    </span><span class=\"l l-Scalar l-Scalar-Plain\">models</span><span class=\"p p-Indicator\">:</span>\n\n<span class=\"w\">        </span><span class=\"p p-Indicator\">-</span><span class=\"w\"> </span><span class=\"nt\">name</span><span class=\"p\">:</span><span class=\"w\"> </span><span class=\"l l-Scalar l-Scalar-Plain\">orders_by_customer</span>\n<span class=\"w\">        </span><span class=\"nt\">columns</span><span class=\"p\">:</span>\n\n<span class=\"w\">        </span><span class=\"p p-Indicator\">-</span><span class=\"w\"> </span><span class=\"nt\">name</span><span class=\"p\">:</span><span class=\"w\"> </span><span class=\"l l-Scalar l-Scalar-Plain\">customer_id</span>\n<span class=\"w\">            </span><span class=\"l l-Scalar l-Scalar-Plain\">data_tests</span><span class=\"p p-Indicator\">:</span><span class=\"w\"> </span><span class=\"p p-Indicator\">[</span><span class=\"nv\">not_null</span><span class=\"p p-Indicator\">,</span><span class=\"w\"> </span><span class=\"nv\">unique</span><span class=\"p p-Indicator\">]</span>\n\n<span class=\"w\">        </span><span class=\"p p-Indicator\">-</span><span class=\"w\"> </span><span class=\"nt\">name</span><span class=\"p\">:</span><span class=\"w\"> </span><span class=\"l l-Scalar l-Scalar-Plain\">orders</span>\n<span class=\"w\">            </span><span class=\"l l-Scalar l-Scalar-Plain\">data_tests</span><span class=\"p p-Indicator\">:</span><span class=\"w\"> </span><span class=\"p p-Indicator\">[</span><span class=\"nv\">not_null</span><span class=\"p p-Indicator\">]</span>\n\n<span class=\"w\">        </span><span class=\"p p-Indicator\">-</span><span class=\"w\"> </span><span class=\"nt\">name</span><span class=\"p\">:</span><span class=\"w\"> </span><span class=\"l l-Scalar l-Scalar-Plain\">revenue</span>\n<span class=\"w\">            </span><span class=\"l l-Scalar l-Scalar-Plain\">data_tests</span><span class=\"p p-Indicator\">:</span><span class=\"w\"> </span><span class=\"p p-Indicator\">[</span><span class=\"nv\">not_null</span><span class=\"p p-Indicator\">]</span>\n</code></pre></div>\n<span class=\"paragraph\">The source's, <code>models/sources.yml</code>, say what we know of <code>orders</code>. Its\ncolumns carry <code>data_type</code>s, which sverify-dbt reads where <code>dbt docs generate</code>\nhas written no catalogue.</span>\n<h2 id=\"2-check-it-before-the-models-run\">2. Check it before the models run</h2>\n<span class=\"paragraph\"><code>dbt compile</code> writes each model's SQL. <code>sverify_dbt.check(project)</code>\nreads it, and proves each model's SQL against the tests on what it\nreads:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "20af3782bcda7584d4caf70596e7d011",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "orders_by_customer (models/orders_by_customer.sql)\n  proved before the model runs (dbt build may skip them):\n    not_null(customer_id)\n    unique(customer_id)\n    not_null(orders)\n  not proved (dbt build still runs them):\n    not_null(revenue): sverify cannot rule out a row that fails it, from the tests upstream\n      counterexample: orders(order_id, customer_id, status, amount) = [(0, 0, 'placed', None)] gives (customer_id, orders, revenue) = [(0, 1, None)]\n      would hold with, on source('app', 'orders'), column amount: not_null\n  assumes sum(amount) does not overflow (DuckDB raises if it does)\n\n1 model(s), 0 refused; 4 test(s): 3 proved, 1 not proved, 0 not checked\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "Xref",
+      "code_hash": "6fa7dd494aeb77e826079a9999ced102",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Three of the model's tests are proved. <code>customer_id</code> is the grouping\nkey, so <code>unique</code> holds whatever the data is, and <code>not_null</code> follows from the\nsource's test. <code>orders</code> is a count, never NULL. A proved test holds on\nevery run whose inputs pass their tests, so <code>dbt build</code> may leave it out.</span>\n<span class=\"paragraph\"><code>not_null(revenue)</code> is not proved, and the report says why with a\ncounterexample: a customer whose only order has no amount. A <code>SUM</code> of\nNULLs is NULL, and the source never promised an amount.</span>\n<h2 id=\"3-fix-the-model-and-prove-it-again\">3. Fix the model, and prove it again</h2>\n<span class=\"paragraph\">We have two ways out: a <code>not_null</code> test on the source's <code>amount</code>, or a model\nthat never returns NULL. We take the second:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "3f4c13b34685915da2471d2429767234",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "orders_by_customer (models/orders_by_customer.sql)\n  proved before the model runs (dbt build may skip them):\n    not_null(customer_id)\n    unique(customer_id)\n    not_null(orders)\n    not_null(revenue)\n  assumes sum(amount) does not overflow (DuckDB raises if it does)\n\n1 model(s), 0 refused; 4 test(s): 4 proved, 0 not proved, 0 not checked\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "1c48b916c7464fae2c2de0cc6ede6d1b",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">All four tests hold on every run now. The report keeps one line of\ncaution: <code>sum(amount)</code> can overflow a 64-bit integer, and DuckDB raises\nwhere it does, so a run needs amounts that stay small.</span>\n<h2 id=\"4-leave-the-proved-tests-out-of-the-build\">4. Leave the proved tests out of the build</h2>\n<span class=\"paragraph\"><code>write_selectors</code> adds a dbt selector, <code>sverify_proved</code>, to the project's\n<code>selectors.yml</code>. The command line does the same with\n<code>sverify-dbt check . --selectors</code>:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "32127ba66f1f4e51e418a6e0e9afcae6",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "selectors:\n- name: sverify_proved\n  description: Tests sverify-dbt proved from the tests upstream; generated, do not\n    edit\n  definition:\n    union:\n    - method: fqn\n      value: not_null_orders_by_customer_customer_id\n    - method: fqn\n      value: not_null_orders_by_customer_orders\n    - method: fqn\n      value: not_null_orders_by_customer_revenue\n    - method: fqn\n      value: unique_orders_by_customer_customer_id\n\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "d1c94426ad49ccafb94c1781648a4086",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>dbt build --exclude selector:sverify_proved</code> runs the models and the tests\nsverify-dbt couldn't prove. The tests it left out can't fail while\nthe tests upstream pass, because <code>dbt build</code> skips the models downstream\nof a failing test.</span>\n<h2 id=\"5-what-it-refuses\">5. What it refuses</h2>\n<span class=\"paragraph\">Sverify-dbt refuses a model it can't read, with the reason and what to do.\nWe add two: one reads a table by its name, and one is a recursive query:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "e39f8655ce28e0c33d375d4194a0d7d1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "chain (models/chain.sql)\n  refused: sverify cannot read WITH RECURSIVE yet (#320)\n\nstale_orders (models/stale_orders.sql)\n  refused: it reads raw_orders, which is no ref or source of the model (a hard-coded table name, or one a macro wrote); read it with {{ ref() }} or {{ source() }}\n\n2 model(s), 2 refused; 0 test(s): 0 proved, 0 not proved, 0 not checked\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "b3041279b2371aa2fbc0f5f2cc9c4f48",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The first refusal names its exit: read the table with <code>{{ ref() }}</code> or\n<code>{{ source() }}</code>, so that sverify-dbt knows which tests describe it. The\nsecond names the construct, <code>WITH RECURSIVE</code>, and the issue that tracks\nit. A refused model proves nothing, so <code>dbt build</code> still runs every test on\nit, and the project's other models are checked as before.</span>\n<span class=\"paragraph\">You can now prove a dbt project's tests before its models run, read\nwhat it couldn't prove and why, fix a model until it holds, and let\n<code>dbt build</code> skip the tests that can't fail. That is the end of the tour.\nThe <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/dbt/README.md\" rel=\"noopener noreferrer\" target=\"_blank\">sverify-dbt\nREADME</a>\nlists the tests it reads, and the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/tasks.md\" rel=\"noopener noreferrer\" target=\"_blank\">guide</a>\ncovers every feature in more detail.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "d908f43bb548c1139c7c96019c143369",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 7. <a href=\"?file=07_engines.py\">Engines</a></span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

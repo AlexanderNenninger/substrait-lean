@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "a612966b18b9a10cd1b3803bae20af10"
+    "script_metadata_hash": "ae0e4129817efb5f61cfe633a31a8ce4"
   },
   "cells": [
     {
@@ -33,12 +33,12 @@
     },
     {
       "id": "vblA",
-      "code_hash": "d8dc1cb53c568244d0dfb5fe9fa85232",
+      "code_hash": "36ab156e6f2be5adca1ad3adecf6fcdd",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"1-duplicate-card-payments-from-a-delta-table\">1. Duplicate card payments, from a Delta table</h1>\n<span class=\"paragraph\">Say you're on the payments team. A customer was charged twice for the\nsame coffee, and by the time support hears about it, they've already\ntweeted. You want to catch these double charges, the same card paying\nthe same amount at the same merchant twice within five minutes, and\nrefund them first.</span>\n<span class=\"paragraph\">The rule comes from the <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.8.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a>\n(<code>fin-duplicate-payments</code>). Stream processors write it as an interval\njoin; here it is a self-join on a Delta Lake table of card transactions.\nThe refund queue relies on what you hand it: no pair twice, no charge\nmatched with itself, and nothing left over when a charge is reversed.</span>\n<span class=\"paragraph\">We'll go through the whole job:</span>\n<ol>\n<li>read the transactions from a Delta table, with its Change Data Feed;</li>\n<li>write the rule in Ibis and state its contract: what it assumes about\n   the input and what the refund queue may rely on;</li>\n<li>have the checker prove the contract before any data runs;</li>\n<li>run the checked plan on DuckDB and Polars, and see the\n   SQL a warehouse would run (<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines\" rel=\"noopener noreferrer\" target=\"_blank\">the engines</a> says what each\n   engine runs and which SQL sverify writes);</li>\n<li>maintain the result from the change feed when new transactions arrive\n   and old ones are reversed, next to the usual \"process the new rows\"\n   job;</li>\n<li>write the result to a Delta table that carries the contract, so the\n   next job can build on it.</li>\n</ol></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"1-duplicate-card-payments-from-a-delta-table\">1. Duplicate card payments, from a Delta table</h1>\n<span class=\"paragraph\">Say you're on the payments team. A customer was charged twice for the\nsame coffee, and by the time support hears about it, they've already\ntweeted. You want to catch these double charges, the same card paying\nthe same amount at the same merchant twice within five minutes, and\nrefund them first.</span>\n<span class=\"paragraph\">The rule comes from the <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a>\n(<code>fin-duplicate-payments</code>). Stream processors write it as an interval\njoin; here it is a self-join on a Delta Lake table of card transactions.\nThe refund queue relies on what you hand it: no pair twice, no charge\nmatched with itself, and nothing left over when a charge is reversed.</span>\n<span class=\"paragraph\">We'll go through the whole job:</span>\n<ol>\n<li>read the transactions from a Delta table, with its Change Data Feed;</li>\n<li>write the rule in Ibis and state its contract: what it assumes about\n   the input and what the refund queue may rely on;</li>\n<li>have the checker prove the contract before any data runs;</li>\n<li>run the checked plan on DuckDB and Polars, and see the\n   SQL a warehouse would run (<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/stability.md#engines\" rel=\"noopener noreferrer\" target=\"_blank\">the engines</a> says what each\n   engine runs and which SQL sverify writes);</li>\n<li>maintain the result from the change feed when new transactions arrive\n   and old ones are reversed, next to the usual \"process the new rows\"\n   job;</li>\n<li>write the result to a Delta table that carries the contract, so the\n   next job can build on it.</li>\n</ol></span>"
           }
         }
       ],
@@ -59,7 +59,7 @@
     },
     {
       "id": "lEQa",
-      "code_hash": "b53db17e65029dbb323097f59c474380",
+      "code_hash": "c109d20161708e4fea5a1c373a71323b",
       "outputs": [
         {
           "type": "data",
@@ -85,12 +85,12 @@
     },
     {
       "id": "Xref",
-      "code_hash": "337316d4dbf43cd8dbf85fc77e318811",
+      "code_hash": "7adcb56e5aa7ee3ecc7d151b4dfa2892",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"2-the-rule-and-its-contract\">2. The rule and its contract</h2>\n<span class=\"paragraph\">We'll write the rule in Ibis, state what it assumes and what it\npromises, and have the checker prove it before any data runs. The rule\nis plain Ibis, and the decorator writes down what everyone involved\ncounts on:</span>\n<ul>\n<li><code>requires</code> is what the job assumes about its input. Transaction ids\n  are unique, amounts are not negative, and timestamps are before 2100,\n  so that adding five minutes can't overflow.</li>\n<li><code>ensures</code> is what the refund queue relies on. There is one row per\n  pair, the first transaction comes before its duplicate, every row has\n  a merchant and a non-negative amount, and the duplicate is no earlier\n  than the first.</li>\n</ul>\n<span class=\"paragraph\">The checks in <code>ensures</code> are the ones you would write as dbt tests\n(<code>unique</code>, <code>not_null</code>, <code>accepted_range</code>, an expression test) and run on\nyesterday's data. Here the checker proves them for every input that\nmeets <code>requires</code>, before the job runs.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"2-the-rule-and-its-contract\">2. The rule and its contract</h2>\n<span class=\"paragraph\">We'll write the rule in Ibis, state what it assumes and what it\npromises, and have the checker prove it before any data runs. The rule\nis plain Ibis, and the decorator writes down what everyone involved\ncounts on:</span>\n<ul>\n<li><code>requires</code> is what the job assumes about its input. Transaction ids\n  are unique and amounts are not negative.</li>\n<li><code>ensures</code> is what the refund queue relies on. There is one row per\n  pair, the first transaction comes before its duplicate, every row has\n  a merchant and a non-negative amount, and the duplicate is no earlier\n  than the first.</li>\n</ul>\n<span class=\"paragraph\">The checks in <code>ensures</code> are the ones you would write as dbt tests\n(<code>unique</code>, <code>not_null</code>, <code>accepted_range</code>, an expression test) and run on\nyesterday's data. Here the checker proves them for every input that\nmeets <code>requires</code>, before the job runs.</span></span>"
           }
         }
       ],
@@ -98,7 +98,7 @@
     },
     {
       "id": "SFPL",
-      "code_hash": "aca0d037dbc70cde3c44b62eab8c0ee0",
+      "code_hash": "af1b1dffd74313a68db8267c8af1036e",
       "outputs": [
         {
           "type": "data",
@@ -124,7 +124,7 @@
     },
     {
       "id": "RGSE",
-      "code_hash": "e67529096cacfca4a511c47b35e35861",
+      "code_hash": "d8a9114da78fd5038f14de22fdd2cd72",
       "outputs": [
         {
           "type": "data",
@@ -142,7 +142,7 @@
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>proved</strong></span>\n<blockquote>\n<span class=\"paragraph\">semantics: reference</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(first_txn, duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_txn &lt; _.duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.merchant.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.amount_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_ts &lt;= _.duplicate_ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>first_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>duplicate_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>card_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>merchant</code></td>\n<td>a string</td>\n</tr>\n<tr>\n<td><code>amount_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n<tr>\n<td><code>first_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n<tr>\n<td><code>duplicate_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n</tbody>\n</table></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>proved</strong></span>\n<blockquote>\n<span class=\"paragraph\">semantics: portable</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(first_txn, duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_txn &lt; _.duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.merchant.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.amount_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_ts &lt;= _.duplicate_ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>first_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>duplicate_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>card_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>merchant</code></td>\n<td>a string</td>\n</tr>\n<tr>\n<td><code>amount_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n<tr>\n<td><code>first_ts</code></td>\n<td>any timestamp</td>\n</tr>\n<tr>\n<td><code>duplicate_ts</code></td>\n<td>any timestamp</td>\n</tr>\n</tbody>\n</table></span>"
           }
         }
       ],
@@ -168,7 +168,7 @@
         {
           "type": "data",
           "data": {
-            "application/json": "[\"transactions: unique(txn_id) (checked on data)\", \"transactions: (_.amount_cents >= 0) (Delta constraint)\", \"transactions: (_.ts < datetime(2100, 1, 1)) (file stats @v1)\"]"
+            "application/json": "[\"transactions: unique(txn_id) (checked on data)\", \"transactions: (_.amount_cents >= 0) (Delta constraint)\"]"
           }
         }
       ],
@@ -220,7 +220,7 @@
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='ROlb-0' random-id='22afb8e2-4ff8-3af1-7676-dcf197cd992f'><marimo-radio data-initial-value='&quot;a.txn_id &#92;u003c b.txn_id&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epair condition&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;a.txn_id &#92;u003c b.txn_id&quot;,&quot;a.txn_id &#92;u003c= b.txn_id&quot;,&quot;no condition&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
+            "text/html": "<marimo-ui-element object-id='ROlb-0' random-id='255f127e-ac90-52c4-5896-7df38b80ee70'><marimo-radio data-initial-value='&quot;a.txn_id &#92;u003c b.txn_id&quot;' data-label='&quot;&#92;u003cspan class=&#92;&quot;markdown prose dark:prose-invert contents&#92;&quot;&#92;u003e&#92;u003cspan class=&#92;&quot;paragraph&#92;&quot;&#92;u003epair condition&#92;u003c/span&#92;u003e&#92;u003c/span&#92;u003e&quot;' data-options='[&quot;a.txn_id &#92;u003c b.txn_id&quot;,&quot;a.txn_id &#92;u003c= b.txn_id&quot;,&quot;no condition&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
           }
         }
       ],
@@ -233,7 +233,7 @@
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>proved</strong></span>\n<blockquote>\n<span class=\"paragraph\">semantics: reference</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(first_txn, duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_txn &lt; _.duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.merchant.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.amount_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_ts &lt;= _.duplicate_ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>first_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>duplicate_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>card_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>merchant</code></td>\n<td>a string</td>\n</tr>\n<tr>\n<td><code>amount_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n<tr>\n<td><code>first_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n<tr>\n<td><code>duplicate_ts</code></td>\n<td>a timestamp \u2264 2099-12-31 23:59:59.999999</td>\n</tr>\n</tbody>\n</table></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>proved</strong></span>\n<blockquote>\n<span class=\"paragraph\">semantics: portable</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(first_txn, duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_txn &lt; _.duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.merchant.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.amount_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_ts &lt;= _.duplicate_ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>first_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>duplicate_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>card_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>merchant</code></td>\n<td>a string</td>\n</tr>\n<tr>\n<td><code>amount_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n<tr>\n<td><code>first_ts</code></td>\n<td>any timestamp</td>\n</tr>\n<tr>\n<td><code>duplicate_ts</code></td>\n<td>any timestamp</td>\n</tr>\n</tbody>\n</table></span>"
           }
         }
       ],
@@ -241,12 +241,12 @@
     },
     {
       "id": "TqIu",
-      "code_hash": "d8a5336ecb282d67ec4328da553fb01a",
+      "code_hash": "9572ba76f4148fde0d44d1efd520b950",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With <code>&lt;=</code>, every transaction is its own duplicate, and\n<code>first_txn &lt; duplicate_txn</code> is refused because it is false. With no\ncondition at all, each pair also appears in both orders, and each double\ncharge would be refunded twice. The checker catches both without running\nanything and without test data that contains the bad case.</span>\n<h2 id=\"3-one-plan-every-engine\">3. One plan, every engine</h2>\n<span class=\"paragraph\">You might develop on DuckDB on a laptop and run the job elsewhere in\nproduction. The node's plan is the one Lean checked. Sverify runs it on\neach engine through its own translation, which keeps Lean's semantics\n(NULL keys never match, integers don't wrap around, ties break one way)\nor refuses the plan. Lean's reference profile is the reference, one of\nthe <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#core-profiles-and-engines\" rel=\"noopener noreferrer\" target=\"_blank\">profiles that refine the core</a>, and\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines\" rel=\"noopener noreferrer\" target=\"_blank\">the engines</a> lists which engines run plans, each with a proved\nprofile. With <code>route=\"auto\"</code>, <code>refresh</code> also says how the proof reaches\nthe engine (<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#routes-classes-and-profiles\" rel=\"noopener noreferrer\" target=\"_blank\">the guide</a>).\nA node refreshed with <code>engine=</code> has the same rows on each:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">With <code>&lt;=</code>, every transaction is its own duplicate, and\n<code>first_txn &lt; duplicate_txn</code> is refused because it is false. With no\ncondition at all, each pair also appears in both orders, and each double\ncharge would be refunded twice. The checker catches both without running\nanything and without test data that contains the bad case.</span>\n<span class=\"paragraph\">A postcondition can also fail for want of a fact about the input. We\ndrop <code>_.amount_cents &gt;= 0</code> from the requires: nothing then says an\namount is never negative, and the report names the precondition that\nwould prove <code>amount_cents &gt;= 0</code>:</span></span>"
           }
         }
       ],
@@ -254,12 +254,12 @@
     },
     {
       "id": "Vxnm",
-      "code_hash": "a00353967a5c1e90c11a4c69bc3a6e06",
+      "code_hash": "4e906c0058eca856421db931b651420d",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "application/json": "{\"duckdb\": 1, \"polars\": 1}"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>NOT proved: 1 of 5 postconditions not proved</strong></span>\n<blockquote>\n<span class=\"paragraph\">semantics: portable</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>unique(first_txn, duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.first_txn &lt; _.duplicate_txn)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>_.merchant.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.amount_cents &gt;= 0)</code></td>\n<td>\u274c it may be FALSE on some rows</td>\n</tr>\n<tr>\n<td>suggestion</td>\n<td>would hold with <code>(_.amount_cents &gt;= 0)</code> in the requires of 'transactions'</td>\n</tr>\n<tr>\n<td><code>(_.first_ts &lt;= _.duplicate_ts)</code></td>\n<td>\u2705 proved</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>first_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>duplicate_txn</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>card_id</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>merchant</code></td>\n<td>a string</td>\n</tr>\n<tr>\n<td><code>amount_cents</code></td>\n<td>any integer</td>\n</tr>\n<tr>\n<td><code>first_ts</code></td>\n<td>any timestamp</td>\n</tr>\n<tr>\n<td><code>duplicate_ts</code></td>\n<td>any timestamp</td>\n</tr>\n</tbody>\n</table></span>"
           }
         }
       ],
@@ -267,12 +267,12 @@
     },
     {
       "id": "DnEU",
-      "code_hash": "d72d7707038647fee98d308965f0329a",
+      "code_hash": "698550b8cb6802657b374fe2725b8758",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">For a warehouse, sverify writes the plan as SQL. The SQL is long because\nit spells out every choice an engine would otherwise make. The Spark\nSQL is what <code>engine=\"spark\"</code> runs, and the Snowflake SQL runs in your\naccount, from the written SQL\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines\" rel=\"noopener noreferrer\" target=\"_blank\">the engines</a>):</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The suggestion is the checker's, and it is only a suggestion: the\ncontract stays unproved until we declare the bound in <code>requires</code>, and\nthen each run checks it on the data.</span></span>"
           }
         }
       ],
@@ -280,12 +280,12 @@
     },
     {
       "id": "ulZA",
-      "code_hash": "936f437bb73d2c4acd3f41919378da4f",
+      "code_hash": "6e2ecc90818e6c627421fcfd1cf8833a",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<marimo-ui-element object-id='ulZA-0' random-id='342ba825-f5e3-f1a7-ab42-60fdf5427a01'><marimo-radio data-initial-value='&quot;snowflake&quot;' data-label='null' data-options='[&quot;snowflake&quot;,&quot;spark&quot;,&quot;duckdb&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"3-new-transactions-keeping-the-result-up-to-date\">3. New transactions: keeping the result up to date</h2>\n<span class=\"paragraph\">An hour later, two things have happened to the source table:</span>\n<ul>\n<li>transaction 7 arrived late: card 11 paid 25.99 for books at 09:03, a\n  duplicate of transaction 3, which was loaded in the first run;</li>\n<li>transaction 2 was reversed and deleted, so the coffee pair is no\n  longer a double charge.</li>\n</ul></span>"
           }
         }
       ],
@@ -293,32 +293,6 @@
     },
     {
       "id": "ecfG",
-      "code_hash": "3e4f2b6e3122f84d17ee2451398ecadb",
-      "outputs": [
-        {
-          "type": "data",
-          "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-sql codehilite\"><pre><span></span><code><span class=\"k\">SELECT</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"first_txn\"</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"duplicate_txn\"</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"card_id\"</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"merchant\"</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"amount_cents\"</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c5\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"first_ts\"</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c6\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"duplicate_ts\"</span>\n<span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">  </span><span class=\"k\">SELECT</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c5\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c3\"</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c4\"</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c5\"</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c9\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c6\"</span>\n<span class=\"w\">  </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">    </span><span class=\"k\">SELECT</span>\n<span class=\"w\">      </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c3\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c4\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c5\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c6\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c7\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c8\"</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c9\"</span>\n<span class=\"w\">    </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">      </span><span class=\"k\">SELECT</span>\n<span class=\"w\">        </span><span class=\"ss\">\"txn_id\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"card_id\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"merchant\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"amount_cents\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c3\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"ts\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c4\"</span>\n<span class=\"w\">      </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"ss\">\"transactions\"</span>\n<span class=\"w\">    </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s3</span>\n<span class=\"w\">    </span><span class=\"k\">INNER</span><span class=\"w\"> </span><span class=\"k\">JOIN</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">      </span><span class=\"k\">SELECT</span>\n<span class=\"w\">        </span><span class=\"ss\">\"txn_id\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"card_id\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"merchant\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"amount_cents\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c3\"</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"ss\">\"ts\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c4\"</span>\n<span class=\"w\">      </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"ss\">\"transactions\"</span>\n<span class=\"w\">    </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s4</span>\n<span class=\"w\">      </span><span class=\"k\">ON</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">        </span><span class=\"p\">(</span>\n<span class=\"w\">          </span><span class=\"p\">(</span>\n<span class=\"w\">            </span><span class=\"p\">(</span>\n<span class=\"w\">              </span><span class=\"p\">(</span>\n<span class=\"w\">                </span><span class=\"p\">(</span>\n<span class=\"w\">                  </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"o\">=</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span>\n<span class=\"w\">                </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">                  </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"o\">=</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span>\n<span class=\"w\">                </span><span class=\"p\">)</span>\n<span class=\"w\">              </span><span class=\"p\">)</span>\n<span class=\"w\">              </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">                </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"o\">=</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span>\n<span class=\"w\">              </span><span class=\"p\">)</span>\n<span class=\"w\">            </span><span class=\"p\">)</span>\n<span class=\"w\">            </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">              </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"o\">&lt;</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span>\n<span class=\"w\">            </span><span class=\"p\">)</span>\n<span class=\"w\">          </span><span class=\"p\">)</span>\n<span class=\"w\">          </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">            </span><span class=\"k\">NOT</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">              </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"o\">&lt;</span><span class=\"w\"> </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span>\n<span class=\"w\">            </span><span class=\"p\">)</span>\n<span class=\"w\">          </span><span class=\"p\">)</span>\n<span class=\"w\">        </span><span class=\"p\">)</span>\n<span class=\"w\">        </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">          </span><span class=\"k\">NOT</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">            </span><span class=\"n\">DATEADD</span><span class=\"p\">(</span><span class=\"n\">MICROSECOND</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"mi\">300000000</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"o\">&lt;</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span>\n<span class=\"w\">          </span><span class=\"p\">)</span>\n<span class=\"w\">        </span><span class=\"p\">)</span>\n<span class=\"w\">      </span><span class=\"p\">)</span>\n<span class=\"w\">  </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s2</span>\n<span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s1</span>\n</code></pre></div></span>"
-          }
-        }
-      ],
-      "console": []
-    },
-    {
-      "id": "Pvdt",
-      "code_hash": "248da36b0ab85e9fe3209d4fcfdbd46b",
-      "outputs": [
-        {
-          "type": "data",
-          "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"4-new-transactions-keeping-the-result-up-to-date\">4. New transactions: keeping the result up to date</h2>\n<span class=\"paragraph\">An hour later, two things have happened to the source table:</span>\n<ul>\n<li>transaction 7 arrived late: card 11 paid 25.99 for books at 09:03, a\n  duplicate of transaction 3, which was loaded in the first run;</li>\n<li>transaction 2 was reversed and deleted, so the coffee pair is no\n  longer a double charge.</li>\n</ul></span>"
-          }
-        }
-      ],
-      "console": []
-    },
-    {
-      "id": "ZBYS",
       "code_hash": "4a0d5c15880b512113b357ddd8a36b43",
       "outputs": [
         {
@@ -331,7 +305,7 @@
       "console": []
     },
     {
-      "id": "aLJB",
+      "id": "Pvdt",
       "code_hash": "e025dc689c2f371ddf7bf3ec38f7c905",
       "outputs": [
         {
@@ -344,7 +318,7 @@
       "console": []
     },
     {
-      "id": "nHfw",
+      "id": "ZBYS",
       "code_hash": "f933bbfb27e977c120354850f7c9c27e",
       "outputs": [
         {
@@ -357,7 +331,7 @@
       "console": []
     },
     {
-      "id": "xXTn",
+      "id": "aLJB",
       "code_hash": "bb7ce8f1b6892d3f5ef5aa156c73a250",
       "outputs": [
         {
@@ -370,7 +344,7 @@
       "console": []
     },
     {
-      "id": "AjVT",
+      "id": "nHfw",
       "code_hash": "337cf4bb3700ff4a5d10b91fecb9bc17",
       "outputs": [
         {
@@ -384,13 +358,13 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "duplicate_payments:\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R1, duckdb-R15-int-arith, duckdb-null-keys; #241)\n  transactions@v1\u2192v3: 1 insert(s), 1 delete(s); \u0394 trusted as coming from Delta CDF v1\u2192v3\n  requires transactions: (_.amount_cents >= 0) (Delta constraint)\n  requires transactions: (_.ts < datetime(2100, 1, 1)) (file stats @v3 (new files))\n  requires transactions: unique(txn_id) (checked on data)\n  view duplicate_payments: transactions@v3\n",
+          "text": "duplicate_payments:\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R1, duckdb-R15-int-arith, duckdb-R1-min, duckdb-R15-int-modulus, duckdb-null-keys; #1985)\n  transactions@v1\u2192v3: 1 insert(s), 1 delete(s); \u0394 trusted as coming from Delta CDF v1\u2192v3\n  requires transactions: (_.amount_cents >= 0) (Delta constraint)\n  requires transactions: unique(txn_id) (checked on data)\n  view duplicate_payments: transactions@v3\n",
           "mimetype": "text/plain"
         }
       ]
     },
     {
-      "id": "pHFh",
+      "id": "xXTn",
       "code_hash": "cc75b8d7449f5aa21a54d8b261d2d608",
       "outputs": [
         {
@@ -403,20 +377,20 @@
       "console": []
     },
     {
-      "id": "NCOB",
-      "code_hash": "9396aaa2d85226497e87249985dbf37b",
+      "id": "AjVT",
+      "code_hash": "ed6c4e6ab71b06e177d1293cb60c04b5",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The report names the one thing the proof takes on trust: that the change\nfeed turns the old snapshot into the new one (\"\u0394 trusted as coming from\nDelta CDF\"). Where the feed is gone (CDF off, files vacuumed), the\nrefresh diffs the two snapshots and says so. <code>dups.refresh(audit=True)</code>\nalso compares every batch with a recompute before applying it.</span>\n<h2 id=\"5-the-sink-carries-the-contract\">5. The sink carries the contract</h2>\n<span class=\"paragraph\"><code>dups.write(DeltaSink(...))</code> stores the node in a Delta table, and every\nrefresh writes it exactly once per state: the commit is keyed by the\nsource versions, so a retried job can't write a batch twice. The first\nwrite creates the table, with the proved guarantees as NOT NULL columns\nand CHECK constraints and the plan and contract in the commit metadata.\nLater writes MERGE only the change.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The report names the one thing the proof takes on trust: that the change\nfeed turns the old snapshot into the new one (\"\u0394 trusted as coming from\nDelta CDF\"). Where the feed is gone (CDF off, files vacuumed), the\nrefresh diffs the two snapshots and says so. <code>dups.refresh(audit=True)</code>\nalso compares every batch with a recompute before applying it.</span>\n<h2 id=\"4-the-sink-carries-the-contract\">4. The sink carries the contract</h2>\n<span class=\"paragraph\"><code>dups.write(DeltaSink(...))</code> stores the node in a Delta table, and every\nrefresh writes it exactly once per state: the commit is keyed by the\nsource versions, so a retried job can't write a batch twice. The first\nwrite creates the table, with the proved guarantees as NOT NULL columns\nand CHECK constraints and the plan and contract in the commit metadata.\nLater writes MERGE only the change.</span></span>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "aqbW",
+      "id": "pHFh",
       "code_hash": "bb9fbbbefd9621d19b93e37e99abb1dd",
       "outputs": [
         {
@@ -430,26 +404,26 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "duplicate_payments:\n  computed\n  requires transactions: unique(txn_id) (checked on data)\n  requires transactions: (_.amount_cents >= 0) (Delta constraint)\n  requires transactions: (_.ts < datetime(2100, 1, 1)) (file stats @v3)\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R1, duckdb-R15-int-arith, duckdb-null-keys; #241)\n  wrote duplicate_payments from transactions@v3: created v2, 1 row(s) written, 0 deleted\nduplicate_payments:\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R1, duckdb-R15-int-arith, duckdb-null-keys; #241)\n  transactions@v3: no new version\n  view duplicate_payments: transactions@v3\n  wrote duplicate_payments from transactions@v3: already committed (v2)\n",
+          "text": "duplicate_payments:\n  computed\n  requires transactions: unique(txn_id) (checked on data)\n  requires transactions: (_.amount_cents >= 0) (Delta constraint)\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R1, duckdb-R15-int-arith, duckdb-R1-min, duckdb-R15-int-modulus, duckdb-null-keys; #1985)\n  wrote duplicate_payments from transactions@v3: created v2, 1 row(s) written, 0 deleted\nduplicate_payments:\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R1, duckdb-R15-int-arith, duckdb-R1-min, duckdb-R15-int-modulus, duckdb-null-keys; #1985)\n  transactions@v3: no new version\n  view duplicate_payments: transactions@v3\n  wrote duplicate_payments from transactions@v3: already committed (v2)\n",
           "mimetype": "text/plain"
         }
       ]
     },
     {
-      "id": "TRpd",
+      "id": "NCOB",
       "code_hash": "b2cc9a1ad2d6459983b0f57ff2839ad2",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/html": "<pre class='text-xs'>Contract(node=&#x27;duplicate_payments&#x27;, plan=&#x27;07757e24e7d440d253a1a02538d68f51cefdd802c816af505cc897383bc18ed7&#x27;, sources={&#x27;transactions&#x27;: 3}, epoch=3, not_null=[&#x27;merchant&#x27;, &#x27;first_txn&#x27;, &#x27;duplicate_txn&#x27;, &#x27;card_id&#x27;, &#x27;amount_cents&#x27;, &#x27;first_ts&#x27;, &#x27;duplicate_ts&#x27;], checks={&#x27;sverify_1&#x27;: &#x27;first_txn &lt; duplicate_txn&#x27;, &#x27;sverify_2&#x27;: &#x27;amount_cents &gt;= 0&#x27;, &#x27;sverify_3&#x27;: &#x27;first_ts &lt;= duplicate_ts&#x27;}, unique=[[&#x27;first_txn&#x27;, &#x27;duplicate_txn&#x27;]], digests={}, cursors={}, table_ids={&#x27;transactions&#x27;: &#x27;b497ad56-668c-4c0c-93e2-a4c670601657&#x27;}, format=2)</pre>"
+            "text/html": "<pre class='text-xs'>Contract(node=&#x27;duplicate_payments&#x27;, plan=&#x27;f1f6d2b72da5100b3f09eaea80a7eb2a338ff6e0a8271ef8604ddefb8cee9eb2&#x27;, sources={&#x27;transactions&#x27;: 3}, epoch=3, not_null=[&#x27;merchant&#x27;, &#x27;first_txn&#x27;, &#x27;duplicate_txn&#x27;, &#x27;card_id&#x27;, &#x27;amount_cents&#x27;, &#x27;first_ts&#x27;, &#x27;duplicate_ts&#x27;], checks={&#x27;sverify_1&#x27;: &#x27;first_txn &lt; duplicate_txn&#x27;, &#x27;sverify_2&#x27;: &#x27;amount_cents &gt;= 0&#x27;, &#x27;sverify_3&#x27;: &#x27;first_ts &lt;= duplicate_ts&#x27;}, unique=[[&#x27;first_txn&#x27;, &#x27;duplicate_txn&#x27;]], digests={}, cursors={}, table_ids={&#x27;transactions&#x27;: &#x27;5ad26482-eaaa-41a9-abf2-c0a8cb255b14&#x27;}, fingerprints={}, engine=&#x27;duckdb&#x27;, engine_version=&#x27;2.0.1&#x27;, sverify=&#x27;0.9.0&#x27;, semantics=&#x27;portable&#x27;, package=&#x27;sverify-duckdb==0.9.0&#x27;, format=3)</pre>"
           }
         }
       ],
       "console": []
     },
     {
-      "id": "TXez",
+      "id": "aqbW",
       "code_hash": "23f2482c5c1daaaae825a95eae012527",
       "outputs": [
         {
@@ -462,7 +436,7 @@
       "console": []
     },
     {
-      "id": "dNNg",
+      "id": "TRpd",
       "code_hash": "1cf5fb2b888c4fd0aebf0559c67b96f2",
       "outputs": [
         {
@@ -475,7 +449,72 @@
       "console": []
     },
     {
+      "id": "TXez",
+      "code_hash": "e94257dee2cdca3f0ba766e6e769e47b",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"5-one-plan-every-engine\">5. One plan, every engine</h2>\n<span class=\"paragraph\">You might develop on DuckDB on a laptop and run the job elsewhere in\nproduction. The node's plan is the one Lean checked. Sverify runs it on\neach engine through its own translation, which keeps Lean's semantics\n(NULL keys never match, integers don't wrap around, ties break one way)\nor refuses the plan. Lean's reference profile is the reference, one of\nthe <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/core-semantics.md#core-profiles-and-engines\" rel=\"noopener noreferrer\" target=\"_blank\">profiles that refine the core</a>, and\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/stability.md#engines\" rel=\"noopener noreferrer\" target=\"_blank\">the engines</a> lists which engines run plans, each with a proved\nprofile. With <code>route=\"auto\"</code>, <code>refresh</code> also says how the proof reaches\nthe engine (<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-engines-and-sql.md#routes-classes-and-profiles\" rel=\"noopener noreferrer\" target=\"_blank\">the guide</a>).\nA node refreshed with <code>engine=</code> has the same rows on each:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "dNNg",
+      "code_hash": "a00353967a5c1e90c11a4c69bc3a6e06",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "{\"duckdb\": 1, \"polars\": 1}"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
       "id": "yCnT",
+      "code_hash": "dd0621faa4eaf56e203a7e139938c717",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">For a warehouse, sverify writes the plan as SQL. The SQL is long because\nit spells out every choice an engine would otherwise make. The Spark\nSQL is what <code>engine=\"spark\"</code> runs, and the Snowflake SQL runs in your\naccount, from the written SQL\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/stability.md#engines\" rel=\"noopener noreferrer\" target=\"_blank\">the engines</a>):</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "wlCL",
+      "code_hash": "936f437bb73d2c4acd3f41919378da4f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<marimo-ui-element object-id='wlCL-0' random-id='de56a3c8-3dc1-5d34-dab5-fe83ed786fec'><marimo-radio data-initial-value='&quot;snowflake&quot;' data-label='null' data-options='[&quot;snowflake&quot;,&quot;spark&quot;,&quot;duckdb&quot;]' data-inline='true' data-disabled='false'></marimo-radio></marimo-ui-element>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "kqZH",
+      "code_hash": "ee8ba229cfc1dbe9452166b65faabf4f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-sql codehilite\"><pre><span></span><code><span class=\"k\">SELECT</span><span class=\"w\"> </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"first_txn\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"duplicate_txn\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"card_id\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"merchant\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"amount_cents\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c5\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"first_ts\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"ss\">\"c6\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"duplicate_ts\"</span><span class=\"w\"> </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span><span class=\"k\">SELECT</span><span class=\"w\"> </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c5\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c3\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c4\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c5\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"ss\">\"c9\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c6\"</span><span class=\"w\"> </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span><span class=\"k\">SELECT</span><span class=\"w\"> </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c3\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c4\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c5\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c6\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c7\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c8\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c9\"</span><span class=\"w\"> </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span><span class=\"k\">SELECT</span><span class=\"w\"> </span><span class=\"ss\">\"txn_id\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"ss\">\"card_id\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"ss\">\"merchant\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"ss\">\"amount_cents\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c3\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"ss\">\"ts\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"ss\">\"transactions\"</span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s3</span><span class=\"w\"> </span><span class=\"k\">INNER</span><span class=\"w\"> </span><span class=\"k\">JOIN</span><span class=\"w\"> </span><span class=\"p\">(</span><span class=\"k\">SELECT</span><span class=\"w\"> </span><span class=\"ss\">\"txn_id\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c0\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"ss\">\"card_id\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c1\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"ss\">\"merchant\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c2\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"ss\">\"amount_cents\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c3\"</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"ss\">\"ts\"</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"ss\">\"transactions\"</span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"w\"> </span><span class=\"k\">ON</span><span class=\"w\"> </span><span class=\"p\">((((((</span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"w\"> </span><span class=\"o\">=</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c1\"</span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"w\"> </span><span class=\"o\">=</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c2\"</span><span class=\"p\">))</span><span class=\"w\"> </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"w\"> </span><span class=\"o\">=</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c3\"</span><span class=\"p\">))</span><span class=\"w\"> </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"w\"> </span><span class=\"o\">&lt;</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c0\"</span><span class=\"p\">))</span><span class=\"w\"> </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span><span class=\"k\">NOT</span><span class=\"w\"> </span><span class=\"p\">(</span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"w\"> </span><span class=\"o\">&lt;</span><span class=\"w\"> </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"p\">)))</span><span class=\"w\"> </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"p\">(</span><span class=\"k\">NOT</span><span class=\"w\"> </span><span class=\"p\">(</span><span class=\"n\">DATEADD</span><span class=\"p\">(</span><span class=\"n\">MICROSECOND</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"mi\">300000000</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"o\">&lt;</span><span class=\"w\"> </span><span class=\"n\">s4</span><span class=\"p\">.</span><span class=\"ss\">\"c4\"</span><span class=\"p\">))))</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s2</span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s1</span>\n</code></pre></div></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "wAgl",
       "code_hash": "381b8c2dcc0d287141563eea925d5467",
       "outputs": [
         {

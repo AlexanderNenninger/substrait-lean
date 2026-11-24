@@ -5,7 +5,7 @@
 #     "marimo",
 #     "pyarrow==26.0.1",
 #     "sqlglot==30.17.0",
-#     "sverify[delta,polars,spark]==0.8.0",
+#     "sverify[duckdb,delta,polars,spark]==0.9.0",
 # ]
 # ///
 
@@ -72,7 +72,6 @@ def _(mo):
 
 @app.cell
 def _(pa, sv):
-    from sverify.engines import delta_plans
     from sverify.io import StaticSource
 
     def arrow_table(schema, rows):
@@ -104,7 +103,6 @@ def _(pa, sv):
         StaticSource,
         arrow_table,
         customers,
-        delta_plans,
         orders,
         orders_with_city,
         view,
@@ -221,7 +219,7 @@ def _(mo):
     frames the frames it touches. Left joins (a left join's NULL-padded rows
     must be retracted when a match turns up later), `LIMIT` (it depends on
     row order) and the rest are recomputed and diffed on every refresh
-    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)). Contracts work on all of them, and the result is
+    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-nodes.md#nodes-composing-storing-refreshing)). Contracts work on all of them, and the result is
     correct; a recomputed node costs a full run per refresh. `node.status()`
     says which kind of node you have:
     """)
@@ -278,7 +276,7 @@ def _(mo):
     any other: `view.table` is an Ibis table to query further, and
     `to_arrow()`, `to_polars()` and `to_pandas()` return its rows. Nodes
     are built from Ibis transforms, or from a SQL string with `sv.sql(query)`
-    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)).
+    ([the guide](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-nodes.md#nodes-composing-storing-refreshing)).
 
     ### Delta rules in brief
 
@@ -370,35 +368,11 @@ def _(mo):
     Lean proves the full rule once. `Rel.delta` generates the update plan
     as an ordinary plan that reads the old tables and the change tables,
     and `Rel.delta_correct` proves it computes exactly the change. Any
-    engine can run it. `sverify.engines.delta_plans(view.internal_plan)` returns the
-    plan of our view. `orders$delta` and `customers$delta` are the change
-    tables, with a trailing `__weight` column; old tables get weight 1
-    (`Project +[1]`), and the join multiplies weights (`$3 * $6`):
+    engine can run it. In the update plan of our view, `orders$delta` and
+    `customers$delta` are the change tables, with a trailing `__weight`
+    column; old tables get weight 1, and the join multiplies weights
+    ([how it works](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-it-works.md)).
     """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(delta_plans, mo, view):
-    import subprocess
-
-    from sverify.engine import checker_path
-
-    def _tree(plan):
-        out = subprocess.run(
-            [str(checker_path()), "/dev/stdin"],
-            input=plan,
-            capture_output=True,
-            text=True,
-            check=False,
-        ).stdout
-        return out.split("tables:")[0].rstrip()
-
-    mo.hstack(
-        [mo.md(f"```text\n{_tree(p)}\n```") for p in delta_plans(view.internal_plan)],
-        justify="start",
-        wrap=True,
-    )
     return
 
 
@@ -697,12 +671,12 @@ def _(mo):
     rest through. With `on_violation="quarantine"` on the transform (or on
     the source), the refresh sets aside the rows that break a precondition,
     with the reason, and the node runs on the others
-    ([quarantine and hold](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#bad-rows-quarantine-and-hold)).
+    ([quarantine and hold](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-quarantine.md#bad-rows-quarantine-and-hold)).
     A row is set aside when a row condition is not TRUE on it, or when
     another row shares its key: both rows of a repeated `id` go, so the rule
     needs no order between them. Every precondition holds on the rows that
     stay (`Catalog.kept_sound` in
-    [`Quarantine.lean`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/SubstraitLean/Quarantine.lean)),
+    [`Quarantine.lean`](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/analysis/Sverify/Analysis/Quarantine.lean)),
     so `paid`'s proof holds as before. We feed a Delta table an order with a
     negative amount and one with an id that exists already:
     """)
@@ -854,7 +828,7 @@ def _(mo):
     conditions (`amount >= 0`) on the inserted rows, and keys
     (`unique(id)`) among the inserted rows and against the keys of the
     rows the batch keeps. Theorem `Spec.update` in
-    [`Compose.lean`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/SubstraitLean/Compose.lean)
+    [`Compose.lean`](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/SubstraitLean/Compose.lean)
     says a table's contract survives a batch under exactly these checks,
     and `Triple.maintained` says a contracted view's guarantees then hold in
     the new state. So `base` satisfies `doubled ≥ 0` and is non-NULL after
@@ -992,29 +966,28 @@ def _(mo):
     keys, NaN, integer overflow, the rounding of integer division and the
     order of ties. Plans come from one producer: the vendored Ibis
     producer, or sverify's lift of DuckDB's SQL (SQLGlot) for SQL strings.
-    DuckDB (the default), Polars on its streaming engine and Spark 4.x run
+    DuckDB (the default), Polars on its streaming engine and Spark 4.3 run
     plans, each with a proved profile, and sverify writes DuckDB, Spark and
     Snowflake SQL; Snowflake's profile and running plans on it come before
     1.0.
-    [The engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines) has the details. Lean's reference profile is the reference,
-    one of the [profiles that refine the core](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#core-profiles-and-engines),
+    [The engines](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/stability.md#engines) has the details. Lean's reference profile is the reference,
+    one of the [profiles that refine the core](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/core-semantics.md#core-profiles-and-engines),
     and the tests use DuckDB as their default oracle. DuckDB and Polars are
     characterized fact by fact, each fact with its evidence
     ([the ledgers](https://alexandernenninger.github.io/substrait-lean/ledgers/)). DuckDB and Polars run Lean's
-    written form of the plan (`sverify.engines.written_plan`), so what runs
-    is what was checked, and their translators spell out the reference's
-    semantics explicitly, whatever the engine's defaults.
+    written form of the plan, so what runs is what was checked, and their
+    translators spell out the reference's semantics, whatever the engine's
+    defaults.
 
-    We'll line the engines up. Pick a query, and each engine runs the same
-    checked plan (`sverify.engines.run(con, plan, engine)`) next to Lean's
-    reference interpreter:
+    We'll line the engines up. Pick a query: `sv.verify` checks it once, and
+    `report.run(con, engine)` runs the same checked plan on each engine:
     """)
     return
 
 
 @app.cell
 def _(ibis, math, sv):
-    from sverify.engines import ENGINES, run, substrait_json, written_plan
+    from sverify.engines import ENGINES
 
     T_SCHEMA = ibis.schema({"k": "string", "qty": "int64", "v": "float64"})
     U_SCHEMA = ibis.schema({"k": "string", "label": "string"})
@@ -1031,9 +1004,6 @@ def _(ibis, math, sv):
         U_ROWS,
         U_SCHEMA,
         con,
-        run,
-        substrait_json,
-        written_plan,
     )
 
 
@@ -1063,17 +1033,13 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(ENGINES, con, display, json, mo, query, run, substrait_json, written_plan):
-    from sverify.testing import canonical, inline_tables, lean_rows
-
-    _plan = substrait_json(con, query.value, semantics="duckdb")
-    _written = written_plan(_plan)
-    _cols = json.loads(_plan)["relations"][0]["root"]["names"]
+def _(ENGINES, con, display, mo, query, sv):
+    _report = sv.verify(query.value, tables={"t": con.table("t"), "u": con.table("u")})
     _panels, _results = [], {}
     for _engine in ENGINES:
         try:
-            _t = run(con, _written, _engine)
-            _results[_engine] = [tuple(r.values()) for r in _t.to_pylist()]
+            _t = _report.run(con, _engine)
+            _results[_engine] = sorted(repr(tuple(r.values())) for r in _t.to_pylist())
             _panels.append(display.arrow(_t, title=_engine))
         except Exception as _e:
             _panels.append(
@@ -1087,17 +1053,15 @@ def _(ENGINES, con, display, json, mo, query, run, substrait_json, written_plan)
                     ]
                 )
             )
-    if " v" not in query.value and "+ 1" not in query.value:  # see the note below
-        _data = {t: con.rows(t) for t in ("t", "u")}
-        _lean = lean_rows(json.dumps(inline_tables(json.loads(_plan), _data)))
-        _panels.insert(0, display.table(_lean, _cols, title="Lean's Rel.eval"))
-    _same = len({repr(canonical(r)) for r in _results.values()}) == 1 and len(_results) == 3
+    _same = len({repr(r) for r in _results.values()}) == 1 and len(_results) == len(ENGINES)
     mo.vstack(
         [
             mo.md(f"```sql\n{query.value}\n```"),
             display.side_by_side(*_panels),
             mo.callout(
-                mo.md("All three engines agree." if _same else "The engines disagree; see below."),
+                mo.md(
+                    "The engines agree." if _same else "The engines disagree, or refuse; see below."
+                ),
                 kind="success" if _same else "warn",
             ),
         ]
@@ -1118,15 +1082,9 @@ def _(mo):
     * NaN is one value, equal to itself and above every number, so
       `NaN > 0` is TRUE. The next section covers doubles.
     * `qty + 1` on the largest integer is where engines differ most:
-      Polars' own `+` wraps around to the smallest integer, while the
-      Polars and DuckDB translators raise, as the reference does. An integer that
+      Polars' own `+` wraps around to the smallest integer. An integer that
       leaves its declared width is an error, and `verify` reports it
-      beforehand.
-
-    Lean's column is missing for the last two queries. The model stores a
-    double as a very large integer code (`core/Sverify/Core/Float.lean`), so
-    the checker's printer can't tell a double from an integer beyond 64
-    bits. The test suite compares doubles through the engines.
+      beforehand with the bound to declare, so no engine runs the plan.
 
     ### Choosing the engine for a node
 
@@ -1183,8 +1141,9 @@ def _(mo):
 
 
 @app.cell
-def _(pa, substrait_json, sv):
+def _(pa, sv):
     from sverify.engines import run_sharded
+    from sverify.engines.plan import substrait_json
 
     def _readings(rows):
         return pa.table(
@@ -1267,10 +1226,10 @@ def _(mo):
     `report.run(con, engine, route="auto")` and
     `node.refresh(engine=..., route="auto")` choose how it reaches the
     engine, and refuse the plan with the reason where nothing does
-    ([how a route is chosen](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/verifying.md)).
+    ([how a route is chosen](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/verifying.md)).
     The route names the plan's class on the engine: `exact` (every result
-    the engine gives, the reference allows), `observed` (equal under an
-    observation the postcondition states, a float tolerance included),
+    the engine gives, the reference allows), `observed` (equal under
+    lenses the postcondition states, a float tolerance included),
     `shim` (after a proved translation) or `refused`. Before the plan runs, its preconditions
     are checked on the data. We take the join to Polars:
     """)
@@ -1289,14 +1248,99 @@ def _(con, mo, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
+    The reference isn't the only semantics to prove a plan under. With
+    `semantics="polars"`, Sverify proves it under the Polars rules, the
+    ones your Polars run follows. The proof then reaches Polars directly
+    (`native`). It reaches another engine only by a route that carries it
+    there, such as `transfer`, where that engine's choices stay within those
+    of Polars on every option the plan reads. A native run on DuckDB is
+    refused, since DuckDB's rules aren't the ones we verified under:
+    """)
+    return
+
+
+@app.cell
+def _(con, mo, sv):
+    from sverify.errors import RouteError
+
+    _t, _u = con.table("t"), con.table("u")
+    _own = sv.verify(_t.join(_u, _t.k == _u.k).select(_t.k, _t.qty, _u.label), semantics="polars")
+    _own.run(con, "polars", route="auto")
+    try:
+        _own.run(con, "duckdb", route="native")
+    except RouteError as _e:
+        _refusal = f"`{type(_e).__name__}`: {_e}"
+    else:
+        raise AssertionError("a native run needs the proof under the engine's own rules")
+    mo.md(f"Route on Polars: {_own.routes['polars']}\n\nAn explicit route on DuckDB: {_refusal}")
+    return (RouteError,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    An explicit `route=` is taken or refused, never replaced by another, and
+    the refusal names the semantics it needs and what to do, here the
+    `route="auto"` that tries every route.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
     A stored node also needs a rerun to reproduce its result, since its sink
     commits each epoch once. The sink states what that means: exact bits
     (`reproducible=sv.equivalent()`), or doubles within a tolerance,
     `DeltaSink(uri, reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))`,
     for a `SUM` of doubles, which Polars's streaming engine may add in
     another order each run. A refresh whose route cannot meet that is
-    refused. The
-    [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/examples.md) show both, step by step.
+    refused. We'll store the same sum of doubles twice, once asking for exact
+    bits and once for a tolerance:
+    """)
+    return
+
+
+@app.cell
+def _(RouteError, lake, mo, pa, sv):
+    from ibis import _
+    from sverify.io import DeltaSink as _Sink
+    from sverify.io import StaticSource as _Source
+
+    _readings = _Source(pa.table({"k": [1, 2, 2], "x": [0.1, 0.2, 0.3]}), name="readings")
+
+    @sv.transform(
+        requires={"readings": [_.x.between(-1000, 1000), sv.max_rows(1000)]},
+        ensures=[sv.equivalent(floats=sv.within(abs=1e-6))],
+    )
+    def sums(readings):
+        return readings.group_by("k").aggregate(total=readings.x.sum())
+
+    try:
+        _exact = _Sink(str(lake / "sums_exact"), reproducible=sv.equivalent())
+        _readings.pipe(sums).write(_exact).refresh(engine="polars", route="auto")
+    except RouteError as _e:
+        _refusal = f"`{type(_e).__name__}`: {str(_e)[:230]}..."
+    else:
+        raise AssertionError("exact bits should be refused on Polars")
+    _tolerant = _readings.pipe(sums).write(
+        _Sink(str(lake / "sums"), reproducible=sv.equivalent(floats=sv.within(abs=1e-6)))
+    )
+    _out = _tolerant.refresh(engine="polars", route="auto")
+    mo.vstack(
+        [
+            mo.md(f"Exact bits: {_refusal}"),
+            mo.md(f"Within 1e-6, `refresh()` reports:\n\n```text\n{_out}\n```"),
+        ]
+    )
+    return (sums,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The refusal names the tolerance that would do. The
+    [examples](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/examples.md) show both, step by step.
     """)
     return
 
@@ -1307,8 +1351,8 @@ def _(mo):
     ### SQL for DuckDB, Snowflake and Spark
 
     When the data lives in a warehouse, the plan goes to the warehouse.
-    `sverify.engines.to_sql` writes a checked plan, or one of Lean's update
-    plans, as SQL whose result is `Rel.eval` of the plan. Columns are
+    `report.to_sql(dialect)` writes the plan the report checked as SQL whose
+    result is `Rel.eval` of the plan. Columns are
     positional (`c0`, `c1`, …), filters keep only TRUE rows (`IS TRUE`),
     integers are checked at their declared width and every `ORDER BY` says where
     NULLs go. Each engine's differences go through a `Dialect`:
@@ -1322,7 +1366,7 @@ def _(mo):
         ["duckdb", "snowflake", "spark"], value="duckdb", label="dialect", inline=True
     )
     sql_query = mo.ui.text_area(
-        value="select k, qty * 2 as doubled from t where qty > 0",
+        value="select k, qty * 2 as doubled from t where qty between 0 and 1000",
         label="query over t(k, qty, v)",
         full_width=True,
         rows=2,
@@ -1332,13 +1376,12 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(con, dialect, json, mo, sql_query, substrait_json):
+def _(con, dialect, mo, sql_query, sv):
     import sqlglot
-    from sverify.engines import UnsupportedError, to_sql
+    from sverify.engines import UnsupportedError
 
     try:
-        _plan = json.loads(substrait_json(con, sql_query.value, semantics="duckdb"))
-        _sql = to_sql(_plan, dialect.value)
+        _sql = sv.verify(sql_query.value, tables={"t": con.table("t")}).to_sql(dialect.value)
         _pretty = sqlglot.transpile(_sql, read=dialect.value, pretty=True)[0]
         _out = mo.md(f"```sql\n{_pretty}\n```")
     except UnsupportedError as _e:
@@ -1352,12 +1395,9 @@ def _(con, dialect, json, mo, sql_query, substrait_json):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Try `select k, row_number() over (partition by k order by qty) as rn from t`
-    in each dialect. DuckDB gets an ordinal column, so ties break the way
-    Lean's stable sort breaks them. Snowflake and Spark refuse, because
-    their tables have no row order. When a contract report says
-    `deterministic` (chapter 4), `deterministic=True` promises there are no ties
-    and the SQL is written.
+    A query `verify` does not prove, as `qty * 2` without the bound on
+    `qty`, is refused with what it needs. `node.to_sql(dialect)` writes a
+    node's plan the same way.
 
     Snowflake: integers are `NUMBER(38,0)` checked against the 64-bit
     range, timestamps are `TIMESTAMP_NTZ(6)`, every identifier is quoted,
@@ -1381,8 +1421,7 @@ def _(mo):
     * `TIMESTAMP` is the session time zone's, and so is what `date_trunc`
       returns, so the SQL stays in `TIMESTAMP_NTZ`.
     * `POWER` of doubles is Java's `Math.pow` (within 1 ulp of C's) and is
-      refused, as are sorts and windows over a table without
-      `deterministic=True`.
+      refused.
 
     Spark runs locally, unlike Snowflake. The tests run every coverage case
     and every query of the Snowflake suite on a local Spark session
@@ -1391,7 +1430,7 @@ def _(mo):
     on Polars and DuckDB with random tables, and compares them
     with each other and with `Rel.eval`, row for row in Lean's order where
     order matters. The Snowflake SQL is parsed and run on fakesnow. The
-    [engine profiles](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/engine-profiles.md)
+    [engine profiles](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/engine-profiles.md)
     list where each engine departs from the reference.
 
     ## Doubles, time and text
@@ -1413,9 +1452,9 @@ def _(mo):
     zero: −0.0 is 0.0, so `-0.0 >= 0` holds and −0.0 never shows in a
     result. Lean's core keeps both zeros and signed NaNs, and the reference
     profile reads them this way
-    ([core, profiles and engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/core-semantics.md#core-profiles-and-engines)).
+    ([core, profiles and engines](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/core-semantics.md#core-profiles-and-engines)).
     An order like Rust's `f64::total_cmp` splits both
-    ([`docs/how-it-works.md`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md#doubles-under-the-reference-profile)).
+    ([`docs/how-it-works.md`](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-it-works.md#doubles-under-the-reference-profile)).
     Here is a table with both zeros and NaN:
     """)
     return
@@ -1432,18 +1471,16 @@ def _(con, ibis, math):
 
 
 @app.cell(hide_code=True)
-def _(con, display):
-    from sverify.testing import duckdb_ibis, duckdb_sql
-
+def _(con, display, sv):
     display.arrow(
-        duckdb_sql(
-            con,
+        sv.verify(
             "select v, v > 0 as positive, v = 'NaN'::double as equals_nan,"
             " v < 'Infinity'::double as below_inf from m order by v",
-        ),
+            tables={"m": con.table("m")},
+        ).run(con, "duckdb"),
         title="the table's doubles, as the model has them",
     )
-    return duckdb_ibis, duckdb_sql
+    return
 
 
 @app.cell(hide_code=True)
@@ -1500,7 +1537,7 @@ def _(mo):
     boundary between `v > 0.5` and `v >= 0.5` included. Arithmetic on
     doubles (`v * 2.5`) rounds, and the checker bounds `+`, `-`, `*` and `/`
     from their inputs' bounds with a proved rounding error
-    ([float bounds](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/float-bounds.md#one-operations-bounds-and-overflow)).
+    ([float bounds](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/float-bounds.md#one-operations-bounds-and-overflow)).
     The reference raises where an operation on finite doubles overflows to
     ±∞, so where no bound keeps `v * 2.5` finite, the report assumes it
     stays finite and the run checks it on the data first: a ±∞ in a result came from the
@@ -1548,7 +1585,11 @@ def _(ibis, sv):
     _requires = {"readings": [_.temp >= -50.0, _.temp <= 60.0, sv.max_rows(1_000_000)]}
     exact_claim = sv.verify(_avg, requires=_requires, ensures=[_.avg_temp <= 60.0])
     approx_claim = sv.verify(_avg, requires=_requires, ensures=[sv.approx(_.avg_temp <= 60.0)])
-    assert exact_claim.proved and not exact_claim.ensures[0].robust and approx_claim.proved
+    assert (
+        exact_claim.verdict == sv.Verdict.PROVED
+        and not exact_claim.ensures[0].robust
+        and approx_claim.verdict == sv.Verdict.PROVED
+    )
     print(_routes.choose(exact_claim, "duckdb"))
     return (approx_claim,)
 
@@ -1557,7 +1598,7 @@ def _(ibis, sv):
 def _(mo):
     mo.md(r"""
     The hint names the exit, `sv.approx`, which states the claim up to that
-    rounding. With it the claim is proved, and the report's `observes:` line
+    rounding. With it the claim is proved, and the report's `lenses:` line
     says which results count as the same: the doubles within the plan's
     bound (`floats="plan"`, the default of `sv.equivalent`):
     """)
@@ -1566,7 +1607,52 @@ def _(mo):
 
 @app.cell
 def _(approx_claim):
-    print(approx_claim.observation)
+    print(approx_claim.lenses)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Drop the row cap and the sum has no bound at all: with the number of rows
+    open, Lean cannot say how far an engine's sum is from the reference's. A
+    claim that reads only the sign of the total still goes through, since
+    adding values of one sign keeps the sign in every order. A tolerance you
+    state is another matter. There is nothing to meet it with, so the route
+    refuses and names the exits, a row cap or `floats="plan"`:
+    """)
+    return
+
+
+@app.cell
+def _(ibis, sv):
+    from ibis import _
+    from sverify.routes import choose as _choose
+
+    _readings = ibis.table({"sensor": "int64", "temp": "float64"}, name="readings")
+    _sums = _readings.group_by("sensor").aggregate(total=_readings.temp.sum())
+    _requires = {"readings": [_.temp >= 0.0, _.temp <= 60.0]}
+    sign_claim = sv.verify(_sums, requires=_requires, ensures=[_.total >= 0.0])
+    tolerant = sv.verify(
+        _sums,
+        requires=_requires,
+        ensures=[_.total >= 0.0, sv.equivalent(floats=sv.within(rel=1e-6))],
+    )
+    assert sign_claim.verdict == sv.Verdict.PROVED and tolerant.verdict != sv.Verdict.PROVED
+    print(_choose(sign_claim, "duckdb").why)
+    print(_choose(tolerant, "duckdb").why)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    With `sv.max_rows(1_000_000)` in `requires` the sum has a bound
+    (`abs=0.0067, rel=2.2e-10`). Now a claim about the value of the total,
+    such as `total <= 6e7`, is refused with the exit `sv.approx`, as the
+    average above was: the reference's total may sit at the limit where an
+    engine's lands a hair beyond it.
+    """)
     return
 
 
@@ -1579,7 +1665,7 @@ def _(mo):
     intervals are durations. Comparisons with literals, `ts + interval`,
     `ts1 - ts0` and joins on time are tracked like integers. The calendar
     functions are computed exactly on the Gregorian calendar
-    ([`Time.lean`](https://github.com/AlexanderNenninger/substrait-lean/blob/main/core/Sverify/Core/Time.lean)),
+    ([`Time.lean`](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/core/Sverify/Core/Time.lean)),
     and Lean proves they grow with the timestamp, so a range of timestamps
     gives a range of years and of truncated months. Pick a time window and
     see what Lean derives:
@@ -1612,7 +1698,7 @@ def _(display, dt, end, ibis, mo, start, sv):
         )
     )
     display.table(
-        list(_report.facts.items()), ["column", "what Lean knows"]
+        [(c, str(f)) for c, f in _report.facts.items()], ["column", "what Lean knows"]
     ) if _lo < _hi else mo.md("*Pick an end after the start.*")
     return (events,)
 
@@ -1690,7 +1776,7 @@ def _(mo):
 def _(con_lines, sv):
     _lines = con_lines.table("lines")
     _totals = sv.verify(_lines.select("id", total=_lines.price * _lines.qty))
-    assert _totals.proved
+    assert _totals.verdict == sv.Verdict.PROVED
     {"total": str(_totals.output["total"]), "rows": _totals.run(con_lines, "duckdb").to_pylist()}
     return
 
@@ -1703,18 +1789,14 @@ def _(mo):
     Strings are sequences of Unicode characters in the model. `substring`,
     `strpos`, `character_length`, `trim`, `||` and `LIKE` are computed
     exactly, and the test suite checks them against DuckDB on random
-    strings. Here is Lean's `Rel.eval` next to DuckDB, running Ibis's own
-    SQL, on some awkward words:
+    strings. Here is the checked plan on DuckDB and on Polars, on some
+    awkward words:
     """)
     return
 
 
 @app.cell
-def _(con, display, duckdb_ibis, ibis, json):
-    from sverify.ibis_substrait import to_substrait_json
-    from sverify.testing import inline_tables as _inline_tables
-    from sverify.testing import lean_rows as _lean_rows
-
+def _(con, display, ibis, sv):
     con.create("w", ibis.schema({"word": "string"}), [("Grüße",), ("naïve ",), ("a%b",), (None,)])
     _w = con.table("w")
     _words = _w.select(
@@ -1725,12 +1807,12 @@ def _(con, display, duckdb_ibis, ibis, json):
         trimmed=_w.word.strip(),
         eszett=_w.word.find("ß"),
     )
-    _plan = json.loads(to_substrait_json(_words))
-    _cols = _plan["relations"][0]["root"]["names"]
-    _lean = _lean_rows(json.dumps(_inline_tables(_plan, {"w": con.rows("w")})))
+    _report = sv.verify(_words)
     display.side_by_side(
-        display.table(_lean, _cols, title="Lean"),
-        display.arrow(duckdb_ibis(con, _words), title="DuckDB"),
+        *(
+            display.arrow(_report.run(con, _engine), title=_engine)
+            for _engine in ("duckdb", "polars")
+        )
     )
     return
 
@@ -1779,7 +1861,7 @@ def _(mo):
     their guarantees in every state while only each batch is checked. You
     can refresh a node on DuckDB, Polars or Spark, hand a plan
     to Snowflake as SQL, and tell where an engine could depart from the
-    model. The last chapter, [Running it in production](?file=06_running_in_production.py),
+    model. The next chapter, [Running it in production](?file=06_running_in_production.py),
     covers the work around a proved pipeline: checking its file in CI,
     testing it, its credentials, its lineage and a bound on its state.
     """)

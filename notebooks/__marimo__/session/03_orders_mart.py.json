@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "211de3edc9e493bbca42f5706de8ad26"
+    "script_metadata_hash": "9f13631310acd38abe4c6d69456f093f"
   },
   "cells": [
     {
@@ -33,12 +33,12 @@
     },
     {
       "id": "vblA",
-      "code_hash": "0b97283fcb31727fd24da11e41f31f07",
+      "code_hash": "467367ef27373f5870c81dc55eec8fb5",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"3-an-orders-mart-dbt-tests-proved\">3. An orders mart: dbt tests, proved</h1>\n<span class=\"paragraph\">Say you own the dashboard the sales team opens every morning:\nrevenue per city and day. The regional managers' bonuses depend on it,\nso when a number is off, you hear about it before lunch.</span>\n<span class=\"paragraph\">It's a mart model of the kind most analytics teams have, with one\nsubtlety: the city is the customer's city when the order was placed.\nCustomers move, so the city comes from a type-2 slowly changing\ndimension (dbt snapshots build these), and the join is a point-in-time\njoin (<code>dbt-scd2-point-in-time</code> in the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.8.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a>).</span>\n<span class=\"paragraph\">In dbt this model would come with tests: <code>not_null(city)</code>,\n<code>unique(city, day)</code>, <code>revenue &gt;= 0</code>. They run after the model is built,\non the data that happens to be there. Here they are the model's\ncontract, proved for every possible input before it runs, and one of\nthem fails for a reason the test data doesn't show. We'd rather see that\nfailure here than in a regional manager's inbox.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"3-an-orders-mart-dbt-tests-proved\">3. An orders mart: dbt tests, proved</h1>\n<span class=\"paragraph\">Say you own the dashboard the sales team opens every morning:\nrevenue per city and day. The regional managers' bonuses depend on it,\nso when a number is off, you hear about it before lunch.</span>\n<span class=\"paragraph\">It's a mart model of the kind most analytics teams have, with one\nsubtlety: the city is the customer's city when the order was placed.\nCustomers move, so the city comes from a type-2 slowly changing\ndimension (dbt snapshots build these), and the join is a point-in-time\njoin (<code>dbt-scd2-point-in-time</code> in the\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/catalogue/INDEX.md\" rel=\"noopener noreferrer\" target=\"_blank\">query catalogue</a>).</span>\n<span class=\"paragraph\">In dbt this model would come with tests: <code>not_null(city)</code>,\n<code>unique(city, day)</code>, <code>revenue &gt;= 0</code>. They run after the model is built,\non the data that happens to be there. Here they are the model's\ncontract, proved for every possible input before it runs, and one of\nthem fails for a reason the test data doesn't show. We'd rather see that\nfailure here than in a regional manager's inbox.</span></span>"
           }
         }
       ],
@@ -59,7 +59,7 @@
     },
     {
       "id": "lEQa",
-      "code_hash": "567f803c5b70965afc17a7306cdd6388",
+      "code_hash": "7b5b58a7f5f8f388cfd23e083b11bd9b",
       "outputs": [
         {
           "type": "data",
@@ -142,7 +142,7 @@
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>NOT proved: 1 of 4 postconditions not proved</strong></span>\n<blockquote>\n<span class=\"paragraph\">\u2139\ufe0f assumed (inferred): SUM of <code>amount_cents</code> fits 64 bits in every group (checked at run time: the job raises if it does not; on_inferred=\"off\" makes it an error)</span>\n<span class=\"paragraph\">semantics: reference</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>_.city.notnull()</code></td>\n<td>\u274c it may be FALSE on some rows; fails on <code>orders(order_id, customer_id, order_ts, amount_cents) = [(0, 0, datetime.datetime(2024, 1, 1, 0, 0), 0)], history(customer_id, city, valid_from, valid_to) = [] gives (city, day, n_orders, revenue_cents) = [(None, 1704067200000000, 1, 0)]</code></td>\n</tr>\n<tr>\n<td><code>_.day.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>unique(city, day)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.revenue_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td>hint</td>\n<td>SUM of <code>amount_cents</code>: bound it in <code>requires</code> of orders, for example <code>_.amount_cents &lt;= 1_000_000_000</code>; then a group's sum fits 64 bits for up to 9,223,372,036 rows, and <code>sv.max_rows(9_223_372_036)</code> in <code>requires</code> of orders proves it, and so does <code>sv.rows_per(&lt;grouping columns&gt;, at_most=9_223_372_036)</code>; without a row bound, the job checks the sum as it runs</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>city</code></td>\n<td>a string or NULL</td>\n</tr>\n<tr>\n<td><code>day</code></td>\n<td>a timestamp in [2000-01-01 00:00:00, 9999-12-31 00:00:00]</td>\n</tr>\n<tr>\n<td><code>n_orders</code></td>\n<td>an integer \u2265 1</td>\n</tr>\n<tr>\n<td><code>revenue_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n</tbody>\n</table></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>NOT proved: 1 of 4 postconditions not proved</strong></span>\n<blockquote>\n<span class=\"paragraph\">\u2139\ufe0f assumed (inferred): SUM of <code>amount_cents</code> fits 64 bits in every group (checked at run time: the job raises if it does not; on_inferred=\"off\" makes it an error)</span>\n<span class=\"paragraph\">semantics: portable</span>\n</blockquote>\n<table>\n<thead>\n<tr>\n<th>postcondition</th>\n<th>status</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>_.city.notnull()</code></td>\n<td>\u274c it may be FALSE on some rows; fails on <code>orders(order_id, customer_id, order_ts, amount_cents) = [(0, 0, datetime.datetime(2024, 1, 1, 0, 0), 0)], history(customer_id, city, valid_from, valid_to) = [] gives (city, day, n_orders, revenue_cents) = [(None, datetime.datetime(2024, 1, 1, 0, 0), 1, 0)]</code></td>\n</tr>\n<tr>\n<td><code>_.day.notnull()</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>unique(city, day)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td><code>(_.revenue_cents &gt;= 0)</code></td>\n<td>\u2705 proved</td>\n</tr>\n<tr>\n<td>hint</td>\n<td>SUM of <code>amount_cents</code>: the job checks the sum as it runs. To prove it, bound it in <code>requires</code> of orders, for example <code>_.amount_cents &lt;= 1_000_000_000</code>; then a row cap in <code>requires</code> of orders proves it: <code>sv.max_rows(1_000_000_000)</code> or <code>sv.rows_per(&lt;grouping columns&gt;, at_most=1_000_000_000)</code>, and any group of up to 9,223,372,036 rows fits 64 bits</td>\n</tr>\n</tbody>\n</table>\n<table>\n<thead>\n<tr>\n<th>output column</th>\n<th>known values</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><code>city</code></td>\n<td>a string or NULL</td>\n</tr>\n<tr>\n<td><code>day</code></td>\n<td>a timestamp in [2000-01-01 00:00:00, 9999-12-31 00:00:00]</td>\n</tr>\n<tr>\n<td><code>n_orders</code></td>\n<td>an integer \u2265 1</td>\n</tr>\n<tr>\n<td><code>revenue_cents</code></td>\n<td>an integer \u2265 0</td>\n</tr>\n</tbody>\n</table></span>"
           }
         }
       ],
@@ -202,7 +202,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "proved\nrequires orders: amount_cents >= 0\nrequires orders: unique(order_id)\nensures city is not null: proved\nensures revenue_cents >= 0: proved\nensures unique(city, day): proved\nassumes: SUM of sum(amount_cents) fits 64 bits in every group (checked at run time: the job raises if it does not; on_inferred=\"off\" makes it an error)\nsemantics: reference\nevidence: duckdb exact, tested at 2.0.0 (facts duckdb-null-keys, duckdb-R6; #241)\nevidence: polars exact, tested at 2.1.0 (facts polars-null-keys, polars-sum-int; #271)\nevidence: spark shim, tested at 4.3.0 (facts spark-null-keys, spark-sum-int, spark-exec-parallel; #271)\nknown about the output:\n  city: a string\n  day: a timestamp \u2264 9999-12-31 00:00:00\n  n_orders: an integer \u2265 1\n  revenue_cents: an integer \u2265 0\n",
+          "text": "proved with checks: 1 run-time check\nThe output guarantees:\n  city is not null\n  revenue_cents \u2265 0\n  no two rows share (city, day)\nEach run checks on the data:\n  orders: amount_cents \u2265 0\n  orders: no two rows share order_id\n  while it runs: SUM of sum(amount_cents) fits 64 bits in every group (checked at run time: the job raises if it does not; on_inferred=\"off\" makes it an error)\nKnown about the output:\n  city: a string\n  day: a timestamp \u2264 9999-12-31 00:00:00\n  n_orders: an integer \u2265 1\n  revenue_cents: an integer \u2265 0\n",
           "mimetype": "text/plain"
         }
       ]
@@ -222,7 +222,7 @@
     },
     {
       "id": "ROlb",
-      "code_hash": "62dc60d7c01a07430fd021174c6996e3",
+      "code_hash": "3b6bf339eff1df165e87aa3217962803",
       "outputs": [
         {
           "type": "data",
@@ -235,7 +235,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "proved\nrequires orders: unique(order_id)\nrequires orders: (_.amount_cents >= 0)\nrequires orders: (_.order_ts >= datetime(2000, 1, 1))\nensures _.city.notnull(): proved\nensures _.day.notnull(): proved\nensures unique(city, day): proved\nensures (_.revenue_cents >= 0): proved\nassumes: SUM of sum(amount_cents) fits 64 bits in every group (checked at run time: the job raises if it does not; on_inferred=\"off\" makes it an error)\nsemantics: reference\nevidence: duckdb exact, tested at 2.0.0 (facts duckdb-null-keys, duckdb-R6; #241)\nevidence: polars exact, tested at 2.1.0 (facts polars-null-keys, polars-sum-int; #271)\nevidence: spark shim, tested at 4.3.0 (facts spark-null-keys, spark-sum-int, spark-exec-parallel; #271)\nknown about the output:\n  city: a string\n  day: a timestamp in [2000-01-01 00:00:00, 9999-12-31 00:00:00]\n  n_orders: an integer \u2265 1\n  revenue_cents: an integer \u2265 0\n",
+          "text": "proved with checks: 1 run-time check\nThe output guarantees:\n  city is never NULL\n  day is never NULL\n  no two rows share (city, day)\n  revenue_cents \u2265 0\nEach run checks on the data:\n  orders: no two rows share order_id\n  orders: amount_cents \u2265 0\n  orders: order_ts \u2265 datetime(2000, 1, 1)\n  while it runs: SUM of sum(amount_cents) fits 64 bits in every group (checked at run time: the job raises if it does not; on_inferred=\"off\" makes it an error)\nKnown about the output:\n  city: a string\n  day: a timestamp in [2000-01-01 00:00:00, 9999-12-31 00:00:00]\n  n_orders: an integer \u2265 1\n  revenue_cents: an integer \u2265 0\n",
           "mimetype": "text/plain"
         }
       ]
@@ -255,7 +255,7 @@
     },
     {
       "id": "TqIu",
-      "code_hash": "284582eafb3d6af8ef2402bcf9372980",
+      "code_hash": "6cda7d79614e14b1463d3eb4404d9acc",
       "outputs": [
         {
           "type": "data",
@@ -268,7 +268,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "daily_city_revenue: orders@v1, history@v0; recomputed (the aggregate's input has no delta rules (not incrementally maintainable (left join, fetch or window)); no touched groups: the aggregate's input has no delta rules (not incrementally maintainable (left join, fetch or window)))\n",
+          "text": "daily_city_revenue: orders@v1, history@v0; mode: recompute and diff; recomputed (the aggregate's input has no delta rules (not incrementally maintainable: no delta rule for left join over orders, history); no touched groups: the aggregate's input has no delta rules (not incrementally maintainable: no delta rule for left join over orders, history))\n",
           "mimetype": "text/plain"
         }
       ]
@@ -314,12 +314,12 @@
     },
     {
       "id": "ecfG",
-      "code_hash": "c796da97e5339b227d6f7b8899048d5f",
+      "code_hash": "799dd951b3512b1dd9d12e1a9e2d1fab",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">DuckDB's <code>/</code> on integers gives a double, SQLite's (and\nPostgreSQL's) truncates, Snowflake's gives a NUMBER with extra decimals,\nand Spark's gives a double. A model moved from DuckDB in development to\nSnowflake in production changes its numbers without an error, and\nwhoever reconciles the dashboard with finance notices first. Sverify's\ntranslations write out what the plan means (integer division truncates\non every engine), so the checked plan gives the same rows on each,\nwhichever <code>engine=</code> the node is refreshed with. Lean's model is the\nreference; <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines\" rel=\"noopener noreferrer\" target=\"_blank\">the engines</a> lists what each engine runs:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">DuckDB's <code>/</code> on integers gives a double, SQLite's (and\nPostgreSQL's) truncates, Snowflake's gives a NUMBER with extra decimals,\nand Spark's gives a double. A model moved from DuckDB in development to\nSnowflake in production changes its numbers without an error, and\nwhoever reconciles the dashboard with finance notices first. Sverify's\ntranslations write out what the plan means (integer division truncates\non every engine), so the checked plan gives the same rows on each,\nwhichever <code>engine=</code> the node is refreshed with. Lean's model is the\nreference; <a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/stability.md#engines\" rel=\"noopener noreferrer\" target=\"_blank\">the engines</a> lists what each engine runs:</span></span>"
           }
         }
       ],
@@ -327,7 +327,7 @@
     },
     {
       "id": "Pvdt",
-      "code_hash": "8252bac1135096c191b988a7beb38cbb",
+      "code_hash": "4a2ce7cbd98dc00a42602e7a392ecf54",
       "outputs": [
         {
           "type": "data",
@@ -336,7 +336,14 @@
           }
         }
       ],
-      "console": []
+      "console": [
+        {
+          "type": "stream",
+          "name": "stderr",
+          "text": "/home/runner/.cache/uv/environments-v2/03-orders-mart-fa9a163546732030/lib/python3.12/site-packages/pyspark/sql/connect/utils.py:41: FutureWarning: PySpark does not yet fully support pandas >= 3.0.0. Some features may not work correctly. It is recommended to use pandas < 3.0.0 for now.\n  require_minimum_pandas_version()\n",
+          "mimetype": "text/plain"
+        }
+      ]
     },
     {
       "id": "ZBYS",
@@ -366,7 +373,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "daily_city_revenue:\n  computed\n  requires orders: unique(order_id) (checked on data)\n  requires orders: (_.amount_cents >= 0) (Delta constraint)\n  requires orders: (_.order_ts >= datetime(2000, 1, 1)) (file stats @v1)\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-null-keys, duckdb-R6; #241)\n  wrote daily_city_revenue from orders@v1, history@v0: created v2, 4 row(s) written, 0 deleted\n",
+          "text": "daily_city_revenue:\n  computed\n  requires orders: unique(order_id) (checked on data)\n  requires orders: (_.amount_cents >= 0) (Delta constraint)\n  requires orders: (_.order_ts >= datetime(2000, 1, 1)) (file stats @v1)\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-null-keys, duckdb-R6; #1985)\n  wrote daily_city_revenue from orders@v1, history@v0: created v2, 4 row(s) written, 0 deleted\n",
           "mimetype": "text/plain"
         }
       ]
@@ -386,7 +393,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "daily_city_revenue:\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-null-keys, duckdb-R6; #241)\n  orders@v1\u2192v2: 1 insert(s), 0 delete(s); \u0394 trusted as coming from Delta CDF v1\u2192v2\n  history@v0\u2192v2: 2 insert(s), 1 delete(s); \u0394 trusted as coming from Delta CDF v0\u2192v2\n  requires orders: (_.amount_cents >= 0) (Delta constraint)\n  requires orders: (_.order_ts >= datetime(2000, 1, 1)) (file stats @v2 (new files))\n  requires orders: unique(order_id) (checked on data)\n  view daily_city_revenue: orders@v2, history@v2\n  view daily_city_revenue: recomputed and diffed\n  wrote daily_city_revenue from orders@v2, history@v2: merge v3, 3 row(s) written, 1 deleted\n",
+          "text": "daily_city_revenue:\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-null-keys, duckdb-R6; #1985)\n  orders@v1\u2192v2: 1 insert(s), 0 delete(s); \u0394 trusted as coming from Delta CDF v1\u2192v2\n  history@v0\u2192v2: 2 insert(s), 1 delete(s); \u0394 trusted as coming from Delta CDF v0\u2192v2\n  requires orders: (_.amount_cents >= 0) (Delta constraint)\n  requires orders: (_.order_ts >= datetime(2000, 1, 1)) (file stats @v2 (new files))\n  requires orders: unique(order_id) (checked on data)\n  view daily_city_revenue: orders@v2, history@v2\n  view daily_city_revenue: recomputed and diffed (the aggregate's input has no delta rules (not incrementally maintainable: no delta rule for left join over orders, history); no touched groups: the aggregate's input has no delta rules (not incrementally maintainable: no delta rule for left join over orders, history))\n  wrote daily_city_revenue from orders@v2, history@v2: merge v3, 3 row(s) written, 1 deleted\n",
           "mimetype": "text/plain"
         }
       ]

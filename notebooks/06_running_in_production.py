@@ -5,7 +5,7 @@
 #     "ibis-framework==12.0.0",
 #     "marimo",
 #     "pyarrow==26.0.1",
-#     "sverify[delta]==0.8.0",
+#     "sverify[duckdb,delta]==0.9.0",
 # ]
 # ///
 
@@ -150,7 +150,7 @@ def _(mo):
     command has an exit code per outcome (3 for a refusal, 4 for a time
     budget, which `SVERIFY_TIMEOUT` sets), `--format github` annotates the
     pull request's lines, and `--format sarif` feeds code scanning
-    ([the command line](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#the-command-line)).
+    ([the command line](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-command-line.md#the-command-line)).
 
     ## 2. A test for CI
 
@@ -193,7 +193,7 @@ def _(mo):
     `assert_engines_agree(node, data)` runs the same rows on every installed
     engine, and `cases(node)` draws inputs that meet the preconditions for
     Hypothesis
-    ([testing with pytest](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#testing-with-pytest)).
+    ([testing with pytest](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-production.md#testing-with-pytest)).
 
     ## 3. Credentials by name
 
@@ -225,7 +225,7 @@ def _(mo):
     `node.credentials()` lists the names a node uses before it runs, and
     `sverify check` warns when a sink lies outside what its credential may
     write
-    ([credentials](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#credentials)).
+    ([credentials](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-credentials.md#credentials)).
 
     ## 4. Tell the next team what it gets
 
@@ -389,10 +389,12 @@ def _(mo):
     preconditions a proof needs, test a node on rows you chose, keep
     credentials out of every file and log, hand the next team a contract it
     proves again, and bound a rollup's state with a promise every batch is
-    checked against. That is the end of the tour. The
-    [guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md)
+    checked against. The next chapter,
+    [Engines](?file=07_engines.py), runs one proved plan on DuckDB, Polars and
+    Spark and shows what an engine's refusal tells you. The
+    [guide](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/tasks.md)
     covers every feature in more detail, and
-    [how it works](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md)
+    [how it works](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-it-works.md)
     goes under the hood: the checker, the producers and engines, and what
     is proved and what is trusted.
     """)
@@ -402,7 +404,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ← 5. [Pipelines and engines](?file=05_pipelines_and_engines.py)
+    ← 5. [Pipelines and engines](?file=05_pipelines_and_engines.py) · 7. [Engines](?file=07_engines.py) →
     """)
     return
 

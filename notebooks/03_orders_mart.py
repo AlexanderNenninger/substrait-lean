@@ -6,7 +6,7 @@
 #     "ibis-framework==12.0.0",
 #     "marimo",
 #     "pyarrow==26.0.1",
-#     "sverify[polars,delta,spark]==0.8.0",
+#     "sverify[duckdb,polars,delta,spark]==0.9.0",
 # ]
 # ///
 
@@ -46,7 +46,7 @@ def _(mo):
     Customers move, so the city comes from a type-2 slowly changing
     dimension (dbt snapshots build these), and the join is a point-in-time
     join (`dbt-scd2-point-in-time` in the
-    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.8.0/catalogue/INDEX.md)).
+    [query catalogue](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/catalogue/INDEX.md)).
 
     In dbt this model would come with tests: `not_null(city)`,
     `unique(city, day)`, `revenue >= 0`. They run after the model is built,
@@ -80,7 +80,7 @@ def _():
     import pyarrow as pa
     import sverify as sv
     from deltalake import DeltaTable, write_deltalake
-    from sverify.engines import ENGINES, to_sql
+    from sverify.engines import ENGINES
     from sverify.io import DeltaSink, DeltaSource
 
     lake = Path(tempfile.mkdtemp())
@@ -144,7 +144,6 @@ def _():
         orders_v0,
         rows,
         sv,
-        to_sql,
         write_deltalake,
     )
 
@@ -323,8 +322,8 @@ def _(ENSURES, MODEL_SQL, REQUIRES, history_t, orders_t, sv):
     def daily_city_revenue_sql(orders, history):
         return sv.sql(MODEL_SQL, orders=orders, history=history)
 
-    sql_transform = daily_city_revenue_sql.check(orders=orders_t, history=history_t)
-    assert sql_transform.proved
+    sql_transform = daily_city_revenue_sql.verify(orders=orders_t, history=history_t)
+    assert sql_transform.verdict == sv.Verdict.PROVED_WITH_CHECKS
     print(sql_transform)
     return
 
@@ -346,11 +345,11 @@ def _(mo):
 
 
 @app.cell
-def _(DeltaSource, daily_city_revenue, lake):
+def _(DeltaSource, daily_city_revenue, lake, sv):
     orders = DeltaSource(str(lake / "orders"))
     history = DeltaSource(str(lake / "customer_history"), name="history")
     mart = orders.pipe(daily_city_revenue, history=history)
-    assert daily_city_revenue.report.proved
+    assert daily_city_revenue.report.verdict == sv.Verdict.PROVED_WITH_CHECKS
     mart.refresh()
     print(mart.status())
     return history, mart, orders
@@ -402,13 +401,13 @@ def _(mo):
     translations write out what the plan means (integer division truncates
     on every engine), so the checked plan gives the same rows on each,
     whichever `engine=` the node is refreshed with. Lean's model is the
-    reference; [the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/stability.md#engines) lists what each engine runs:
+    reference; [the engines](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/stability.md#engines) lists what each engine runs:
     """)
     return
 
 
 @app.cell
-def _(ENGINES, daily_city_revenue, history, mart, orders, to_sql):
+def _(ENGINES, daily_city_revenue, history, mart, orders):
     _results = {}
     for _engine in ENGINES:
         _node = orders.pipe(daily_city_revenue, history=history)
@@ -417,8 +416,8 @@ def _(ENGINES, daily_city_revenue, history, mart, orders, to_sql):
     assert len({repr(r) for r in _results.values()}) == 1
     {
         "engines that agree": list(_results),
-        "Snowflake SQL": f"{len(to_sql(mart.internal_plan, 'snowflake'))} characters",
-        "Spark SQL": f"{len(to_sql(mart.internal_plan, 'spark'))} characters",
+        "Snowflake SQL": f"{len(mart.to_sql('snowflake'))} characters",
+        "Spark SQL": f"{len(mart.to_sql('spark'))} characters",
     }
     return
 

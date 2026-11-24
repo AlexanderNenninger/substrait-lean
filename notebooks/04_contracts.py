@@ -3,7 +3,7 @@
 # dependencies = [
 #     "ibis-framework==12.0.0",
 #     "marimo",
-#     "sverify==0.8.0",
+#     "sverify[duckdb]==0.9.0",
 # ]
 # ///
 
@@ -45,7 +45,7 @@ def _(mo):
     with a decorator that states the contract. This chapter covers the
     contract itself, keys and relations between columns, runtime errors,
     windows and composing contracts. The proofs are described in
-    [how it works](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md).
+    [how it works](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-it-works.md).
 
     ## A first contract
 
@@ -170,6 +170,38 @@ def _(mo):
     some allowed inputs and fails for others. A refusal can also mean the truth is
     out of reach of the analysis (the list at the end of this section says
     what it tracks), so a refusal means "not proved".
+
+    The refusal's "would hold with" line is the other half of the answer: a
+    precondition on one input column under which Lean proves the promise.
+    Sverify proves it before suggesting it. Each postcondition in
+    `report.ensures` carries these as `needs`, ready for `requires=`, so we
+    can take the suggestion and verify again:
+    """)
+    return
+
+
+@app.cell
+def _(mo, orders, sv):
+    from ibis import _
+
+    _plus_one = orders.select(orders.id, total=orders.amount + 1)
+    _requires = [_.amount >= 0, _.amount < 1_000_000_000]
+    _first = sv.verify(_plus_one, requires={"orders": _requires}, ensures=[_.total > 5])
+    [_suggested] = _first.ensures[0].needs
+    _fixed = sv.verify(
+        _plus_one, requires={"orders": [*_requires, _suggested.condition]}, ensures=[_.total > 5]
+    )
+    assert _first.verdict == sv.Verdict.UNPROVED and _fixed.verdict == sv.Verdict.PROVED
+    mo.md(f"Suggested: `{_suggested.code}`. With it stated, the verdict is `{_fixed.verdict}`.")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Stating it moves the question upstream, where it belongs: each run now
+    checks `amount >= 5` on the data, and an order of 3 is refused at the
+    input, before it can break the promise at the output.
 
     ## Contracts on real data
 
@@ -436,8 +468,39 @@ def _(con_refs, sv):
         ensures=[_.total >= 0, sv.max_rows(1_000_000)],
     )
     uncapped = sv.verify(_totals, requires={"orders": _amounts}, ensures=[_.total >= 0])
-    assert capped.proved and not capped.assumed
+    assert capped.verdict == sv.Verdict.PROVED and not capped.assumed
     {"with sv.max_rows": capped.rows, "assumed without it": [str(a) for a in uncapped.assumed]}
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    A cap on the whole table is more than this sum needs. Each customer
+    adds up only their own orders, so a bound per customer is enough:
+    `sv.rows_per("customer", at_most=1000)` says no customer has more than
+    a thousand orders, and a thousand amounts of at most a million fit
+    64 bits. The data is checked for it like a key (`sv.unique` is
+    `rows_per` with `at_most=1`):
+    """)
+    return
+
+
+@app.cell
+def _(con_refs, sv):
+    from ibis import _
+
+    _orders = con_refs.table("orders")
+    _totals = _orders.group_by("customer").aggregate(total=_orders.amount.sum())
+    per_customer = sv.verify(
+        _totals,
+        requires={
+            "orders": [_.amount >= 0, _.amount <= 1_000_000, sv.rows_per("customer", at_most=1000)]
+        },
+        ensures=[_.total >= 0],
+    )
+    assert per_customer.verdict == sv.Verdict.PROVED and not per_customer.assumed
+    per_customer.verdict
     return
 
 
@@ -528,6 +591,47 @@ def _(mo):
     taken from a condition holds on every row that passes it, and every
     operator above keeps it.
 
+    ## Typed values
+
+    Say the billing job sums prices with two decimals. A total that rounds
+    away a cent still looks right, and nobody gets paged. Every value
+    Sverify models has a kind: an integer, a double, a decimal with its
+    scale, a date, a timestamp. A double never passes for an integer, and a
+    decimal keeps its scale through a `SUM`. A plan that mixes kinds the
+    checker can't type is refused before it runs. A column it can't read at
+    all is refused when we state the contract, and the refusal names the
+    cast that gets past it:
+    """)
+    return
+
+
+@app.cell
+def _(ibis, mo, sv):
+    from sverify.errors import UnsupportedError
+
+    _items = ibis.table({"id": "int64", "price": "decimal(10,2)", "qty": "uint8"}, name="items")
+    _total = sv.verify(_items.group_by("id").agg(total=_items.price.sum()))
+    try:
+        sv.verify(_items.select(_items.id, _items.qty))
+    except UnsupportedError as _e:
+        _refusal = f"`{type(_e).__name__}`: {_e}"
+    else:
+        raise AssertionError("an unsigned column should be refused")
+    mo.md(
+        f"The type of `total`, a `SUM` of `decimal(10, 2)`: `{_total.output['total']}`\n\n"
+        f"Reading the unsigned column: {_refusal}"
+    )
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    The sum keeps the scale of two, and its width grows to hold it. The proof
+    behind the kinds is `Rel.kinds_sound`: a well-kinded plan evaluates to
+    values of the kinds it states
+    ([proofs.md](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/proofs.md)).
+
     ## Runtime errors
 
     Say you are on call this week. At 3 a.m. a pipeline that was correct
@@ -536,7 +640,7 @@ def _(mo):
 
     Some operations can fail. The reference raises on each of these, and
     the report lists every one a plan may hit
-    ([Runtime errors](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#runtime-errors)).
+    ([Runtime errors](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-guards.md#runtime-errors)).
 
     * Integer `/` or `%` by zero, and `-9223372036854775808 / -1`, which
       does not fit in 64 bits.
@@ -627,7 +731,7 @@ def _(mo):
       closes it.
     * The same `AND` is no guard: DuckDB and Polars evaluate both operands,
       so `qty % n` runs on the `n = 0` row
-      ([eager AND and OR](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#guards)). The report flags the error inside the
+      ([eager AND and OR](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-guards.md#guards)). The report flags the error inside the
       `AND` and suggests guarding the operation itself with the `CASE` above.
     * An earlier filter is no guard either. An optimizer may merge the two
       filters into one `AND`. Lean models that (`Rel.loose`) and reports
@@ -683,8 +787,8 @@ def _(VerificationError, ibis, mo, sv):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    `Report.errors` lists the issues a proof has to rule out. `Report.proved`
-    is true when every postcondition is proved and there are no errors.
+    `Report.errors` lists the issues a proof has to rule out. `Report.verdict`
+    is `proved` when every postcondition is proved and there are no errors.
 
     The timing of evaluation is trusted: when an engine evaluates an
     expression (lazy `CASE`, eager `AND`/`OR`, merged filters, and the
@@ -867,8 +971,9 @@ def _(mo):
 
     A gyroscope reading from the future would leak information the model
     cannot have in production. The contract states what an ASOF join
-    promises: one output row per accelerometer sample, no gyroscope sample
-    from the future, and none older than the tolerance.
+    promises: no gyroscope sample from the future, and none older than the
+    tolerance. Each accelerometer sample keeps its own row, repeated
+    timestamps included.
     """)
     return
 
@@ -902,7 +1007,6 @@ def _(con_w, dt, gyr_keyed, how, ibis, sv, tolerance_ms):
             "gyr": [sv.unique("device", "ts")] if gyr_keyed.value else [],
         },
         ensures=[
-            sv.unique("device", "ts"),  # one row per accelerometer sample
             _.ts_right.isnull() | (_.ts_right <= _.ts),  # never from the future
             # never too old (a condition can be SQL, too)
             f"ts_right IS NULL OR ts_right >= ts - INTERVAL '{tolerance_ms.value} milliseconds'",
@@ -930,11 +1034,10 @@ def _(mo):
       for "latest". The guarantees hold for either one, and the result is
       not deterministic: a rerun may pair the sample with the other reading.
 
-    One row per sample comes from the key analysis: `ROW_NUMBER()` over a
-    partition is a key together with the partition columns, and the filter
-    `rank = 0` drops the rank from that key. Framed window aggregates
+    Each sample keeps its row because the ranking is per accelerometer row,
+    numbered first. Framed window aggregates
     (`AVG(v) OVER (ROWS 5 PRECEDING)`), `RANK` and running sums verify too
-    ([Ibis coverage](https://github.com/AlexanderNenninger/substrait-lean/blob/main/README.md#ibis-coverage)).
+    ([Ibis coverage](https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/coverage.md)).
 
     ## Composing contracts
 
@@ -987,7 +1090,7 @@ def _(mo):
 
     > `{P} g {Q}` and `{Q} f {S}` give `{P} f ∘ g {S}`
 
-    is theorem `Triple.compose` in `SubstraitLean/Compose.lean`.
+    is theorem `Triple.compose` in `analysis/Sverify/Analysis/Compose.lean`.
 
     ### When the link breaks
 
@@ -1081,7 +1184,7 @@ def _(paid, sv):
     exported = paid.to_substrait()
     _manifest = paid.report.substrait_contract()["manifest"]
     _back = sv.Report.from_substrait(exported)
-    assert _back.proved
+    assert _back.verdict == sv.Verdict.PROVED
     {
         "class": _manifest["class"],
         "evidence": _manifest["evidence"],
@@ -1098,14 +1201,15 @@ def _(mo):
     needs, the export says so and refuses: Substrait doesn't say how
     `upper` treats non-ASCII text (ST-10 on the
     [upstream ledger](https://alexandernenninger.github.io/substrait-lean/ledgers/spec-gaps.html)),
-    and the refusal names the way out:
+    and even with the customers declared ASCII, which the proof needs, the
+    refusal names the way out:
     """)
     return
 
 
 @app.cell
 def _(ibis, sv):
-    @sv.transform()
+    @sv.transform(requires={"orders": [~ibis._.customer.re_search(r"[^\x00-\x7f]")]})
     def shouty(orders):
         return orders.select(orders.id, name=orders.customer.upper())
 

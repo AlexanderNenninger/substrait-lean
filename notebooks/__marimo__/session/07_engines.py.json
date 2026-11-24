@@ -1,0 +1,290 @@
+{
+  "version": "1",
+  "metadata": {
+    "marimo_version": "0.25.2",
+    "script_metadata_hash": "2a5cf45e2ca299d384892c8883c369f6"
+  },
+  "cells": [
+    {
+      "id": "Hbol",
+      "code_hash": "bcc08c554685a8cc1efc348473b88cb3",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "MJUe",
+      "code_hash": "ee3800cd158f874ee9f017b145b98d37",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 6. <a href=\"?file=06_running_in_production.py\">Running it in production</a></span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "vblA",
+      "code_hash": "385bd295b744542918a16bb6e1a2637e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h1 id=\"7-engines\">7. Engines</h1>\n<span class=\"paragraph\">Say your team's rollup runs in three places. Analysts try it on DuckDB\nin a notebook, the service that serves it runs Polars, and the warehouse\nthat stores the history runs Spark. The proof was made once, on one\nplan. Nobody wants to redo it for each engine, and nobody wants to\nfind out at 3 a.m. which engine reads a plan differently.</span>\n<span class=\"paragraph\">We'll prove one query, run it on DuckDB, Polars and Spark, write it as\nSQL for Spark and Snowflake, and then ask an engine for something it\ncan't run. Each refusal names an exit, and we'll follow them.</span>\n<h2 id=\"1-one-query-proved-once\">1. One query, proved once</h2>\n<span class=\"paragraph\">We total each customer's order quantities. A sum of integers can\noverflow, so the verdict may come with checks that the run makes on the\ndata, and it says so:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "bkHC",
+      "code_hash": "a7d3eca2c3f441174d026ec1edcf5802",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<pre class='text-xs'>&lt;Verdict.PROVED_WITH_CHECKS: &#x27;proved_with_checks&#x27;&gt;</pre>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "lEQa",
+      "code_hash": "a5d530ea24136403c3b7cd28160a4b4c",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"2-run-it-where-your-data-lives\">2. Run it where your data lives</h2>\n<span class=\"paragraph\"><code>report.run(con, engine, route=\"auto\")</code> runs the checked plan on an\nengine. Before it runs, <code>route=\"auto\"</code> asks how the proof reaches that\nengine: the plan's class there is <code>exact</code> (every result the engine can\ngive, the reference allows), <code>observed</code>, <code>shim</code> (the plan is rewritten by\na proved translation first) or <code>refused</code>. We run the rollup on each of\nthe three:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "PKri",
+      "code_hash": "931c1ecbb331f43a76858a3b0b3e4151",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/html": "<div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><div style='display: flex;flex: 1;flex-direction: row;justify-content: flex-start;align-items: normal;flex-wrap: wrap;gap: 2rem'><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>duckdb</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>customer</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>total</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>lines</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ada</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>8</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>bo</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>5</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>cy</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>polars</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>customer</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>total</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>lines</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ada</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>8</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>bo</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>5</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>cy</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td></tr></tbody></table></div><div style='display: flex;flex: 1;flex-direction: column;justify-content: flex-start;align-items: normal;flex-wrap: nowrap;gap: 0.5rem'><span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><strong>spark</strong></span></span><table style='border-collapse:collapse;font-size:0.9rem;width:auto;margin:0'><thead><tr><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>customer</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>total</th><th style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>lines</th></tr></thead><tbody><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>ada</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>8</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>bo</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>5</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td></tr><tr><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>cy</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>2</td><td style='text-align:left;padding:4px 16px 4px 0;white-space:nowrap'>1</td></tr></tbody></table></div></div></div>"
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stderr",
+          "text": "/home/runner/.cache/uv/environments-v2/07-engines-646daf2c927ad7e2/lib/python3.12/site-packages/pyspark/sql/connect/utils.py:41: FutureWarning: PySpark does not yet fully support pandas >= 3.0.0. Some features may not work correctly. It is recommended to use pandas < 3.0.0 for now.\n  require_minimum_pandas_version()\nWARNING: Using incubator modules: jdk.incubator.vector\nWARNING: package sun.security.action not in java.base\nUsing Spark's default log4j profile: org/apache/spark/log4j2-defaults.properties\nSetting default log level to \"WARN\".\nTo adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).\n/home/runner/.cache/uv/environments-v2/07-engines-646daf2c927ad7e2/lib/python3.12/site-packages/pyspark/testing/utils.py:127: FutureWarning: PySpark does not yet fully support pandas >= 3.0.0. Some features may not work correctly. It is recommended to use pandas < 3.0.0 for now.\n  require_minimum_pandas_version()\n26/11/24 11:55:22 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable\nSetting Spark log level to \"OFF\".\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "Xref",
+      "code_hash": "4332f0982657dffa2f48aaa60b1ab676",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">All three agree, and the plan didn't change between them. What differs\nis how each engine reaches the proof:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "SFPL",
+      "code_hash": "2fecc436bda07af16b37206795588e71",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "{\"duckdb\": \"exact\", \"polars\": \"shim\", \"spark\": \"shim\"}"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "BYtC",
+      "code_hash": "21ef6381b254427153af5de1cd19767b",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">DuckDB gives what the reference gives, <code>exact</code>. Polars and Spark need a shim:\nSpark adds integers in a wider decimal and checks the result fits again, and Polars writes the sum of no rows as NULL. Each shim carries its own\nproof or test evidence, and the route says which.</span>\n<h2 id=\"3-the-same-plan-as-sql\">3. The same plan as SQL</h2>\n<span class=\"paragraph\">A warehouse runs SQL. <code>report.to_sql(dialect)</code>\nwrites the checked plan for DuckDB, Spark or Snowflake. Spark's version\nkeeps the overflow check of the sum, raising an error where the sum\nleaves 64 bits:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "RGSE",
+      "code_hash": "b36ecae90590b0e5b3e1cfd0fc13d07a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><div class=\"language-sql codehilite\"><pre><span></span><code><span class=\"k\">SELECT</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"o\">`</span><span class=\"n\">c0</span><span class=\"o\">`</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"o\">`</span><span class=\"n\">customer</span><span class=\"o\">`</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"o\">`</span><span class=\"n\">c1</span><span class=\"o\">`</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"o\">`</span><span class=\"n\">total</span><span class=\"o\">`</span><span class=\"p\">,</span>\n<span class=\"w\">  </span><span class=\"n\">s1</span><span class=\"p\">.</span><span class=\"o\">`</span><span class=\"n\">c2</span><span class=\"o\">`</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"o\">`</span><span class=\"n\">lines</span><span class=\"o\">`</span>\n<span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">  </span><span class=\"k\">SELECT</span>\n<span class=\"w\">    </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"o\">`</span><span class=\"n\">g0</span><span class=\"o\">`</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"o\">`</span><span class=\"n\">c0</span><span class=\"o\">`</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"p\">(</span>\n<span class=\"w\">      </span><span class=\"k\">CASE</span>\n<span class=\"w\">        </span><span class=\"k\">WHEN</span><span class=\"w\"> </span><span class=\"k\">SUM</span><span class=\"p\">(</span><span class=\"k\">CAST</span><span class=\"p\">(</span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"o\">`</span><span class=\"n\">m0</span><span class=\"o\">`</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"nb\">DECIMAL</span><span class=\"p\">(</span><span class=\"mi\">38</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"mi\">0</span><span class=\"p\">)))</span><span class=\"w\"> </span><span class=\"k\">BETWEEN</span><span class=\"w\"> </span><span class=\"o\">-</span><span class=\"mi\">9223372036854775808</span><span class=\"w\"> </span><span class=\"k\">AND</span><span class=\"w\"> </span><span class=\"mi\">9223372036854775807</span>\n<span class=\"w\">        </span><span class=\"k\">THEN</span><span class=\"w\"> </span><span class=\"k\">CAST</span><span class=\"p\">(</span><span class=\"k\">SUM</span><span class=\"p\">(</span><span class=\"k\">CAST</span><span class=\"p\">(</span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"o\">`</span><span class=\"n\">m0</span><span class=\"o\">`</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"nb\">DECIMAL</span><span class=\"p\">(</span><span class=\"mi\">38</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"mi\">0</span><span class=\"p\">)))</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"nb\">BIGINT</span><span class=\"p\">)</span>\n<span class=\"w\">        </span><span class=\"k\">ELSE</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">          </span><span class=\"k\">CASE</span>\n<span class=\"w\">            </span><span class=\"k\">WHEN</span><span class=\"w\"> </span><span class=\"k\">SUM</span><span class=\"p\">(</span><span class=\"k\">CAST</span><span class=\"p\">(</span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"o\">`</span><span class=\"n\">m0</span><span class=\"o\">`</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"nb\">DECIMAL</span><span class=\"p\">(</span><span class=\"mi\">38</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"mi\">0</span><span class=\"p\">)))</span><span class=\"w\"> </span><span class=\"k\">IS</span><span class=\"w\"> </span><span class=\"k\">NULL</span>\n<span class=\"w\">            </span><span class=\"k\">THEN</span><span class=\"w\"> </span><span class=\"k\">CAST</span><span class=\"p\">(</span><span class=\"k\">NULL</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"nb\">BIGINT</span><span class=\"p\">)</span>\n<span class=\"w\">            </span><span class=\"k\">ELSE</span><span class=\"w\"> </span><span class=\"k\">CAST</span><span class=\"p\">(</span><span class=\"n\">RAISE_ERROR</span><span class=\"p\">(</span>\n<span class=\"w\">              </span><span class=\"n\">CONCAT</span><span class=\"p\">(</span>\n<span class=\"w\">                </span><span class=\"s1\">'sverify: integer overflow in SUM: '</span><span class=\"p\">,</span>\n<span class=\"w\">                </span><span class=\"k\">CAST</span><span class=\"p\">(</span><span class=\"k\">SUM</span><span class=\"p\">(</span><span class=\"k\">CAST</span><span class=\"p\">(</span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"o\">`</span><span class=\"n\">m0</span><span class=\"o\">`</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"nb\">DECIMAL</span><span class=\"p\">(</span><span class=\"mi\">38</span><span class=\"p\">,</span><span class=\"w\"> </span><span class=\"mi\">0</span><span class=\"p\">)))</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">STRING</span><span class=\"p\">)</span>\n<span class=\"w\">              </span><span class=\"p\">)</span>\n<span class=\"w\">            </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"nb\">BIGINT</span><span class=\"p\">)</span>\n<span class=\"w\">          </span><span class=\"k\">END</span>\n<span class=\"w\">        </span><span class=\"p\">)</span>\n<span class=\"w\">      </span><span class=\"k\">END</span>\n<span class=\"w\">    </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"o\">`</span><span class=\"n\">c1</span><span class=\"o\">`</span><span class=\"p\">,</span>\n<span class=\"w\">    </span><span class=\"k\">COUNT</span><span class=\"p\">(</span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"o\">`</span><span class=\"n\">m0</span><span class=\"o\">`</span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"o\">`</span><span class=\"n\">c2</span><span class=\"o\">`</span>\n<span class=\"w\">  </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">    </span><span class=\"k\">SELECT</span>\n<span class=\"w\">      </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"o\">`</span><span class=\"n\">c0</span><span class=\"o\">`</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"o\">`</span><span class=\"n\">g0</span><span class=\"o\">`</span><span class=\"p\">,</span>\n<span class=\"w\">      </span><span class=\"n\">s2</span><span class=\"p\">.</span><span class=\"o\">`</span><span class=\"n\">c2</span><span class=\"o\">`</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"o\">`</span><span class=\"n\">m0</span><span class=\"o\">`</span>\n<span class=\"w\">    </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"p\">(</span>\n<span class=\"w\">      </span><span class=\"k\">SELECT</span>\n<span class=\"w\">        </span><span class=\"o\">`</span><span class=\"n\">customer</span><span class=\"o\">`</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"o\">`</span><span class=\"n\">c0</span><span class=\"o\">`</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"o\">`</span><span class=\"n\">item</span><span class=\"o\">`</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"o\">`</span><span class=\"n\">c1</span><span class=\"o\">`</span><span class=\"p\">,</span>\n<span class=\"w\">        </span><span class=\"o\">`</span><span class=\"n\">qty</span><span class=\"o\">`</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"o\">`</span><span class=\"n\">c2</span><span class=\"o\">`</span>\n<span class=\"w\">      </span><span class=\"k\">FROM</span><span class=\"w\"> </span><span class=\"o\">`</span><span class=\"n\">orders</span><span class=\"o\">`</span>\n<span class=\"w\">    </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s2</span>\n<span class=\"w\">  </span><span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s3</span>\n<span class=\"w\">  </span><span class=\"k\">GROUP</span><span class=\"w\"> </span><span class=\"k\">BY</span>\n<span class=\"w\">    </span><span class=\"n\">s3</span><span class=\"p\">.</span><span class=\"o\">`</span><span class=\"n\">g0</span><span class=\"o\">`</span>\n<span class=\"p\">)</span><span class=\"w\"> </span><span class=\"k\">AS</span><span class=\"w\"> </span><span class=\"n\">s1</span>\n</code></pre></div></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Kclp",
+      "code_hash": "bdc1f04bd4887c6b541bd26d17b158ee",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><h2 id=\"4-a-refusal-names-its-exit\">4. A refusal names its exit</h2>\n<span class=\"paragraph\">An engine runs only what Lean can say it computes. Ask for a plan it\ncan't run, and Sverify says what to do. We number each\ncustomer's lines, with no order stated:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "emfo",
+      "code_hash": "804cf850343652bf355dbcbb2aa48a2f",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "Unsupported: Spark window functions need an ORDER BY: run it with engine='duckdb' (see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "Hstk",
+      "code_hash": "78ae571aea02f51795b60189fed8f93a",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Spark's window functions need an <code>ORDER BY</code> here, and the plan states\nnone. The message offers one exit: <code>engine='duckdb'</code> runs the plan on\nthe engine that numbers rows without one, in the order it happens to\nfind them:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "nWHF",
+      "code_hash": "e86a172a265ce143f4e7e38746f9e9d1",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "[{\"customer\": \"ada\", \"line\": 0}, {\"customer\": \"bo\", \"line\": 0}, {\"customer\": \"ada\", \"line\": 1}, {\"customer\": \"bo\", \"line\": 1}, {\"customer\": \"cy\", \"line\": 0}]"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "iLit",
+      "code_hash": "147c961a1a49368927ce54305bd1270e",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">The plan can also say the order itself. A window with an <code>ORDER BY</code> runs\non every engine:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ZHCJ",
+      "code_hash": "303bbc781e6e2f8089b1948b35a44c05",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "application/json": "{\"duckdb\": [[\"ada\", \"cake\", 0], [\"ada\", \"tea\", 1], [\"bo\", \"milk\", 0], [\"bo\", \"tea\", 1], [\"cy\", \"tea\", 0]], \"polars\": [[\"ada\", \"cake\", 0], [\"ada\", \"tea\", 1], [\"bo\", \"milk\", 0], [\"bo\", \"tea\", 1], [\"cy\", \"tea\", 0]], \"spark\": [[\"ada\", \"cake\", 0], [\"ada\", \"tea\", 1], [\"bo\", \"milk\", 0], [\"bo\", \"tea\", 1], [\"cy\", \"tea\", 0]]}"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "ROlb",
+      "code_hash": "0b1820f19c5c60393befc24956b14afb",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Some refusals name a rewrite as their exit. Spark and Snowflake take\ntheir <code>ln</code> from Java's <code>StrictMath</code> and an undocumented libm, and Lean's\nmodel uses C's. The writer refuses the step and says so:</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "qnkX",
+      "code_hash": "86290fa4d58c02d5df824ca3fb013602",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/plain": ""
+          }
+        }
+      ],
+      "console": [
+        {
+          "type": "stream",
+          "name": "stdout",
+          "text": "snowflake: WriterUnsupported: Snowflake's LN is not documented to be C's libm, which the Lean model uses; rewrite this step\n",
+          "mimetype": "text/plain"
+        }
+      ]
+    },
+    {
+      "id": "TqIu",
+      "code_hash": "fe91a2de0e8b4e310ceaf210e011b928",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">A refusal of an engine or a writer names its exit: run the plan on\nDuckDB, or rewrite the step. The\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/stability.md#engines\" rel=\"noopener noreferrer\" target=\"_blank\">engines page</a>\nsays which engine runs what, and why.</span>\n<span class=\"paragraph\">You can now prove a query once and run it on DuckDB, Polars or Spark,\nhand the same plan to a warehouse as SQL, and read a refusal as\ndirections. The last chapter,\n<a href=\"?file=08_dbt.py\">Your dbt project</a>, proves the tests of a dbt project\nbefore its models run. The\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/tasks.md\" rel=\"noopener noreferrer\" target=\"_blank\">guide</a>\ncovers every feature in more detail.</span></span>"
+          }
+        }
+      ],
+      "console": []
+    },
+    {
+      "id": "Vxnm",
+      "code_hash": "cb8a792f54f854a3f1c3bcc140da49f6",
+      "outputs": [
+        {
+          "type": "data",
+          "data": {
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 6. <a href=\"?file=06_running_in_production.py\">Running it in production</a> \u00b7 8. <a href=\"?file=08_dbt.py\">Your dbt project</a> \u2192</span></span>"
+          }
+        }
+      ],
+      "console": []
+    }
+  ]
+}

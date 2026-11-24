@@ -2,7 +2,7 @@
   "version": "1",
   "metadata": {
     "marimo_version": "0.25.2",
-    "script_metadata_hash": "45a6111f302f754b9ac1f5559af30488"
+    "script_metadata_hash": "7854b310004182e487068ab481aa167c"
   },
   "cells": [
     {
@@ -72,7 +72,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "$ sverify check payments.py --diff\nunit_prices: requires payments: _.qty.isnull() | (_.qty != 0)\n--- a/payments.py\n+++ b/payments.py\n@@ -10,7 +10,7 @@\n )\n \n @sv.transform(\n-    requires={\"payments\": [_.cents >= 0, sv.key(\"id\")]},\n+    requires={\"payments\": [_.cents >= 0, sv.key(\"id\"), _.qty.isnull() | (_.qty != 0)]},\n     ensures=[sv.key(\"id\")],\n )\n def unit_prices(payments):\n`sverify check --fix` writes this.\nexit code 1\n",
+          "text": "$ sverify check payments.py --diff\nunit_prices: requires payments: _.qty.isnull() | (_.qty != 0)\nThese preconditions narrow the input each node accepts: its sources must meet them.\n--- a/payments.py\n+++ b/payments.py\n@@ -10,7 +10,7 @@\n )\n \n @sv.transform(\n-    requires={\"payments\": [_.cents >= 0, sv.key(\"id\")]},\n+    requires={\"payments\": [_.cents >= 0, sv.key(\"id\"), _.qty.isnull() | (_.qty != 0)]},\n     ensures=[sv.key(\"id\")],\n )\n def unit_prices(payments):\n`sverify check --fix` writes this.\nexit code 1\n",
           "mimetype": "text/plain"
         }
       ]
@@ -105,19 +105,19 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "$ sverify check payments.py --fix\nunit_prices: requires payments: _.qty.isnull() | (_.qty != 0)\n--- a/payments.py\n+++ b/payments.py\n@@ -10,7 +10,7 @@\n )\n \n @sv.transform(\n-    requires={\"payments\": [_.cents >= 0, sv.key(\"id\")]},\n+    requires={\"payments\": [_.cents >= 0, sv.key(\"id\"), _.qty.isnull() | (_.qty != 0)]},\n     ensures=[sv.key(\"id\")],\n )\n def unit_prices(payments):\nwrote payments.py; checked again:\nContract of payments.py\n  The output guarantees:\n    unit_prices (unit): no two rows share id; \"id\" IS NOT NULL\n  Each refresh checks on the data:\n    unit_prices (unit): payments: cents \u2265 0; payments: no two rows share id; payments: \"id\" IS NOT NULL; payments: qty is NULL or (qty \u2260 0)\n\nunit_prices (unit): proved\nproved\nexit code 0\n",
+          "text": "$ sverify check payments.py --fix\nunit_prices: requires payments: _.qty.isnull() | (_.qty != 0)\nThese preconditions narrow the input each node accepts: its sources must meet them.\n--- a/payments.py\n+++ b/payments.py\n@@ -10,7 +10,7 @@\n )\n \n @sv.transform(\n-    requires={\"payments\": [_.cents >= 0, sv.key(\"id\")]},\n+    requires={\"payments\": [_.cents >= 0, sv.key(\"id\"), _.qty.isnull() | (_.qty != 0)]},\n     ensures=[sv.key(\"id\")],\n )\n def unit_prices(payments):\nwrote payments.py; checked again:\nContract of payments.py\n  The output guarantees:\n    unit_prices (unit): no two rows share id; \"id\" IS NOT NULL\n  Each refresh checks on the data:\n    unit_prices (unit): payments: cents \u2265 0; payments: no two rows share id; payments: \"id\" IS NOT NULL; payments: qty is NULL or (qty \u2260 0)\n\nunit_prices (unit): proved\nexit code 0\n",
           "mimetype": "text/plain"
         }
       ]
     },
     {
       "id": "SFPL",
-      "code_hash": "c9f06b5dc9fb3ce569e0629a6085556e",
+      "code_hash": "6957139ac1298ff4417c92d8aeee2403",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Now every refresh checks <code>qty \u2260 0</code> on the data before it runs. The\ncommand has an exit code per outcome (3 for a refusal, 4 for a time\nbudget, which <code>SVERIFY_TIMEOUT</code> sets), <code>--format github</code> annotates the\npull request's lines, and <code>--format sarif</code> feeds code scanning\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#the-command-line\" rel=\"noopener noreferrer\" target=\"_blank\">the command line</a>).</span>\n<h2 id=\"2-a-test-for-ci\">2. A test for CI</h2>\n<span class=\"paragraph\">A proof says the output meets the contract for every input that meets\nthe preconditions. A test says the output is the one you meant on a few\nrows you chose. <code>sverify.testing.assert_contract</code> does both: it asserts\nthe node's contract is proved, runs the node on your rows, checks both\nsides of the contract on them, and compares the output. Installing\nsverify registers it as a pytest plugin, so a test file in your suite\nneeds only this:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Now every refresh checks <code>qty \u2260 0</code> on the data before it runs. The\ncommand has an exit code per outcome (3 for a refusal, 4 for a time\nbudget, which <code>SVERIFY_TIMEOUT</code> sets), <code>--format github</code> annotates the\npull request's lines, and <code>--format sarif</code> feeds code scanning\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-command-line.md#the-command-line\" rel=\"noopener noreferrer\" target=\"_blank\">the command line</a>).</span>\n<h2 id=\"2-a-test-for-ci\">2. A test for CI</h2>\n<span class=\"paragraph\">A proof says the output meets the contract for every input that meets\nthe preconditions. A test says the output is the one you meant on a few\nrows you chose. <code>sverify.testing.assert_contract</code> does both: it asserts\nthe node's contract is proved, runs the node on your rows, checks both\nsides of the contract on them, and compares the output. Installing\nsverify registers it as a pytest plugin, so a test file in your suite\nneeds only this:</span></span>"
           }
         }
       ],
@@ -138,12 +138,12 @@
     },
     {
       "id": "RGSE",
-      "code_hash": "7f3b196cc297e3ae21315a16d369ae40",
+      "code_hash": "70eca7d890e04682015d6dcbfa5b5a25",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>assert_engines_agree(node, data)</code> runs the same rows on every installed\nengine, and <code>cases(node)</code> draws inputs that meet the preconditions for\nHypothesis\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#testing-with-pytest\" rel=\"noopener noreferrer\" target=\"_blank\">testing with pytest</a>).</span>\n<h2 id=\"3-credentials-by-name\">3. Credentials by name</h2>\n<span class=\"paragraph\">A pipeline reads its lake with a token. The file names where the token\nlives, and sverify reads the value only when it opens a table:\n<code>env:NAME</code> for a variable, <code>file:</code> for a mounted secret, <code>bao:</code> for\nOpenBao, and each cloud's secret manager. A name in the project's\n<code>pyproject.toml</code> maps to one of those, so the file says <code>\"lake\"</code> and\nthe deployment decides where it comes from. Reports, logs, errors and\nexports print the name:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>assert_engines_agree(node, data)</code> runs the same rows on every installed\nengine, and <code>cases(node)</code> draws inputs that meet the preconditions for\nHypothesis\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-production.md#testing-with-pytest\" rel=\"noopener noreferrer\" target=\"_blank\">testing with pytest</a>).</span>\n<h2 id=\"3-credentials-by-name\">3. Credentials by name</h2>\n<span class=\"paragraph\">A pipeline reads its lake with a token. The file names where the token\nlives, and sverify reads the value only when it opens a table:\n<code>env:NAME</code> for a variable, <code>file:</code> for a mounted secret, <code>bao:</code> for\nOpenBao, and each cloud's secret manager. A name in the project's\n<code>pyproject.toml</code> maps to one of those, so the file says <code>\"lake\"</code> and\nthe deployment decides where it comes from. Reports, logs, errors and\nexports print the name:</span></span>"
           }
         }
       ],
@@ -164,12 +164,12 @@
     },
     {
       "id": "emfo",
-      "code_hash": "5abd12dbbe2774bd93f7eeeefc5a1fce",
+      "code_hash": "8ad163f034dffd71b4c424f844055b0e",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>node.credentials()</code> lists the names a node uses before it runs, and\n<code>sverify check</code> warns when a sink lies outside what its credential may\nwrite\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#credentials\" rel=\"noopener noreferrer\" target=\"_blank\">credentials</a>).</span>\n<h2 id=\"4-tell-the-next-team-what-it-gets\">4. Tell the next team what it gets</h2>\n<span class=\"paragraph\">Finance's job reads your totals. It needs to know which version it read\nand what holds of it. OpenLineage is the standard for that: Airflow,\nSpark and dbt emit its events, and Marquez, DataHub and the cloud\ncatalogs read them. A refresh with <code>lineage=</code> emits a run per node, with\nthe columns each output column comes from and the node's contract.</span>\n<span class=\"paragraph\">The payments are a Delta table with its change feed, and the node totals\neach merchant's payments:</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\"><code>node.credentials()</code> lists the names a node uses before it runs, and\n<code>sverify check</code> warns when a sink lies outside what its credential may\nwrite\n(<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-to-credentials.md#credentials\" rel=\"noopener noreferrer\" target=\"_blank\">credentials</a>).</span>\n<h2 id=\"4-tell-the-next-team-what-it-gets\">4. Tell the next team what it gets</h2>\n<span class=\"paragraph\">Finance's job reads your totals. It needs to know which version it read\nand what holds of it. OpenLineage is the standard for that: Airflow,\nSpark and dbt emit its events, and Marquez, DataHub and the cloud\ncatalogs read them. A refresh with <code>lineage=</code> emits a run per node, with\nthe columns each output column comes from and the node's contract.</span>\n<span class=\"paragraph\">The payments are a Delta table with its change feed, and the node totals\neach merchant's payments:</span></span>"
           }
         }
       ],
@@ -203,7 +203,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "merchant_totals \u2192 totals:\n  computed\n  requires payments: max_rows(1000000000) (file stats @v0)\n  requires payments: (_.cents >= 0) (file stats @v0)\n  requires payments: (_.cents < 1000000000) (file stats @v0)\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R6; #241)\n  wrote totals from payments@v0: created v2, 1 row(s) written, 0 deleted\n",
+          "text": "merchant_totals \u2192 totals:\n  computed\n  requires payments: max_rows(1000000000) (file stats @v0)\n  requires payments: (_.cents >= 0) (file stats @v0)\n  requires payments: (_.cents < 1000000000) (file stats @v0)\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R6; #1985)\n  wrote totals from payments@v0: created v2, 1 row(s) written, 0 deleted\n",
           "mimetype": "text/plain"
         }
       ]
@@ -262,7 +262,7 @@
         {
           "type": "stream",
           "name": "stdout",
-          "text": "hourly:\n  computed\n  requires payments: arrives_within(ts, 1h) (no NULLs, latest 2026-11-03 03:40:00; each batch checked at refresh)\n  requires payments: (_.ts >= datetime(2000, 1, 1)) (file stats @v0)\n  requires payments: (_.ts < datetime(2100, 1, 1)) (file stats @v0)\n  requires payments: (_.cents >= 0) (file stats @v0)\n  requires payments: (_.cents < 1000000000) (file stats @v0)\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R6; #241)\n  wrote hourly from payments@v0: created v2, 4 row(s) written, 0 deleted\n  retention hourly.hour: 2 bucket(s) open (bound 2), 2 retired, 2 state row(s); watermark 2026-11-03 02:40:00\n",
+          "text": "hourly:\n  computed\n  requires payments: arrives_within(ts, 1h) (no NULLs, latest 2026-11-03 03:40:00; each batch checked at refresh)\n  requires payments: (_.ts >= datetime(2000, 1, 1)) (file stats @v0)\n  requires payments: (_.ts < datetime(2100, 1, 1)) (file stats @v0)\n  requires payments: (_.cents >= 0) (file stats @v0)\n  requires payments: (_.cents < 1000000000) (file stats @v0)\n  route on duckdb: exact; evidence tested at 2.0.0 (facts duckdb-R6; #1985)\n  wrote hourly from payments@v0: created v2, 4 row(s) written, 0 deleted\n  retention hourly.hour: 2 bucket(s) open (bound 2), 2 retired, 2 state row(s); watermark 2026-11-03 02:40:00\n",
           "mimetype": "text/plain"
         }
       ]
@@ -295,12 +295,12 @@
     },
     {
       "id": "DnEU",
-      "code_hash": "3be9882b5e4920266113ca32f9ee3b30",
+      "code_hash": "8ae5d89cc32609c220d032a14680145e",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Nothing was applied: the closed hour finance reported on stays as it\nwas, and the alert names the row, the watermark and the promise it\nbroke. Whoever is on call decides whether the source or the promise is\nwrong, in the morning.</span>\n<h2 id=\"what-you-got\">What you got</h2>\n<span class=\"paragraph\">You can now check a pipeline's file in CI and let <code>--fix</code> write the\npreconditions a proof needs, test a node on rows you chose, keep\ncredentials out of every file and log, hand the next team a contract it\nproves again, and bound a rollup's state with a promise every batch is\nchecked against. That is the end of the tour. The\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md\" rel=\"noopener noreferrer\" target=\"_blank\">guide</a>\ncovers every feature in more detail, and\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-it-works.md\" rel=\"noopener noreferrer\" target=\"_blank\">how it works</a>\ngoes under the hood: the checker, the producers and engines, and what\nis proved and what is trusted.</span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">Nothing was applied: the closed hour finance reported on stays as it\nwas, and the alert names the row, the watermark and the promise it\nbroke. Whoever is on call decides whether the source or the promise is\nwrong, in the morning.</span>\n<h2 id=\"what-you-got\">What you got</h2>\n<span class=\"paragraph\">You can now check a pipeline's file in CI and let <code>--fix</code> write the\npreconditions a proof needs, test a node on rows you chose, keep\ncredentials out of every file and log, hand the next team a contract it\nproves again, and bound a rollup's state with a promise every batch is\nchecked against. The next chapter,\n<a href=\"?file=07_engines.py\">Engines</a>, runs one proved plan on DuckDB, Polars and\nSpark and shows what an engine's refusal tells you. The\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/tasks.md\" rel=\"noopener noreferrer\" target=\"_blank\">guide</a>\ncovers every feature in more detail, and\n<a href=\"https://github.com/AlexanderNenninger/substrait-lean/blob/v0.9.0/docs/how-it-works.md\" rel=\"noopener noreferrer\" target=\"_blank\">how it works</a>\ngoes under the hood: the checker, the producers and engines, and what\nis proved and what is trusted.</span></span>"
           }
         }
       ],
@@ -308,12 +308,12 @@
     },
     {
       "id": "ulZA",
-      "code_hash": "fb8ce46ef32c4ddabebec3ee63d9610b",
+      "code_hash": "49b37431eba6d4813bfd5f12b7106eb5",
       "outputs": [
         {
           "type": "data",
           "data": {
-            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 5. <a href=\"?file=05_pipelines_and_engines.py\">Pipelines and engines</a></span></span>"
+            "text/markdown": "<span class=\"markdown prose dark:prose-invert contents\"><span class=\"paragraph\">\u2190 5. <a href=\"?file=05_pipelines_and_engines.py\">Pipelines and engines</a> \u00b7 7. <a href=\"?file=07_engines.py\">Engines</a> \u2192</span></span>"
           }
         }
       ],
