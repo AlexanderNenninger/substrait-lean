@@ -29,7 +29,9 @@ def Profile.polars.table : ProfileTable where
     (some "int.mod", "division_type", .oneOf ["FLOOR"]),
     (none, "min_mod_neg_one", .oneOf ["ZERO"]),
     (none, "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
-    (some "fp.round", "rounding", .asked ["TIE_TO_EVEN"] ["TIE_TO_EVEN"]),
+    -- `round` rounds half to even unless asked `mode="half_away_from_zero"`, which it
+    -- gives as asked (polars-round; ruling 282's C8, M2): the lowering asks it (`Polars.asks`).
+    (some "fp.round", "rounding", .asked ["TIE_TO_EVEN", "TIE_AWAY_FROM_ZERO"] ["TIE_TO_EVEN"]),
     -- `float_to_int` (ruling 273): a cast's conversion is the engine's own;
     -- elsewhere (`fp.round`, `fp.floor`) it stays uncharacterized.
     (none, "float_to_int", .loose ["TRUNCATE", "TIE_AWAY_FROM_ZERO", "TIE_TO_EVEN"]),
