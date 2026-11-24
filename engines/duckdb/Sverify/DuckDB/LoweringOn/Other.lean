@@ -47,6 +47,34 @@ abbrev Substrait.duckdbOn.froundEven : Substrait.UnEntry (Substrait.Profile.duck
   (Substrait.Lowering.froundEvenTemplate)
   (by exact Substrait.Lowering.froundEvenTemplate_must) Substrait.duckdbOn.froundEven_agree
 
+theorem Substrait.duckdbOn.ftoi_agree : ∀ (x : Substrait.Value),
+  Substrait.Outcome.Agree
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
+      Substrait.Lowering.ftoiTemplate)
+    (Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.ftoi x) := by
+  intros; apply Substrait.Lowering.ftoi_agree
+
+abbrev Substrait.duckdbOn.ftoi : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  Substrait.UnFn.ftoi :=
+  Substrait.UnEntry.ofAgree
+  (Substrait.Lowering.ftoiTemplate)
+  (by exact Substrait.Lowering.ftoiTemplate_must) Substrait.duckdbOn.ftoi_agree
+
+theorem Substrait.duckdbOn.ftoiOrNull_agree : ∀ (x : Substrait.Value),
+  Substrait.Outcome.Agree
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x]
+      Substrait.Lowering.ftoiOrNullTemplate)
+    (Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.ftoiOrNull x) := by
+  intros; apply Substrait.Lowering.ftoiOrNull_agree
+
+abbrev Substrait.duckdbOn.ftoiOrNull : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  Substrait.UnFn.ftoiOrNull :=
+  Substrait.UnEntry.ofAgree
+  (Substrait.Lowering.ftoiOrNullTemplate)
+  (by exact Substrait.Lowering.ftoiOrNullTemplate_must) Substrait.duckdbOn.ftoiOrNull_agree
+
 theorem Substrait.duckdbOn.dtextFull_agree : ∀ (x : Substrait.Value),
   Substrait.Outcome.Agree
     (Substrait.Expr.evalP
