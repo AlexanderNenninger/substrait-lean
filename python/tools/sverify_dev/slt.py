@@ -1301,6 +1301,11 @@ KNOWN: tuple[Known, ...] = (
         "duckdb-double-overflow",
         ("aggregate/aggregates/test_stddev.test", "overflow/test_numeric_overflow.test"),
     ),
+    # `ascii` of a non-ASCII character, and `upper`/`lower` of characters the engines map
+    # differently: DuckDB gives a value, the reference raises (D43, D51), as does the written
+    # plan's guard.
+    Known("duckdb-ascii", ("function/string/test_ascii.test",), r"\bascii\("),
+    Known("duckdb-case-mapping", ("function/string/test_caseconvert.test",), r"\b(upper|lower)\("),
     # The written plan does not raise on a length past 32 bits.
     Known("duckdb-substring-range", ("function/string/test_substring.test",), r"4294967296"),
     # Trigonometry of ±inf: NaN in DuckDB, a domain error in the reference.
