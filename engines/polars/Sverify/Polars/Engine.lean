@@ -484,13 +484,13 @@ end Example
     [-- C4: `round(x, d)` half to even.
      (.un (.froundTo 0), "rounding"),
      -- C4: zero-based characters and bytes.
-     (.bin .strpos, "string_positions"), (.bin .startsWith, "string_positions"),
-     (.bin .endsWith, "string_positions"), (.bin .like, "string_positions"),
-     (.bin (.substr none true), "string_positions"), (.un (.replace "" ""), "string_positions"),
-     -- C4: a result past 38 digits that rescales.
-     (.bin .dadd, "decimal_rescale"), (.bin .dsub, "decimal_rescale"),
+     (.bin .strpos, "string_positions"), (.bin (.substr none true), "string_positions"),
+     -- C4: Polars's `*` of decimals rounds to `max(s₁, s₂)` half to even.
      (.bin .dmul, "decimal_rescale"),
      -- C4: a loose row whose first behaviour is `ERROR`.
      (.bin (.bit .shl), "shift_range"), (.bin (.bit .shr), "shift_range")]
+    -- C7: `+` and `-` of decimals are at `max(s₁, s₂)` on Polars and never rescale.
+    [(.bin .dadd, "decimal_rescale", "polars-decimal-arith"),
+     (.bin .dsub, "decimal_rescale", "polars-decimal-arith")]
 
 end Substrait
