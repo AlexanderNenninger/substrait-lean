@@ -27,7 +27,9 @@ open Lean
   DuckDB gives NaN or `-∞`: `CASE WHEN x < lo OR (hi < x AND x <> NaN) THEN
   error ELSE f(x) END`, the bounds written as `FMath.lo?` and `FMath.hi?`.
 * `round` and `ceil` give `0.0` for a negative value that rounds to zero, where
-  DuckDB gives IEEE's `-0.0` (`round_zero_sign`). -/
+  DuckDB gives IEEE's `-0.0` (`round_zero_sign`).
+* A cast of a double to an integer truncates first, as DuckDB's cast rounds half
+  to even (`float_to_int`, duckdb-R9, ruling 284). -/
 def schema? : UnFn → Option Tm
   | .fit .silent w =>
     let h := w.half
@@ -53,6 +55,13 @@ def schema? : UnFn → Option Tm
   -- E2, `Lowering.dtextFull_agree`). The regen excludes it from the native search.
   | .dtextFull => some (.expr Lowering.dtextFullTemplate (Lean.mkConst ``Lowering.dtextFullTemplate)
       "dtext of the decimal widened by one digit")
+  -- DuckDB's `CAST(x AS BIGINT)` of a double rounds half to even (duckdb-R9): the
+  -- value is truncated first, `CEIL` below zero and `FLOOR` elsewhere
+  -- (`Lowering.ftoi_agree`, ruling 284 D2).
+  | .ftoi => some (.expr Lowering.ftoiTemplate (Lean.mkConst ``Lowering.ftoiTemplate)
+      "CAST(x AS BIGINT) of x truncated first (DuckDB's cast rounds half to even)")
+  | .ftoiOrNull => some (.expr Lowering.ftoiOrNullTemplate (Lean.mkConst ``Lowering.ftoiOrNullTemplate)
+      "TRY_CAST(x AS BIGINT) of x truncated first (DuckDB's cast rounds half to even)")
   | _ => none
 
 /-- **DuckDB's binary schemas** (#242), for its IEEE operations:
