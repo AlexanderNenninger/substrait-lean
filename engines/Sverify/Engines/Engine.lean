@@ -98,11 +98,18 @@ def nativeOffReference (t : ProfileTable) (obs : ObsTable) (un : UnFn → Bool) 
     | none => []
 
 /-- Are `nativeOffReference t obs un bin` exactly the pairs of a function and an
-option that `pending` lists? -/
+option that `pending` lists, beside those `unexercised` names (ruling 282's C7)?
+A C7 entry is an option this engine never exercises for the function, stated by
+the fact it cites (Polars's `+` and `-` of decimals at `max(s₁, s₂)`, which never
+rescale, while Spark's may): reviewable, not pending. Each must still be found,
+so a C7 entry that no longer applies fails the check too. -/
 def nativeOffIs (t : ProfileTable) (obs : ObsTable) (un : UnFn → Bool) (bin : BinFn → Bool)
-    (pending : List (Functions.Ctor × String)) : Bool :=
+    (pending : List (Functions.Ctor × String))
+    (unexercised : List (Functions.Ctor × String × String) := []) : Bool :=
   let off := nativeOffReference t obs un bin
-  off.length == pending.length && off.all pending.contains
+  let c7 := unexercised.map fun (c, o, _) => (c, o)
+  let rest := off.filter (!c7.contains ·)
+  c7.all off.contains && rest.length == pending.length && rest.all pending.contains
 
 /-- The native functions whose group reads an option: those `nativeOffReference`
 checks. -/
