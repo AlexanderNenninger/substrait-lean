@@ -47,35 +47,11 @@ def test_outcome_holds(case):
     assert got == RESULTS[case.id]
 
 
-#: The double output columns the checker's `ε` leaves out because every engine computes them
-#: exactly: a maximum, a minimum, a median, or an input column passed through.
-EXACT_DOUBLES = {
-    "median-range": {"med"},
-    "avg-le-max": {"mx"},
-    "min-le-avg": {"mn"},
-    "sum-ge-max": {"top"},
-    "running-sum": {"value"},
-    "moving-avg": {"value"},
-    "above-group-avg": {"value"},
-    "zscore-outliers": {"value"},
-    "control-max-double": {"mx"},
-    "control-max-having": {"mx"},
-    "control-max-exact": {"mx"},
-}
-
-#: Plans whose `ε` is empty though a `SUM` or `AVG` is among their outputs (a top-n or a rank
-#: over it): a known gap (#2486), listed so that no other plan joins it unseen. A rule that
-#: refuses every plan with an empty `ε` and a row that bounds doubles per plan moves dozens
-#: of route pins (a projection of `exp`, TPC-DS q07), so it is not made here.
-NO_EPSILON = {"top-n-sum", "top-1-avg", "rank-by-sum"}
-
-
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
-def test_epsilon_names_every_inexact_double_output(case):
-    """#2486: the realization meets a row that bounds doubles per plan against the plan's `ε`,
-    so a double output the checker's `ε` leaves out must be computed exactly. A plan that
-    loses a column's `ε` fails here, unless it is listed as one that has none."""
+def test_epsilon_names_every_double_output(case):
+    """#2573: the realization meets a row that bounds doubles per plan against the plan's `ε`,
+    so the checker's `ε` names every double output column, with no bound where it cannot bound
+    one and zero where every engine computes it exactly. No plan is exempt."""
     report = cc.report_of(case, cc.cat.load_schemas())
     doubles = {c for c, t in report.output.items() if t.is_floating()}
-    missing = doubles - set(report._epsilon or {}) - EXACT_DOUBLES.get(case.id, set())
-    assert bool(missing) == (case.id in NO_EPSILON), (missing, report._epsilon)
+    assert doubles <= set(report._epsilon or {}), (doubles, report._epsilon)
