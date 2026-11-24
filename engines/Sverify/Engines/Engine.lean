@@ -37,6 +37,87 @@ def extraAtB (t : ProfileTable) (c : Functions.Ctor) (o : String) : Bool :=
     | none => false
   | none => false
 
+/-- Does the reference raise at option `o` of `group` (`ERROR`,
+`THROW_EXCEPTION`)? An engine's other behaviour there fills only where the
+reference raises, which its profile may keep (ruling 255). -/
+def refRaisesAt (group o : String) : Bool :=
+  (Profile.reference.table.allows group o []).all (["ERROR", "THROW_EXCEPTION"].contains ·)
+
+/-- Does the reference allow any behaviour at option `o` of `group` (`ANY`, the
+zero sign of a rounding)? Then no engine's behaviour there is another. -/
+def refAnyAt (group o : String) : Bool :=
+  Profile.reference.table.allows group o [] == ["ANY"]
+
+/-- Does the engine's observation row at option `o` of `group` absorb another
+behaviour there (ruling 282)? A row that reads the zero through canon
+(`upTo { zeros := .canon }`) quotients `zero_sign` away (C2); a row that bounds
+doubles per plan (`approxWithin`) carries the difference in `ε` (C3). -/
+def obsAbsorbs (obs : ObsTable) (group o : String) : Bool :=
+  match obs.row? group o with
+  | some r => (o == "zero_sign" && r.q.zeros == .canon) ||
+      (match r.q.floats with | .within _ => true | .exact => false)
+  | none => false
+
+/-- Does `t` make a loose choice at option `o` of `group` whose first behaviour,
+the one the engine delivers (`Choice.loose`), is the reference's? -/
+def looseAtReference (t : ProfileTable) (group o : String) : Bool :=
+  match t.choice? group o with
+  | some (.loose (b :: _)) => Profile.reference.table.allows group o [] == [b]
+  | _ => false
+
+/-- The functions with a row (`Functions.all`, `Functions.casts`) that `un` and
+`bin` hold. -/
+def nativeFns (un : UnFn → Bool) (bin : BinFn → Bool) : List Functions.Ctor :=
+  ((Functions.all ++ Functions.casts).filterMap (·.ctor)).filter fun
+    | .un f => un f
+    | .bin f => bin f
+    | .agg _ | .hof _ => false
+
+/-- **The options a native function reads off the reference's value** (ruling
+278's addendum). A lowering's native entry (`Lowering.nativeUn`,
+`Lowering.nativeBin`) proves that the profile's function is the reference's, so
+the engine's table must give the reference's behaviour at every option the
+function's group reads: this lists each pair of a native function and an
+option where `t` allows another
+behaviour (`extraAtB`), but where the reference raises (`refRaisesAt`), allows
+any behaviour (`refAnyAt`), or the loose choice delivers the reference's
+(`looseAtReference`). An option is read per function (`optionApplies`, ruling
+282's C1), and one the engine's observation row absorbs is not listed
+(`obsAbsorbs`, C2, C3). Each engine checks the list against the pairs pending a
+ruling (`nativeOffIs`, a `#guard` in its `Engine.lean`), function by function, so
+a function newly native in a pending group fails it too. Polars's decimal rescale was one, where `Profile.polars` stated the
+reference's cast while its table picked `TIE_TO_EVEN`. -/
+def nativeOffReference (t : ProfileTable) (obs : ObsTable) (un : UnFn → Bool) (bin : BinFn → Bool) :
+    List (Functions.Ctor × String) :=
+  (nativeFns un bin).flatMap fun c =>
+    match Functions.rowOf c with
+    | some r => (((Functions.groups.lookup r.group).getD []).filter (optionApplies · c)).filterMap fun o =>
+      if extraAtB t c o && !refRaisesAt r.group o && !refAnyAt r.group o &&
+          !looseAtReference t r.group o && !obsAbsorbs obs r.group o then some (c, o)
+      else none
+    | none => []
+
+/-- Are `nativeOffReference t obs un bin` exactly the pairs of a function and an
+option that `pending` lists, beside those `unexercised` names (ruling 282's C7)?
+A C7 entry is an option this engine never exercises for the function, stated by
+the fact it cites (Polars's `+` and `-` of decimals at `max(s₁, s₂)`, which never
+rescale, while Spark's may): reviewable, not pending. Each must still be found,
+so a C7 entry that no longer applies fails the check too. -/
+def nativeOffIs (t : ProfileTable) (obs : ObsTable) (un : UnFn → Bool) (bin : BinFn → Bool)
+    (pending : List (Functions.Ctor × String))
+    (unexercised : List (Functions.Ctor × String × String) := []) : Bool :=
+  let off := nativeOffReference t obs un bin
+  let c7 := unexercised.map fun (c, o, _) => (c, o)
+  let rest := off.filter (!c7.contains ·)
+  c7.all off.contains && rest.length == pending.length && rest.all pending.contains
+
+/-- The native functions whose group reads an option: those `nativeOffReference`
+checks. -/
+def nativeReading (un : UnFn → Bool) (bin : BinFn → Bool) : List Functions.Ctor :=
+  (nativeFns un bin).filter fun c => match Functions.rowOf c with
+    | some r => !((Functions.groups.lookup r.group).getD []).isEmpty
+    | none => false
+
 /-- `extraAtB t c o` for a pair of `ps`, from one check of them all. Each
 `decide` of `extraAtB` evaluates the table anew, so a proof that needs many
 pairs decides its list once (`Profile.duckdb_extras`). -/

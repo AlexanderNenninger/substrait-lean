@@ -53,6 +53,14 @@ def table(engine: str = SETTING) -> Mapping[str, Json]:
     return {e["fn"]: e["template"] for e in _export()[engine]}
 
 
+@functools.cache
+def asks(engine: str) -> Mapping[tuple[str, str], str]:
+    """What an engine's rendering of a function asks for (ruling 282's C8): the
+    behaviour by function and option, from `--lowering-table`'s
+    `"<engine>_asks"` (`Polars.asks`); empty for an engine without one."""
+    return {(a["fn"], a["option"]): a["behaviour"] for a in _export().get(f"{engine}_asks", [])}
+
+
 def floor_table() -> Mapping[str, Json]:
     """The core's `FLOOR` templates as JSON by kind (`"div"`, `"mod"`, `"fmod"`),
     from the `"floor"` key (`LoweringExport.floorJson`)."""

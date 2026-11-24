@@ -233,3 +233,41 @@ def test_a_double_cast_to_decimal_runs_as_the_reference_on_polars():
     out = report.run(con, "polars")
     assert report.routes["polars"].taken == "translated", report.routes["polars"]
     assert out.column("r").to_pylist() == [D("0.13"), D("-0.13"), D("0.38"), D("1.00")]
+
+
+def test_a_decimal_rescale_runs_as_the_reference_on_polars():
+    """Polars's native cast of a decimal to a smaller scale rounds half to even
+    (0.125 is 0.12, polars-decimal-casts), and the reference half away from zero.
+    Polars's run path writes the reference's (`decimal_round_half_away`), so a
+    proved rescale gives the reference's values at the ties. A switch of
+    `UnFn.dround` to Polars's native cast fails here (ruling 278's addendum,
+    #2566)."""
+    con = sv.connect()
+    con.put(
+        "t",
+        pa.table(
+            {"d": pa.array([D("0.125"), D("-0.125"), D("0.135"), D("0.250")], pa.decimal128(4, 3))}
+        ),
+    )
+    t = con.table("t")
+    report = sv.verify(t.select(r=t.d.cast("decimal(4, 2)")))
+    assert report.verdict == sv.Verdict.PROVED, str(report)
+    out = report.run(con, "polars")
+    assert report.routes["polars"].taken == "translated", report.routes["polars"]
+    assert out.column("r").to_pylist() == [D("0.13"), D("-0.13"), D("0.14"), D("0.25")]
+
+
+def test_decimal_add_and_subtract_never_rescale() -> None:
+    """Ruling 282's C7 (`Polars/Engine.lean`): Polars's `+` and `-` of decimals give
+    `D(38, max(s₁, s₂))`, the reference's scale, exactly, so `decimal_rescale`
+    is never exercised there (polars-decimal-arith)."""
+    df = pl.DataFrame(
+        {
+            "a": pl.Series([D("12.35"), D("-0.05")], dtype=pl.Decimal(10, 2)),
+            "b": pl.Series([D("1.5"), D("2.5")], dtype=pl.Decimal(5, 1)),
+        }
+    )
+    out = df.lazy().select(s=pl.col.a + pl.col.b, d=pl.col.a - pl.col.b).collect(engine="streaming")
+    assert out.schema["s"] == pl.Decimal(38, 2) and out.schema["d"] == pl.Decimal(38, 2)
+    assert out["s"].to_list() == [D("13.85"), D("2.45")]
+    assert out["d"].to_list() == [D("10.85"), D("-2.55")]

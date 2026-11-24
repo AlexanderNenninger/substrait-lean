@@ -176,6 +176,10 @@ REFUSED = [
         "refused: exact bound, the engine adds in another order",
     ),
     ("not verified: ensures", "refused: postcondition not proved"),
+    (
+        "and the postcondition asks exact doubles",
+        "refused: exact doubles on an unbounded column (#2486)",
+    ),
     ("no engine meets the lenses' tolerance", "refused: tolerance unmet"),
     ("and the postcondition asks within", "refused: tolerance unmet"),
     ("may keep other rows", "refused: threshold rule (#568)"),
