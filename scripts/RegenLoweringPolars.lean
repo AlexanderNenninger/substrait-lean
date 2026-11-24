@@ -20,6 +20,9 @@ generate_lowering polarsOn : Profile.polars
   excluding []
   hand_written LoweringSearch.polarsSchemas
   writing "engines/polars/Sverify/Polars/LoweringOn"
-  refusing [BinFn.fmod, UnFn.ftod]
+  -- `*` of decimals rounds to `max(s₁, s₂)` on Polars, and the translation's exact
+  -- product is Python (`decimal_mul`); `round(x, d)` has no exact template from
+  -- Polars's calls, and the translation asks its mode (`round_to`). Ruling 282, P2 and B1.
+  refusing [BinFn.fmod, UnFn.ftod, BinFn.dmul, UnFn.froundTo]
 
 end Substrait
