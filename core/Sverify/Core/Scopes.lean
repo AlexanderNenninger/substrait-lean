@@ -92,6 +92,12 @@ def floorDiffers : List Value → Bool
 /-- Is an integer `SUM` of `vs` outside 64 bits? -/
 def sumOverflows (vs : List Value) : Bool := !inI64 (intSum vs)
 
+/-- Can a call of `c` show a zero's sign? Not the connectives and `IS NULL`, whose
+results are booleans that a zero of either sign gives alike (ruling 282, C1). -/
+def zeroSignReads : Ctor → Bool
+  | .un .not | .un .isNull | .bin .and | .bin .or => false
+  | _ => true
+
 /-- **The scope of option `o`** at a call of `c` on `args` (an aggregate's
 values for `.agg`): where its behaviours may differ from the reference
 (D34). -/
@@ -124,7 +130,7 @@ def optionScope (o : String) (c : Ctor) (args : List Value) : Bool :=
     | .agg f, vs => !Value.anyNaN vs && f.nanCase vs
     | _, _ => false
   -- A zero argument or a zero result (underflow, `x − x`, a sum rounding to zero).
-  | "zero_sign" => Value.anyZero args || r.hasZero
+  | "zero_sign" => zeroSignReads c && (Value.anyZero args || r.hasZero)
   -- The reference's result is a zero (`round(-0.4)`, `ceil(-0.4)`).
   | "round_zero_sign" => r.hasZero
   -- `power` of `±1` to `±∞`, or of `1` to NaN (D40).
@@ -176,6 +182,7 @@ def optionApplies (o : String) (c : Ctor) : Bool :=
   match o with
   | "avg_int_result" => c == .agg .iavg
   | "empty_group_aggregates" => match c with | .agg _ => true | _ => false
+  | "zero_sign" => zeroSignReads c
   | _ => true
 
 /-- An option applies wherever a call may be in its scope. -/
@@ -185,6 +192,7 @@ theorem optionApplies_of_scope {o : String} {c : Ctor} {args : List Value}
   split
   · simpa [optionScope] using h
   · cases c <;> simp_all [optionScope]
+  · simp only [optionScope, Bool.and_eq_true] at h; exact h.1
   · rfl
 
 /-- The options whose scope is stated above, in the catalogue's order. -/

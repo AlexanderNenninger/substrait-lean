@@ -48,6 +48,16 @@ zero sign of a rounding)? Then no engine's behaviour there is another. -/
 def refAnyAt (group o : String) : Bool :=
   Profile.reference.table.allows group o [] == ["ANY"]
 
+/-- Does the engine's observation row at option `o` of `group` absorb another
+behaviour there (ruling 282)? A row that reads the zero through canon
+(`upTo { zeros := .canon }`) quotients `zero_sign` away (C2); a row that bounds
+doubles per plan (`approxWithin`) carries the difference in `ε` (C3). -/
+def obsAbsorbs (obs : ObsTable) (group o : String) : Bool :=
+  match obs.row? group o with
+  | some r => (o == "zero_sign" && r.q.zeros == .canon) ||
+      (match r.q.floats with | .within _ => true | .exact => false)
+  | none => false
+
 /-- Does `t` make a loose choice at option `o` of `group` whose first behaviour,
 the one the engine delivers (`Choice.loose`), is the reference's? -/
 def looseAtReference (t : ProfileTable) (group o : String) : Bool :=
@@ -71,25 +81,27 @@ function's group reads: this lists each pair of a native function and an
 option where `t` allows another
 behaviour (`extraAtB`), but where the reference raises (`refRaisesAt`), allows
 any behaviour (`refAnyAt`), or the loose choice delivers the reference's
-(`looseAtReference`). Each engine checks the list against the pairs pending a
+(`looseAtReference`). An option is read per function (`optionApplies`, ruling
+282's C1), and one the engine's observation row absorbs is not listed
+(`obsAbsorbs`, C2, C3). Each engine checks the list against the pairs pending a
 ruling (`nativeOffIs`, a `#guard` in its `Engine.lean`), function by function, so
 a function newly native in a pending group fails it too. Polars's decimal rescale was one, where `Profile.polars` stated the
 reference's cast while its table picked `TIE_TO_EVEN`. -/
-def nativeOffReference (t : ProfileTable) (un : UnFn → Bool) (bin : BinFn → Bool) :
+def nativeOffReference (t : ProfileTable) (obs : ObsTable) (un : UnFn → Bool) (bin : BinFn → Bool) :
     List (Functions.Ctor × String) :=
   (nativeFns un bin).flatMap fun c =>
     match Functions.rowOf c with
-    | some r => ((Functions.groups.lookup r.group).getD []).filterMap fun o =>
+    | some r => (((Functions.groups.lookup r.group).getD []).filter (optionApplies · c)).filterMap fun o =>
       if extraAtB t c o && !refRaisesAt r.group o && !refAnyAt r.group o &&
-          !looseAtReference t r.group o then some (c, o)
+          !looseAtReference t r.group o && !obsAbsorbs obs r.group o then some (c, o)
       else none
     | none => []
 
-/-- Are `nativeOffReference t un bin` exactly the pairs of a function and an
+/-- Are `nativeOffReference t obs un bin` exactly the pairs of a function and an
 option that `pending` lists? -/
-def nativeOffIs (t : ProfileTable) (un : UnFn → Bool) (bin : BinFn → Bool)
+def nativeOffIs (t : ProfileTable) (obs : ObsTable) (un : UnFn → Bool) (bin : BinFn → Bool)
     (pending : List (Functions.Ctor × String)) : Bool :=
-  let off := nativeOffReference t un bin
+  let off := nativeOffReference t obs un bin
   off.length == pending.length && off.all pending.contains
 
 /-- The native functions whose group reads an option: those `nativeOffReference`
