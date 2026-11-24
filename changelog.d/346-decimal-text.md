@@ -1,3 +1,0 @@
-### Casts of decimals to VARCHAR
-
-`CAST(x AS VARCHAR)` of a `DECIMAL(p, s)` now verifies and runs on DuckDB, Polars and Spark: `-` for a negative value, an integer part of at least one digit, then `.` and exactly `s` digits (`0.500`, `-0.05`). A `DECIMAL(p, p)` on DuckDB is widened by one digit first, because DuckDB prints it without the integer part; at `DECIMAL(38, 38)` the report refuses DuckDB and names a cast to `DECIMAL(38, 37)` as the way through. A lifted `CAST(DECIMAL(p, p) AS VARCHAR)` is refused too. Casts of timestamps to VARCHAR stay refused until [#323](https://github.com/AlexanderNenninger/substrait-lean/issues/323); the message names `strftime` with an explicit format ([#346](https://github.com/AlexanderNenninger/substrait-lean/issues/346)).

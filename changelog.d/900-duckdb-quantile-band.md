@@ -1,3 +1,0 @@
-### DuckDB's quantile_cont stays inside the model near whole positions
-
-DuckDB computes the position `(n − 1)·q` of `quantile_cont` in a double, which can miss the exact position's floor or ceiling when the exact position is within `(n − 1)·2⁻⁵¹` of a whole one. In that band the written plan now takes `quantile_disc` of `q` moved by 10⁻¹⁵ toward 1/2, whose index is the nearest whole position, and raises `domain` where the neighbours are `-inf` and `+inf`. This replaces the refusal of `quantile(1/3)` (Ibis writes 16 decimals) from two values: the writer now refuses a fraction of more than 21 decimals, and a group of 10¹⁴ values or more ([#900](https://github.com/AlexanderNenninger/substrait-lean/issues/900)).

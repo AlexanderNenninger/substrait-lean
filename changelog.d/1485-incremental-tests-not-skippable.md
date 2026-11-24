@@ -1,3 +1,0 @@
-### sverify-dbt keeps an incremental model's tests out of `sverify_proved`
-
-`sverify check` proved an incremental model's tests from its full-refresh SQL and listed them under "dbt build may skip them", so `dbt build --exclude selector:sverify_proved` dropped them even where an incremental run (the `append` strategy, or `merge` on another key) could break them (#1485). The tests of an incremental model are now skippable only for the `merge` or `delete+insert` strategy on a `unique_key` that a proved `unique` test names. Otherwise they are reported as proved for the full refresh and `dbt build` keeps running them. Proving the incremental branch is a follow-up.

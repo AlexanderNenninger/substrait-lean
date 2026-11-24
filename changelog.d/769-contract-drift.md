@@ -1,3 +1,0 @@
-### sverify check --against-sink: contract drift
-
-`sverify check <file>[:<node>] --against-sink` compares each stored node's contract with the one its sink last committed. A committed promise the node no longer proves (a NOT NULL column, a CHECK, a unique key) is a `contract_weakened` finding at error level, so the check exits 1; a reworded CHECK the node still proves, a smaller key, and a condition inserted before the others are no drift. A changed plan or profile is a `plan_changed` note. The JSON gains `drift`, per node, with what was weakened and added. Without the flag `check` opens no sink ([#769](https://github.com/AlexanderNenninger/substrait-lean/issues/769)).
