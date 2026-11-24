@@ -17,7 +17,7 @@ attribute [local instance] Boxes.Ambient.none in
 generate_lowering polarsOn : Profile.polars
   unfolding [Profile.polars, UnFn.polarsTmpl, BinFn.polarsTmpl]
   using []
-  excluding []
+  excluding [UnFn.froundTo]
   hand_written LoweringSearch.polarsSchemas
   writing "engines/polars/Sverify/Polars/LoweringOn"
   refusing [BinFn.fmod, UnFn.ftod]
