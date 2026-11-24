@@ -1,1 +1,0 @@
-A refresh after a small change to an Arrow-fed source no longer costs a pass over its input (#1329): on DuckDB the sealed input takes the change in place, as a view's state does, and the input is moved into the store at the first load. The refused delete names its row again ("cannot delete rows from `t`: no such row ...").

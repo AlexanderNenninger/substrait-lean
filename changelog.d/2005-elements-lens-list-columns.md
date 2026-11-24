@@ -1,1 +1,0 @@
-- Fixed: a postcondition that reads a list column was proved under a lens that ignores the order of a list's elements (`elements="multiset"`, the plan bound) though a lens-equal result can falsify it (`list_position(pair, a) = 1`). The report now lists `elements` among what the condition depends on and the observation ignores (#2005).
