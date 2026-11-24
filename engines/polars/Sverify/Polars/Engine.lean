@@ -474,7 +474,7 @@ end Example
 
 -- Every function the generated lowering writes natively reads the reference's
 -- behaviour from the table at each of its options (`nativeOffReference`, ruling
--- 278's addendum), but at the pending groups and options listed. Ruling 282 (F282)
+-- 278's addendum), but at the pending functions and options listed. Ruling 282 (F282)
 -- accepts the list: it only shrinks (the guard fails on a new entry and on a fixed
 -- one), and a pending function stays on the hand-written translation path until
 -- its entry is resolved. The check reads options per function (C1) and skips those
@@ -482,12 +482,15 @@ end Example
 #guard letI := Boxes.Ambient.none
   nativeOffIs Profile.polars.table Profile.polars.obs Lowering.polars.nativeUn Lowering.polars.nativeBin
     [-- C4: `round(x, d)` half to even.
-     ("fp.round", "rounding"),
+     (.un (.froundTo 0), "rounding"),
      -- C4: zero-based characters and bytes.
-     ("str.match", "string_positions"), ("str.sub", "string_positions"),
+     (.bin .strpos, "string_positions"), (.bin .startsWith, "string_positions"),
+     (.bin .endsWith, "string_positions"), (.bin .like, "string_positions"),
+     (.bin (.substr none true), "string_positions"), (.un (.replace "" ""), "string_positions"),
      -- C4: a result past 38 digits that rescales.
-     ("dec.arith", "decimal_rescale"),
+     (.bin .dadd, "decimal_rescale"), (.bin .dsub, "decimal_rescale"),
+     (.bin .dmul, "decimal_rescale"),
      -- C4: a loose row whose first behaviour is `ERROR`.
-     ("int.shift", "shift_range")]
+     (.bin (.bit .shl), "shift_range"), (.bin (.bit .shr), "shift_range")]
 
 end Substrait

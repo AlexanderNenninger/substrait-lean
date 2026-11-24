@@ -244,7 +244,7 @@ end Example
 
 -- Every function the generated lowering writes natively reads the reference's
 -- behaviour from the table at each of its options (`nativeOffReference`, ruling
--- 278's addendum), but at the pending groups and options listed. Ruling 282 (F282)
+-- 278's addendum), but at the pending functions and options listed. Ruling 282 (F282)
 -- accepts the list: it only shrinks (the guard fails on a new entry and on a fixed
 -- one), and a pending function stays on the hand-written translation path until
 -- its entry is resolved. The check reads options per function (C1) and skips those
@@ -255,6 +255,7 @@ end Example
     [-- C6 (ruling 284, F284): DuckDB's `CAST` rounds (duckdb-R9); the dialect renders
      -- `ftoi` and `ftoiOrNull` as `CAST(trunc(x) AS BIGINT)`, a compensation in the
      -- writer's text outside the proof. Its fix is ruling 282's follow-up.
-     ("cast.num", "float_to_int")]
+     (.un .ftoi, "float_to_int"), (.un .ftoiOrNull, "float_to_int"),
+     (.un (.dtrunc 0), "float_to_int")]
 
 end Substrait
