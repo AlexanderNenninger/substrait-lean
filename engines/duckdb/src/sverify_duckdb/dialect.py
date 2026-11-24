@@ -122,15 +122,18 @@ class DuckDBDialect(Dialect):
         return f"list_reduce(list_transform(range({n}), lambda i: {a}), lambda x, y: x * y)"
 
     def float_to_int(self, x: str) -> str:
-        # The cast raises on NaN, ±inf and values outside 64 bits.
-        return f"CAST(trunc({x}) AS BIGINT)"
+        # DuckDB's cast rounds half to even (duckdb-R9): the generated, proved
+        # template truncates first (`Lowering.ftoi_agree`, ruling 284). The cast
+        # raises on NaN, ±inf and values outside 64 bits. The template's cast is
+        # the BIGINT: no wrap-around to cast back.
+        low = self.lowered("Substrait.UnFn.ftoi", [x], "float")
+        return low if low is not None else f"CAST({x} AS BIGINT)"
 
     def float_to_int_or_null(self, x: str) -> str:
-        # NULL where `float_to_int` raises: NaN (above every number in
-        # DuckDB), ±inf and outside [-2⁶³, 2⁶³), where no double lies within
-        # 2048 below -2⁶³. A range test, twice as fast as TRY_CAST.
-        lo, hi = "-9223372036854775808.0", "9223372036854775808.0"
-        return f"(CASE WHEN {x} >= {lo} AND {x} < {hi} THEN CAST(trunc({x}) AS BIGINT) END)"
+        # NULL where `float_to_int` raises: the template's `TRY_CAST` of the
+        # truncated value (`Lowering.ftoiOrNull_agree`).
+        low = self.lowered("Substrait.UnFn.ftoiOrNull", [x], "float")
+        return low if low is not None else f"TRY_CAST({x} AS BIGINT)"
 
     def narrow_or_null(self, x: str, bits: int) -> str:
         lo, hi = self.int_lit(-(2 ** (bits - 1))), self.int_lit(2 ** (bits - 1) - 1)

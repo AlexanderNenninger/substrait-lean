@@ -218,6 +218,10 @@ def render(
             return f"({xs[0]} // {xs[1]})"
         if name.startswith("fmath:"):
             return f"{name.removeprefix('fmath:').upper()}({xs[0]})"
+        if name == "Substrait.UnFn.ftoi":
+            return f"CAST({xs[0]} AS BIGINT)"
+        if name == "Substrait.UnFn.ftoiOrNull":
+            return f"TRY_CAST({xs[0]} AS BIGINT)"
         if name in _BINARY:
             return f"({xs[0]} {_BINARY[name]} {xs[1]})"
         if name in _CALLS:

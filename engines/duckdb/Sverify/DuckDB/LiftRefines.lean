@@ -49,9 +49,11 @@ theorem DuckDBSQL.duck_bin_of_ref {f : BinFn} (hf : f.liftDouble = true) {v w x 
 
 /-- **DuckDB's unary function gives the reference's value wherever the
 reference gives one**, but for `round`, `round_even` and `ceil`, whose zero's sign DuckDB
-keeps (`canon_duck_rounded`). The statement is narrowed at `froundEven` (D55), where it is false:
-DuckDB's `round_even` of a negative value that rounds to zero is `-0.0`. -/
-theorem DuckDBSQL.duck_un_of_ref {f : UnFn} (hf : f ≠ .fround ∧ f ≠ .fceil ∧ f ≠ .froundEven) {v x : Value}
+keeps (`canon_duck_rounded`), and the casts of a double to an integer, which round half to
+even on DuckDB (duckdb-R9, ruling 284). The statement is narrowed at `froundEven` (D55), where
+it is false: DuckDB's `round_even` of a negative value that rounds to zero is `-0.0`. -/
+theorem DuckDBSQL.duck_un_of_ref {f : UnFn}
+    (hf : f ≠ .fround ∧ f ≠ .fceil ∧ f ≠ .froundEven ∧ f ≠ .ftoi ∧ f ≠ .ftoiOrNull) {v x : Value}
     (h : Profile.reference.un f v = .ok x) : (Profile.duckdb {}).un f v = .ok x := by
   cases v <;> simp only [Profile.duckdb] <;> try exact h
   rename_i c
@@ -64,7 +66,8 @@ theorem DuckDBSQL.duck_un_of_ref {f : UnFn} (hf : f ≠ .fround ∧ f ≠ .fceil
   all_goals simp_all
 
 /-- A unary step keeps the refinement. -/
-theorem DuckDBSQL.evalP_un_of_ref {f : UnFn} (hf : f ≠ .fround ∧ f ≠ .fceil ∧ f ≠ .froundEven) {a : Expr} {row : Row}
+theorem DuckDBSQL.evalP_un_of_ref {f : UnFn}
+    (hf : f ≠ .fround ∧ f ≠ .fceil ∧ f ≠ .froundEven ∧ f ≠ .ftoi ∧ f ≠ .ftoiOrNull) {a : Expr} {row : Row}
     (ha : ∀ x, a.evalP Profile.reference row = .ok x → a.evalP (Profile.duckdb {}) row = .ok x)
     {x : Value} (h : (Expr.un f a).evalP Profile.reference row = .ok x) :
     (Expr.un f a).evalP (Profile.duckdb {}) row = .ok x := by
@@ -110,7 +113,8 @@ theorem DuckFn.reference_refines_duckdb {f : DuckFn} (hr : f.refused .reference 
     {xs : List Value} (hx : DuckType.HaveAll f.args xs) {v : Value}
     (h : DuckFn.eval .reference f xs = .ok v) : DuckFn.eval .duckdb f xs = .ok v := by
   have fld := DuckDBSQL.evalP_field_of_ref
-  have itof : UnFn.itof ≠ .fround ∧ UnFn.itof ≠ .fceil ∧ UnFn.itof ≠ .froundEven := by decide
+  have itof : UnFn.itof ≠ .fround ∧ UnFn.itof ≠ .fceil ∧ UnFn.itof ≠ .froundEven ∧
+      UnFn.itof ≠ .ftoi ∧ UnFn.itof ≠ .ftoiOrNull := by decide
   cases f <;> simp only [DuckFn.eval, DuckFn.meaning, Semantics.profile] at h ⊢
   case divInt =>
     exact DuckDBSQL.evalP_bin_of_ref rfl (fun _ => DuckDBSQL.evalP_un_of_ref itof (fld 0 xs))
@@ -122,7 +126,7 @@ theorem DuckFn.reference_refines_duckdb {f : DuckFn} (hr : f.refused .reference 
   case mulDouble => exact DuckDBSQL.evalP_bin_of_ref rfl (fld 0 xs) (fld 1 xs) h
   case power => exact DuckDBSQL.evalP_bin_of_ref rfl (fld 0 xs) (fld 1 xs) h
   case elementary g =>
-    exact DuckDBSQL.evalP_un_of_ref ⟨by simp, by simp, by simp⟩ (fld 0 xs) h
+    exact DuckDBSQL.evalP_un_of_ref ⟨by simp, by simp, by simp, by simp, by simp⟩ (fld 0 xs) h
   case castRoundedBigint r =>
     obtain ⟨a, rfl, ha⟩ := DuckType.haveAll_one hx
     simp only [DuckFn.evalOwn] at h ⊢

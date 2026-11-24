@@ -441,6 +441,22 @@ theorem toInt?_roundEven_ceil (c : Int) (hc : canon c < 0) :
     · have : 0 < code (floorMag (mag c)) := by unfold code; simp [h0]; omega
       simp only [show -code (floorMag (mag c)) < 0 from by omega, ite_true]
 
+/-- A code below zero once canonical was below zero, and canonical: the two
+codes `canon` moves are `-0.0` (to `0`) and the negative NaN (to NaN). -/
+theorem lt_zero_of_canon_lt_zero {c : Int} (h : canon c < 0) : c < 0 ∧ canon c = c := by
+  have hn := fp64.nan_eq
+  by_cases h1 : c = negZero
+  · subst h1; rw [show canon negZero = 0 from FloatFormat.canon_negZero fp64] at h; omega
+  by_cases h2 : c = negNan
+  · subst h2
+    have : canon negNan = nan := by
+      show FloatFormat.canon fp64 fp64.negNan = fp64.nan
+      have hne : -fp64.nan ≠ fp64.negZero := by simp only [FloatFormat.negZero]; omega
+      unfold FloatFormat.canon; simp [FloatFormat.negNan, hne]
+    rw [this] at h; simp only [nan] at h; omega
+  have he : canon c = c := fp64.canon_eq_self ⟨h1, h2⟩
+  exact ⟨by rw [he] at h; exact h, he⟩
+
 /-- `-0.0` casts as `0.0` does. -/
 theorem toInt?_canon_roundEven_negZero : toInt? (canon (roundEven negZero)) = toInt? 0 := by
   obtain ⟨h1, -, -⟩ := maxMag_lt_mag_special
