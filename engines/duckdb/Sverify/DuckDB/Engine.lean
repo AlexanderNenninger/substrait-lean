@@ -252,10 +252,10 @@ end Example
 -- compensation in the writer's rendering, outside the proof.
 #guard letI := Boxes.Ambient.none
   nativeOffIs (Profile.duckdb.table {}) Profile.duckdb.obs Lowering.duckdb.nativeUn Lowering.duckdb.nativeBin
-    [-- C6 (ruling 284, F284): DuckDB's `CAST` rounds (duckdb-R9); the dialect renders
-     -- `ftoi` and `ftoiOrNull` as `CAST(trunc(x) AS BIGINT)`, a compensation in the
-     -- writer's text outside the proof. Its fix is ruling 282's follow-up.
-     (.un .ftoi, "float_to_int"), (.un .ftoiOrNull, "float_to_int"),
+    [-- C6 (ruling 284, F284): DuckDB's `CAST` of a decimal rounds half away from zero
+     -- (duckdb-R9); the writer renders `dtrunc` as `CAST(TRUNC(x) AS BIGINT)`, a
+     -- compensation in its text outside the proof. Its template is ruling 284's (d).
+     -- `ftoi` and `ftoiOrNull` truncate first in the lowering (`Lowering.ftoi_agree`).
      (.un (.dtrunc 0), "float_to_int")]
 
 end Substrait
