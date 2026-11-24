@@ -126,14 +126,15 @@ class DuckDBDialect(Dialect):
         # template truncates first (`Lowering.ftoi_agree`, ruling 284). The cast
         # raises on NaN, ±inf and values outside 64 bits. The template's cast is
         # the BIGINT: no wrap-around to cast back.
+        # Without the table's entry, the hand-written truncation: a bare cast would round.
         low = self.lowered("Substrait.UnFn.ftoi", [x], "float")
-        return low if low is not None else f"CAST({x} AS BIGINT)"
+        return low if low is not None else f"CAST(trunc({x}) AS BIGINT)"
 
     def float_to_int_or_null(self, x: str) -> str:
         # NULL where `float_to_int` raises: the template's `TRY_CAST` of the
         # truncated value (`Lowering.ftoiOrNull_agree`).
         low = self.lowered("Substrait.UnFn.ftoiOrNull", [x], "float")
-        return low if low is not None else f"TRY_CAST({x} AS BIGINT)"
+        return low if low is not None else f"TRY_CAST(trunc({x}) AS BIGINT)"
 
     def narrow_or_null(self, x: str, bits: int) -> str:
         lo, hi = self.int_lit(-(2 ** (bits - 1))), self.int_lit(2 ** (bits - 1) - 1)
