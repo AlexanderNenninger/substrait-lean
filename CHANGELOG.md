@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.0 (2026-11-23)
+## 0.9.0 (2026-11-24)
 
 Known issue: a `RANK`, a top-n or a window partition over a double `SUM` or `AVG` can be reported proved on Polars and Spark, although the engine may order near-equal sums differently ([#2573](https://github.com/AlexanderNenninger/substrait-lean/issues/2573)). It is present since 0.8.0, and the fix is planned for 0.9.1.
 
