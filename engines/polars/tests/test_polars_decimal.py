@@ -255,3 +255,19 @@ def test_a_decimal_rescale_runs_as_the_reference_on_polars():
     out = report.run(con, "polars")
     assert report.routes["polars"].taken == "translated", report.routes["polars"]
     assert out.column("r").to_pylist() == [D("0.13"), D("-0.13"), D("0.14"), D("0.25")]
+
+
+def test_decimal_add_and_subtract_never_rescale() -> None:
+    """Ruling 282's C7 (`Polars/Engine.lean`): Polars's `+` and `-` of decimals give
+    `D(38, max(s₁, s₂))`, the reference's scale, exactly, so `decimal_rescale`
+    is never exercised there (polars-decimal-arith)."""
+    df = pl.DataFrame(
+        {
+            "a": pl.Series([D("12.35"), D("-0.05")], dtype=pl.Decimal(10, 2)),
+            "b": pl.Series([D("1.5"), D("2.5")], dtype=pl.Decimal(5, 1)),
+        }
+    )
+    out = df.lazy().select(s=pl.col.a + pl.col.b, d=pl.col.a - pl.col.b).collect(engine="streaming")
+    assert out.schema["s"] == pl.Decimal(38, 2) and out.schema["d"] == pl.Decimal(38, 2)
+    assert out["s"].to_list() == [D("13.85"), D("2.45")]
+    assert out["d"].to_list() == [D("10.85"), D("-2.55")]
