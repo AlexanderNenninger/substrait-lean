@@ -413,6 +413,25 @@ scale (`LoweringSearch.polarsSchemas`). Exact on every value. -/
 def droundEntry (k : Nat) : UnEntry Profile.polars (.dround k) :=
   .ofAgree (droundAwayT k) (by simp [droundAwayT, Expr.must]) (dround_agree k)
 
+/-- The digits `round(x, d)` is generated for on Polars: from 0 to 22
+(polars-round, polars-round-digits). Polars rounds to no negative digits, and
+from `d = 23` its multiplier can differ from the reference's `10^d`, which
+moves the rounding. -/
+def roundDigitsMax : Int := 22
+
+/-- **Polars's entry for `round(x, d)`**, hand-built and partial (ruling 282,
+#2586): for `0 ≤ d ≤ 22`, Polars's own `round(d, mode=…)`, rendered with the
+mode `Polars.asks` states, which `Profile.polars` states is the reference's
+(polars-round's probes, M1); for any other `d`, none, so the lowering refuses
+the plan before it runs. -/
+def froundToEntry (d : Int) : Option (UnEntry Profile.polars (.froundTo d)) :=
+  if 0 ≤ d ∧ d ≤ roundDigitsMax then some (.native (.froundTo d) fun _ => Outcome.agree_refl _)
+  else none
+
+-- The range, at its ends and just past them.
+#guard letI := Boxes.Ambient.none; (froundToEntry 0).isSome && (froundToEntry 22).isSome
+#guard letI := Boxes.Ambient.none; (froundToEntry 23).isNone && (froundToEntry (-1)).isNone
+
 end Polars
 
 end Substrait

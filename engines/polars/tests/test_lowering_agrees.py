@@ -115,7 +115,8 @@ def test_round_asks_half_away_from_zero_once():
     `Polars.asks`, and the rendering carries it; Polars rounds half to even unless
     asked (polars-round)."""
     assert table_export.asks("polars") == {
-        ("Substrait.UnFn.fround", "rounding"): "TIE_AWAY_FROM_ZERO"
+        ("Substrait.UnFn.fround", "rounding"): "TIE_AWAY_FROM_ZERO",
+        ("Substrait.UnFn.froundTo", "rounding"): "TIE_AWAY_FROM_ZERO",
     }
     assert lowering._asked_mode("Substrait.UnFn.fround") == "half_away_from_zero"
     # The ties tell the modes apart: half to even would give 0.0, 2.0 and -2.0.
@@ -124,3 +125,22 @@ def test_round_asks_half_away_from_zero_once():
         {"x": pl.Series([0.5, 2.5, -2.5] * 400)},
     )
     assert got["r"][:3] == [1.0, 3.0, -3.0]
+
+
+def test_round_to_digits_is_the_partial_entry():
+    """Ruling 282 (#2586): `round(x, d)` is `Polars.froundToEntry`, Polars's own
+    `round(d, mode="half_away_from_zero")` for `0 ≤ d ≤ 22` and refused
+    otherwise. Near ties, as the reference's `round(x · 10^d) / 10^d`: `1.005 ·
+    100` is `100.49999999999999`, so it rounds down; `2.675 · 100` rounds to
+    `267.5` as a double, a tie, so it rounds up; `±0.125 · 100` is the tie
+    `±12.5`, which half to even would send to `±0.12`."""
+    assert table_export.round_digits("polars") == 22
+    got = run(
+        {"r": lowering.round_to(pl.col("x"), 2)},
+        {"x": pl.Series([1.005, 2.675, 0.125, -0.125] * 400)},
+    )
+    assert 1.005 * 100 < 100.5 and 2.675 * 100 == 267.5
+    assert got["r"][:4] == [1.0, 2.68, 0.13, -0.13]
+    assert lowering.round_to(pl.col("x"), 22) is not None
+    assert lowering.round_to(pl.col("x"), -1) is None
+    assert lowering.round_to(pl.col("x"), 23) is None

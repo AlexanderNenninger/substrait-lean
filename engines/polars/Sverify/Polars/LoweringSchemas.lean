@@ -9,7 +9,9 @@ The constructs the lowering search does not reach on `Profile.polars`, for
 (`scripts/RegenLoweringPolars.lean`): `round` and `ceil`, which give IEEE's
 `-0.0` on Polars, integer `//` and `%`, which floor, and a decimal cast to a
 smaller scale, which rounds half to even (a hand-built entry, `Polars.droundEntry`,
-whose template's literals depend on the scale). Each comes with its
+whose template's literals depend on the scale), and `round(x, d)`, Polars's own
+`round(d, mode=…)` for `0 ≤ d ≤ 22` and refused otherwise (a partial hand-built
+entry, `Polars.froundToEntry`). Each comes with its
 proof, `Polars.<construct>_agree` (`Sverify.Polars.LoweringLemmas`,
 `Sverify.Polars.Profile`), which the kernel checks. `%` of doubles floors too
 and has no exact template from Polars's functions: the table has no entry
@@ -37,6 +39,6 @@ def polarsSchemas : Schemas where
         "a % b truncated: Polars's % by -b where the signs differ")
     | _ => none
   proofs := `Substrait.Polars
-  entries := [(``UnFn.dround, ``Polars.droundEntry)]
+  entries := [(``UnFn.dround, ``Polars.droundEntry), (``UnFn.froundTo, ``Polars.froundToEntry)]
 
 end Substrait.LoweringSearch

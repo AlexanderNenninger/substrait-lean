@@ -561,9 +561,6 @@ def decimal_div(a: Val, b: Val, p: int, s: int) -> Val:
 #: The smallest normal double, 2⁻¹⁰²².
 MIN_NORMAL = 2.0**-1022
 
-#: The largest `d` with `10^d` exact in a double (`5^22 < 2^53`).
-MAX_EXACT_DIGITS = 22
-
 
 def fdiv(x: pl.Expr, y: pl.Expr) -> pl.Expr:
     """Division of doubles, Polars's own. Where the divisor is a constant
@@ -1840,26 +1837,25 @@ class Exprs:
 
     @staticmethod
     def round_to(a: Val, digits: dict) -> Val:
-        """`ROUND(x, d)`, as `FloatCode.roundTo` (DuckDB 2.0's, #335): with
-        `m = 10^d`, `round(x · m) / m`, halves away from zero, `x` where that is
-        not finite; `±∞` and NaN stay. Polars's own `round(d)` computes exactly
-        that for `0 ≤ d ≤ 22`, where `10^d` is exact and Polars's multiplier
-        (`powi`) is the reference's (`pow`); outside, refused (#1270): Polars
-        rounds to no negative digits, and from `d = 23` its multiplier can
-        differ, which moves the rounding (polars-round-digits)."""
+        """`ROUND(x, d)`, `FloatCode.roundTo` (DuckDB 2.0's, #335), as the
+        generated lowering's partial entry writes it (`Polars.froundToEntry`,
+        `lowering.round_to`): Polars's own `round(d, mode=…)`, which
+        `Profile.polars` states is the reference's for `0 ≤ d ≤ 22`
+        (polars-round). Any other `d` is refused (polars-round-digits)."""
         if "literal" not in digits or literal(digits["literal"])[1] != pl.Int64:
             raise Unsupported("ROUND digits must be an integer literal")
         if a.dtype != pl.Float64:
             raise Unsupported(f"round of {a.dtype}")
+        # Imported here: `sverify.sql` loads the engines, this one among them.
+        from sverify.sql.lowering import round_digits
+
         d = int(literal(digits["literal"])[0])
-        if not 0 <= d <= MAX_EXACT_DIGITS:
+        out = lowering.round_to(a.expr, d)
+        if out is None:
             raise Unsupported(
-                f"ROUND to {d} digits on Polars: Polars rounds exactly only to 0 to "
-                f"{MAX_EXACT_DIGITS} digits (polars-round-digits); run it on DuckDB or Spark"
+                f"ROUND to {d} digits on Polars: the generated lowering covers 0 to "
+                f"{round_digits('polars')} digits (polars-round-digits); run it on DuckDB or Spark"
             )
-        x = a.expr
-        r = x.round(d, mode="half_away_from_zero")
-        out = pl.when(~x.is_finite() | ~r.is_finite()).then(x).otherwise(r)
         return Val(out, pl.Float64, a.issues)
 
 

@@ -133,6 +133,8 @@ Sverify's words claim no more than these theorems give
   profiles that evaluate their own relational operators (joins, sorts, an
   empty `SUM`, `NULL` order), with no shared `Rel.eval`, are
   [#2539](https://github.com/AlexanderNenninger/substrait-lean/issues/2539).
+  On Polars, `round(x, d)` with `d < 0` or `d > 22` is refused: the generated
+  entry covers the digits polars-round's probes cover (`Polars.froundToEntry`).
 - The report's `ε` (`SubstraitLean/Epsilon.lean`, `robust`, `rows_exact`,
   `margin_checks`) has no theorem that it bounds an engine's doubles. The
   bounds hold over the reals in `float-bounds/`, which `StdModel` links to the

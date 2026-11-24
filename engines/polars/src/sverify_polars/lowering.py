@@ -68,6 +68,18 @@ def _asked_mode(fn: str) -> str:
     return _ROUND_MODES[table_export.asks("polars")[(fn, "rounding")]]
 
 
+def round_to(a: pl.Expr, d: int) -> pl.Expr | None:
+    """`round(x, d)` as `Polars.froundToEntry` writes it (ruling 282, #2586):
+    Polars's own `round(d, mode=…)` with the mode `Polars.asks` states, for
+    `0 ≤ d ≤ Polars.roundDigitsMax`; None where the entry refuses."""
+    from sverify.sql import lowering as table_export
+
+    top = table_export.round_digits("polars")
+    if top is None or not 0 <= d <= top:
+        return None
+    return a.round(d, mode=_asked_mode("Substrait.UnFn.froundTo"))
+
+
 def render(fn: str, args: Sequence[pl.Expr]) -> pl.Expr | None:
     """`fn` of the arguments' expressions as its template writes it, or None
     where Polars's own function is the reference's (no template)."""

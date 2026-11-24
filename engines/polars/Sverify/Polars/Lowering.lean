@@ -71,7 +71,7 @@ argument, which `Profile.polars` states (`Polars.negZeroT .fround`) and
 `sverify_polars.lowering` reads from this list (`--lowering-table`'s
 `"polars_asks"`). -/
 def Polars.asks : List (Functions.Ctor × String × Behaviour) :=
-  [(.un .fround, "rounding", "TIE_AWAY_FROM_ZERO")]
+  [(.un .fround, "rounding", "TIE_AWAY_FROM_ZERO"), (.un (.froundTo 0), "rounding", "TIE_AWAY_FROM_ZERO")]
 
 -- Each ask is a behaviour Polars gives when asked, and the reference's (M2): the
 -- table and the rendering agree.
