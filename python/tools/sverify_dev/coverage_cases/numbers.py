@@ -44,6 +44,8 @@ CASES: list[Case] = [
 REFUSED: dict[str, dict[str, str]] = {
     # The date's text goes through a Date to timestamp cast the engines lack (#271).
     "cast date → string": DUCKDB_ONLY,
+    # Snowflake's decimals are not the reference's yet (#27).
+    "decimal mod": {"snowflake": "does not compute decimals as the reference does"},
 }
 
 NO_DUCKDB_SQL = {

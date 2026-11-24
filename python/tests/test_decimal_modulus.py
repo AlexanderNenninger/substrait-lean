@@ -22,7 +22,8 @@ FLOORED = [None if a is None else a - b * (a / b).to_integral_value("ROUND_FLOOR
 #: (the unscaled divisor is `b * 10`): one run per sign of the divisor, with its rows.
 ROWS = {"pos": [0, 1, 4, 5, 6], "neg": [2, 3]}
 REQ_B = {"pos": ['"b" >= 0.1'], "neg": ['"b" <= -0.1']}
-REQ_N = {"pos": ['"n" >= 1'], "neg": ['"n" <= -1']}
+#: Bounded both ways, so the remainder (smaller than the divisor) fits the type.
+REQ_N = {"pos": ['"n" >= 1', '"n" <= 10'], "neg": ['"n" <= -1', '"n" >= -10']}
 NS = [3, 3, -3, -3, 1, 7, 1]
 SIGNS = pytest.mark.parametrize("sign", ["pos", "neg"])
 
