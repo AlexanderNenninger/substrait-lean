@@ -217,8 +217,6 @@ theorem Profile.polars_bin_ok {f : BinFn} {t : Expr} (ht : f.polarsTmpl = some t
   simp only [Profile.polars, ht] at h
   exact Expr.evalP_reference_ok h
 
-theorem Polars.apply_lt_int (x y : Int) :
-    BinFn.apply .lt (.int x) (.int y) = .bool (decide (x < y)) := rfl
 theorem Polars.apply_add_int (x y : Int) : BinFn.apply .add (.int x) (.int y) = .int (x + y) := rfl
 theorem Polars.apply_sub_int (x y : Int) : BinFn.apply .sub (.int x) (.int y) = .int (x - y) := rfl
 theorem Polars.apply_idiv_ne {x y : Int} (hy : y ≠ 0) :
