@@ -15,6 +15,7 @@ import polars as pl
 import pyarrow as pa
 import pytest
 
+import sverify as sv
 from sverify.engine import connect, put_table, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import inline_tables, lean_values
@@ -215,3 +216,58 @@ def test_a_product_past_38_digits_raises(con):
     plan = written_plan(plan_of(con, "SELECT x * x AS r FROM w"))
     with pytest.raises(polars_engine.IntegerOverflow, match="multiply leaves DECIMAL"):
         run_plan(con, plan, "polars")
+
+
+def test_a_double_cast_to_decimal_runs_as_the_reference_on_polars():
+    """Polars's native cast rounds the product `x · 10ˢ` half to even (0.125 is
+    0.12, polars-decimal-casts), and the reference half away from zero. Polars's
+    run path writes the reference's (`double_to_decimal`), so a proved cast gives
+    the reference's values. A switch of `UnFn.ftod` to Polars's native cast fails
+    here (ruling 278, #2523). 1.005 is a near-tie: its product rounds to
+    100.49999999999999, so it gives 1.00 on every route."""
+    con = sv.connect()
+    con.put("t", pa.table({"f": pa.array([0.125, -0.125, 0.375, 1.005], pa.float64())}))
+    t = con.table("t")
+    report = sv.verify(t.select(r=t.f.cast("decimal(3, 2)")), requires={"t": [ibis._.f.abs() < 9]})
+    assert report.verdict == sv.Verdict.PROVED, str(report)
+    out = report.run(con, "polars")
+    assert report.routes["polars"].taken == "translated", report.routes["polars"]
+    assert out.column("r").to_pylist() == [D("0.13"), D("-0.13"), D("0.38"), D("1.00")]
+
+
+def test_a_decimal_rescale_runs_as_the_reference_on_polars():
+    """Polars's native cast of a decimal to a smaller scale rounds half to even
+    (0.125 is 0.12, polars-decimal-casts), and the reference half away from zero.
+    Polars's run path writes the reference's (`decimal_round_half_away`), so a
+    proved rescale gives the reference's values at the ties. A switch of
+    `UnFn.dround` to Polars's native cast fails here (ruling 278's addendum,
+    #2566)."""
+    con = sv.connect()
+    con.put(
+        "t",
+        pa.table(
+            {"d": pa.array([D("0.125"), D("-0.125"), D("0.135"), D("0.250")], pa.decimal128(4, 3))}
+        ),
+    )
+    t = con.table("t")
+    report = sv.verify(t.select(r=t.d.cast("decimal(4, 2)")))
+    assert report.verdict == sv.Verdict.PROVED, str(report)
+    out = report.run(con, "polars")
+    assert report.routes["polars"].taken == "translated", report.routes["polars"]
+    assert out.column("r").to_pylist() == [D("0.13"), D("-0.13"), D("0.14"), D("0.25")]
+
+
+def test_decimal_add_and_subtract_never_rescale() -> None:
+    """Ruling 282's C7 (`Polars/Engine.lean`): Polars's `+` and `-` of decimals give
+    `D(38, max(s₁, s₂))`, the reference's scale, exactly, so `decimal_rescale`
+    is never exercised there (polars-decimal-arith)."""
+    df = pl.DataFrame(
+        {
+            "a": pl.Series([D("12.35"), D("-0.05")], dtype=pl.Decimal(10, 2)),
+            "b": pl.Series([D("1.5"), D("2.5")], dtype=pl.Decimal(5, 1)),
+        }
+    )
+    out = df.lazy().select(s=pl.col.a + pl.col.b, d=pl.col.a - pl.col.b).collect(engine="streaming")
+    assert out.schema["s"] == pl.Decimal(38, 2) and out.schema["d"] == pl.Decimal(38, 2)
+    assert out["s"].to_list() == [D("13.85"), D("2.45")]
+    assert out["d"].to_list() == [D("10.85"), D("-2.55")]

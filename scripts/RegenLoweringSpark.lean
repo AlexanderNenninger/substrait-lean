@@ -25,6 +25,6 @@ generate_lowering sparkOn : Profile.spark
   excluding []
   hand_written LoweringSearch.sparkSchemas
   writing "engines/spark/Sverify/Spark/LoweringOn"
-  refusing [BinFn.fpow, BinFn.fatan2]
+  refusing [BinFn.fpow, BinFn.fatan2, UnFn.ftod]
 
 end Substrait

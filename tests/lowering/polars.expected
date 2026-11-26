@@ -45,9 +45,9 @@ UnFn.bucket	native
 UnFn.fmath	native
 UnFn.decimal	native
 UnFn.dkind	native
-UnFn.dround	native
+UnFn.dround	hand-built entry: Substrait.Polars.droundEntry
 UnFn.dtrunc	native
-UnFn.ftod	native
+UnFn.ftod	refused
 UnFn.dtof	native
 UnFn.structField	native
 UnFn.listElement	native
@@ -89,7 +89,11 @@ BinFn.dateAdd	native
 BinFn.dateDiff	native
 BinFn.fatan2	native
 BinFn.flogb	native
-BinFn.bit	native
+BinFn.bit .and	hand-written schema: native: #0 & #1
+BinFn.bit .or	hand-written schema: native: #0 | #1
+BinFn.bit .xor	hand-written schema: native: #0 ^ #1
+BinFn.bit .shl	hand-written schema: shl: error outside 0-63, else the low 63-k bits of #0 & -1 times 2^k, the next bit the sign
+BinFn.bit .shr	hand-written schema: shr: error outside 0-63, else (#0 & -1) // 2^#1 floored
 BinFn.dadd	native
 BinFn.dsub	native
 BinFn.dmul	native

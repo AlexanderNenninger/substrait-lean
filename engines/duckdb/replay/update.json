@@ -7,6 +7,7 @@
   "agree_oracle_a_only": 0,
   "disagree_sides": {},
   "skipped_files": {},
+  "refreshed": {"update/test_update_from.test": "2.0.1"},
   "results": [
     {"file": "update/compact_update_allocation.test", "line": 36, "sql": "SELECT CASE WHEN (a.memory_usage_bytes - b.memory_usage_bytes) < 1500000             THEN 'ok'             ELSE error(c…", "cls": "refused", "reason": "lift: SqlUnsupported: unknown function error(): DuckDB SQL here has no such function; check the name against DuckDB's f…"},
     {"file": "update/compact_update_allocation.test", "line": 62, "sql": "SELECT i, v FROM single_update WHERE i = 5000", "expected": "[\"5000\", \"updated\"]", "duckdb": "[[\"5000\", \"updated\"]]", "lean": "[]", "engine": "[]", "cls": "agree", "reason": "condensed to 1000 rows"},

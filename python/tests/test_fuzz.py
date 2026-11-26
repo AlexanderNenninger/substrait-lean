@@ -186,6 +186,16 @@ def test_written_typed_null():
     )
 
 
+@pytest.mark.parametrize("neg", ["- ", "- (- (- (- "])
+@pytest.mark.parametrize("cast", ["DOUBLE", "BOOLEAN", "BIGINT"])
+def test_written_typed_null_beside_a_bound_projection(cast, neg):
+    """#2102: a projection the writer rewrites to bind a nested call (`-(d + d)`) keeps the
+    declared type of a typed NULL beside it."""
+    close = ")" * (neg.count("(") + 1)
+    sql = f"SELECT ({neg}(d + d){close} AS c0, CAST(NULL AS {cast}) AS c1 FROM t AS q"
+    assert not finding(sql, "engines", {"t": [T_ROW]})
+
+
 def test_written_not_null_condition_takes_the_else_branch():
     """#2103: `NOT NULL` is NULL, not TRUE, so a CASE on it takes ELSE."""
     for sql in (

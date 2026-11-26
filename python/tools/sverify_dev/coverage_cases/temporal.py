@@ -156,15 +156,23 @@ CASES: list[Case] = [
 
 #: A date from columns or by months of a column: the writers' guards are too
 #: big for Snowflake and Spark, and Polars has no lowering yet.
-DATE_GUARDS = {"polars": "see #271", "snowflake": "208 MB", "spark": "heap"}
+DATE_GUARDS = {"polars": "see #2540", "snowflake": "208 MB", "spark": "heap"}
 REFUSED: dict[str, dict[str, str]] = {
     "timestamp delta": DUCKDB_ONLY,
     "timestamp + column interval": DUCKDB_ONLY,
     "time of day": {"spark": "spark-time-type"},
     "time parts": {"spark": "spark-time-type"},
     "compare times": {"spark": "spark-time-type"},
-    "time + interval": {"polars": "see #271", "snowflake": "see #271", "spark": "spark-time-type"},
-    "time truncate": {"polars": "see #271", "snowflake": "see #271", "spark": "spark-time-type"},
+    "time + interval": {
+        "polars": "see #2540",
+        "snowflake": "Snowflake is out of tree",
+        "spark": "spark-time-type",
+    },
+    "time truncate": {
+        "polars": "see #2540",
+        "snowflake": "Snowflake is out of tree",
+        "spark": "spark-time-type",
+    },
     "date + column months": DATE_GUARDS,
     "date from columns": DATE_GUARDS,
 }

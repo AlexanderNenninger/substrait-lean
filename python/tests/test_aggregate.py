@@ -651,7 +651,7 @@ def test_first_and_last_are_determined_by_a_key():
     con = connect()
     con.create("t", P.schema(), [(1, "a", 1)])
     written = written_plan(to_substrait_json(expr))
-    with pytest.raises(Exception, match="see #271"):
+    with pytest.raises(Exception, match="see #2540"):
         run_plan(con, written, "polars")
     # Without an order every row ties: determined only by a key on the group.
     any_row = P.group_by("k").aggregate(f=P.x.first())
@@ -795,7 +795,7 @@ def test_correlation_is_null_where_the_standard_says():
         (3, None, None, None),
         (4, None, 0.0, None),
     ]
-    with pytest.raises(Exception, match="see #271"):
+    with pytest.raises(Exception, match="see #2540"):
         run_plan(con, written, "polars")
 
 
@@ -863,7 +863,7 @@ def test_group_concat_is_determined_by_a_key():
     con = connect()
     con.create("t", P.schema(), [(1, "a", 1)])
     written = written_plan(to_substrait_json(expr))
-    with pytest.raises(Exception, match="see #271"):
+    with pytest.raises(Exception, match="see #2540"):
         run_plan(con, written, "polars")
     unordered = P.group_by("k").aggregate(s=P.x.group_concat(","))
     assert not sv.verify(unordered).deterministic
@@ -1080,7 +1080,7 @@ def test_quantiles_are_refused_on_other_engines(agg):
     con = connect()
     con.create("t", Q.schema(), [(1, 1, 1.0, "a")])
     written = written_plan(to_substrait_json(Q.group_by("k").aggregate(v=agg)))
-    with pytest.raises(Exception, match="see #271"):
+    with pytest.raises(Exception, match="see #2540"):
         run_plan(con, written, "polars")
 
 

@@ -367,6 +367,36 @@ def test_large_queries_are_condensed(tmp_path):
     assert r.lean == f'[["{slt.MAX_ROWS // 2}"]]'
 
 
+def test_a_query_stopped_by_a_time_limit_is_skipped_and_the_others_under_it_are_not(tmp_path):
+    """`SET max_execution_time` makes the expected outcome a timeout when DuckDB hits it, which
+    neither the reference nor sverify models, and a 300,000-character edit distance would
+    otherwise run Lean into the checker's watchdog. A query that finishes under the limit is
+    replayed as usual (#2498)."""
+    path = tmp_path / "limit.test"
+    path.write_text(
+        textwrap.dedent(
+            """\
+            statement ok
+            SET max_execution_time=1000
+
+            query I
+            SELECT levenshtein(repeat('a', 300000), repeat('b', 300000))
+            ----
+            300000
+
+            query I
+            SELECT 42
+            ----
+            42
+            """
+        )
+    )
+    results, _ = slt.replay_file(path, "area/limit.test")
+    first, second = results
+    assert (first.cls, first.reason) == ("skipped", "DuckDB's time limit interrupted it")
+    assert second.cls == "agree"
+
+
 def test_tables_of_128_bit_integers_out_of_arrow_range_are_refused(tmp_path):
     """DuckDB exports `UHUGEINT` to Arrow as `decimal128(38, 0)`, its maximum
     as -1 (DD-5): the harness refuses such tables rather than mirror them
@@ -560,6 +590,48 @@ def test_a_time_of_24_00_is_refused(tmp_path):
     )
 
 
+def _row(file, line, cls):
+    return {"file": file, "line": line, "sql": "SELECT 1", "cls": cls, "side": "", "reason": ""}
+
+
+def test_replaying_named_files_replaces_only_their_entries(tmp_path):
+    """`--files` (#2045): the entries of the files replayed alone replace the ones of the
+    same files, the rest of the area's ledger and its version stay, and the head says
+    which files are newer."""
+    old = [_row("a/x.test", 1, "agree"), _row("a/y.test", 1, "agree"), _row("a/y.test", 2, "agree")]
+    slt.write_ledger("a", "2.0.0", old, {"a/z.test": "require windows"}, tmp_path)
+    before = json.loads((tmp_path / "a.json").read_text())
+
+    new = [
+        _row("a/y.test", 1, "agree"),
+        _row("a/y.test", 2, "refused"),
+        _row("a/n.test", 1, "agree"),
+    ]
+    results, skipped, head = slt.refresh_ledger(
+        before, ["a/y.test", "a/n.test"], "2.0.1", new, {"a/n.test": "require x"}
+    )
+    path = slt.write_ledger("a", before["duckdb"], results, skipped, tmp_path, head=head)
+    after = json.loads(path.read_text())
+
+    assert after["duckdb"] == "2.0.0" and after["source"] == before["source"]
+    assert after["refreshed"] == {"a/n.test": "2.0.1", "a/y.test": "2.0.1"}
+    assert [(r["file"], r["line"], r["cls"]) for r in after["results"]] == [
+        ("a/n.test", 1, "agree"),
+        ("a/x.test", 1, "agree"),
+        ("a/y.test", 1, "agree"),
+        ("a/y.test", 2, "refused"),
+    ]
+    assert after["summary"] == {"agree": 3, "disagree": 0, "refused": 1, "skipped": 0}
+    assert after["skipped_files"] == {"a/n.test": "require x", "a/z.test": "require windows"}
+
+
+def test_a_new_area_is_written_whole_at_the_replayed_version():
+    results, skipped, head = slt.refresh_ledger(
+        None, ["b/x.test"], "2.0.1", [_row("b/x.test", 1, "agree")], {}
+    )
+    assert head is None and len(results) == 1 and skipped == {}
+
+
 def test_a_tagged_list_sum_raise_is_checked_against_its_domain_issue(monkeypatch):
     """`list_sum` past BIGINT raises sverify's tagged check; the report lists
     it as a domain error and the checker reports `Issue.domain` (#2162)."""
@@ -574,3 +646,17 @@ def test_a_tagged_list_sum_raise_is_checked_against_its_domain_issue(monkeypatch
     got = checked(msg, ["domain error: LIST_SUM(i)"], "{}")
     assert got and got.startswith("checked: domain error")
     assert checked(msg, [], "{}") is None
+
+
+def test_a_tagged_raise_with_several_issues_of_its_kind_says_why_it_stays_a_disagreement():
+    """#2549: two SUMs in one query list two `SUM overflow` issues, so the
+    harness cannot tell which raised (ruling 236, C1): the disagreement
+    carries that reason, and one SUM does not."""
+    from sverify_dev.checked import AMBIGUOUS, ambiguous
+
+    msg = "Invalid Input Error: sverify: integer overflow in SUM: 9216000000000000000000"
+    two = ["SUM overflow: SUM(a)", "SUM overflow: SUM(b)"]
+    assert ambiguous(msg, two) == AMBIGUOUS
+    assert ambiguous(msg, two[:1]) is None
+    assert ambiguous(msg, ["domain error: LIST_SUM(i)"]) is None
+    assert ambiguous("Out of Range Error: something else", two) is None

@@ -75,8 +75,10 @@ theorem ProfileTable.refSums_allows_sum (t : ProfileTable) :
 
 omit [Boxes.Ambient] in
 /-- Only `SUM` and `AVG` of doubles are in the group `agg.fsum`. -/
-theorem Functions.fsum_rows : Functions.all.all (fun row => row.group != "agg.fsum" ||
-    row.ctor == some (.agg .fsum) || row.ctor == some (.agg .avg)) = true := by decide +kernel
+theorem Functions.fsum_rows : (Functions.all ++ Functions.casts).all (fun row =>
+    row.group != "agg.fsum" || row.ctor == some (.agg .fsum) ||
+      row.ctor == some (.agg .avg)) = true := by
+  decide +kernel
 
 omit [Boxes.Ambient] in
 open Functions in

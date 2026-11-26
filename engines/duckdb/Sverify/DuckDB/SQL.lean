@@ -183,11 +183,6 @@ theorem toIntEven?_eq_toInt? {c : Int} (h : maxMag < mag c ∨ K ∣ mag c) :
   · simp [hc]
   · simp only [hc, ite_false, evenQuot_of_dvd (h.resolve_left hc)]
 
-theorem mag_code (m : Nat) : mag (code m) = m := by
-  unfold mag code; split <;> omega
-
-theorem mag_neg (x : Int) : mag (-x) = mag x := by simp [mag]
-
 /-- **DuckDB's cast is the model's cast of the half-even round** (D55): the lift reads
 `CAST(x AS BIGINT)` as `ftoi (froundEven x)`. -/
 theorem toIntEven?_eq_toInt?_roundEven (c : Int) : toIntEven? c = toInt? (roundEven c) := by
@@ -709,12 +704,6 @@ Both sides of `CAST(round(x) AS BIGINT)`'s entry, and of `floor`'s and
 truncating cast, DuckDB's by its half-to-even one, which agree on an integral
 argument (`FloatCode.toIntEven?_eq_toInt?`). -/
 
-/-- The model's `CAST(x AS BIGINT)` of the double `d`. -/
-def DuckDBSQL.castOut (d : Int) : Outcome :=
-  match FloatCode.toInt? (FloatCode.canon d) with
-  | some i => if inI64 i then .ok (.int i) else .error .badCast
-  | none => .error .badCast
-
 /-- The rounding's code. -/
 def IntRound.code : IntRound → Int → Int
   | .round => FloatCode.round | .floor => FloatCode.floor | .ceil => FloatCode.ceil
@@ -738,6 +727,7 @@ theorem DuckDBSQL.duckCast_eq_castOut_roundEven (c : Int) :
   simp only [duckCastBigint, DuckDBSQL.castOut]
   rw [← FloatCode.canon_roundEven_canon, FloatCode.canon_roundEven (FloatCode.canon_idem c),
     FloatCode.toIntEven?_eq_toInt?_roundEven]
+  split <;> simp_all
 omit [Boxes.Ambient] in
 theorem DuckDBSQL.duckCast_null : duckCastBigint .null = .ok .null := rfl
 theorem DuckDBSQL.ref_fceil_float (c : Int) :
@@ -789,6 +779,7 @@ theorem DuckDBSQL.duck_rounded_float (r : IntRound) (c : Int) :
   rw [hd]
   show duckCastBigint (.float d) = _
   simp only [duckCastBigint, DuckDBSQL.castOut, hc, FloatCode.toIntEven?_eq_toInt? (r.integral c)]
+  split <;> simp_all
 theorem DuckDBSQL.duck_rounded_null (r : IntRound) :
     (Profile.duckdb {}).un r.fn .null >>= duckCastBigint = .ok .null := by
   cases r <;> rfl

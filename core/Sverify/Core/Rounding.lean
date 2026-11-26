@@ -348,6 +348,121 @@ theorem toInt?_of_range {c : Int} (hlo : castLo ≤ c) (hhi : c ≤ castHi) :
     have : mag c / K < 2 ^ 63 := Nat.div_lt_of_lt_mul (by rw [Nat.mul_comm]; exact hm')
     generalize mag c / K = p at *; omega
 
+/-! ## Truncating first
+
+A cast that rounds half to even (`float_to_int`'s `TIE_TO_EVEN`) of a value
+truncated first is the reference's truncating cast (ruling 284 D2): the
+truncated magnitude is a multiple of `K`, which `evenMag` keeps. -/
+
+theorem mag_code (m : Nat) : mag (code m) = m := by
+  unfold mag code; split <;> omega
+
+theorem mag_neg (c : Int) : mag (-c) = mag c := by unfold mag; rw [Int.natAbs_neg]
+
+theorem floorMag_div (m : Nat) : floorMag m / K = m / K := by
+  unfold floorMag; exact Nat.mul_div_cancel _ K_pos
+
+theorem evenMag_floorMag (m : Nat) : evenMag (floorMag m) = floorMag m := by
+  have hK := K_pos
+  unfold evenMag evenQuot floorMag
+  have h0 : m / K * K % K = 0 := Nat.mul_mod_left _ _
+  rw [h0, Nat.mul_div_cancel _ hK]
+  simp [hK]
+
+theorem floorMag_zero_iff (m : Nat) : floorMag m = 0 ↔ m / K = 0 := by
+  have hK := K_pos
+  unfold floorMag; constructor
+  · intro h; rcases Nat.mul_eq_zero.mp h with h | h; exact h; omega
+  · intro h; rw [h]; simp
+
+theorem canon_of_mag_le {c : Int} (h : mag c ≤ maxMag) : canon c = c := by
+  obtain ⟨h1, h2, -⟩ := maxMag_lt_mag_special
+  have e1 : c ≠ negZero := fun e => by subst e; omega
+  have e2 : c ≠ negNan := fun e => by subst e; omega
+  show FloatFormat.canon fp64 c = c
+  unfold FloatFormat.canon; simp [e1, e2]
+
+/-- `roundEven` keeps a truncated magnitude: it is an integer already. -/
+theorem roundEven_code (m : Nat) (h : floorMag m ≤ maxMag) :
+    roundEven (code (floorMag m)) = code (floorMag m) := by
+  unfold roundEven onMag
+  rw [mag_code, evenMag_floorMag]
+  have : ¬ code (floorMag m) < 0 := by have := code_nonneg (floorMag m); omega
+  simp [show ¬ maxMag < floorMag m from by omega, this]
+
+theorem roundEven_neg_code (m : Nat) (h : floorMag m ≤ maxMag) :
+    roundEven (-code (floorMag m)) = -code (floorMag m) := by
+  unfold roundEven onMag
+  rw [mag_neg, mag_code, evenMag_floorMag]
+  simp only [show ¬ maxMag < floorMag m from by omega, ite_false]
+  by_cases h0 : floorMag m = 0
+  · simp [h0, code]
+  · have : 0 < code (floorMag m) := by unfold code; simp [h0]; omega
+    simp only [show -code (floorMag m) < 0 from by omega, ite_true]
+
+/-- **Truncating, then rounding half to even, is truncating**, for a value
+that is not negative (a `floor`). -/
+theorem toInt?_roundEven_floor (c : Int) (hc : ¬ canon c < 0) :
+    toInt? (canon (roundEven (floor c))) = toInt? (canon c) := by
+  by_cases hb : maxMag < mag c
+  · have hf : floor c = c := by unfold floor; exact onMag_of_big hb
+    have hr : roundEven c = c := by unfold roundEven; exact onMag_of_big hb
+    rw [hf, hr]
+  · have hcc := canon_of_mag_le (Nat.le_of_not_lt hb)
+    rw [hcc] at hc ⊢
+    have hfm : floorMag (mag c) ≤ maxMag := Nat.le_trans (floorMag_le _) (Nat.le_of_not_lt hb)
+    have hf : floor c = code (floorMag (mag c)) := by
+      unfold floor onMag; simp [hb, hc]
+    rw [hf, roundEven_code _ hfm, canon_of_mag_le (by rw [mag_code]; exact hfm)]
+    unfold toInt?
+    have hn : ¬ code (floorMag (mag c)) < 0 := by have := code_nonneg (floorMag (mag c)); omega
+    simp [mag_code, hb, hn, hc, floorMag_div, show ¬ maxMag < floorMag (mag c) from by omega]
+
+/-- The same for a negative value (a `ceil`, whose magnitude is truncated). -/
+theorem toInt?_roundEven_ceil (c : Int) (hc : canon c < 0) :
+    toInt? (canon (roundEven (ceil c))) = toInt? (canon c) := by
+  by_cases hb : maxMag < mag c
+  · have hf : ceil c = c := by unfold ceil; exact onMag_of_big hb
+    have hr : roundEven c = c := by unfold roundEven; exact onMag_of_big hb
+    rw [hf, hr]
+  · have hcc := canon_of_mag_le (Nat.le_of_not_lt hb)
+    rw [hcc] at hc ⊢
+    have hfm : floorMag (mag c) ≤ maxMag := Nat.le_trans (floorMag_le _) (Nat.le_of_not_lt hb)
+    have hf : ceil c = -code (floorMag (mag c)) := by
+      unfold ceil onMag; simp [hb, hc]
+    rw [hf, roundEven_neg_code _ hfm,
+      canon_of_mag_le (by rw [mag_neg, mag_code]; exact hfm)]
+    unfold toInt?
+    simp only [mag_neg, mag_code, show ¬ maxMag < floorMag (mag c) from by omega, hb, ite_false, hc,
+      ite_true, floorMag_div]
+    by_cases h0 : floorMag (mag c) = 0
+    · have : mag c / K = 0 := (floorMag_zero_iff _).mp h0
+      simp [h0, code, this]
+    · have : 0 < code (floorMag (mag c)) := by unfold code; simp [h0]; omega
+      simp only [show -code (floorMag (mag c)) < 0 from by omega, ite_true]
+
+/-- A code below zero once canonical was below zero, and canonical: the two
+codes `canon` moves are `-0.0` (to `0`) and the negative NaN (to NaN). -/
+theorem lt_zero_of_canon_lt_zero {c : Int} (h : canon c < 0) : c < 0 ∧ canon c = c := by
+  have hn := fp64.nan_eq
+  by_cases h1 : c = negZero
+  · subst h1; rw [show canon negZero = 0 from FloatFormat.canon_negZero fp64] at h; omega
+  by_cases h2 : c = negNan
+  · subst h2
+    have : canon negNan = nan := by
+      show FloatFormat.canon fp64 fp64.negNan = fp64.nan
+      have hne : -fp64.nan ≠ fp64.negZero := by simp only [FloatFormat.negZero]; omega
+      unfold FloatFormat.canon; simp [FloatFormat.negNan, hne]
+    rw [this] at h; simp only [nan] at h; omega
+  have he : canon c = c := fp64.canon_eq_self ⟨h1, h2⟩
+  exact ⟨by rw [he] at h; exact h, he⟩
+
+/-- `-0.0` casts as `0.0` does. -/
+theorem toInt?_canon_roundEven_negZero : toInt? (canon (roundEven negZero)) = toInt? 0 := by
+  obtain ⟨h1, -, -⟩ := maxMag_lt_mag_special
+  have : roundEven negZero = negZero := by unfold roundEven; exact onMag_of_big h1
+  rw [this, show canon negZero = 0 from FloatFormat.canon_negZero fp64]
+
 -- Other files reason about these only through the lemmas above; unfolding them
 -- would make `simp` evaluate `2²⁰⁴⁵`.
 attribute [irreducible] floor ceil round toInt?

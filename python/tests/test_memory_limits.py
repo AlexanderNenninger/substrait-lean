@@ -8,7 +8,7 @@ import pytest
 
 from sverify import _duckdb
 from sverify._checker import CheckerMemoryError
-from sverify.cli._common import BUDGET
+from sverify.cli import ExitCode
 from sverify.cli._main import _classify
 from sverify.errors import MemoryLimitError
 
@@ -18,7 +18,7 @@ def test_the_checkers_cap_is_a_memory_limit_error():
     assert isinstance(e, MemoryLimitError) and isinstance(e, MemoryError)
     assert (e.stage, e.limit, e.setting) == ("proof", "100 MB", "SVERIFY_CHECKER_MEMORY_MB")
     assert e.code == "memory_limit"
-    assert _classify(e) == (BUDGET, "memory")
+    assert _classify(e) == (ExitCode.BUDGET, "memory")
 
 
 def test_duckdb_out_of_memory_becomes_a_memory_limit_error():
@@ -31,7 +31,7 @@ def test_duckdb_out_of_memory_becomes_a_memory_limit_error():
     assert (e.stage, e.setting) == ("refresh", "SVERIFY_MEMORY_LIMIT")
     assert "MiB" in e.limit or "MB" in e.limit
     assert "nothing was committed" in str(e)
-    assert _classify(e) == (BUDGET, "memory")
+    assert _classify(e) == (ExitCode.BUDGET, "memory")
     # Any other error stays as it is.
     assert _duckdb.memory_limit_error(ValueError("x"), "run", db) is None
 
@@ -87,7 +87,7 @@ def test_the_cli_exits_4_on_the_checkers_memory_cap(tmp_path):
     }
     argv = [sys.executable, "-m", "sverify.cli", "check", str(path), "--format", "json"]
     done = subprocess.run(argv, capture_output=True, text=True, env=env, timeout=60)
-    assert done.returncode == BUDGET, done.stdout + done.stderr
+    assert done.returncode == ExitCode.BUDGET, done.stdout + done.stderr
     error = json.loads(done.stdout)["error"]
     assert (error["code"], error["type"]) == ("memory", "CheckerMemoryError")
     assert "SVERIFY_CHECKER_MEMORY_MB" in error["message"]

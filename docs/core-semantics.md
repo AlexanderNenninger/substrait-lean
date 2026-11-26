@@ -288,15 +288,15 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | core | `int.arith` | `add`, `subtract`, `multiply`, `negate` on integers | `overflow` |
 | core | `int.pow` | `power` on integers | `overflow` (`ERROR` only), `on_domain_error` (none occurs) |
 | core | `int.abs` | `abs` on integers | `overflow` |
-| core | `int.div` | `divide` on integers | `overflow` (`MIN / -1`), `on_division_by_zero`, `on_domain_error` (none occurs) |
+| core | `int.div` | `divide` on integers | `overflow` (`MIN / -1`), `on_division_by_zero`, `on_domain_error` (none occurs), `division_type` |
 | core | `int.mod` | `modulus` on integers | `overflow`, `on_division_by_zero`, `division_type`, `min_mod_neg_one` |
 | core | `int.bit` | `bitwise_and`, `bitwise_or`, `bitwise_xor` | none |
 | core | `int.shift` | `bitwise_shift_left`, `bitwise_shift_right` | `shift_range` |
 | core | `dec.arith` | `add`, `subtract`, `multiply`, `negate`, `abs` on decimals | `overflow` (`ERROR` only), `decimal_rescale` |
 | core | `dec.div` | `divide`, `modulus` on decimals, `sverify_decimal_div` | `divide` and `modulus` refused in every profile until [#27](https://github.com/AlexanderNenninger/substrait-lean/issues/27); `sverify_decimal_div`, a decimal by an integer (how a windowed `AVG` is written), is read ([reference-semantics.md](reference-semantics.md#decimals)) |
-| core | `fp.arith` | `add`, `subtract`, `multiply` on doubles | `rounding`, `nan_creation`, `zero_sign` |
+| core | `fp.arith` | `add`, `subtract`, `multiply` on doubles | `rounding`, `nan_creation`, `zero_sign`, `float_overflow` |
 | core | `fp.neg` | `negate` on doubles (exact) | `zero_sign` |
-| core | `fp.div` | `divide` on doubles | `rounding`, `on_division_by_zero`, `on_domain_error`, `nan_creation`, `zero_sign` |
+| core | `fp.div` | `divide` on doubles | `rounding`, `on_division_by_zero`, `on_domain_error`, `nan_creation`, `zero_sign`, `float_overflow` |
 | core | `fp.mod` | `modulus` on doubles, `sverify_fmod` (C's `fmod`, exact) | `division_type`, `on_division_by_zero` (`ERROR`, `NULL`), `nan_creation`, `zero_sign` |
 | core | `fp.pow` | `power` on doubles | `rounding`, `on_domain_error`, `pow_one_inf`, `zero_sign` |
 | core | `fp.atan2` | `atan2` | `rounding`, `on_domain_error`, `zero_sign` (`atan2` of `-0.0`) |
@@ -306,8 +306,8 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | core | `fp.floor` | `floor`, `ceil` | `round_zero_sign` (`ceil` of a negative value above `-1`), `float_to_int` (where they return a `BIGINT`) |
 | core | `cmp` | `equal`, `lt`, `greatest`, `least`, `nanvl`, `is_null`, `not`, `and`, `or` | `nan_equality`, `nan_order`, `zero_sign` (doubles only) |
 | core | `sverify` | `sverify_raise`, `sverify_is_number` (a shim's guards, #185), `sverify_pair` (a two-argument aggregate's argument) | none |
-| strings | `str.sub` | `substring` | `negative_start`, `substring_range` |
-| strings | `str.match` | `like`, `strpos`, `starts_with`, `ends_with`, `replace` | `case_sensitivity` |
+| strings | `str.sub` | `substring` | `negative_start`, `substring_range`, `string_positions` |
+| strings | `str.match` | `like`, `strpos`, `starts_with`, `ends_with`, `replace` | `case_sensitivity`, `string_positions` |
 | strings | `str.case` | `upper`, `lower` | `char_set`, `case_mapping` |
 | strings | `str.ascii` | `reverse`, `ascii`, `levenshtein`, `ilike`, `regexp_match`, `regexp_extract`, `regexp_replace` | `non_ascii_text` |
 | strings | `str.concat` | `str_concat` | `null_handling` |
@@ -317,11 +317,11 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | temporal | `time.part` | `date_part`, `date_trunc`, `strftime` | none (their range is the reference's timestamps, D32) |
 | nested | `list.order` | `list_lt`, `ORDER BY`/`MIN`/`MAX` of lists | `list_null_order`, and the element's options |
 | nested | `list.plain` | `array_length`, `cardinality`, `any_match`, `all_match`, `transform`, `filter` | none |
-| aggregates | `agg.isum` | `sum`, `avg` of integers and decimals | `overflow`, `avg_int_result` |
-| aggregates | `agg.fsum` | `sum`, `avg` of doubles | `sum_order`, `rounding`, `nan_creation` |
-| aggregates | `agg.var` | `variance`, `std_dev` | `distribution` (Substrait's: the sample's or the population's), `rounding`, `stat_algo`, `nan_creation`, `stat_degenerate` |
-| aggregates | `agg.stat` | `covar_samp`, `covar_pop`, `corr` | `stat_algo`, `nan_creation`, `stat_degenerate` |
-| aggregates | `agg.order` | `min`, `max`, `quantile_disc`, `median` of non-numbers | `nan_order`, `zero_sign`, `list_null_order` |
+| aggregates | `agg.isum` | `sum`, `avg` of integers and decimals | `overflow`, `avg_int_result`, `empty_group_aggregates` |
+| aggregates | `agg.fsum` | `sum`, `avg` of doubles | `sum_order`, `rounding`, `nan_creation`, `empty_group_aggregates`, `float_overflow` |
+| aggregates | `agg.var` | `variance`, `std_dev` | `distribution` (Substrait's: the sample's or the population's), `rounding`, `stat_algo`, `nan_creation`, `stat_degenerate`, `float_overflow` |
+| aggregates | `agg.stat` | `covar_samp`, `covar_pop`, `corr` | `stat_algo`, `nan_creation`, `stat_degenerate`, `float_overflow` |
+| aggregates | `agg.order` | `min`, `max`, `quantile_disc`, `median` of non-numbers | `nan_order`, `zero_sign`, `list_null_order` (of lists only, [#2439](https://github.com/AlexanderNenninger/substrait-lean/issues/2439)) |
 | aggregates | `agg.quant` | `quantile_cont`, `median` | `quantile_interp`, `nan_creation`, `nan_order` |
 | aggregates | `agg.pick` | `first`, `last`, `arg_min`, `arg_max`, `mode` | `tie_pick` |
 | aggregates | `agg.seq` | `string_agg`, `array_agg` | `tie_order` |
@@ -329,12 +329,34 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | windows | `win.rank` | `row_number`, `rank`, `dense_rank`, `percent_rank`, `cume_dist` | `tie_order` |
 | windows | `win.ntile` | `ntile` | `ntile_spread`, `tie_order` |
 | windows | `win.value` | `lag`, `lead`, `first_value`, `last_value`, `nth_value` | `tie_order` |
-| windows | `win.agg` | aggregates over a frame | the aggregate's group, with `sum_order` over the frame |
-| casts | `cast.num` | double or decimal to integer, integer to a narrower one | `float_to_int`, `cast_failure` |
-| casts | `cast.dec` | to and from decimals, integer to double | `decimal_rescale`, `cast_failure` |
+| windows | `win.agg` | aggregates over a frame | the aggregate's group's, and `window_sum_algo` (how the frame's sum is kept) |
+| casts | `cast.num` | double or decimal to integer (`CAST`, `TRY_CAST`) | `float_to_int` |
+| casts | `cast.dec` | a decimal to a smaller scale, a double to a decimal | `decimal_rescale` |
 | relations | `rel.sort` | `orderBy`, a window's order | `null_order`, `clustered`, `tie_order` |
 | relations | `rel.fetch` | `fetch` | `tie_order` (the rows taken of a tie) |
 | relations | `rel.keys` | `aggregate`'s keys, `distinct`, joins, `UNION DISTINCT`, `INTERSECT`, `EXCEPT` | `nan_equality`, `zero_sign` |
+
+`cast.num` holds `ftoi`, `ftoiOrNull` and `dtrunc` (`Functions.casts`): Substrait leaves
+the rounding of these casts open ([ST-6](../upstream/bugs/ST-6.json)), and the
+reference truncates. Integer narrowing (`narrow`, `narrowOrNull`) reads no option: a
+value that fits is exact. Where a cast fails, `CAST` raises and `TRY_CAST` gives NULL, two
+constructors, so neither reads `cast_failure`; the writer states the cast's
+`failureBehavior` ([#2438](https://github.com/AlexanderNenninger/substrait-lean/issues/2438)).
+`cast.dec` holds `dround`, a decimal brought to a smaller scale, which the
+reference rounds half away from zero; Substrait leaves that rounding open
+([ST-8](../upstream/bugs/ST-8.json), ruling 273). It also holds `ftod`, a double to a
+decimal of scale `s`: the reference rounds the double product `x · 10ˢ` half away
+from zero, and Substrait leaves open both which value is rounded and how (ST-8,
+ruling 278). Each engine's profile states its own: Polars rounds the product half
+to even, and Spark's native cast rounds the double's shortest decimal text, within
+one unit of the product's rounding. Polars rounds `dround` half to even too, and
+DuckDB and Spark half away from zero, as the reference does (ruling 278's addendum,
+[#2566](https://github.com/AlexanderNenninger/substrait-lean/issues/2566)). A
+lowering writes a function natively only where its engine's table gives the
+reference's behaviour at each option the function reads (`nativeOffReference`). The other decimal casts have no row yet: to a
+larger scale and from an integer they are exact, and a decimal to a double
+(`dtof`) is correctly rounded.
+`tests/test_functions.py` checks this table against `Functions.groups`.
 
 `fp32` adds no group: once
 [#417](https://github.com/AlexanderNenninger/substrait-lean/issues/417) lands,
@@ -912,7 +934,7 @@ Two limits of the per-option view:
 - A shim's own calls must be native in `Q`, or be discharged in turn. The
   generator checks this; a shim that needs a refused behaviour makes its row
   refused.
-- Relational options act on operators, not calls: `null_order` is
+- Relational options act on whole operators: `null_order` is
   discharged by writing the sort key's NULL placement, `tie_order` and
   `tie_pick` natively (any engine's pick is one the reference allows), or,
   for a plan that must be determined, by a total order or a refusal

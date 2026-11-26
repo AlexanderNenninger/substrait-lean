@@ -214,23 +214,31 @@ bound the checker proves on that column (`ε`, below). Three cases:
   `sv.approx(...)` for the claim, or `sv.equivalent(floats=sv.within(...))`
   for the engines' tolerance.
 - The column has no bound (a double `SUM` without a row cap, a value computed
-  from one, a window aggregate of doubles): the checker knows only its sign,
-  which a sum of values of one sign keeps in every order the engines use, and
-  the route lets the postcondition run. A tolerance stated with
+  from one, a window aggregate of doubles): the checker knows of the engine's
+  value only its sign, which a sum of values of one sign keeps in every order
+  the engines use (`signKeptOn`: DuckDB, Polars and Spark). A postcondition
+  that reads only the sign (`_.total >= 0`) runs. One that reads more
+  (`_.avg <= 100`, proved of the exact mean) is refused as for a column with
+  a bound, naming its exits: `sv.approx(...)` for the claim, or `sv.max_rows(n)`
+  in `requires` and a tolerance in `ensures`. A tolerance stated with
   `sv.within` finds nothing to meet and refuses the whole plan, naming the
   column and its exits: `sv.max_rows(n)` in `requires`, `sv.equivalent(floats="plan")`,
-  or no tolerance. Every engine's `SUM` is a tree sum, so the sign is proved on
-  DuckDB, Polars and Spark (`signKeptOn`).
+  or no tolerance.
 - A filter, grouping key or sort on a double may keep other rows on an engine than
   on the reference where its threshold lies within the bound of the doubles' range
   (#568's threshold rule). The route refuses the whole plan, whether or not a
   postcondition reads the double. For a constant threshold, state a precondition
   that keeps the values away from it. For a threshold computed from the data,
   compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`.
+  The same holds for a projection that rounds, casts or compares such a double
+  (`floor`, `round`, a cast to an integer, a decimal or text, `=`, ruling 275,
+  [#1849](https://github.com/AlexanderNenninger/substrait-lean/issues/1849)):
+  `floor(x / 49.0)` is `0` on Polars, whose quotient by a constant lands one ulp
+  below `1`, and `CAST(SUM(x) AS BIGINT)` may round to another integer on an
+  engine that sums in another order. An engine where the double is exact runs
+  it, and `route="auto"` picks one.
 
-The first two cases treat a column with a bound more strictly than one without,
-which [#1045](https://github.com/AlexanderNenninger/substrait-lean/issues/1045)
-tracks. The notebook
+The notebook
 [05](../notebooks/05_pipelines_and_engines.py) ("Averages round") runs both.
 
 <a id="the-engines-orders-and-epsilon-444"></a>
@@ -565,8 +573,13 @@ single pairs and merges does (`cInvC_pcrun`). The invariant's bound over any
 constants (`covRel_of_cInvC`) gives the co-moment within `106 n u (…)`
 (`plCov_rel`, DuckDB's `70`), and `COVAR_*` within `covTolK 107`
 (`core_cov_polars`, `StatTol.sg` in `StatProps.lean`, ruling 271). Its `CORR`
-(`PearsonState`) has no theorem yet, and the `agg.stat` row, which both
-read, stays tested until it does
+([`CorrSG.lean`](../float-bounds/FloatBounds/CorrSG.lean)) keeps one
+`PearsonState`, whose two sides and co-moment are, term for term, the
+variance's and the covariance's states over the same means (`PRRun.proj`).
+`dp_xy / √(dp_xx · dp_yy)` takes three roundings, fewer than DuckDB's
+formula, and stays within `1 + 3E/L + 8u` at Chan's `corrErr`
+(`corr_pl_le`, `core_corr_polars`). The `agg.stat` row cites
+`core_cov_polars` and is proved
 ([#1808](https://github.com/AlexanderNenninger/substrait-lean/issues/1808)).
 
 `Epsilon.statEps` reports these bounds per column: a `VAR_*`'s and a

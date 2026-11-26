@@ -5,7 +5,9 @@ The round trips export, read back and prove the contract again."""
 
 from __future__ import annotations
 
+import functools
 import json
+import math
 import re
 from pathlib import Path
 from typing import Literal
@@ -229,10 +231,18 @@ GAP_CASES = {
 }
 
 
+@functools.cache
+def _gap_report(case: str) -> sv.Report:
+    """The case's report, verified once for the three modes (an export does not
+    change it)."""
+    expr, requires, _ = GAP_CASES[case]
+    return _verify(expr, requires)
+
+
 @pytest.mark.parametrize("case", list(GAP_CASES))
 def test_apply_rewrites_the_gap(case: str) -> None:
-    expr, requires, option = GAP_CASES[case]
-    m = read(_verify(expr, requires).to_substrait(shims="apply")).manifest
+    option = GAP_CASES[case][2]
+    m = read(_gap_report(case).to_substrait(shims="apply")).manifest
     # D30: a consumer's own variance is within the plan's bound of the
     # reference's exact moments rounded once, and a consumer's double keys
     # pick a member of a zero's class, which the default observation reads as one.
@@ -243,8 +253,8 @@ def test_apply_rewrites_the_gap(case: str) -> None:
 
 @pytest.mark.parametrize("case", list(GAP_CASES))
 def test_annotate_ships_the_assumption(case: str) -> None:
-    expr, requires, option = GAP_CASES[case]
-    report = _verify(expr, requires)
+    option = GAP_CASES[case][2]
+    report = _gap_report(case)
     m = read(report.to_substrait(shims="annotate")).manifest
     assert m["class"] == "assumed"
     assert not [s for s in m["shims"] if s.get("source") != "written plan"]
@@ -259,10 +269,9 @@ def test_annotate_ships_the_assumption(case: str) -> None:
 
 @pytest.mark.parametrize("case", list(GAP_CASES))
 def test_refuse_names_the_gap(case: str) -> None:
-    expr, requires, option = GAP_CASES[case]
-    gap = "ST-3" if option == "stat_degenerate" else "ST-4"
+    gap = "ST-3" if GAP_CASES[case][2] == "stat_degenerate" else "ST-4"
     with pytest.raises(ExportError, match=re.escape(f"({gap}, upstream/bugs/{gap}.json)")):
-        _verify(expr, requires).to_substrait(shims="refuse")
+        _gap_report(case).to_substrait(shims="refuse")
 
 
 def test_gaps_where_the_reference_raises_need_no_shim() -> None:
@@ -485,7 +494,8 @@ def _evaluate(plan: dict, e: dict, row: tuple):
         for x in plan["extensions"]
     }
     if "selection" in e:
-        return row[e["selection"]["directReference"]["structField"]["field"]]
+        # Substrait's JSON leaves out a field of 0.
+        return row[e["selection"]["directReference"]["structField"].get("field", 0)]
     if "literal" in e:
         return None if "null" in e["literal"] else float(e["literal"]["fp64"])
     if "ifThen" in e:
@@ -505,6 +515,14 @@ def _evaluate(plan: dict, e: dict, row: tuple):
             return None if None in a else a[0] + a[1]
         case "lt":
             return None if None in a else a[0] < a[1]
+        case "gte":
+            return None if None in a else a[0] >= a[1]
+        case "floor" | "ceil" if a[0] is None or not math.isfinite(a[0]):
+            return a[0]
+        case "floor":
+            return float(math.floor(a[0]))
+        case "ceil":
+            return float(math.ceil(a[0]))
         case "and":
             return False if False in a else None if None in a else True
         case "or":
@@ -793,3 +811,290 @@ def test_st8_holds_or_refuses_by_the_decimal_calls() -> None:
     typer, b = _typed(d.select(a=_.d.abs()))
     assert any(c.name == "abs" for c in typer.calls)
     assert st8(typer, b) is None
+    # A cast to a larger scale keeps every digit; to a smaller one it rounds (ruling 273).
+    typer, b = _typed(d.select(u=_.d.cast("decimal(12,4)")))
+    assert st8(typer, b) is not None
+    typer, b = _typed(d.select(r=_.e.cast("decimal(12,1)")))
+    assert st8(typer, b) is None
+    # A cast to a decimal whose input has no known type may reduce its scale: refused.
+    typer, b = _typed(d.select(u=_.d.cast("decimal(12,4)")))
+    typer.casts = [(cast, None) for cast, _t in typer.casts]  # pyrefly: ignore
+    assert st8(typer, b) is None
+    # A cast of a double to a decimal: which value is rounded is open too (ruling 278).
+    f = ibis.table({"x": "float64"}, name="f")
+    typer, b = _typed(f.select(c=_.x.cast("decimal(12,2)")), {"f": [_.x.abs() < 1000]})
+    assert st8(typer, b) is None
+
+
+# -- ST-6: a cast of a double to an integer (#2438) ------------------------------------
+
+F = ibis.table({"a": "float64"}, name="f")
+CAST = F.select(c=_.a.cast("int64"))
+#: #2438's repro: no NULL, no NaN, a bound that keeps the cast inside 64 bits.
+F_BOUNDED = {"f": [_.a.notnull(), ~_.a.isnan(), _.a >= -100.0, _.a <= 100.0]}
+#: Values where truncation, ties away from zero and ties to even disagree, with
+#: the integers truncation gives.
+TRUNCATED = [(2.5, 2), (-2.5, -2), (-0.5, 0), (3.5, 3), (-3.7, -3)]
+
+
+@functools.cache
+def _cast_report() -> sv.Report:
+    """#2438's report, verified once for the export tests."""
+    return _verify(CAST, F_BOUNDED)
+
+
+def _casts(node) -> list[dict]:
+    """The `cast` expressions of a Substrait plan in JSON form."""
+    if isinstance(node, dict):
+        here = [node["cast"]] if isinstance(node.get("cast"), dict) else []
+        return here + [c for v in node.values() for c in _casts(v)]
+    if isinstance(node, list):
+        return [c for v in node for c in _casts(v)]
+    return []
+
+
+def test_st6_apply_truncates_before_the_cast() -> None:
+    """#2438: the cast reads `float_to_int`, which Substrait leaves open (ST-6),
+    so `apply` writes the truncation before it."""
+    exported = read(_cast_report().to_substrait(shims="apply"))
+    [shim] = [s for s in exported.manifest["shims"] if s["option"] == "float_to_int"]
+    assert shim["gap"] == "ST-6"
+    assert not exported.manifest["assumptions"]
+    [cast] = _casts(exported.plan)
+    assert "ifThen" in cast["input"], cast
+
+
+def test_st6_shim_is_exact_under_every_rounding() -> None:
+    """The cast's input is integral after the shim, so a consumer's cast gives the
+    reference's truncation whichever way it rounds (`float_to_int`'s three modes)."""
+    plan = read(_cast_report().to_substrait(shims="apply")).plan
+    [cast] = _casts(plan)
+    modes = {
+        "TRUNCATE": math.trunc,
+        "TIE_AWAY_FROM_ZERO": lambda v: math.copysign(math.floor(abs(v) + 0.5), v),
+        "TIE_TO_EVEN": round,
+    }
+    for x, want in TRUNCATED:
+        y = _evaluate(plan, cast["input"], (x,))
+        assert {name: int(r(y)) for name, r in modes.items()} == dict.fromkeys(modes, want), x
+
+
+def test_st6_annotate_ships_the_assumption() -> None:
+    m = read(_cast_report().to_substrait(shims="annotate")).manifest
+    [found] = [a for a in m["assumptions"] if a["option"] == "float_to_int"]
+    assert (found["gap"], found["assumes"]) == ("ST-6", ["TRUNCATE"])
+    assert not [s for s in m["shims"] if s["option"] == "float_to_int"]
+
+
+def test_st6_refuse_names_the_gap() -> None:
+    with pytest.raises(ExportError, match=re.escape("(ST-6, upstream/bugs/ST-6.json)")):
+        _cast_report().to_substrait(shims="refuse")
+
+
+def test_st6_apply_plan_truncates_on_duckdb() -> None:
+    """The plan `apply` writes, read back and run on DuckDB, whose own cast rounds
+    half to even (duckdb-R9), gives the reference's truncation."""
+    pytest.importorskip("duckdb")
+    report = _cast_report()
+    back = sv.Report.from_substrait(report.to_substrait(shims="apply"))
+    con = connect()
+    put_table(con, "f", pa.table({"a": pa.array([x for x, _ in TRUNCATED], pa.float64())}))
+    for r in (report, back):
+        assert r.run(con, "duckdb").column("c").to_pylist() == [y for _, y in TRUNCATED]
+
+
+def test_st6_shim_passes_nan_and_infinities_to_the_cast() -> None:
+    """NaN and the infinities pass through the shim (`ceil(NaN)` is NaN) and reach the
+    cast, which throws (`failureBehavior`), as DuckDB's cast of NaN does."""
+    duckdb = pytest.importorskip("duckdb")
+    plan = read(_cast_report().to_substrait(shims="apply")).plan
+    [cast] = _casts(plan)
+    assert cast["failureBehavior"] == "FAILURE_BEHAVIOR_THROW_EXCEPTION"
+    for x in (NAN, float("inf"), float("-inf")):
+        y = _evaluate(plan, cast["input"], (x,))
+        assert y != y if x != x else y == x
+        with pytest.raises(duckdb.Error):
+            duckdb.execute("SELECT CAST(?::DOUBLE AS BIGINT)", [y]).fetchall()
+
+
+# -- #2439: MIN and MAX read `list_null_order` of lists only ------------------------------
+
+MM = ibis.table({"i": "int64", "x": "float64", "s": "string"}, name="mm")
+
+
+@functools.cache
+def _mm_report(fn: str, col: str) -> sv.Report:
+    """`fn` of the column `col`, verified once for the tests below."""
+    return _verify(MM.aggregate(m=getattr(MM[col], fn)()))
+
+
+def _reads_list_null_order(report: sv.Report) -> bool:
+    return any(d["option"] == "list_null_order" for d in report._depends or [])
+
+
+@pytest.mark.parametrize("col", ["i", "x", "s"])
+@pytest.mark.parametrize("fn", ["min", "max"])
+def test_min_and_max_of_a_value_that_is_no_list_depend_on_no_list_order(fn: str, col: str) -> None:
+    """#2439: `list_null_order` was met by every `MIN` and `MAX`, whatever the
+    argument's type; its scope is a list argument (`optionScope`, whose `#guard`s
+    in `Scopes.lean` cover a list's, since the model refuses `MIN` of a list)."""
+    assert not _reads_list_null_order(_mm_report(fn, col))
+
+
+@pytest.mark.parametrize("col", ["i", "x"])
+@pytest.mark.parametrize("fn", ["min", "max"])
+def test_min_and_max_of_numbers_export(fn: str, col: str) -> None:
+    """The default export refused every `MIN` and `MAX` at `list_null_order` (#2439).
+    A double's has no ST-4 shim (ruling 273), so it is annotated."""
+    m = read(_mm_report(fn, col).to_substrait(shims="apply" if col == "i" else "annotate")).manifest
+    rows = [r for k in ("shims", "assumptions", "unexercised", "up_to") for r in m[k]]
+    assert not [r for r in rows if r.get("option") == "list_null_order"], m
+
+
+def test_max_of_strings_has_no_substrait_impl() -> None:
+    """Substrait's YAMLs have no `min` or `max` of strings: the export refuses for that
+    reason alone, after #2439."""
+    with pytest.raises(ExportError, match=r"no impl of max in Substrait's YAMLs takes \(string\)"):
+        _mm_report("max", "s").to_substrait()
+
+
+# -- ST-8: a decimal cast to a smaller scale (ruling 273) ---------------------------------
+
+DEC = ibis.table({"a": "decimal(10,4)", "b": "decimal(10,4)"}, name="f")
+
+
+@functools.cache
+def _rescale_report() -> sv.Report:
+    """A cast of a decimal to a smaller scale, which rounds: Substrait leaves how
+    open (ST-8), and the export called it exact in every mode."""
+    return _verify(DEC.select(c=_.a.cast("decimal(10,2)")), {"f": [_.a.notnull()]})
+
+
+def test_st8_apply_refuses_a_cast_to_a_smaller_scale() -> None:
+    """ST-8 rewrites nothing, so `apply` refuses the rounding cast."""
+    with pytest.raises(ExportError, match=r"ST-8, upstream/bugs/ST-8\.json\); no shim writes"):
+        _rescale_report().to_substrait(shims="apply")
+
+
+def test_st8_annotate_ships_the_rounding() -> None:
+    m = read(_rescale_report().to_substrait(shims="annotate")).manifest
+    assert m["class"] == "assumed"
+    [found] = [a for a in m["assumptions"] if a["option"] == "decimal_rescale"]
+    assert (found["gap"], found["assumes"]) == ("ST-8", ["TIE_AWAY_FROM_ZERO"])
+
+
+def test_st8_refuse_names_the_gap() -> None:
+    with pytest.raises(ExportError, match=re.escape("(ST-8, upstream/bugs/ST-8.json)")):
+        _rescale_report().to_substrait(shims="refuse")
+
+
+def test_decimals_that_keep_their_scale_export_in_every_mode() -> None:
+    """A sum and a cast to a larger scale keep every digit: ST-8 holds without a
+    rewrite, and every mode exports with the option unexercised."""
+    report = _verify(DEC.select(s=_.a + _.b, u=_.a.cast("decimal(12,6)")))
+    for mode in se.SHIMS:
+        m = read(report.to_substrait(shims=mode)).manifest
+        [u] = [u for u in m["unexercised"] if u["option"] == "decimal_rescale"]
+        assert u["gap"] == "ST-8", mode
+        assert not m["assumptions"], mode
+
+
+# -- ST-4: a MIN or MAX of doubles (ruling 273) --------------------------------------------
+
+DMAX = ibis.table({"g": "int64", "a": "float64"}, name="f").group_by("g").agg(m=_.a.max())
+
+
+@functools.cache
+def _max_report() -> sv.Report:
+    """A `MAX` of doubles, which reads `nan_order` and `zero_sign`: ST-4 rewrites
+    comparisons, keys and sorts, and no aggregate."""
+    return _verify(DMAX)
+
+
+def test_st4_apply_refuses_a_double_max() -> None:
+    """The export reported the `MAX` as shimmed, though nothing was rewritten, so
+    a consumer whose `MAX` skips NaN gave another value."""
+    with pytest.raises(ExportError, match=r"ST-4, upstream/bugs/ST-4\.json\); no shim writes"):
+        _max_report().to_substrait(shims="apply")
+
+
+def test_st4_annotate_ships_the_order_of_a_double_max() -> None:
+    m = read(_max_report().to_substrait(shims="annotate")).manifest
+    assert m["class"] == "assumed"
+    assert {a["gap"] for a in m["assumptions"] if a["option"] == "nan_order"} == {"ST-4"}
+    assert not [s for s in m["shims"] if s.get("source") != "written plan"]
+
+
+def test_st4_refuse_names_the_gap_of_a_double_max() -> None:
+    with pytest.raises(ExportError, match=re.escape("(ST-4, upstream/bugs/ST-4.json)")):
+        _max_report().to_substrait(shims="refuse")
+
+
+def test_st4_refuses_a_max_whose_argument_type_is_unknown() -> None:
+    """An argument the typer could not type may be a double: st4 refuses
+    rather than report the `MAX` as rewritten (reviewer 2)."""
+    import dataclasses
+
+    from sverify._substrait_shims import st4
+
+    i = ibis.table({"g": "int64", "n": "int64"}, name="i")
+    typer, b = _typed(i.group_by("g").agg(m=_.n.max()))
+    assert st4(typer, b) is not None
+    typer.calls = [
+        dataclasses.replace(c, args=tuple(None for _a in c.args)) if c.name == "max" else c  # pyrefly: ignore
+        for c in typer.calls
+    ]
+    assert st4(typer, b) is None
+
+
+def test_st4_refuses_a_double_max_without_nan() -> None:
+    """Preconditions that exclude NaN do not drop `nan_order` from what the plan
+    depends on, and `zero_sign` stays (the `MAX` of -0.0 and 0.0): the `MAX` still
+    has no shim."""
+    report = _verify(DMAX, {"f": [_.a.notnull(), ~_.a.isnan()]})
+    with pytest.raises(ExportError, match=r"ST-4, upstream/bugs/ST-4\.json\); no shim writes"):
+        report.to_substrait(shims="apply")
+    m = read(report.to_substrait(shims="annotate")).manifest
+    assert {a["option"] for a in m["assumptions"]} >= {"nan_order"}
+
+
+# -- ST-8: a cast of a double to a decimal (ruling 278, #2523) ---------------------------
+
+FD = ibis.table({"x": "float64"}, name="f")
+
+
+@functools.cache
+def _double_to_decimal_report() -> sv.Report:
+    """#2523's repro: a cast of a double to a decimal, which Substrait leaves open
+    in which value it rounds and how (ST-8); the export called it exact."""
+    return _verify(FD.select(c=_.x.cast("decimal(10,2)")), {"f": [_.x.abs() < 1000]})
+
+
+def test_st8_apply_refuses_a_double_to_decimal() -> None:
+    """ST-8 rewrites nothing, and no rewrite fixes which value is rounded."""
+    with pytest.raises(
+        ExportError,
+        match=r"a cast of a double to a decimal leaves open which value is rounded and how "
+        r"\(ST-8, upstream/bugs/ST-8\.json\); no shim writes",
+    ):
+        _double_to_decimal_report().to_substrait(shims="apply")
+
+
+def test_st8_annotate_ships_the_double_product_assumption() -> None:
+    m = read(_double_to_decimal_report().to_substrait(shims="annotate")).manifest
+    assert m["class"] == "assumed"
+    [found] = [a for a in m["assumptions"] if a["option"] == "decimal_rescale"]
+    assert (found["group"], found["gap"], found["assumes"]) == (
+        "cast.dec",
+        "ST-8",
+        ["TIE_AWAY_FROM_ZERO"],
+    )
+    assert found["text"] == (
+        "the consumer gives TIE_AWAY_FROM_ZERO at cast.dec's decimal_rescale, and a cast of a "
+        "double to a decimal of scale s rounds the double product x * 10^s half away from zero"
+    )
+
+
+def test_st8_refuse_names_the_gap_of_a_double_to_decimal() -> None:
+    with pytest.raises(ExportError, match=re.escape("(ST-8, upstream/bugs/ST-8.json)")):
+        _double_to_decimal_report().to_substrait(shims="refuse")

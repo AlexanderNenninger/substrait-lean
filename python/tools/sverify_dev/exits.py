@@ -54,7 +54,7 @@ _VERBS = (
     "build|compare|re-run|compute|check|rebuild|change"
 )
 EXIT = re.compile(
-    r"#\d+|https?://|\bsee [A-Za-z`]|DUCKDB_ONLY|ISSUE_271|to_sql\(|"
+    r"#\d+|https?://|\bsee [A-Za-z`]|DUCKDB_ONLY|ISSUE_2540|to_sql\(|"
     rf"(?:; |, or )({_VERBS})\b|"
     rf"(?<![-\w])({_VERBS})\b[^.]{{0,60}}"
     r"(`|\w+=|\(\)|first|instead|\bas \w+|\bin Ibis|another engine|fix it)",

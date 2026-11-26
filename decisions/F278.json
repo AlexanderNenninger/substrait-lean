@@ -1,0 +1,18 @@
+{
+  "id": "F278",
+  "date": "2026-11-23",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "The double→decimal cast (`ftod`) reads `decimal_rescale`, and each engine profile states its own: Polars rounds the product half to even, DuckDB half away (the reference's value), and Spark's native cast, which rounds the shortest decimal text of the double, within one unit at scale `s`. The Polars and Spark lowerings then can't ship `ftod` native and write a template giving the reference's value. The Substrait export puts the cast in `FUNCTION_GAPS` under ST-8: `apply` and `refuse` refuse, and `annotate` ships the assumption that the consumer rounds the product half away.",
+  "issues": [
+    2523,
+    2504
+  ],
+  "prs": [
+    2520,
+    2522
+  ],
+  "source": "fable-ruling-278-ftod-rounding.md",
+  "note": "No D-number: the reference's `ftod` and `Rel.eval` don't change. No core option for which value is rounded; if Spark's profile can't state its cast without one, it comes back to Fable. Regenerating the `ftod` entries on homelab is pre-authorised; any other entry that moves comes back. Also ruled: a double `MAX` keeps reading `nan_order` when `requires` rules out NaN, a conservative refusal, and reading the values to drop it is After 1.0. T1 found no wrong PROVED on main: Polars runs its hand-written `double_to_decimal`, which rounds half away, so the defect is latent in the generated `polarsOn.ftod` and `sparkOn.ftod`, whose proofs rest on profiles false of the engines' native casts (#2523). Guard until #2523 lands: no PR switches `ftod` to the generated table on Polars or Spark, which covers Spark's step 2 (#2520, where Spark keeps the dialect form) and Polars's table interpreter, and a test pins the four ties on Polars's run path. Order: the profiles and lowerings, then the export, in one PR (Fixes #2523) after #2522. Engine facts record each engine's ties."
+}

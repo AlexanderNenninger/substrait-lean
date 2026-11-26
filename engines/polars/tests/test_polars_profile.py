@@ -230,9 +230,11 @@ def test_double_modulus_is_the_floor_formula_over_divide() -> None:
             assert (both["m"] == both["f"]).all(), (divisor, engine)
 
 
-def test_double_modulus_by_a_literal_runs() -> None:
-    """A literal divisor is `/` by a scalar (`approx`, polars-scalar-divisor): the
-    written plan runs its four calls."""
+def test_double_modulus_by_a_literal_is_refused() -> None:
+    """A literal divisor is `/` by a scalar (`approx`, polars-scalar-divisor), and the
+    `floor` of that quotient jumps where it lands an ulp below an integer: on a long
+    frame `49.0 % 49.0` is `49.0` (the fact). Ruling 275 refuses a function that jumps
+    on a value within a positive band, as #568 refuses a filter on one."""
     con = sv.connect()
     con.put("t", _double_table())
     t = con.table("t")
@@ -241,8 +243,8 @@ def test_double_modulus_by_a_literal_runs() -> None:
         requires={"t": [_.x > -1e300, _.x < 1e300]},
         semantics="polars",
     )
-    out = report.run(con, "polars").column("m").to_pylist()
-    assert out == [x - 3.0 * math.floor(x / 3.0) for x, _y, _m in DOUBLE_ROWS]
+    with pytest.raises(sv.errors.RouteError, match="rounds, casts or compares"):
+        report.run(con, "polars")
 
 
 @pytest.mark.parametrize(

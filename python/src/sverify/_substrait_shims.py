@@ -24,13 +24,17 @@ write the gap away (the export then refuses, or annotates with
   `(t AND NOT n) OR (n AND NULL)`, with `n` the test `x IS NULL OR y IS NULL` and `t` built from one
   `x < y`: `(NOT is_nan(x) AND is_nan(y)) OR (NOT is_nan(x) AND NOT is_nan(y) AND
   x + 0.0 < y + 0.0)`; `x > y` is `y < x`, `x <= y` is `NOT y < x`, `x >= y` is
-  `NOT x < y` and `between` is `>=` and `<=`.
+  `NOT x < y` and `between` is `>=` and `<=`. A `MIN`, `MAX` or quantile of
+  doubles is not rewritten: the shim refuses such a plan.
 - ST-6 (`float_to_int`): a cast of a double or decimal to an integer
   truncates first, `if x >= 0 then floor(x) else ceil(x)`, so the cast is
   exact.
 - ST-8 (`decimal_rescale`): no rewrite; it holds when no decimal `+`, `-`
   or `*` of the plan reduces its scale (the YAML's result type keeps every
-  digit), and the export says so.
+  digit), no cast brings a decimal to a smaller scale and no cast takes a
+  double to a decimal, and the export says so. A cast of a double to a
+  decimal leaves open both which value is rounded (the double product
+  `x · 10^s`, or the double's shortest decimal text) and how (ruling 278).
 """
 
 from __future__ import annotations
@@ -47,6 +51,9 @@ Json = dict[str, Any]
 _DOUBLES = frozenset({"fp32", "fp64"})
 _ORDERING = frozenset({"lt", "gt", "lte", "gte", "between"})
 _EQUALITY = frozenset({"equal", "not_equal"})
+#: The aggregates whose group reads `nan_order` or `zero_sign` (`agg.order`,
+#: `agg.quant`): ST-4 does not rewrite them, so a consumer may skip NaN.
+_ORDER_MEASURES = frozenset({"min", "max", "median", "quantile_cont", "quantile_disc"})
 
 
 class Builder:
@@ -107,7 +114,17 @@ def _is_double(t: Any) -> bool:
 
 def st4(typer: _Typer, b: Builder) -> Json | None:
     """Comparisons, keys and sorts of doubles, with NaN equal to NaN and
-    greatest, and one zero (ST-4)."""
+    greatest, and one zero (ST-4). A `MIN`, `MAX` or quantile of doubles, an
+    aggregate's or a window's, is not rewritten, so the shim does not hold
+    there (ruling 273). An argument of unknown type may be a double, so it
+    counts as one; the typer types every argument today."""
+    if any(
+        c.holder is None
+        and c.name in _ORDER_MEASURES
+        and any(a is None or _is_double(a) for a in c.args)
+        for c in typer.calls
+    ):
+        return None
     done: list[str] = []
     for c in typer.calls:
         if c.name in _ORDERING and any(_is_double(a) for a in c.args):
@@ -355,8 +372,36 @@ def st6(typer: _Typer, b: Builder) -> Json | None:
 # -- ST-8 -----------------------------------------------------------------------
 
 
+#: What a consumer must do at a cast of a double to a decimal for the proof to
+#: hold, which Substrait leaves open (ST-8, ruling 278).
+DOUBLE_TO_DECIMAL = (
+    "a cast of a double to a decimal of scale s rounds the double product x * 10^s "
+    "half away from zero"
+)
+
+
+def double_to_decimal(typer: _Typer) -> bool:
+    """Does the plan cast a double to a decimal?"""
+    return any(
+        "decimal" in cast["type"] and t is not None and t.name in _DOUBLES
+        for cast, t in typer.casts
+    )
+
+
 def st8(typer: _Typer, b: Builder) -> Json | None:
-    """No decimal `+`, `-` or `*` of the plan reduces its scale (ST-8)."""
+    """No decimal `+`, `-` or `*` of the plan reduces its scale, no cast
+    brings a decimal to a smaller one (ST-8, ruling 273), and no cast takes a
+    double to a decimal, which no rewrite makes exact (ruling 278)."""
+    for cast, t in typer.casts:
+        target = cast["type"].get("decimal")
+        if target is None:
+            continue
+        # The typer types every cast's input (`_Typer.expr` returns a `Ty` or raises);
+        # an input of unknown type could be a decimal of a larger scale, so it refuses.
+        if t is None or t.name in _DOUBLES:
+            return None
+        if t.name == "decimal" and int(target.get("scale", 0)) < t.params[1]:
+            return None
     for c in typer.calls:
         ds = [a for a in c.args if not isinstance(a, str) and a.name == "decimal"]
         if not ds:
