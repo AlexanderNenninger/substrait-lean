@@ -1,0 +1,370 @@
+{
+  "assumed": [],
+  "black_boxes": [],
+  "checker": {
+    "generated_proofs": true
+  },
+  "class_places": [],
+  "depends": [
+    {
+      "behaviours": [
+        "ERROR"
+      ],
+      "group": "int.arith",
+      "option": "overflow",
+      "stated": false
+    }
+  ],
+  "deterministic": true,
+  "deterministic_exact": true,
+  "dialect": "ibis",
+  "dialect_differences": [],
+  "engine_version": null,
+  "engines": {
+    "duckdb": {
+      "class": "exact",
+      "class_basis": "computed",
+      "epsilon": {},
+      "evidence": "proved",
+      "facts": [
+        "duckdb-R1",
+        "duckdb-R15-int-arith",
+        "duckdb-R1-min",
+        "duckdb-R15-int-modulus"
+      ],
+      "floats_added": [],
+      "guard_free_theorem": null,
+      "issues": [],
+      "marks_theorem": "Rel.duckdb_marks_written",
+      "observed": [],
+      "problems": [],
+      "profile": true,
+      "proved_facts": [
+        "duckdb-R1",
+        "duckdb-R15-int-arith",
+        "duckdb-R1-min",
+        "duckdb-R15-int-modulus"
+      ],
+      "realized": {
+        "bound_proved": null,
+        "class": "exact",
+        "evidence": "proved",
+        "observation": null,
+        "problems": [],
+        "shims": []
+      },
+      "rows": 1,
+      "shims": [],
+      "tested_because": [],
+      "theorems": [
+        "Lowering.duckdb_exact"
+      ],
+      "transfer": {
+        "polars": {
+          "failures": [
+            {
+              "facts": [
+                "duckdb-R1",
+                "duckdb-R15-int-arith",
+                "duckdb-R1-min",
+                "duckdb-R15-int-modulus"
+              ],
+              "from": [
+                "SILENT"
+              ],
+              "group": "int.arith",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "ERROR"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "spark": {
+          "failures": [],
+          "ok": true
+        },
+        "substrait": {
+          "failures": [],
+          "ok": true
+        }
+      },
+      "translated_evidence": "proved",
+      "version": "2.0.0",
+      "without_row": []
+    },
+    "polars": {
+      "class": "exact",
+      "class_basis": "computed",
+      "epsilon": {},
+      "evidence": "proved",
+      "facts": [
+        "polars-int-arith",
+        "polars-int-divide"
+      ],
+      "floats_added": [],
+      "guard_free_theorem": "Rel.polars_sound",
+      "issues": [],
+      "marks_theorem": null,
+      "observed": [],
+      "problems": [],
+      "profile": true,
+      "proved_facts": [
+        "polars-int-arith",
+        "polars-int-divide"
+      ],
+      "realized": {
+        "bound_proved": null,
+        "class": "exact",
+        "evidence": "proved",
+        "observation": null,
+        "problems": [],
+        "shims": []
+      },
+      "rows": 1,
+      "shims": [],
+      "tested_because": [],
+      "theorems": [
+        "Rel.polars_sound"
+      ],
+      "transfer": {
+        "duckdb": {
+          "failures": [
+            {
+              "facts": [
+                "polars-int-arith",
+                "polars-int-divide"
+              ],
+              "from": [
+                "ERROR"
+              ],
+              "group": "int.arith",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "SILENT"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "spark": {
+          "failures": [
+            {
+              "facts": [
+                "polars-int-arith",
+                "polars-int-divide"
+              ],
+              "from": [
+                "ERROR"
+              ],
+              "group": "int.arith",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "SILENT"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "substrait": {
+          "failures": [],
+          "ok": true
+        }
+      },
+      "translated_evidence": "proved",
+      "version": "2.1.0",
+      "without_row": []
+    },
+    "spark": {
+      "class": "exact",
+      "class_basis": "computed",
+      "epsilon": {},
+      "evidence": "proved",
+      "facts": [
+        "spark-int-arith",
+        "spark-int-abs"
+      ],
+      "floats_added": [],
+      "guard_free_theorem": null,
+      "issues": [],
+      "marks_theorem": null,
+      "observed": [],
+      "problems": [],
+      "profile": true,
+      "proved_facts": [
+        "spark-int-arith",
+        "spark-int-abs"
+      ],
+      "realized": {
+        "bound_proved": null,
+        "class": "exact",
+        "evidence": "proved",
+        "observation": null,
+        "problems": [],
+        "shims": []
+      },
+      "rows": 1,
+      "shims": [],
+      "tested_because": [],
+      "theorems": [
+        "Rel.spark_sound"
+      ],
+      "transfer": {
+        "duckdb": {
+          "failures": [],
+          "ok": true
+        },
+        "polars": {
+          "failures": [
+            {
+              "facts": [
+                "spark-int-arith",
+                "spark-int-abs"
+              ],
+              "from": [
+                "SILENT"
+              ],
+              "group": "int.arith",
+              "option": "overflow",
+              "preferences": [],
+              "to": [
+                "ERROR"
+              ]
+            }
+          ],
+          "ok": false
+        },
+        "substrait": {
+          "failures": [],
+          "ok": true
+        }
+      },
+      "translated_evidence": "proved",
+      "version": "4.3.0",
+      "without_row": []
+    }
+  },
+  "ensures": [],
+  "facts": {
+    "d": {
+      "lower": 0,
+      "nullable": false,
+      "text": "an integer in [0, 1998]",
+      "upper": 1998
+    },
+    "id": {
+      "lower": null,
+      "nullable": true,
+      "text": "any integer or NULL",
+      "upper": null
+    }
+  },
+  "fk_joins": [],
+  "floats_on": {},
+  "format": 5,
+  "implied": {},
+  "inferred": {},
+  "issues": [],
+  "lenses": {
+    "components": {
+      "decimals": "exact",
+      "elements": "multiset",
+      "errors": "exact",
+      "floats": "plan",
+      "rows": "multiset",
+      "strings": "exact",
+      "timestamps": "ns",
+      "zeros": "canon"
+    },
+    "text": "equivalent(elements='multiset', floats=plan, zeros='canon')"
+  },
+  "needs": [],
+  "not_null": [
+    "d"
+  ],
+  "on_inferred": "error",
+  "output": {
+    "d": "!int64",
+    "id": "int64"
+  },
+  "params": [],
+  "proved": true,
+  "requires": {
+    "orders": [
+      "(_.total >= 0)",
+      "(_.total < 1000)",
+      "unique(id)"
+    ]
+  },
+  "rewrites": [],
+  "routes": {
+    "duckdb": {
+      "bound_proved": null,
+      "class": "exact",
+      "deterministic": true,
+      "engine": "duckdb",
+      "engine_facts": [
+        "duckdb-R1",
+        "duckdb-R15-int-arith",
+        "duckdb-R1-min",
+        "duckdb-R15-int-modulus"
+      ],
+      "evidence": "proved",
+      "failures": [],
+      "fallbacks": [],
+      "lenses": null,
+      "needs": [],
+      "probed_version": "2.0.0",
+      "reproducible": null,
+      "rerun_evidence": null,
+      "semantics": "portable",
+      "settings": {
+        "default_collation": "",
+        "default_null_order": "NULLS_LAST",
+        "default_order": "ASCENDING",
+        "disabled_optimizers": "",
+        "enable_optimizer": true,
+        "error_on_division_by_zero": true,
+        "ieee_floating_point_ops": true,
+        "integer_division": false,
+        "preserve_insertion_order": true,
+        "scalar_subquery_error_on_multiple_rows": true
+      },
+      "shims": [],
+      "taken": "translated",
+      "theorem_facts": [
+        "duckdb-R1",
+        "duckdb-R15-int-arith",
+        "duckdb-R1-min",
+        "duckdb-R15-int-modulus"
+      ],
+      "theorems": [
+        "Lowering.duckdb_exact"
+      ],
+      "warnings": [],
+      "why": "verified under semantics=\"portable\"; the translation to duckdb is sverify's DuckDB lowering, proved for every plan, and its SQL writer"
+    }
+  },
+  "rows": null,
+  "run_checks": {
+    "asof": [],
+    "asof_max_pairs": null,
+    "margin": []
+  },
+  "run_gate": "no_rewrite",
+  "semantics": "portable",
+  "sequence_determined": false,
+  "sorted": false,
+  "summary": "proved",
+  "sverify": "0.9.0",
+  "ties": {
+    "needs": [],
+    "places": []
+  },
+  "transfer": null,
+  "verdict": "proved"
+}

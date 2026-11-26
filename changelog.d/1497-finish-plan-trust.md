@@ -1,3 +1,0 @@
-### The trust in an incremental view's maintenance plans is stated
-
-The checker parses and writes the plans that maintain an incremental view (state, contributions, merge, finish) and does not contract-check them, so a view's report is its batch query's and a refresh can raise where the report lists no issue; it then applies nothing. `docs/trusted-base.md` and the `_linear.py` docstring say so, and a test keeps a decimal `AVG` at `DECIMAL(34, 2)` with values of ±(10^34 − 1)·10^-2 equal to the batch `AVG` on DuckDB and Polars ([#1497](https://github.com/AlexanderNenninger/substrait-lean/issues/1497)).

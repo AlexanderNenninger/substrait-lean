@@ -1,3 +1,0 @@
-### Engines from plugin packages run by name, with their secrets by reference
-
-`sverify.engines.run(con, plan, "<engine>")` runs a plan on any engine an installed package registers (`sverify.profiles`, `ProfilePlugin.runner`). An engine's runner that needs credentials declares them (`ProfilePlugin.credentials`): each run hands it `sverify.io.Secret` references, resolved by the configured resolver (#775), never values, and `run(credentials={...})` points one at another secret. A refresh on a plugin engine that keeps no pipeline state is refused by the engine's name, with the engines that have one and the one-shot run in the message. `PLUGIN_API` is 5: engine packages need the same release.

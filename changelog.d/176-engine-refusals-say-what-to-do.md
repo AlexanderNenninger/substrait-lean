@@ -1,1 +1,0 @@
-The Spark engine's and the file scans' refusals end with what to do instead: run it with `engine='duckdb'`, split the query, declare the column's file type, or use a local file. The test that every refusal names a fix covers the engines.

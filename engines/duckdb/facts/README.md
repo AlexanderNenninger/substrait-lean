@@ -177,11 +177,11 @@ cd python && uv run python -m sverify_dev.slt --jobs 2
 ```
 
 <!-- slt:start -->
-Totals over 49225 queries of DuckDB's tests: 13325 agree, 46 disagree, 22780 refused, 13074 skipped (1237 files skipped whole). The fuzzer's ledgers (`fuzz/*`) hold 75299 generated queries: 75299 agree, 0 disagree.
+Totals over 49225 queries of DuckDB's tests: 13332 agree, 39 disagree, 22780 refused, 13074 skipped (1237 files skipped whole). The fuzzer's ledgers (`fuzz/*`) hold 75299 generated queries: 75299 agree, 0 disagree.
 
 | Area | Agree | Oracle A only | Disagree | Disagree side | Refused | Skipped | Files skipped | Refused by |
 |---|---:|---:|---:|---|---:|---:|---:|---|
-| [aggregate](../replay/aggregate.json) | 893 | 6 | 9 | both 2, engine 6, lean 1 | 1470 | 943 | 17 | lift 1386, checker 71 |
+| [aggregate](../replay/aggregate.json) | 898 | 6 | 4 | both 2, engine 1, lean 1 | 1470 | 943 | 17 | lift 1386, checker 71 |
 | [alter](../replay/alter.json) | 137 | 35 | 0 |  | 42 | 129 | 2 | lift 40, tables 2 |
 | [attach](../replay/attach.json) | 9 | 0 | 0 |  | 181 | 113 | 18 | lift 114, tables 67 |
 | [binder](../replay/binder.json) | 65 | 1 | 0 |  | 141 | 105 | 3 | lift 132, checker 9 |
@@ -263,7 +263,7 @@ Totals over 49225 queries of DuckDB's tests: 13325 agree, 46 disagree, 22780 ref
 | [setops](../replay/setops.json) | 83 | 0 | 0 |  | 38 | 173 | 0 | lift 38 |
 | [settings](../replay/settings.json) | 10 | 1 | 0 |  | 775 | 84 | 8 | lift 775 |
 | [show_select](../replay/show_select.json) | 1 | 0 | 0 |  | 30 | 0 | 1 | lift 28, tables 2 |
-| [sql_export](../replay/sql_export.json) | 208 | 1 | 2 | engine 2 | 669 | 1197 | 9 | lift 659, tables 8 |
+| [sql_export](../replay/sql_export.json) | 210 | 1 | 0 |  | 669 | 1197 | 9 | lift 659, tables 8 |
 | [storage](../replay/storage.json) | 3068 | 37 | 0 |  | 1135 | 518 | 216 | tables 566, lift 469 |
 | [storage_version](../replay/storage_version.json) | 0 | 0 | 0 |  | 5 | 0 | 0 | tables 5 |
 | [subquery](../replay/subquery.json) | 131 | 0 | 0 |  | 634 | 462 | 3 | lift 625, checker 8 |
