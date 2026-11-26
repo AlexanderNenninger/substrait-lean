@@ -12,6 +12,9 @@ elsewhere. Per option (D21, `docs/engine-profiles.md`, "Polars as a profile"):
 
 * `division_type`: `FLOOR`, Polars's own. Integer `//` floors and `%` takes
   the divisor's sign (polars-int-divide, polars-int-modulus).
+* `decimal_rescale`: `TIE_TO_EVEN`, Polars's own. A decimal cast to a smaller
+  scale and a double cast to a decimal round half to even
+  (polars-decimal-casts, ruling 278 and its addendum).
 * `±∞`: a double that overflows is `±∞`, as in the reference (#575), with no
   precondition (polars-double-arith), as under DuckDB's profile.
 * The error side stays the reference's: an integer that overflows, a zero
@@ -73,6 +76,12 @@ def floorFmodT : Expr := Expr.floorFmodOf (.field 0) (.field 1)
 
 theorem floorFmodT_subst (a b : Expr) : floorFmodT.subst [a, b] = Expr.floorFmodOf a b := rfl
 
+/-- Polars's `%` of decimals over the arguments as fields 0 and 1: the floored
+remainder of the unscaled integers (polars-decimal-modulus, D62). -/
+def floorDModT : Expr := Expr.floorDModOf (.field 0) (.field 1)
+
+theorem floorDModT_subst (a b : Expr) : floorDModT.subst [a, b] = Expr.floorDModOf a b := rfl
+
 /-- Polars's `round` or `ceil` of the argument as field 0, as the translation
 writes them (`round(mode='half_away_from_zero')`, `ceil`): the reference's,
 but IEEE's `-0.0` for a negative value that rounds to zero (`round(-0.4)`,
@@ -83,15 +92,50 @@ def negZeroT (f : UnFn) : Expr :=
       (.bin .eq (.un f (.field 0)) (.lit (.float 0))))
     (.lit (.float FloatCode.negZero)) (.un f (.field 0))
 
+/-- The product `x · 10ˢ` in doubles, of the argument as field 0: `10ˢ` rounded
+to a double, then the product rounded, as Polars's `f64_to_dec128` and the
+reference's `FloatCode.toDecimal?` compute it. -/
+def ftodProduct (s : Nat) : Expr := .bin .fmul (.field 0) (.lit (.float (FloatCode.ofInt (10 ^ s))))
+
+/-- Polars's cast of a double, the argument as field 0, to a decimal of scale `s`:
+the product `x · 10ˢ` rounded half to even (polars-decimal-casts), where the
+reference rounds it half away from zero (`decimal_rescale`, ruling 278). The two
+differ only at an exact tie whose neighbour away from zero is odd, which is where
+`round` and `round(mode='half_to_even')` of the product differ: there it is the
+even neighbour, below `2⁵²` in magnitude, which the cast to an integer takes
+exactly. Everywhere else, NaN, `±∞` and a product that overflows included, it is
+the reference's cast. -/
+def ftodEvenT (s : Nat) : Expr :=
+  .ifThen (.un .not (.bin .eq (.un .fround (ftodProduct s)) (.un .froundEven (ftodProduct s))))
+    (.un .ftoi (.un .froundEven (ftodProduct s))) (.un (.ftod s) (.field 0))
+
+/-- Polars's cast of a decimal, the argument as field 0, to a scale `k` digits
+smaller: half to even (polars-decimal-casts), where the reference rounds half
+away from zero (`roundDiv10`, `decimal_rescale`, ruling 278's addendum). With
+`t` the quotient truncated toward zero, the two differ only at an exact tie,
+where the remainder `x - t·10ᵏ` is `±10ᵏ/2`, and `t` is even: there the cast
+gives `t`. Everywhere else, `NULL` included, it is the reference's rescale. -/
+def droundEvenT (k : Nat) : Expr :=
+  let t : Expr := .un (.dtrunc k) (.field 0)
+  let twiceRem : Expr :=
+    .bin .dmul (.bin .dsub (.field 0) (.bin .dmul t (.lit (.int (10 ^ k))))) (.lit (.int 2))
+  .ifThen (.bin .and
+      (.bin .or (.bin .eq twiceRem (.lit (.int (10 ^ k)))) (.bin .eq twiceRem (.lit (.int (-(10 ^ k))))))
+      (.bin .eq (.bin .imod t (.lit (.int 2))) (.lit (.int 0))))
+    t (.un (.dround k) (.field 0))
+
 end Polars
 
 /-- The unary functions where Polars's profile differs from the reference: its
 template, in the reference's operations. `round` and `ceil` give `-0.0`
-(polars-round). -/
+(polars-round); a double cast to a decimal and a decimal cast to a smaller
+scale round half to even (polars-decimal-casts). -/
 def UnFn.polarsTmpl : UnFn → Option Expr
   | .fround => some (Polars.negZeroT .fround)
   | .froundEven => some (Polars.negZeroT .froundEven)
   | .fceil => some (Polars.negZeroT .fceil)
+  | .ftod s => some (Polars.ftodEvenT s)
+  | .dround k => some (Polars.droundEvenT k)
   | _ => none
 
 /-- The functions where Polars's profile differs from the reference: its
@@ -100,13 +144,16 @@ def BinFn.polarsTmpl : BinFn → Option Expr
   | .idiv => some Polars.floorDivT
   | .imod => some Polars.floorModT
   | .fmod => some Polars.floorFmodT
+  | .dmod => some Polars.floorDModT
   | _ => none
 
 variable [Boxes.Ambient]
 /-- **Polars's profile**: `//` and `%` floor (`division_type` =
-`FLOOR`), of integers and, for `%`, of doubles; `round` and `ceil` give `-0.0`
-for a negative value that rounds to zero (`round_zero_sign`); every other
-function is the reference's. -/
+`FLOOR`), of integers and, for `%`, of doubles and decimals; `round` and `ceil` give `-0.0`
+for a negative value that rounds to zero (`round_zero_sign`); a double cast to a
+decimal rounds the product half to even, and a decimal cast to a smaller scale
+rounds half to even (`decimal_rescale`); every other function is the
+reference's. -/
 def Profile.polars : Profile where
   un f v := match f.polarsTmpl with
     | some t => t.evalP Profile.reference [v]
@@ -295,6 +342,149 @@ theorem Profile.polars_zero_divisor (f : BinFn) (hf : f = .idiv ∨ f = .imod) (
     Option.getD_some, Polars.ref_lt_int, bind, Except.bind, Polars.isTrue_bool, decide_eq_true_eq,
     c, ↓reduceIte, hz _ (.inl rfl), hz _ (.inr rfl), ite_self]
 
+/-! ## The truncated remainder from Polars's floored one
+
+`Polars.fmod_of_tmod` below is proved from these, which `Polars.Shims` held
+before the generated lowering (#271) replaced its integer shims. -/
+
+namespace Polars
+
+omit [Boxes.Ambient] in
+/-- `int_div_trunc`: one more than the floored quotient where the remainder is
+not zero and the signs differ. -/
+def intDivTrunc (a b : Int) : Int :=
+  if floorMod a b ≠ 0 ∧ (decide (a < 0) ≠ decide (b < 0)) then floorDiv a b + 1 else floorDiv a b
+
+omit [Boxes.Ambient] in
+/-- `int_mod_trunc`: the divisor taken off where the remainder's sign is not
+the dividend's. -/
+def intModTrunc (a b : Int) : Int :=
+  let r := floorMod a b
+  if r ≠ 0 ∧ (decide (r < 0) ≠ decide (a < 0)) then r - b else r
+
+omit [Boxes.Ambient] in
+theorem fmod_eq_zero_iff {a b : Int} : a.fmod b = 0 ↔ b ∣ a := Int.dvd_iff_fmod_eq_zero.symm
+
+omit [Boxes.Ambient] in
+/-- The floored remainder has the divisor's sign. -/
+theorem fmod_sign (a : Int) {b : Int} : (0 < b → 0 ≤ a.fmod b) ∧ (b < 0 → a.fmod b ≤ 0) := by
+  refine ⟨fun h => Int.fmod_nonneg_of_pos a h, fun h => ?_⟩
+  have := Int.fmod_nonneg_of_pos (-a) (b := -b) (by omega)
+  rw [Int.neg_fmod_neg] at this
+  omega
+
+omit [Boxes.Ambient] in
+/-- **`Polars.int_div_trunc`**: the shimmed quotient is the reference's
+(`Int.tdiv`, `BinFn.idiv`). -/
+theorem int_div_trunc (a : Int) {b : Int} (hb : b ≠ 0) : intDivTrunc a b = a.tdiv b := by
+  unfold intDivTrunc floorDiv floorMod
+  rw [Int.tdiv_eq_fdiv]
+  by_cases hd : b ∣ a
+  · have : a.fmod b = 0 := fmod_eq_zero_iff.mpr hd
+    simp [hd, this]
+  · have : a.fmod b ≠ 0 := fun h => hd (fmod_eq_zero_iff.mp h)
+    simp only [hd, ite_false, ne_eq, this, not_false_eq_true, true_and]
+    have hs : b.sign = if 0 < b then 1 else -1 := by
+      rcases Int.lt_trichotomy b 0 with h | h | h
+      · simp [Int.sign_eq_neg_one_of_neg h, show ¬ 0 < b by omega]
+      · omega
+      · simp [Int.sign_eq_one_of_pos h, h]
+    by_cases ha : 0 ≤ a <;> by_cases hb' : 0 ≤ b <;> simp_all <;> omega
+
+omit [Boxes.Ambient] in
+/-- **`Polars.int_mod_trunc`**: the shimmed remainder is the reference's
+(`Int.tmod`, `BinFn.imod`). -/
+theorem int_mod_trunc (a : Int) {b : Int} (hb : b ≠ 0) : intModTrunc a b = a.tmod b := by
+  have hq := int_div_trunc a hb
+  have h1 := Int.fmod_add_mul_fdiv a b
+  have h2 := Int.tmod_add_mul_tdiv a b
+  unfold intDivTrunc floorDiv floorMod at hq
+  unfold intModTrunc floorMod
+  dsimp only
+  -- The remainders differ by `b` exactly where the quotients differ by one.
+  have hfm : a.fmod b ≠ 0 → (decide (a.fmod b < 0) ≠ decide (a < 0) ↔
+      decide (a < 0) ≠ decide (b < 0)) := by
+    intro hne
+    have hsgn := fmod_sign a (b := b)
+    by_cases hbp : 0 < b <;> simp_all <;> omega
+  by_cases hc : a.fmod b ≠ 0 ∧ (decide (a < 0) ≠ decide (b < 0))
+  · simp only [hc, ne_eq, not_false_eq_true, and_self, ite_true] at hq
+    have hc' : a.fmod b ≠ 0 ∧ (decide (a.fmod b < 0) ≠ decide (a < 0)) :=
+      ⟨hc.1, (hfm hc.1).mpr hc.2⟩
+    simp only [hc', ne_eq, not_false_eq_true, and_self, ite_true]
+    rw [← hq] at h2
+    rw [Int.mul_add] at h2
+    omega
+  · simp only [hc, ite_false] at hq
+    have hc' : ¬ (a.fmod b ≠ 0 ∧ (decide (a.fmod b < 0) ≠ decide (a < 0))) := by
+      rintro ⟨h0, h⟩; exact hc ⟨h0, (hfm h0).mp h⟩
+    simp only [hc', ite_false]
+    rw [← hq] at h2
+    omega
+
+end Polars
+
+omit [Boxes.Ambient] in
+/-- The floored remainder from the truncated one: the divisor added where
+the truncated remainder is not zero and its sign is not the divisor's. -/
+theorem Polars.fmod_of_tmod (a : Int) {b : Int} (hb : b ≠ 0) :
+    a.fmod b = if (a.tmod b < 0 ∧ 0 < b) ∨ (0 < a.tmod b ∧ b < 0) then a.tmod b + b
+      else a.tmod b := by
+  have h := Polars.int_mod_trunc a hb
+  unfold Polars.intModTrunc Polars.floorMod at h
+  have hs := Polars.fmod_sign a (b := b)
+  have h1 : 0 < b → a.fmod b < b := Int.fmod_lt_of_pos a
+  have h2 : b < 0 → b < a.fmod b := fun hb' => by
+    have := Int.fmod_lt_of_pos (-a) (b := -b) (by omega)
+    rw [Int.neg_fmod_neg] at this; omega
+  have t1 : 0 ≤ a → 0 ≤ a.tmod b := fun ha => Int.tmod_nonneg b ha
+  have t2 : a < 0 → a.tmod b ≤ 0 := fun ha => by
+    have := Int.tmod_nonneg b (show 0 ≤ -a by omega); rw [Int.neg_tmod] at this; omega
+  dsimp only at h
+  split at h
+  · rename_i c1
+    have c1' : a.fmod b ≠ 0 ∧ ¬(a.fmod b < 0 ↔ a < 0) := by simpa using c1
+    split <;> omega
+  · rename_i c1
+    have c1' : ¬(a.fmod b ≠ 0 ∧ ¬(a.fmod b < 0 ↔ a < 0)) := by simpa using c1
+    split <;> omega
+
+/-- **Polars's `%` of decimals** is the floored remainder of their unscaled
+integers (`Polars.floorMod`, polars-decimal-modulus), for two decimals of one
+scale as the parser brings them to (D62). -/
+theorem Profile.polars_dmod {x y : Value} {a b : Int} (hx : x.unscaled? = some a)
+    (hy : y.unscaled? = some b) (h0 : b ≠ 0) :
+    Profile.polars.bin .dmod x y = .ok (.int (Polars.floorMod a b)) := by
+  have er := Lowering.ref_dmod hx hy h0
+  have ey : Profile.reference.bin .dadd y (.int 0) = .ok (.int b) := by
+    rw [Lowering.ref_dadd]; simp only [BinFn.apply, hy]; simp
+  have es : ∀ t, Profile.reference.bin .dadd (.int t) (.int b) = .ok (.int (t + b)) := fun t => by
+    rw [Lowering.ref_dadd]; rfl
+  simp only [Profile.polars, BinFn.polarsTmpl, Polars.floorDModT, Expr.floorDModOf, Expr.evalP,
+    List.getD, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, er, ey, es,
+    Polars.ref_lt_int, bind, Except.bind, Polars.isTrue_bool, decide_eq_true_eq, Polars.floorMod,
+    Polars.fmod_of_tmod a h0]
+  by_cases d1 : a.tmod b < 0 <;> by_cases d2 : 0 < b <;> by_cases d3 : 0 < a.tmod b <;>
+    by_cases d4 : b < 0 <;> simp only [d1, d2, d3, d4, ↓reduceIte, and_true, and_false, or_false,
+      false_or] <;> omega
+
+/-- A zero divisor of a decimal `%` raises under `Profile.polars`, as on Polars
+(polars-decimal-modulus) and in the reference. -/
+theorem Profile.polars_dmod_zero {x y : Value} {a : Int} (hx : x.unscaled? = some a)
+    (hy : y.unscaled? = some 0) : Profile.polars.bin .dmod x y = .error .divByZero := by
+  simp only [Profile.polars, BinFn.polarsTmpl, Polars.floorDModT, Expr.floorDModOf, Expr.evalP,
+    List.getD, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,
+    Lowering.ref_dmod_zero hx hy, bind, Except.bind]
+
+/-- A decimal `%` with an operand that is not a number (`NULL`) is `NULL` under
+`Profile.polars`, as in the reference. -/
+theorem Profile.polars_dmod_null {x y : Value} (h : x.unscaled? = none ∨ y.unscaled? = none) :
+    Profile.polars.bin .dmod x y = .ok .null := by
+  simp only [Profile.polars, BinFn.polarsTmpl, Polars.floorDModT, Expr.floorDModOf, Expr.evalP,
+    List.getD, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,
+    Lowering.ref_dmod_null h, Lowering.ref_lt, bind, Except.bind]
+  rfl
+
 /-! ## Evaluating under `Profile.polars` is evaluating the elaboration -/
 
 namespace Polars
@@ -321,7 +511,8 @@ theorem untmpl_subst_eval {f : UnFn} {t : Expr} (h : f.polarsTmpl = some t) (a :
   cases ha : a.evalP Profile.reference row with
   | error k =>
     cases f <;> simp only [UnFn.polarsTmpl, reduceCtorEq, Option.some.injEq] at h <;> subst h <;>
-      simp [negZeroT, Expr.subst, Expr.evalP, ha, bind, Except.bind]
+      simp [negZeroT, ftodEvenT, ftodProduct, droundEvenT, Expr.subst, Expr.evalP, ha, bind,
+        Except.bind]
   | ok x =>
     simp only [bind, Except.bind]
     exact Expr.evalP_subst (vs := [x]) (fun i => by
@@ -338,15 +529,15 @@ theorem tmpl_subst_eval {f : BinFn} {t : Expr} (h : f.polarsTmpl = some t) (a b 
   cases ha : a.evalP Profile.reference row with
   | error k =>
     cases f <;> simp only [BinFn.polarsTmpl, reduceCtorEq, Option.some.injEq] at h <;> subst h <;>
-      simp [floorDivT, floorModT, floorFmodT, Expr.floorDivOf, Expr.floorModOf, Expr.floorFmodOf,
-        Expr.subst, Expr.evalP,
+      simp [floorDivT, floorModT, floorFmodT, floorDModT, Expr.floorDivOf, Expr.floorModOf,
+        Expr.floorFmodOf, Expr.floorDModOf, Expr.subst, Expr.evalP,
         ha, bind, Except.bind]
   | ok x =>
     cases hb : b.evalP Profile.reference row with
     | error k =>
       cases f <;> simp only [BinFn.polarsTmpl, reduceCtorEq, Option.some.injEq] at h <;> subst h <;>
-        simp [floorDivT, floorModT, floorFmodT, Expr.floorDivOf, Expr.floorModOf, Expr.floorFmodOf,
-        Expr.subst, Expr.evalP,
+        simp [floorDivT, floorModT, floorFmodT, floorDModT, Expr.floorDivOf, Expr.floorModOf,
+          Expr.floorFmodOf, Expr.floorDModOf, Expr.subst, Expr.evalP,
           ha, hb, bind, Except.bind, Lowering.ref_lt]
       all_goals split <;> rfl
     | ok y =>
@@ -391,7 +582,8 @@ template of Polars's `//` or `%` (of doubles too): the elaboration of the native
 theorem elaborate_floor (a b : Expr) :
     elaborate (.bin .idiv a b) = Expr.floorDivOf (elaborate a) (elaborate b) ∧
     elaborate (.bin .imod a b) = Expr.floorModOf (elaborate a) (elaborate b) ∧
-    elaborate (.bin .fmod a b) = Expr.floorFmodOf (elaborate a) (elaborate b) := ⟨rfl, rfl, rfl⟩
+    elaborate (.bin .fmod a b) = Expr.floorFmodOf (elaborate a) (elaborate b) ∧
+    elaborate (.bin .dmod a b) = Expr.floorDModOf (elaborate a) (elaborate b) := ⟨rfl, rfl, rfl, rfl⟩
 
 end Polars
 
@@ -460,17 +652,23 @@ theorem Profile.polars_un_negZero {f : UnFn} {g : Int → Int}
     by_cases hneg : c < 0 <;> by_cases hr0 : g c = 0 <;>
       simp [heq', h0, hr, hneg, hr0, hb, FloatCode.canon_zero, and3, Value.isTrue]
 
-/-- On a value that is not a double, Polars's unary functions are the
-reference's. -/
-theorem Profile.polars_un_not_float (f : UnFn) (v : Value) (hv : ∀ c, v ≠ .float c) :
+/-- On a value that is not a double, Polars's unary functions other than the
+decimal rescale are the reference's. -/
+theorem Profile.polars_un_not_float (f : UnFn) (v : Value) (hv : ∀ c, v ≠ .float c)
+    (hd : ∀ k, f ≠ .dround k) :
     Profile.polars.un f v = Profile.reference.un f v := by
   unfold Profile.polars; dsimp only
   cases hf : f.polarsTmpl with
   | none => rfl
   | some t =>
-    have : f = .fround ∨ f = .fceil ∨ f = .froundEven := by cases f <;> simp_all [UnFn.polarsTmpl]
-    rcases this with rfl | rfl | rfl <;> simp only [UnFn.polarsTmpl, Option.some.injEq] at hf <;>
-      subst hf <;> cases v <;> first | rfl | exact absurd rfl (hv _)
+    have : f = .fround ∨ f = .fceil ∨ f = .froundEven ∨ (∃ s, f = .ftod s) ∨ ∃ k, f = .dround k := by
+      cases f <;> simp_all [UnFn.polarsTmpl]
+    obtain rfl | rfl | rfl | ⟨s, rfl⟩ | ⟨k, rfl⟩ := this
+    all_goals first
+      | exact absurd rfl (hd _)
+      | (simp only [UnFn.polarsTmpl, Option.some.injEq] at hf
+         subst hf
+         cases v <;> first | rfl | exact absurd rfl (hv _))
 
 /-- `round` on Polars, through `Lowering.zeroTemplate`, agrees with the
 reference: the lowering's entry for `round` (`round_zero_sign`). -/
@@ -536,5 +734,41 @@ theorem Polars.fceil_agree (x : Value) :
 #guard letI := Boxes.Ambient.none
   match Profile.polars.bin .fmod (.float (FloatCode.ofFloat 7.5)) (.float (FloatCode.ofFloat (-2.0))) with
   | .ok (.float c) => c == FloatCode.ofFloat (-0.5) | _ => false
+
+-- A double cast to a decimal (polars-decimal-casts, ruling 278): `0.125`,
+-- `-0.125`, `0.375` and `0.625` at scale 2 are `0.12`, `-0.12`, `0.38` and `0.62`,
+-- `2.5` and `-2.5` at scale 0 are `2` and `-2`, where the reference gives `0.13`,
+-- `-0.13`, `0.38`, `0.63`, `3` and `-3`; the near-ties `1.005` and `-2.675`,
+-- whose products are no ties, are `1.00` and `-2.68` on both.
+#guard letI := Boxes.Ambient.none
+  [(0.125, 2, 12, 13), (-0.125, 2, -12, -13), (0.375, 2, 38, 38), (0.625, 2, 62, 63),
+    (2.5, 0, 2, 3), (-2.5, 0, -2, -3), (3.5, 0, 4, 4), (1.005, 2, 100, 100),
+    (-2.675, 2, -268, -268)].all fun (x, s, polars, ref) =>
+  (match Profile.polars.un (.ftod s) (.float (FloatCode.ofFloat x)) with
+    | .ok (.int m) => m == polars | _ => false) &&
+  (match Profile.reference.un (.ftod s) (.float (FloatCode.ofFloat x)) with
+    | .ok (.int m) => m == ref | _ => false)
+
+-- A decimal cast to a smaller scale (polars-decimal-casts, ruling 278's
+-- addendum): `0.125` and `-0.125` at scale 3 to scale 2 are `0.12` and `-0.12`,
+-- `0.250` at scale 3 to scale 1 is `0.2`, where the reference gives `0.13`,
+-- `-0.13` and `0.3`; `0.135` is `0.14` on both. On every unscaled value of
+-- `-300` to `300` and a rescale by 0 to 3 digits, the profile's cast is
+-- `Polars.rescaleEven`, the trusted model of Polars's (`Polars/Shims.lean`).
+#guard letI := Boxes.Ambient.none
+  [(125, 1, 12, 13), (-125, 1, -12, -13), (250, 2, 2, 3), (135, 1, 14, 14)].all
+    fun (i, k, polars, ref) =>
+  (match Profile.polars.un (.dround k) (.dec 3 i) with
+    | .ok (.int m) => m == polars | _ => false) &&
+  (match Profile.reference.un (.dround k) (.dec 3 i) with
+    | .ok (.int m) => m == ref | _ => false)
+#guard letI := Boxes.Ambient.none
+  (List.range 4).all fun k => (List.range 601).all fun j =>
+    match Profile.polars.un (.dround k) (.dec 3 ((j : Int) - 300)) with
+    | .ok (.int m) => m == Polars.rescaleEven k ((j : Int) - 300)
+    | _ => false
+#guard letI := Boxes.Ambient.none
+  [Value.null, .str "a", .float 0].all fun v =>
+    match Profile.polars.un (.dround 1) v with | .ok .null => true | _ => false
 
 end Substrait

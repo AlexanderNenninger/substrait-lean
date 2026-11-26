@@ -26,17 +26,20 @@ def unName : UnFn → String
 
 def binName : BinFn → String
   | .eq => "eq" | .lt => "lt" | .and => "and" | .or => "or" | .add => "add" | .sub => "sub"
-  | .dadd => "dadd" | .dsub => "dsub" | .dmul => "dmul" | .imod => "imod" | .idiv => "idiv"
+  | .dadd => "dadd" | .dsub => "dsub" | .dmul => "dmul" | .dmod => "dmod" | .imod => "imod"
+  | .idiv => "idiv"
   | .fadd => "fadd" | .fsub => "fsub" | .fmul => "fmul" | .fdiv => "fdiv" | .fmod => "fmod"
   | .fdivIeee => "fdivIeee" | .fpow => "fpow" | .fatan2 => "fatan2" | .bit op => s!"bit:{op.name}"
   | f => reprStr f
 
-/-- A literal: a double by its code (`core/Sverify/Core/Float.lean`). -/
+/-- A literal: a double by its code (`core/Sverify/Core/Float.lean`), a date by
+its days since 1970-01-01. -/
 def litJson : Value → Json
   | .null => Json.mkObj [("null", true)]
   | .bool b => Json.mkObj [("bool", b)]
   | .int i => Json.mkObj [("int", toString i)]
   | .float c => Json.mkObj [("code", toString c)]
+  | .date d => Json.mkObj [("date", toString d)]
   | v => Json.mkObj [("unsupported", reprStr v)]
 
 /-- A template as JSON: fields, literals, calls and `CASE`s. -/
@@ -61,7 +64,9 @@ def floorJson : Json :=
 
 /-- The constructs a table's export looks at: every function with finite
 parameters, from the types themselves (`finite_values%`). A function with an
-infinite parameter (a message, a decimal scale) is native in every table. -/
+infinite parameter (a message, a decimal scale) is left out: native, refused, or
+hand-built (Polars's decimal rescale, `Polars.droundEntry`), and the
+translations write it themselves. -/
 def unFns : List UnFn := finite_values% UnFn
 def binFns : List BinFn := finite_values% BinFn
 

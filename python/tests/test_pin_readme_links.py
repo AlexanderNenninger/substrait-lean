@@ -2,6 +2,7 @@
 and unpins them for main."""
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -26,7 +27,10 @@ def script():
 
 
 def test_pin_and_unpin_round_trip(script):
-    text = (ROOT / "python" / "README.md").read_text()
+    # A release branch carries the README pinned to its tag: start from main's form.
+    readme = (ROOT / "python" / "README.md").read_text(encoding="utf-8")
+    text = re.sub(r"/(blob|tree)/v[0-9][^/]*/", r"/\1/main/", readme)
+    assert "blob/main/" in text
     pinned = script.pin(text, "0.9.0")
     assert "blob/main/" not in pinned and "tree/main/" not in pinned
     assert "blob/v0.9.0/docs/" in pinned

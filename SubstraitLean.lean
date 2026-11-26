@@ -113,6 +113,7 @@ import Sverify.Frontend.Parse
 import Sverify.Core.Pretty
 import SubstraitLean.Examples
 import Sverify.Analysis.Refresh
+import Sverify.Analysis.LeftFk
 import Sverify.Analysis.RefreshSnapshot
 import SubstraitLean.Engine
 import SubstraitLean.IssuesAll

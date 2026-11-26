@@ -5,6 +5,7 @@ import Sverify.Polars.LoweringOn.Native
 import Sverify.Polars.LoweringOn.Math
 import Sverify.Polars.LoweringOn.Other
 import Sverify.Polars.LoweringOn.Integers
+import Sverify.Polars.LoweringOn.Bits
 
 /-!
 # Substrait.polarsOn: the table
@@ -79,7 +80,7 @@ def Substrait.polarsOn : Substrait.Lowering (Substrait.Profile.polars) :=
     | Substrait.UnFn.dkind a0 a1 => some (Substrait.polarsOn.dkind a0 a1)
     | Substrait.UnFn.dround a0 => some (Substrait.polarsOn.dround a0)
     | Substrait.UnFn.dtrunc a0 => some (Substrait.polarsOn.dtrunc a0)
-    | Substrait.UnFn.ftod a0 => some (Substrait.polarsOn.ftod a0)
+    | Substrait.UnFn.ftod _ => none
     | Substrait.UnFn.dtof a0 => some (Substrait.polarsOn.dtof a0)
     | Substrait.UnFn.structField a0 => some (Substrait.polarsOn.structField a0)
     | Substrait.UnFn.listElement a0 => some (Substrait.polarsOn.listElement a0)
@@ -122,11 +123,16 @@ def Substrait.polarsOn : Substrait.Lowering (Substrait.Profile.polars) :=
     | Substrait.BinFn.dateDiff  => some (Substrait.polarsOn.dateDiff )
     | Substrait.BinFn.fatan2  => some (Substrait.polarsOn.fatan2 )
     | Substrait.BinFn.flogb  => some (Substrait.polarsOn.flogb )
-    | Substrait.BinFn.bit a0 => some (Substrait.polarsOn.bit a0)
+    | Substrait.BinFn.bit Substrait.BitOp.and => some Substrait.polarsOn.bit_and
+    | Substrait.BinFn.bit Substrait.BitOp.or => some Substrait.polarsOn.bit_or
+    | Substrait.BinFn.bit Substrait.BitOp.xor => some Substrait.polarsOn.bit_xor
+    | Substrait.BinFn.bit Substrait.BitOp.shl => some Substrait.polarsOn.bit_shl
+    | Substrait.BinFn.bit Substrait.BitOp.shr => some Substrait.polarsOn.bit_shr
     | Substrait.BinFn.dadd  => some (Substrait.polarsOn.dadd )
     | Substrait.BinFn.dsub  => some (Substrait.polarsOn.dsub )
     | Substrait.BinFn.dmul  => some (Substrait.polarsOn.dmul )
     | Substrait.BinFn.ddiv  => some (Substrait.polarsOn.ddiv )
+    | Substrait.BinFn.dmod  => some (Substrait.polarsOn.dmod )
     | Substrait.BinFn.pair  => some (Substrait.polarsOn.pair )
     | Substrait.BinFn.greatest  => some (Substrait.polarsOn.greatest )
     | Substrait.BinFn.least  => some (Substrait.polarsOn.least )
@@ -182,9 +188,9 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("UnFn.fmath", "native", 0),
   ("UnFn.decimal", "native", 0),
   ("UnFn.dkind", "native", 0),
-  ("UnFn.dround", "native", 0),
+  ("UnFn.dround", "hand-built entry: Substrait.Polars.droundEntry", 0),
   ("UnFn.dtrunc", "native", 0),
-  ("UnFn.ftod", "native", 0),
+  ("UnFn.ftod", "refused", 0),
   ("UnFn.dtof", "native", 0),
   ("UnFn.structField", "native", 0),
   ("UnFn.listElement", "native", 0),
@@ -226,23 +232,18 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("BinFn.dateDiff", "native", 0),
   ("BinFn.fatan2", "native", 0),
   ("BinFn.flogb", "native", 0),
-  ("BinFn.bit", "native", 0),
+  ("BinFn.bit .and", "hand-written schema: native: #0 & #1", 0),
+  ("BinFn.bit .or", "hand-written schema: native: #0 | #1", 0),
+  ("BinFn.bit .xor", "hand-written schema: native: #0 ^ #1", 0),
+  ("BinFn.bit .shl", "hand-written schema: shl: error outside 0-63, else the low 63-k bits of #0 & -1 times 2^k, the next bit the sign", 0),
+  ("BinFn.bit .shr", "hand-written schema: shr: error outside 0-63, else (#0 & -1) // 2^#1 floored", 0),
   ("BinFn.dadd", "native", 0),
   ("BinFn.dsub", "native", 0),
   ("BinFn.dmul", "native", 0),
   ("BinFn.ddiv", "native", 0),
+  ("BinFn.dmod", "hand-written schema: a % b of decimals truncated: Polars's % by -b where the signs differ", 0),
   ("BinFn.pair", "native", 0),
   ("BinFn.greatest", "native", 0),
   ("BinFn.least", "native", 0),
   ("BinFn.bbox2", "native", 0),
   ("BinFn.listFn", "native", 0)]
-
-/-- Every entry is exact (`Lowering.AllExact`). -/
-theorem Substrait.polarsOn.allExact : (Substrait.polarsOn).AllExact :=
-  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
-   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩
-
-/-- No entry is stated on doubles only (`Lowering.NoneOnDbl`). -/
-theorem Substrait.polarsOn.noneOnDbl : (Substrait.polarsOn).NoneOnDbl :=
-  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
-   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩

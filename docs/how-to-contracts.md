@@ -153,6 +153,12 @@ except VerificationError as e:
 * Foreign keys: `sv.references("cust", to=customers.id)` in `requires`
   says every non-NULL `cust` occurs in `customers.id` (checked on the data,
   like `unique`). `to` also takes a pair of names, `("customers", "id")`. Nothing proves it in `ensures`, so it stays an assumption.
+  A `LEFT JOIN` from `cust` to a per-key aggregate of `customers` then gives
+  every left row a match, so the aggregate's columns stay as non-NULL as they
+  are on their own (a `SUM` of a non-NULL column over a group, for instance):
+  the report says "left join on a foreign key" and the step is conditional on
+  the reference. Without it, the column stays unproved and the report
+  proposes the `sv.references` that would prove it.
 * Windows: `LAG`, `LEAD` and `ROW_NUMBER` over `PARTITION BY … ORDER BY`.
   If rows can tie in the order, the engine decides which comes first:
   `verify` proves the postconditions that hold for every order of the ties,

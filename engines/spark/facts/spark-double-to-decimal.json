@@ -2,9 +2,21 @@
   "id": "spark-double-to-decimal",
   "engine": "spark",
   "engine_version": "4.3.0",
-  "title": "The writer's double to decimal is the reference's",
-  "verdict": "native",
+  "title": "Double to decimal: the native cast rounds the shortest decimal text, the writer's is the reference's",
+  "verdict": "shimmed: the native CAST rounds the double's shortest decimal text half up; the writer rounds the double product half away from zero",
   "area": "casts",
+  "options": [
+    "decimal_rescale"
+  ],
+  "rows": [
+    {
+      "group": "cast.dec",
+      "option": "decimal_rescale",
+      "types": [
+        "fp64"
+      ]
+    }
+  ],
   "constructs": [
     "ROUND(x * 10^s)"
   ],
@@ -14,9 +26,12 @@
       "false"
     ]
   },
-  "description": "`CAST(CAST(ROUND(x * 10^s) AS BIGINT) AS DECIMAL(p,0)) * 10^-s`, as `SparkDialect.decimal_cast` writes a double to a decimal at scale 2, gives 2.68, −2.68, 0.13 and 1.00 for 2.675, −2.675, 0.125 and 1.005: the product rounds in doubles (2.675 · 100 is 267.5, 1.005 · 100 is 100.49999999999999), then ROUND halves away from zero.",
-  "reference": "`UnFn.ftod`: `FloatCode.toDecimal?`, halves away from zero after the product `x · 10ˢ` rounds (Conversions.lean).",
-  "status": "no-finding",
+  "description": [
+    "Spark's native `CAST(x AS DECIMAL(p,s))` of a double rounds the double's shortest decimal text (`Double.toString`) half up, where DuckDB, Polars and the reference round the double product `x · 10^s`: 1.005 (product 100.49999999999999) is 1.01 and 0.285 is 0.29 at scale 2, where the reference gives 1.00 and 0.28; -2.675 is -2.68 and 8.345 is 8.35 on all. At exact ties it rounds half away from zero, as its decimal rescale (`ROUND_HALF_UP`): 0.125, -0.125 and 0.375 to DECIMAL(3,2) are 0.13, -0.13 and 0.38; 2.5, -2.5 and 3.5 to DECIMAL(2,0) are 3, -3 and 4; ±(2^51 + 0.5) to DECIMAL(17,0) is ±2251799813685249. So the native cast is no tie mode of the product: it lies within one unit at scale s of the product's rounding.",
+    "`CAST(CAST(ROUND(x * 10^s) AS BIGINT) AS DECIMAL(p,0)) * 10^-s`, as `SparkDialect.decimal_cast` writes a double to a decimal at scale 2, gives 2.68, −2.68, 0.13 and 1.00 for 2.675, −2.675, 0.125 and 1.005: the product rounds in doubles (2.675 · 100 is 267.5, 1.005 · 100 is 100.49999999999999), then ROUND halves away from zero. sverify's written form avoids the native cast's near-tie rounding."
+  ],
+  "reference": "`UnFn.ftod`: `FloatCode.toDecimal?`, halves away from zero after the product `x · 10ˢ` rounds (Conversions.lean). `Profile.spark` states the native cast loosely, within one unit at scale `s` of the reference's (`Spark.doubleToDecimal`, `decimal_rescale` loose at `cast.dec`, ruling 278), so the lowering refuses `UnFn.ftod` on Spark; `Profile.sparkWritten` takes the writer's form, the reference's.",
+  "status": "shimmed",
   "evidence": "probe",
   "provenance": [
     {
@@ -30,6 +45,25 @@
         }
       ],
       "notes": "`sverify_dev.probe_spark`'s `_writer_probes`, run locally with ANSI on and off, on the folded and the codegen path, which agree on each. pyspark 4.3.0, Java 21.0.13, macOS arm64, session time zone UTC (BASE_CONF); probes.json's header records the earlier homelab run."
+    },
+    {
+      "checked_at": "2026-11-23",
+      "method": "probe",
+      "checked_by": "session Types and casts (ruling 278, #2523), engines/duckdb/probes/double_to_decimal.py and double_to_decimal_near_ties.py",
+      "evidence": [
+        {
+          "file": "engines/duckdb/probes/double_to_decimal.py",
+          "note": "Exact ties, native CAST of a double under ANSI: 0.125, -0.125 and 0.375 to DECIMAL(3,2) are 0.13, -0.13 and 0.38; 2.5, -2.5 and 3.5 to DECIMAL(2,0) are 3, -3 and 4; ±(2^51 + 0.5) to DECIMAL(17,0) is ±2251799813685249. The same values as decimals, rescaled to the same scale, round the same way."
+        },
+        {
+          "file": "engines/duckdb/probes/double_to_decimal_near_ties.py",
+          "note": "Near-ties, native CAST: -2.675 to DECIMAL(4,2) is -2.68, 1.005 to DECIMAL(3,2) is 1.01, 0.285 is 0.29, 8.345 to DECIMAL(4,2) is 8.35: consistent with Java's shortest decimal text taken half up, not with the double product."
+        }
+      ],
+      "notes": "pyspark 4.3.0, spark.sql.ansi.enabled true, local[1]."
     }
+  ],
+  "issues": [
+    2523
   ]
 }

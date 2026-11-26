@@ -307,6 +307,311 @@ def epsilonBounds (engine : Option String) (eps : Json) : Json :=
     ("proved", toJson true)]), ("rel", Json.mkObj [("value", toJson (0.5 : Float)),
     ("proved", toJson false)])]), ("unbounded", toJson false), ("why", .null)]
 
+/-! ### What a postcondition observes of a realization (#1071, ruling 265)
+
+The class, the shims and the problems above describe what the engine's rows say. A
+postcondition states what it observes (`sv.equivalent`), and the rows that hold only up to an
+observation are met against it here: a row whose observation the postcondition's refines gives
+the plan as it is, one that does not is shimmed or refuses the plan, and a row that bounds the
+doubles per plan is met against the plan's `ε` and the tolerance the postcondition states.
+Tolerances compare exactly: a stated tolerance arrives as the exact decimal of the double the
+user passed, `ε` as the checker's own rounded-up decimal, and both are read as rationals. The
+numeric tolerance is a type of this module's own; `FloatObs` and `Obs.le` are unchanged.
+Python words the problems (`sverify.routes`), from the codes and data here. -/
+
+/-- A tolerance on doubles (`sv.within`): at most `abs` apart, `rel` of the larger magnitude
+apart, or `ulps` units in the last place apart. A bound is its exact decimal. -/
+structure Tol where
+  abs : Option Lean.JsonNumber := none
+  rel : Option Lean.JsonNumber := none
+  ulps : Option Nat := none
+  deriving BEq
+
+/-- The exact value of a decimal JSON number. -/
+def _root_.Lean.JsonNumber.toRat (n : Lean.JsonNumber) : Rat :=
+  (n.mantissa : Rat) / ((10 ^ n.exponent : Nat) : Rat)
+
+/-- The bound of kind `k` (`"abs"`, `"rel"`, `"ulps"`), as a rational. -/
+def Tol.get (t : Tol) : String → Option Rat
+  | "abs" => t.abs.map (·.toRat)
+  | "rel" => t.rel.map (·.toRat)
+  | "ulps" => t.ulps.map fun n => (n : Rat)
+  | _ => none
+
+/-- Every pair this tolerance accepts, `b` accepts: each bound given here is given in `b`, at
+least as large (`Within.refines`). -/
+def Tol.refines (a b : Tol) : Bool :=
+  epsKinds.all fun k => match a.get k with
+    | none => true
+    | some x => (b.get k).any (x ≤ ·)
+
+/-- How a postcondition observes doubles: exactly, within the plan's own bound, or within a
+tolerance. -/
+inductive Fl | exact | plan | within (t : Tol)
+  deriving BEq
+
+/-- `x` refines `y` on doubles (`Observation.coarser_than`'s floats rule): exact refines every
+level, a level refines itself, a tolerance refines a larger one. -/
+def Fl.refines : Fl → Fl → Bool
+  | .exact, _ => true
+  | .plan, .plan => true
+  | .within a, .within b => a.refines b
+  | _, _ => false
+
+/-- The coarser of two levels on doubles (`_coarsest`). -/
+def Fl.coarsest (x y : Fl) : Fl := if x.refines y then y else x
+
+/-- A stated observation: the components but the doubles (`Obs.floats` is exact here), and the
+doubles. -/
+structure Seen where
+  q : Obs := Obs.exact
+  floats : Fl := .exact
+
+/-- The components of `a` that are coarser than `b`'s, but the doubles (`coarser_than`),
+in the order Python names them. -/
+def _root_.Substrait.Obs.coarserThan (a b : Obs) : List String :=
+  [("rows", !a.rows.le b.rows), ("elements", !a.elements.le b.elements),
+   ("zeros", !a.zeros.le b.zeros), ("timestamps", !a.times.le b.times),
+   ("strings", !(a.strings.rank ≤ b.strings.rank)), ("decimals", !a.decimals.le b.decimals),
+   ("errors", !(a.errors.rank ≤ b.errors.rank))].filterMap fun (n, c) => if c then some n else none
+
+/-- The coarser of two observations on each component but the doubles. -/
+def _root_.Substrait.Obs.coarsest (a b : Obs) : Obs where
+  rows := if a.rows.le b.rows then b.rows else a.rows
+  elements := if a.elements.le b.elements then b.elements else a.elements
+  zeros := if a.zeros.le b.zeros then b.zeros else a.zeros
+  times := if a.times.le b.times then b.times else a.times
+  strings := if a.strings.rank ≤ b.strings.rank then b.strings else a.strings
+  decimals := if a.decimals.le b.decimals then b.decimals else a.decimals
+  errors := if a.errors.rank ≤ b.errors.rank then b.errors else a.errors
+
+/-- A double column's `ε` as `epsBounds` gives it: its bounds by kind with whether each is
+proved, whether it has none, and why. -/
+structure EpsCol where
+  bounds : List (String × Lean.JsonNumber × Bool) := []
+  unbounded : Bool := false
+  why : Option String := none
+
+def EpsCol.ofJson (j : Json) : EpsCol :=
+  let bs := match j.getObjVal? "bounds" with
+    | .ok (.obj kvs) => kvs.toList.filterMap fun (k, b) =>
+      match b.getObjVal? "value", (b.getObjValAs? Bool "proved").toOption with
+      | .ok (.num n), some p => some (k, n, p)
+      | _, _ => none
+    | _ => []
+  { bounds := bs, unbounded := (j.getObjValAs? Bool "unbounded").toOption.getD false
+    why := (j.getObjValAs? String "why").toOption }
+
+/-- The columns' `ε` as `epsilonBounds` gives them. -/
+def epsCols (eps : Json) : List (String × EpsCol) :=
+  match eps with
+  | .obj kvs => kvs.toList.map fun (c, e) => (c, EpsCol.ofJson e)
+  | _ => []
+
+/-- A column with a bound above zero. -/
+def EpsCol.positive (e : EpsCol) : Bool := e.bounds.any fun (_, v, _) => v.mantissa != 0
+
+/-- What a bound that rows give per plan (`"floats": {"bound": "plan"}`) meets or misses of
+the postcondition (`_plan_bound`): the problems, as data for Python to word. -/
+inductive PProb
+  /-- A column with no bound, under a stated tolerance or exact doubles (#2486). -/
+  | unbounded (col : String) (why : Option String)
+  /-- A column a postcondition reads, held to the reference's exact value: the condition's index. -/
+  | held (col : String) (cond : Nat)
+  /-- A column with no bound that a postcondition reads: the condition's index. -/
+  | heldUnbounded (col : String) (cond : Nat) (why : Option String)
+  /-- A column whose bounds meet none of the stated tolerance's kinds. -/
+  | notMet (col : String)
+  deriving BEq
+
+/-- The plan-bound problems of the columns, and whether the bound that meets the stated one
+rests on an unproved bound (`_plan_bound`). -/
+def planBound (stated : Fl) (eps : List (String × EpsCol)) (held : List (String × Nat)) :
+    List (PProb × EpsCol) × Bool :=
+  eps.foldl (init := ([], false)) fun (ps, unp) (col, e) =>
+    if e.unbounded then
+      -- A tolerance is not met; a postcondition that reads the column is held to a value
+      -- the engine's is only near (#1045), as for a column with a bound.
+      let ps := match stated with | .plan => ps | _ => ps ++ [(.unbounded col e.why, e)]
+      (match held.lookup col with | some i => ps ++ [(.heldUnbounded col i e.why, e)] | none => ps, true)
+    else if !e.positive then (ps, unp)
+    else match held.lookup col with
+      | some i => (ps ++ [(.held col i, e)], unp)
+      | none =>
+        let met : List Bool := e.bounds.filterMap fun (k, v, pr) =>
+          match stated with
+          | .plan => some pr
+          | .within t => (t.get k).bind fun s => if v.toRat ≤ s then some pr else none
+          | .exact => none
+        if met.isEmpty then (ps ++ [(.notMet col, e)], unp)
+        else if met.any id then (ps, unp) else (ps, true)
+
+/-- The tolerance the plan's `ε` gives (`_with_bound`): per kind every bounded column has, the
+largest. `plan` where none does. -/
+def planTol (eps : List (String × EpsCol)) : Fl :=
+  let found := (eps.map (·.2)).filter (·.positive)
+  let kinds := if eps.any (·.2.unbounded) then [] else epsKinds.filter fun k => !found.isEmpty && found.all fun e => e.bounds.any (·.1 == k)
+  if kinds.isEmpty then .plan
+  else
+    let most (k : String) : Option Lean.JsonNumber :=
+      (found.filterMap fun e => (e.bounds.find? (·.1 == k)).map (·.2.1)).foldl
+        (fun (m : Option Lean.JsonNumber) v => match m with
+          | none => some v | some w => if w.toRat < v.toRat then some v else some w) none
+    .within { abs := if kinds.contains "abs" then most "abs" else none
+              rel := if kinds.contains "rel" then most "rel" else none
+              ulps := if kinds.contains "ulps" then (most "ulps").map fun n => n.toRat.ceil.toNat
+                else none }
+
+/-- Every bound of every column is proved, and there is a column (`_all_proved`). -/
+def allProved (eps : List (String × EpsCol)) : Bool :=
+  !eps.isEmpty && eps.all fun (_, e) => e.bounds.all (·.2.2)
+
+def Tol.json (t : Tol) : Json :=
+  Json.mkObj ([("abs", t.abs.map Json.num), ("rel", t.rel.map Json.num),
+    ("ulps", t.ulps.map fun n => toJson n)].filterMap fun (k, v) => v.map (k, ·))
+
+def Fl.json : Fl → Json
+  | .exact => toJson "exact" | .plan => toJson "plan" | .within t => t.json
+
+/-- An observation as Python reads it (`from_json`): the components that are not exact, and
+the doubles where they are not. -/
+def Seen.json (s : Seen) : Json :=
+  let comps := s.q.sparseJson
+  match s.floats with
+  | .exact => comps
+  | .plan => comps.setObjVal! "floats" (Json.mkObj [("bound", toJson "plan")])
+  | .within t => comps.setObjVal! "floats" t.json
+
+/-- The problem as data. -/
+def PProb.json : PProb × EpsCol → Json
+  | (p, e) =>
+    let bounds := Json.arr (e.bounds.map fun (k, v, pr) =>
+      Json.mkObj [("kind", toJson k), ("value", .num v), ("proved", toJson pr)]).toArray
+    match p with
+    | .unbounded col why => Json.mkObj [("code", toJson "unbounded"), ("column", toJson col),
+        ("why", toJson why)]
+    | .heldUnbounded col i why => Json.mkObj [("code", toJson "held_unbounded"),
+        ("column", toJson col), ("condition", toJson i), ("why", toJson why)]
+    | .held col i => Json.mkObj [("code", toJson "held"), ("column", toJson col),
+        ("condition", toJson i), ("bounds", bounds)]
+    | .notMet col => Json.mkObj [("code", toJson "not_met"), ("column", toJson col),
+        ("bounds", bounds)]
+
+/-- Where the plan realizes the options, met against what the postcondition observes
+(`realization`). `v` is the engine's verdict (`engineJson`): its class, evidence, shims and
+problems are the start. -/
+def realizeJson (E : EngineProfile) (rows : List (Dep × ObsRow))
+    (v : Json) (stated : Seen) (eps : List (String × EpsCol)) (held : List (String × Nat)) :
+    Json × List Json := Id.run do
+  let cls0 := match (v.getObjValAs? String "class").toOption with
+    | some "refused" => RouteClass.refused | some "shim" => .shim
+    | some "observed" => .observed | _ => .exact
+  let mut worst := cls0
+  let mut proved := (v.getObjValAs? String "evidence").toOption == some "proved"
+  let mut shims : List Json := ((v.getObjValAs? (Array Json) "shims").toOption.getD #[]).toList
+  let mut problems : List Json := ((v.getObjValAs? (Array Json) "problems").toOption.getD #[]).toList
+  let mut seen : List Seen := []
+  let mut boundProved : List Bool := []
+  let mut told : List PProb := []
+  for (d, r) in rows do
+    if rowClass E d r == .observed then
+      let planRow := r.q.floats != .exact
+      let rest := { r.q with floats := .exact }
+      let (pb, untested) := if planRow then planBound stated.floats eps held else ([], false)
+      if untested then proved := false
+      let gives : Seen := { q := rest, floats := if planRow then planTol eps else .exact }
+      seen := seen ++ [gives]
+      if gives.floats != .exact && gives.floats != .plan then
+        boundProved := boundProved ++ [!untested && allProved eps]
+      let missed := rest.coarserThan stated.q
+      let loc := where_ d ++ [("facts", toJson r.evidence.facts)]
+      if !missed.isEmpty then
+        match r.shim with
+        | some s =>
+          if worst.rank < RouteClass.shim.rank then worst := .shim
+          shims := shims ++ [Json.mkObj (where_ d ++ [("shim", toJson s)])]
+        | none =>
+          problems := problems ++ [Json.mkObj ([("code", toJson "observation_missed"),
+            ("components", toJson missed), ("observed", rest.sparseJson)] ++ loc)]
+      for p in pb do
+        if !told.contains p.1 then
+          told := told ++ [p.1]
+          problems := problems ++ [(PProb.json p).mergeObj (Json.mkObj loc)]
+  let gives : Option Seen :=
+    if worst == .observed then seen.head?.map fun x => seen.tail.foldl
+      (fun a b => { q := a.q.coarsest b.q, floats := a.floats.coarsest b.floats }) x
+    else none
+  let out := Json.mkObj [("class", toJson worst.name),
+    ("evidence", toJson (if proved then "proved" else "tested")),
+    ("shims", Json.arr shims.toArray), ("problems", Json.arr problems.toArray),
+    ("observation", match gives with | some g => g.json | none => .null),
+    ("bound_proved", if boundProved.isEmpty then .null else toJson (boundProved.all id))]
+  return (out, problems)
+
+/-- A component's level from its name, as `Obs.json` writes it. -/
+def Seen.ofJson? (j : Json) : Option Seen := do
+  let str (k : String) : Option String := (j.getObjValAs? String k).toOption
+  let rows ← match str "rows" with
+    | some "sequence" => some RowsObs.sequence | some "ties permuted" => some .tiesPermuted
+    | some "multiset" => some .multiset | _ => none
+  let elements ← match str "elements" with
+    | some "sequence" => some ElemsObs.sequence | some "multiset" => some .multiset | _ => none
+  let zeros ← match str "zeros" with
+    | some "exact" => some ZeroNaNObs.exact | some "canon" => some .canon | _ => none
+  let times ← match str "timestamps" with
+    | some "ns" => some TimeObs.exact | some "us" => some (.truncated .us)
+    | some "ms" => some (.truncated .ms) | some "s" => some (.truncated .s) | _ => none
+  let strings ← match str "strings" with
+    | some "exact" => some StringObs.exact | some "nfc" => some .nfc
+    | some "casefold" => some .casefold | some "ascii" => some .ascii | _ => none
+  let decimals ← match str "decimals" with
+    | some "exact" => some DecObs.exact | some "value" => some .value | _ => none
+  let errors ← match str "errors" with
+    | some "exact" => some ErrorObs.exact | some "kind" => some .kind
+    | some "raises" => some .raises | _ => none
+  let num (k : String) (t : Json) : Option Lean.JsonNumber :=
+    match t.getObjVal? k with
+    | .ok (.str s) => (match Json.parse s with | .ok (.num n) => some n | _ => none)
+    | _ => none
+  let floats ← match j.getObjVal? "floats" with
+    | .ok (.str "exact") => some Fl.exact
+    | .ok (.str "plan") => some Fl.plan
+    | .ok t@(.obj _) =>
+      let tol : Tol := { abs := num "abs" t, rel := num "rel" t, ulps := (t.getObjValAs? Nat "ulps").toOption }
+      some (Fl.within tol)
+    | _ => none
+  let q : Obs := { rows := rows, elements := elements, zeros := zeros, times := times, strings := strings, errors := errors, decimals := decimals }
+  return { q := q, floats := floats }
+
+/-- The double columns a postcondition holds to the reference's exact value under the plan's
+bound (`observed`): those it reads, where it is proved, not `approx` and not robust, by the
+index of the first such condition. `conds` is each condition's `{"kind", "approx", "reads"}`
+(`"reads"` null: every column), `proved` and `robust` those of the expression conditions in
+order, `keys` the proofs of the `unique` conditions. -/
+def heldCols (doubles : List Nat) (names : List String) (conds : List Json) (proved robust keys : List Bool) :
+    List (String × Nat) := Id.run do
+  let mut held : List (String × Nat) := []
+  let mut ei := 0
+  let mut ki := 0
+  let mut i := 0
+  for m in conds do
+    let kind := (m.getObjValAs? String "kind").toOption.getD "other"
+    let approx := (m.getObjValAs? Bool "approx").toOption.getD false
+    let (p, rb) := if kind == "expr" then (proved.getD ei false, robust.getD ei false)
+      else if kind == "unique" then (keys.getD ki false, false) else (false, false)
+    if kind == "expr" then ei := ei + 1
+    if kind == "unique" then ki := ki + 1
+    if !approx && p && !rb then
+      let reads : List Nat := match m.getObjVal? "reads" with
+        | .ok (.arr a) => a.toList.filterMap fun x => x.getNat?.toOption
+        | _ => doubles
+      for c in reads do
+        if doubles.contains c then
+          if let some n := names[c]? then
+            if (held.lookup n).isNone then held := held ++ [(n, i)]
+    i := i + 1
+  return held
+
 variable [Boxes.Ambient]
 /-- `"engines"` and `"sorted"` of a `--contract` request, given its
 `"rows_exact"` (`Epsilon.rowsExactByEngine`), its report and `"robust"`
@@ -322,20 +627,49 @@ def enginesJson (es : List EngineProfile) (input : Json) (rowsExact : Json)
   let ds := deps reads
   -- Without the threshold analysis's answer, the rows may differ.
   let exact (e : String) : Bool := (rowsExact.getObjValAs? Bool e).toOption.getD false
+  -- What the postcondition observes (#1071): `seen`, the double columns it holds to the
+  -- reference's exact value, and each engine's rows met against both.
+  let obs := (input.getObjVal? "observation").toOption
+  let stated? : Option Seen := obs.bind fun o => (o.getObjVal? "lenses").toOption.bind Seen.ofJson?
+  let doubles : List Nat := (rep.outputKinds.zipIdx.filter fun (k, _) =>
+    (k.getObjValAs? String "kind").toOption == some "float").map (·.2)
+  let conds : List Json := ((obs.bind (·.getObjValAs? (Array Json) "ensures_meta" |>.toOption)).getD #[]).toList
+  let robustFlags : List Bool := (((robust.getArr?).toOption.getD #[]).toList.map fun r =>
+    (r.getObjValAs? Bool "robust").toOption.getD false)
+  let held : List (String × Nat) := match stated? with
+    | some st => if st.floats == .plan then
+        heldCols doubles plan.names conds (rep.ensures.flatten.map (·.2.1)) robustFlags
+          (rep.keys.map (·.2))
+      else []
+    | none => []
   let profiled := es.map fun E =>
     let because := testedBecause E input rep robust
     let v := engineJson es E ds all (exact E.name)
     let proved := (v.getObjValAs? String "evidence").toOption == some "proved"
-    (E.name, v.setObjVal! "profile" (toJson true)
-      |>.setObjVal! "epsilon" (epsilonBounds (some E.name) eps)
+    let epsE := epsilonBounds (some E.name) eps
+    let v := v.setObjVal! "profile" (toJson true)
+      |>.setObjVal! "epsilon" epsE
       |>.setObjVal! "tested_because" (toJson because)
       |>.setObjVal! "translated_evidence"
-        (toJson (if proved && because.isEmpty then "proved" else "tested")))
+        (toJson (if proved && because.isEmpty then "proved" else "tested"))
+    let v := match stated? with
+      | some st =>
+        let rows := rowsAt E ds
+        let cols := epsCols epsE
+        let (realized, asked) := realizeJson E rows v st cols held
+        -- The problems the stated doubles meet that the plan's own bound does not.
+        let added : List Json := if st.floats == .plan then [] else
+          let (_, base) := realizeJson E rows v { st with floats := .plan } cols []
+          asked.filter (!base.contains ·)
+        v.setObjVal! "realized" realized |>.setObjVal! "floats_added" (Json.arr added.toArray)
+      | none => v
+    (E.name, v)
   let named : List String :=
     ((input.getObjValAs? (Array String) "engines").toOption.getD #[]).toList
   let others := named.eraseDups.filter (fun n => !es.any (·.name == n)) |>.map fun n =>
     (n, unprofiledJson.setObjVal! "epsilon" (epsilonBounds (some n) eps))
   return [("engines", Json.mkObj (profiled ++ others)),
+    ("seen", Json.mkObj [("held", Json.mkObj (held.map fun (c, i) => (c, toJson i)))]),
     ("epsilon_bounds", epsilonBounds none eps),
     ("sorted", toJson (sortedRoot plan.root)), ("sorted_basis", toJson "computed")]
 

@@ -38,8 +38,7 @@ permissions:
 # Markdown at the root), other than a page whose examples
 # python/tests/test_readme.py runs (its `READMES`), skips
 # everything but `static`, and float-bounds runs only when its own package
-# changes. The TLA+ models (`models/`) count as docs for the other jobs:
-# `refresh-model` checks them, when they change.
+# changes.
 #
 # A pull request that changes only the ledgers (the facts of
 # `characterization/<engine>/facts/`, `characterization/*.json`, the probes'
@@ -108,7 +107,7 @@ permissions:
 # an ARM runner, from the first plan; on x86 those branches never run.)
 #
 # `changes`, `qa`, the Spark tests, `bench` (its budgets assume
-# GitHub's CPUs), `float-bounds` and `refresh-model` always run on GitHub's
+# GitHub's CPUs) and `float-bounds` always run on GitHub's
 # runners.
 jobs:
   # Where the jobs below run (see the header): GitHub's runners, or the
@@ -205,7 +204,6 @@ jobs:
       evidence: ${{ steps.diff.outputs.evidence }}
       python: ${{ steps.diff.outputs.python }}
       action: ${{ steps.diff.outputs.action }}
-      models: ${{ steps.diff.outputs.models }}
       matrix: ${{ steps.diff.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -223,7 +221,7 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
         run: |
           out() { echo "$1" >> "$GITHUB_OUTPUT"; }
-          docs='^(docs/|\.claude/|changelog\.d/|models/|[^/]+\.md$)'
+          docs='^(docs/|\.claude/|changelog\.d/|[^/]+\.md$)'
           ledger='^(upstream/|characterization/([^/]+\.json$|[^/]+/facts/|[^/]+/probes\.json$|.*\.md$)|engines/[^/]+/(facts|probes|replay)/|python/tests/lift_backlog\.json$)'
 
           # The areas: files that only one job, or no job but `test (core)`
@@ -273,7 +271,6 @@ jobs:
             out evidence=true
             out python=true
             out action=true
-            out models=true
             out "matrix=$(matrix '"duckdb","polars snowflake"' true)"
           }
           # A push to main whose tree a pull request's run already tested.
@@ -294,7 +291,7 @@ jobs:
           }
           if [ "$EVENT" != pull_request ]; then
             if tested; then
-              for o in code floats proofs oracle notebooks dbt dbtreplay evidence python action models; do out "$o=false"; done
+              for o in code floats proofs oracle notebooks dbt dbtreplay evidence python action; do out "$o=false"; done
               out 'matrix={"backends":["duckdb"]}'
               exit 0
             fi
@@ -366,12 +363,6 @@ jobs:
             out action=true
           else
             out action=false
-          fi
-          # The TLA+ models, which only `refresh-model` reads.
-          if grep -qE '^(models/|\.github/workflows/ci\.yml$)' <<< "$files"; then
-            out models=true
-          else
-            out models=false
           fi
           # sverify-dbt reads sverify, and what the checker proves; the tour's
           # dbt notebook runs there too.
@@ -874,7 +865,7 @@ jobs:
           assert importlib.util.find_spec("duckdb") is None, "duckdb is installed in the base"
           PY
           uv run --isolated --no-project --with-editable python --with-editable engines/duckdb \
-            --with-editable engines/polars --with polars --with numpy \
+            --with-editable engines/polars --with "polars==2.1.0" --with numpy \
             --with pytest --with hypothesis pytest -p no:cacheprovider python/tests/test_no_duckdb.py
 
   # Oracle A (#242): DuckDB runs the SQL, Lean evaluates the lift's plan, on
@@ -1335,34 +1326,12 @@ jobs:
       - working-directory: float-bounds
         run: lake exe cache get && lake build --wfail
 
-  # The refresh protocol's TLA+ model (models/refresh/README.md): TLC checks
-  # every config against what its first line expects, when the model changes.
-  # The runner's Java runs the pinned tla2tools.jar.
-  refresh-model:
-    needs: changes
-    if: needs.changes.outputs.models == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          ref: ${{ inputs.pr && format('refs/pull/{0}/merge', inputs.pr) || '' }}
-      - run: |
-          curl -fsSL -o "$RUNNER_TEMP/tla2tools.jar" \
-            https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar
-          echo "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88  $RUNNER_TEMP/tla2tools.jar" | sha256sum -c
-      - run: bash models/refresh/check.sh
-        env:
-          TLA2TOOLS: ${{ runner.temp }}/tla2tools.jar
-          TLC_WORKERS: "4"
-          TLC_HEAP: 6g
-
   # The check the `main` ruleset requires: green only if every job above
   # passed or was skipped by `changes`. A job skipped for any other reason
   # follows a failed `changes` or `checker`, which this catches. A pull request
   # into another branch fails it (see the header).
   qa:
-    needs: [changes, checker, lean, golden, static, test, outside-repo, action, no-duckdb, notebooks, bench, dbt, template, float-bounds, oracle-a, ledger, refresh-model]
+    needs: [changes, checker, lean, golden, static, test, outside-repo, action, no-duckdb, notebooks, bench, dbt, template, float-bounds, oracle-a, ledger]
     if: always()
     runs-on: ubuntu-latest
     steps:

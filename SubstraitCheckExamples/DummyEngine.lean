@@ -41,8 +41,8 @@ def Engine.dummy : Engine :=
     name := "dummy", table := { Profile.spark.table with name := "dummy", version := "0.1.0" },
     within := Engine.spark.within }
 
-/-- Its run is sound under guard elimination's side condition, as Spark's is. -/
-theorem Engine.dummy_sound : Engine.dummy.Sound Engine.GuardFreeSide := Engine.spark_sound
+/-- Its run is sound under Spark's side condition, as Spark's is. -/
+theorem Engine.dummy_sound : Engine.dummy.Sound Engine.SparkSide := Engine.spark_sound
 
 end
 
@@ -50,7 +50,8 @@ def dummy : EngineEntry :=
   { (engine_entry% Engine.dummy_sound) with
     executes := "batch",
     shims := [("int_sum_decimal", .expression), ("int_avg_decimal", .expression),
-      ("null_order", .argument), ("sort on the keys", .sort), ("decimal_negate_sub", .expression)] }
+      ("null_order", .argument), ("sort on the keys", .sort), ("decimal_negate_sub", .expression),
+      ("decimal_cast", .expression)] }
 
 #check_engine_profiles [dummy]
 
@@ -79,7 +80,7 @@ def has (j : Json) (path : List String) : Bool :=
 #guard ((realizabilityJson entries).getObjValD "dummy" |>.getObjValD "theorem") ==
   "DummyEngine.Engine.dummy_sound"
 #guard ((realizabilityJson entries).getObjValD "dummy" |>.getObjValD "side") ==
-  "Engine.GuardFreeSide"
+  "Engine.SparkSide"
 -- A request under its name gets the reference's report, pending `dummy`.
 #guard (Checker.underProfile engines (Lean.Json.mkObj [("profile", "dummy")]) (Lean.Json.mkObj [])
   true |>.toOption.map (·.1.getObjValD "pending")) == some "dummy"
@@ -87,6 +88,6 @@ def has (j : Json) (path : List String) : Bool :=
   (Lean.Json.mkObj []) true |>.toOption.map (·.1.getObjValD "profile")) == some "reference"
 -- The derived engine-wide facts take it in.
 #guard Epsilon.statsProvedOn "agg.var" engines == ["duckdb", "polars", "spark", "dummy"]
-#guard Epsilon.statsProvedOn "agg.stat" engines == ["duckdb", "spark", "dummy"]
+#guard Epsilon.statsProvedOn "agg.stat" engines == ["duckdb", "polars", "spark", "dummy"]
 
 end Substrait.DummyEngine

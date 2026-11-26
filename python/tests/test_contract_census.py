@@ -45,3 +45,13 @@ def test_every_outcome_names_an_exit():
 def test_outcome_holds(case):
     got = cc.census_case(case, cc.cat.load_schemas())
     assert got == RESULTS[case.id]
+
+
+@pytest.mark.parametrize("case", CASES, ids=lambda c: c.id)
+def test_epsilon_names_every_double_output(case):
+    """#2573: the realization meets a row that bounds doubles per plan against the plan's `ε`,
+    so the checker's `ε` names every double output column, with no bound where it cannot bound
+    one and zero where every engine computes it exactly. No plan is exempt."""
+    report = cc.report_of(case, cc.cat.load_schemas())
+    doubles = {c for c, t in report.output.items() if t.is_floating()}
+    assert doubles <= set(report._epsilon or {}), (doubles, report._epsilon)

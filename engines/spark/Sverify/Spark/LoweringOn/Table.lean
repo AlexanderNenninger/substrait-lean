@@ -93,7 +93,7 @@ def Substrait.sparkOn : Substrait.Lowering (Substrait.Profile.spark) :=
     | Substrait.UnFn.dkind a0 a1 => some (Substrait.sparkOn.dkind a0 a1)
     | Substrait.UnFn.dround a0 => some (Substrait.sparkOn.dround a0)
     | Substrait.UnFn.dtrunc a0 => some (Substrait.sparkOn.dtrunc a0)
-    | Substrait.UnFn.ftod a0 => some (Substrait.sparkOn.ftod a0)
+    | Substrait.UnFn.ftod _ => none
     | Substrait.UnFn.dtof a0 => some (Substrait.sparkOn.dtof a0)
     | Substrait.UnFn.structField a0 => some (Substrait.sparkOn.structField a0)
     | Substrait.UnFn.listElement a0 => some (Substrait.sparkOn.listElement a0)
@@ -145,6 +145,7 @@ def Substrait.sparkOn : Substrait.Lowering (Substrait.Profile.spark) :=
     | Substrait.BinFn.dsub  => some (Substrait.sparkOn.dsub )
     | Substrait.BinFn.dmul  => some (Substrait.sparkOn.dmul )
     | Substrait.BinFn.ddiv  => some (Substrait.sparkOn.ddiv )
+    | Substrait.BinFn.dmod  => some (Substrait.sparkOn.dmod )
     | Substrait.BinFn.pair  => some (Substrait.sparkOn.pair )
     | Substrait.BinFn.greatest  => some (Substrait.sparkOn.greatest )
     | Substrait.BinFn.least  => some (Substrait.sparkOn.least )
@@ -212,7 +213,7 @@ def Substrait.sparkOn.coverage : List (String × String × Nat) := [
   ("UnFn.dkind", "native", 0),
   ("UnFn.dround", "native", 0),
   ("UnFn.dtrunc", "native", 0),
-  ("UnFn.ftod", "native", 0),
+  ("UnFn.ftod", "refused", 0),
   ("UnFn.dtof", "native", 0),
   ("UnFn.structField", "native", 0),
   ("UnFn.listElement", "native", 0),
@@ -263,6 +264,7 @@ def Substrait.sparkOn.coverage : List (String × String × Nat) := [
   ("BinFn.dsub", "native", 0),
   ("BinFn.dmul", "native", 0),
   ("BinFn.ddiv", "native", 0),
+  ("BinFn.dmod", "native", 0),
   ("BinFn.pair", "native", 0),
   ("BinFn.greatest", "native", 0),
   ("BinFn.least", "native", 0),

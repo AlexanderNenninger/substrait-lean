@@ -51,6 +51,12 @@ def Value.anyZero : List Value → Bool
   | v :: vs => v.hasZero || Value.anyZero vs
 end
 
+/-- A list, or a struct, whose fields may be lists: where a NULL element's
+place in an order can matter (`list_null_order`, #2439). -/
+def Value.mayList : Value → Bool
+  | .list _ | .struct _ => true
+  | _ => false
+
 /-- A finite double, or a value that is not a double. -/
 def Value.finiteOrOther : Value → Bool
   | .float c => isFiniteCode c
@@ -81,10 +87,27 @@ def divisorZero : List Value → Bool
 def floorDiffers : List Value → Bool
   | [.int a, .int b] => decide (a * b < 0) && a.tmod b != 0
   | [.float a, .float b] => decide (a * b < 0)
+  -- Decimals, which the parser brings to one scale (D62): their unscaled integers.
+  | [x, y] => match x.unscaled?, y.unscaled? with
+    | some a, some b => decide (a * b < 0) && a.tmod b != 0
+    | _, _ => false
   | _ => false
 
 /-- Is an integer `SUM` of `vs` outside 64 bits? -/
 def sumOverflows (vs : List Value) : Bool := !inI64 (intSum vs)
+
+/-- Can a call of `c` show a zero's sign? Not the connectives and `IS NULL`, whose
+results are booleans that a zero of either sign gives alike (ruling 282, C1). -/
+def zeroSignReads : Ctor → Bool
+  | .un .not | .un .isNull | .bin .and | .bin .or => false
+  | _ => true
+
+/-- Does a call of `c` read a string position? Not `starts_with`, `ends_with`,
+`LIKE` and `replace`, whose results name no position (ruling 282, P3); every other
+function of the groups that take `string_positions` does, closed by default. -/
+def positionReads : Ctor → Bool
+  | .bin .startsWith | .bin .endsWith | .bin .like | .un (.replace _ _) => false
+  | _ => true
 
 /-- **The scope of option `o`** at a call of `c` on `args` (an aggregate's
 values for `.agg`): where its behaviours may differ from the reference
@@ -118,7 +141,7 @@ def optionScope (o : String) (c : Ctor) (args : List Value) : Bool :=
     | .agg f, vs => !Value.anyNaN vs && f.nanCase vs
     | _, _ => false
   -- A zero argument or a zero result (underflow, `x − x`, a sum rounding to zero).
-  | "zero_sign" => Value.anyZero args || r.hasZero
+  | "zero_sign" => zeroSignReads c && (Value.anyZero args || r.hasZero)
   -- The reference's result is a zero (`round(-0.4)`, `ceil(-0.4)`).
   | "round_zero_sign" => r.hasZero
   -- `power` of `±1` to `±∞`, or of `1` to NaN (D40).
@@ -138,7 +161,8 @@ def optionScope (o : String) (c : Ctor) (args : List Value) : Bool :=
   | "null_handling" => args.any (· == .null)
   | "date_range" => iss == some .overflow
   | "time_interval_months" => true
-  | "list_null_order" => true
+  -- A list among the arguments: `MIN`, `MAX` and `list_lt` of anything else order no list (#2439).
+  | "list_null_order" => args.any Value.mayList
   -- Aggregates, windows and relations.
   | "sum_order" => true
   | "stat_algo" => true
@@ -160,7 +184,7 @@ def optionScope (o : String) (c : Ctor) (args : List Value) : Bool :=
   | "float_overflow" => iss == some .infinite ||
       (isAgg && args.all Value.finiteOrOther && r.isInf)
   | "null_join_keys" => true
-  | "string_positions" => true
+  | "string_positions" => positionReads c
   | _ => true
 
 /-- Can option `o` apply to a call of `c` at all? A call reads only its
@@ -169,6 +193,8 @@ def optionApplies (o : String) (c : Ctor) : Bool :=
   match o with
   | "avg_int_result" => c == .agg .iavg
   | "empty_group_aggregates" => match c with | .agg _ => true | _ => false
+  | "zero_sign" => zeroSignReads c
+  | "string_positions" => positionReads c
   | _ => true
 
 /-- An option applies wherever a call may be in its scope. -/
@@ -178,6 +204,8 @@ theorem optionApplies_of_scope {o : String} {c : Ctor} {args : List Value}
   split
   · simpa [optionScope] using h
   · cases c <;> simp_all [optionScope]
+  · simp only [optionScope, Bool.and_eq_true] at h; exact h.1
+  · simpa [optionScope] using h
   · rfl
 
 /-- The options whose scope is stated above, in the catalogue's order. -/
@@ -220,6 +248,12 @@ def scopedOptions : List String :=
           | some row => (((Functions.groups.lookup row.group).getD []).filter (optionApplies · probe)).contains o
           | none => false
         reports == reads
+
+-- `list_null_order` is in scope where an argument is a list (#2439): a `MAX` of lists, not of
+-- integers.
+#guard letI := Boxes.Ambient.none;
+  optionScope "list_null_order" (.agg .max) [.list [.int 1, .null], .list [.int 1]] &&
+    !optionScope "list_null_order" (.agg .max) [.int 1, .int 2, .null]
 
 -- `pow_one_inf` is `power`'s alone (D40): it sits on the group of `power` and on no other, and
 -- `atan2`, whose `zero_sign` is not the unary functions', has a group of its own (ruling 163).

@@ -142,6 +142,26 @@ theorem Lowering.ref_dsub (x y : Value) : Profile.reference.bin .dsub x y = .ok 
 theorem Lowering.ref_dmul (x y : Value) : Profile.reference.bin .dmul x y = .ok (BinFn.apply .dmul x y) := by
   cases x <;> cases y <;> rfl
 
+/-- Decimal `%` (D62) on two numbers, the divisor not zero: the truncated
+remainder of the unscaled integers. -/
+theorem Lowering.ref_dmod {x y : Value} {a b : Int} (hx : x.unscaled? = some a)
+    (hy : y.unscaled? = some b) (h0 : b ≠ 0) :
+    Profile.reference.bin .dmod x y = .ok (.int (a.tmod b)) := by
+  simp only [Profile.reference, BinFn.issue, BinFn.apply, hx, hy]
+  simp [raiseIf, h0]
+
+/-- Decimal `%` of a number by zero raises. -/
+theorem Lowering.ref_dmod_zero {x y : Value} {a : Int} (hx : x.unscaled? = some a)
+    (hy : y.unscaled? = some 0) : Profile.reference.bin .dmod x y = .error .divByZero := by
+  simp only [Profile.reference, BinFn.issue, hx, hy]
+  simp [raiseIf, Issue.isError]
+
+/-- Decimal `%` with an operand that is not a number (`NULL`) is `NULL`. -/
+theorem Lowering.ref_dmod_null {x y : Value} (h : x.unscaled? = none ∨ y.unscaled? = none) :
+    Profile.reference.bin .dmod x y = .ok .null := by
+  rcases h with h | h <;> simp only [Profile.reference, BinFn.issue, BinFn.apply, h] <;>
+    simp [raiseIf]
+
 theorem Lowering.ref_imod_int (a b : Int) (hb : b ≠ 0) :
     Profile.reference.bin .imod (.int a) (.int b) = .ok (.int (a.tmod b)) := by
   simp [Profile.reference, raiseIf, BinFn.issue, BinFn.apply, hb]
@@ -283,6 +303,16 @@ or none where it is refused. -/
 structure Lowering (p : Profile) where
   un : (f : UnFn) → Option (UnEntry p f)
   bin : (f : BinFn) → Option (BinEntry p f)
+
+/-- Does the table write `f` as the engine's own function, its entry the native
+call (`UnEntry.native`)? Such an entry states that the profile's `f` is the
+reference's (`nativeOffReference`). -/
+def Lowering.nativeUn {p : Profile} (L : Lowering p) (f : UnFn) : Bool :=
+  (L.un f).any (·.tmpl == .un f (.field 0))
+
+/-- `Lowering.nativeUn` of a binary function (`BinEntry.native`). -/
+def Lowering.nativeBin {p : Profile} (L : Lowering p) (f : BinFn) : Bool :=
+  (L.bin f).any (·.tmpl == .bin f (.field 0) (.field 1))
 
 /-- The lowering that writes every function as it is: correct for the
 reference itself. -/

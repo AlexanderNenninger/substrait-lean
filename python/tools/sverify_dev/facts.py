@@ -82,6 +82,8 @@ GROUP_TYPES: dict[str, tuple[str, ...]] = {
     "agg.stat": ("i64", "fp64", "decimal"),
     "agg.order": (*_FLOATS, "list"),
     "agg.quant": ("i64", "fp64", "decimal"),
+    # A decimal to a smaller scale, and a double to a decimal (ruling 278).
+    "cast.dec": ("decimal", "fp64"),
 }
 #: Options that only bear on some types: a row takes the group's types that
 #: the option's list also has.
@@ -92,7 +94,7 @@ OPTION_TYPES: dict[str, tuple[str, ...]] = {
     ),
     "fp32": ("fp32",),
     "list_null_order": ("list",),
-    "decimal_rescale": ("decimal",),
+    "decimal_rescale": ("decimal", "fp64"),
     "date_range": ("date", "timestamp", "timestamp_tz"),
     "time_interval_months": ("time",),
 }

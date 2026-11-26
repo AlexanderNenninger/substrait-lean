@@ -1,0 +1,14 @@
+{
+  "id": "F277",
+  "date": "2026-11-23",
+  "decided_by": "fable",
+  "scope": "engines",
+  "status": "in-force",
+  "summary": "#271 Spark step 2: `Engine.spark_sound`'s predicate is `cat.Dbl ∧ r.ConstsDbl ∧ ((r.ExactOnB Lowering.spark ∧ GuardFreeSide cat r) ∨ Engine.spark.NoRaiseSide cat r)`, two branches kept apart. A plan with no `fdivIeee` drops its guards under F256's two-sided theorem, and a plan with `fdivIeee` keeps every guard under the one-sided one, which rests on ANSI. `ConstsDbl` is a decidable check the checker runs on every plan, until a parser lemma proves it.",
+  "issues": [
+    271,
+    1130
+  ],
+  "source": "fable-ruling-277-271-spark-step2.md",
+  "note": "Builds on F248 (`cat.Dbl`), F249 (the one-sided entry rests on ANSI), F254 (`onDbl`), F255 N5 and F256; amends nothing, no D-number. `NoRaiseSide` is D70's law: a raise on Spark stops the run and gives no wrong value, which the old statement assumed for completed rows without saying so. The guarded branch writes its `keep` in the statement, and its docstring cites `spark-double-divide` and #1130's obligation 2. A failed `ConstsDbl` check is an internal error naming the literal. The writer drops guards on Spark only when the checker reports `ExactOnB` for the plan, read per plan by `run_guard_free` with no second list in Python. Conditions: C1, axioms unchanged. C2, the PR lists each theorem's hypotheses before and after, and the catalogue's Spark plans that now keep their guards. C3, Spark's table rows citing `Rel.spark_sound` cite the branch that proves them. C4, Improvement lines for the writer hooks and `Profile.sparkWritten` removed. C5, Fixes #271 if the Polars side has landed, otherwise Part of #271."
+}

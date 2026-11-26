@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import ibis
 
 from sverify_dev.coverage_cases._common import (
@@ -17,6 +19,14 @@ CASES: list[Case] = [
     case("numbers", "float division", V, lambda: t.select(x=t.qty / 2)),
     case("numbers", "integer division", V, lambda: t.select(x=t.qty // 2)),
     case("numbers", "mod", V, lambda: t.select(x=t.qty % 3)),
+    case(
+        "numbers",
+        "decimal mod",
+        V,
+        lambda: t.select(
+            x=t.qty.cast("decimal(10, 2)") % ibis.literal(Decimal("0.7"), "decimal(3, 1)")
+        ),
+    ),
     case("numbers", "abs", V, lambda: t.select(x=t.qty.abs())),
     case("numbers", "round", V, lambda: t.select(x=t.amount.round(1))),
     case("numbers", "ceil, floor", V, lambda: t.select(x=t.amount.ceil(), y=t.amount.floor())),
@@ -34,6 +44,8 @@ CASES: list[Case] = [
 REFUSED: dict[str, dict[str, str]] = {
     # The date's text goes through a Date to timestamp cast the engines lack (#271).
     "cast date → string": DUCKDB_ONLY,
+    # Snowflake's decimals are not the reference's yet (#27).
+    "decimal mod": {"snowflake": "does not compute decimals as the reference does"},
 }
 
 NO_DUCKDB_SQL = {

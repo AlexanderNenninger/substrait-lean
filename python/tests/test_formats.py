@@ -64,7 +64,8 @@ def test_sink_record_reads(version: str) -> None:
     c = Contract.from_json(text)
     _valid(json.loads(c.to_json()), "sink-contract.schema.json")
     assert c.format == CONTRACT_FORMAT == 3
-    assert c.semantics == json.loads(text).get("profile")
+    raw = json.loads(text)
+    assert c.semantics == raw.get("semantics", raw.get("profile"))
     assert c.node == "doubled" and c.sources == {"orders": 2} and c.epoch == 2
     assert "id" in c.not_null and c.unique == [["id"]]
 
@@ -635,16 +636,17 @@ def test_cli_formats_only_rename_keys(tmp_path: Path, capsys: pytest.CaptureFixt
 
 
 def test_refresh_report_only_renames_a_writes_counts(tmp_path: Path) -> None:
-    """The refresh report of format 1 (each version's `quarantine/refresh.json`)
-    and of format 2 have the same keys but a write's `inserted` and `deleted`,
-    named `inserts` and `deletes` (#2345)."""
+    """The refresh report of format 1 (each version's `quarantine/refresh.json`
+    before 0.9.0) and of format 2 have the same keys but a write's `inserted`
+    and `deleted`, named `inserts` and `deletes` (#2345)."""
     _, text = _quarantine_written(tmp_path)
     now = json.loads(text)
     assert now["format"] == 2 and now["nodes"][0]["write"].keys() >= {"inserts", "deletes"}
     for version in QUARANTINED:
         old = json.loads((FORMATS / version / "quarantine" / "refresh.json").read_text())
-        assert old["format"] == 1
-        write = {CLI_KEYS_1["write"].get(k, k) for k in old["nodes"][0]["write"]}
+        assert old["format"] in (1, 2), version
+        renamed = CLI_KEYS_1["write"] if old["format"] == 1 else {}
+        write = {renamed.get(k, k) for k in old["nodes"][0]["write"]}
         assert write <= set(now["nodes"][0]["write"]), version
 
 

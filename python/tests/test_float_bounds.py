@@ -161,7 +161,7 @@ def test_rows_cite_theorems_float_bounds_has() -> None:
     cited = core[core.index("def floatBoundsTheorems") :].split("\n\n")[0]
     checked = "".join(
         (root / "float-bounds" / "FloatBounds" / f).read_text().split("run_cmd do")[1]
-        for f in ("Epsilon.lean", "ChanCorr.lean", "SchubertGertz.lean")
+        for f in ("Epsilon.lean", "ChanCorr.lean", "SchubertGertz.lean", "CorrSG.lean")
     )
     assert set(names.findall(cited)) == set(names.findall(checked)) != set()
 
@@ -413,7 +413,11 @@ def test_window_sums_have_the_aggregate_bound() -> None:
     derived = sv.verify(t.mutate(s=t.x.sum().over(w)).mutate(d=_.s * 2.0), requires=req)
     assert derived._epsilon is not None and derived._epsilon["d"]["unbounded"]
     uncapped = sv.verify(t.mutate(s=t.x.sum().over(w)), requires={"t": [_.x.between(-1, 1)]})
-    assert uncapped._epsilon == {"s": {"bounds": {}, "unbounded": True, "why": None}}
+    # The passed-through double `x` is named too, with a zero bound (#2573).
+    assert uncapped._epsilon == {
+        "s": {"bounds": {}, "unbounded": True, "why": None},
+        "x": {"bounds": {"abs": {"proved": True, "value": 0}}, "unbounded": False, "why": None},
+    }
 
 
 def test_statistics_have_proved_bounds_but_corr() -> None:
@@ -422,8 +426,7 @@ def test_statistics_have_proved_bounds_but_corr() -> None:
     `epsilon_stddev_cr`, `epsilon_cov_cr`),
     proved on the engines whose algorithm a theorem covers (DuckDB's and
     Spark's `core_var_chan`, Polars's `VAR_*` and `STDDEV_*` by
-    `core_var_polars`; Polars's `COVAR_*` is proved by `core_cov_polars` but
-    shares its row with `CORR`, so it stays tested). `CORR` has no bound: a
+    `core_var_polars`, its `COVAR_*` by `core_cov_polars`). `CORR` has no bound: a
     stated tolerance on it is refused, naming #918."""
     con = sv.connect()
     con.put(
@@ -446,11 +449,9 @@ def test_statistics_have_proved_bounds_but_corr() -> None:
 
     for col in ("v", "s", "c"):
         assert proved._epsilon[col]["bounds"]["abs"]["value"] > 0
-    # Polars's `VAR_*` and `STDDEV_*` are proved; its `COVAR_*` row, shared with
-    # `CORR`, stays tested until Polars's `CORR` is proved (#1808, ruling 271).
-    for col in ("v", "s"):
+    # Every engine's `VAR_*`, `STDDEV_*` and `COVAR_*` is proved (#1808, ruling 271).
+    for col in ("v", "s", "c"):
         assert proved_on(engines, col) == ["duckdb", "polars", "spark"]
-    assert proved_on(engines, "c") == ["duckdb", "spark"]
     corr = sv.verify(t.group_by("k").aggregate(c=t.x.corr(t.y)), requires=req)
     assert corr._epsilon is not None and corr._epsilon["c"]["unbounded"]
     assert "#918" in corr._epsilon["c"]["why"]

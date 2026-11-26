@@ -1,6 +1,7 @@
 import Sverify.Polars.Engine
 import Sverify.Polars.Lowering
 import Sverify.Polars.LoweringLemmas
+import Sverify.Polars.LoweringOn.Bits
 import Sverify.Polars.LoweringOn.Integers
 import Sverify.Polars.LoweringOn.Math
 import Sverify.Polars.LoweringOn.Native

@@ -108,3 +108,20 @@ def test_every_guard_is_on_the_outer_else_chain():
     # same SQL while every guard sits there.
     for fn, t in lowering.table().items():
         assert all(_raise_arms(t, True)), fn
+
+
+@pytest.mark.parametrize("table", [True, False], ids=["template", "fallback"])
+def test_a_double_to_bigint_truncates(monkeypatch, table):
+    """DuckDB's cast rounds half to even (duckdb-R9); the reference truncates.
+    The template does (`Lowering.ftoi_agree`), and so does the fallback when the
+    table has no entry."""
+    if not table:
+        monkeypatch.setattr(DuckDBDialect, "lowered", lambda *_a, **_k: None)
+    xs = [3.5, -3.5, 2.5, -2.5, 0.5, -0.5, 2.7, -2.7]
+    want = [3, -3, 2, -2, 0, 0, 2, -2]
+    con = duckdb.connect()
+    for write in (D.float_to_int, D.float_to_int_or_null):
+        got = [con.execute(f"SELECT {write(f'CAST({x!r} AS DOUBLE)')}").fetchone() for x in xs]
+        assert got == [(w,) for w in want], write.__name__
+    nan = "CAST('NaN' AS DOUBLE)"
+    assert con.execute(f"SELECT {D.float_to_int_or_null(nan)}").fetchone() == (None,)

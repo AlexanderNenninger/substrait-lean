@@ -104,6 +104,11 @@ theorem Lowering.duck_dsub (s : DuckDBSettings) (x y : Value) :
 theorem Lowering.duck_dmul (s : DuckDBSettings) (x y : Value) :
     (Profile.duckdb s).bin .dmul x y = .ok (BinFn.apply .dmul x y) :=
   (Lowering.duck_bin_ref (fun _ _ => rfl) x y).trans (Lowering.ref_dmul x y)
+/-- Decimal `%` (D62) is the reference's: DuckDB truncates natively
+(duckdb-decimal-modulus), and its wider result type is the writer's cast. -/
+theorem Lowering.duck_dmod (s : DuckDBSettings) (x y : Value) :
+    (Profile.duckdb s).bin .dmod x y = Profile.reference.bin .dmod x y :=
+  Lowering.duck_bin_ref (fun _ _ => rfl) x y
 theorem Lowering.duck_not (s : DuckDBSettings) (x : Value) :
     (Profile.duckdb s).un .not x = .ok (match x with | .bool b => .bool !b | _ => .null) :=
   (Lowering.duck_un_ref (fun _ => rfl) x).trans (Lowering.ref_not x)
@@ -431,5 +436,125 @@ theorem Lowering.bit_shl_guards (s : DuckDBSettings) (x y : Value) :
   rename_i a b
   by_cases h0 : b < 0 <;> by_cases h1 : b < 64 <;> simp [h0, h1] <;>
     first | omega | exact ⟨.domain, ⟨fun _ => by omega, rfl⟩, rfl⟩
+
+end Substrait
+
+namespace Substrait
+
+variable [Boxes.Ambient]
+
+set_option exponentiation.threshold 2100
+
+/-! ## A cast of a double to an integer truncates first (ruling 284 D2)
+
+DuckDB's `CAST(x AS BIGINT)` rounds half to even (duckdb-R9). Of the value
+truncated first, `CEIL` below zero and `FLOOR` elsewhere, it is the reference's
+truncating cast: the truncated magnitude is integral, which half to even keeps
+(`FloatCode.toInt?_roundEven_floor`, `toInt?_roundEven_ceil`). -/
+
+/-- `f (CASE WHEN x < 0 THEN ceil(x) ELSE floor(x) END)`. -/
+def Lowering.ftoiTruncT (f : UnFn) : Expr :=
+  .un f (.ifThen (.bin .lt (.field 0) (.lit (.float 0))) (.un .fceil (.field 0)) (.un .ffloor (.field 0)))
+
+omit [Boxes.Ambient] in
+theorem Lowering.ftoiTruncT_must (f : UnFn) : 0 ∈ (Lowering.ftoiTruncT f).must := by
+  simp [Expr.must, Lowering.ftoiTruncT]
+
+/-- The templates as constants, for the generator (`LoweringSearch.duckdbSchemas`),
+which finds a template's strictness by its name (`_must`). -/
+def Lowering.ftoiTemplate : Expr := Lowering.ftoiTruncT .ftoi
+def Lowering.ftoiOrNullTemplate : Expr := Lowering.ftoiTruncT .ftoiOrNull
+
+omit [Boxes.Ambient] in
+theorem Lowering.ftoiTemplate_must : 0 ∈ Lowering.ftoiTemplate.must := Lowering.ftoiTruncT_must _
+omit [Boxes.Ambient] in
+theorem Lowering.ftoiOrNullTemplate_must : 0 ∈ Lowering.ftoiOrNullTemplate.must :=
+  Lowering.ftoiTruncT_must _
+
+omit [Boxes.Ambient] in
+theorem DuckDBSQL.castOut_congr {a b : Int}
+    (h : FloatCode.toInt? (FloatCode.canon a) = FloatCode.toInt? (FloatCode.canon b)) :
+    DuckDBSQL.castOut a = DuckDBSQL.castOut b := by
+  unfold DuckDBSQL.castOut; rw [h]
+
+omit [Boxes.Ambient] in
+theorem DuckDBSQL.castOrNull_congr {a b : Int}
+    (h : FloatCode.toInt? (FloatCode.canon a) = FloatCode.toInt? (FloatCode.canon b)) :
+    DuckDBSQL.castOrNull a = DuckDBSQL.castOrNull b := by
+  unfold DuckDBSQL.castOrNull; rw [h]
+
+theorem DuckDBSQL.ref_ftoiOrNull_float (c : Int) :
+    Profile.reference.un .ftoiOrNull (.float c) = .ok (DuckDBSQL.castOrNull c) := by
+  simp only [Profile.reference, raiseIf, UnFn.issue, UnFn.apply, DuckDBSQL.castOrNull]
+  cases FloatCode.toInt? (FloatCode.canon c) <;> rfl
+
+theorem DuckDBSQL.ref_ftoi_castOut (c : Int) :
+    Profile.reference.un .ftoi (.float c) = DuckDBSQL.castOut c := by
+  simp only [Profile.reference, raiseIf, UnFn.issue, UnFn.apply, DuckDBSQL.castOut]
+  cases FloatCode.toInt? (FloatCode.canon c) with
+  | none => rfl
+  | some x => by_cases h : inI64 x = true <;> simp [h, Issue.isError]
+
+/-- The truncated value's half-even cast is the value's truncating one: the
+code-level lemma for `ftoiTruncT`'s two branches, as DuckDB computes them
+(its `CEIL` of a negative value that rounds to zero is `-0.0`). -/
+theorem Lowering.duck_fceil_float (s : DuckDBSettings) (c : Int) :
+    (Profile.duckdb s).un .fceil (.float c) =
+      if c < 0 ∧ FloatCode.ceil c = 0 then .ok (.float FloatCode.negZero)
+      else .ok (.float (FloatCode.ceil c)) := by
+  simp only [Profile.duckdb, duckUn]; split <;> rfl
+
+theorem Lowering.duck_ffloor_float (s : DuckDBSettings) (c : Int) :
+    (Profile.duckdb s).un .ffloor (.float c) = .ok (.float (FloatCode.floor c)) := rfl
+
+theorem Lowering.ftoiTrunc_code (s : DuckDBSettings) (c : Int) :
+    ∃ d, ((Expr.ifThen (.bin .lt (.field 0) (.lit (.float 0))) (.un .fceil (.field 0))
+        (.un .ffloor (.field 0))).evalP (Profile.duckdb s) [.float c]) = .ok (.float d) ∧
+      FloatCode.toInt? (FloatCode.canon (FloatCode.roundEven d)) =
+        FloatCode.toInt? (FloatCode.canon c) := by
+  have hlt := Lowering.duck_lt s (.float c) (.float 0)
+  simp only [BinFn.apply, FloatCode.canon_zero] at hlt
+  simp only [Expr.evalP, bind, Except.bind, List.getD_cons_zero]
+  rw [hlt]
+  by_cases h0 : FloatCode.canon c < 0
+  · obtain ⟨hc, -⟩ := FloatCode.lt_zero_of_canon_lt_zero h0
+    simp only [h0, decide_true, Value.isTrue, ite_true, Lowering.duck_fceil_float]
+    by_cases hz : FloatCode.ceil c = 0
+    · refine ⟨FloatCode.negZero, by simp only [hc, hz, and_self, ite_true], ?_⟩
+      rw [FloatCode.toInt?_canon_roundEven_negZero, ← FloatCode.toInt?_roundEven_ceil c h0, hz]
+      rfl
+    · exact ⟨FloatCode.ceil c, by simp only [hz, and_false, ite_false], FloatCode.toInt?_roundEven_ceil c h0⟩
+  · simp only [h0, decide_false, Value.isTrue, Bool.false_eq_true, ite_false,
+      Lowering.duck_ffloor_float]
+    exact ⟨FloatCode.floor c, rfl, FloatCode.toInt?_roundEven_floor c h0⟩
+
+/-- **`CAST(x AS BIGINT)` on DuckDB, truncated first, is the reference's.** -/
+theorem Lowering.ftoi_agree (s : DuckDBSettings) (x : Value) :
+    (Lowering.ftoiTemplate.evalP (Profile.duckdb s) [x]).Agree
+      (Profile.reference.un .ftoi x) := by
+  cases x
+  case float c =>
+    obtain ⟨d, hd, hcast⟩ := Lowering.ftoiTrunc_code s c
+    simp only [Lowering.ftoiTemplate, Lowering.ftoiTruncT, Expr.evalP, bind, Except.bind] at hd ⊢
+    rw [hd]
+    simp only [Profile.duckdb, duckUn, Option.getD_some, DuckDBSQL.ref_ftoi_castOut,
+      DuckDBSQL.castOut_congr hcast]
+    exact Outcome.agree_refl _
+  all_goals rfl
+
+/-- **`TRY_CAST(x AS BIGINT)` on DuckDB, truncated first, is the reference's.** -/
+theorem Lowering.ftoiOrNull_agree (s : DuckDBSettings) (x : Value) :
+    (Lowering.ftoiOrNullTemplate.evalP (Profile.duckdb s) [x]).Agree
+      (Profile.reference.un .ftoiOrNull x) := by
+  cases x
+  case float c =>
+    obtain ⟨d, hd, hcast⟩ := Lowering.ftoiTrunc_code s c
+    simp only [Lowering.ftoiOrNullTemplate, Lowering.ftoiTruncT, Expr.evalP, bind, Except.bind]
+      at hd ⊢
+    rw [hd]
+    simp only [Profile.duckdb, duckUn, Option.getD_some, DuckDBSQL.ref_ftoiOrNull_float,
+      DuckDBSQL.castOrNull_congr hcast]
+    exact Outcome.agree_refl _
+  all_goals rfl
 
 end Substrait

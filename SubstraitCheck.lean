@@ -411,9 +411,15 @@ def contract (es : List EngineProfile) (input : String) : IO UInt32 := do
   match (do
       let j ← Lean.Json.parse input
       let R ← ContractCheck.parse j
-      return (j, R, ← R.check) : Except String _) with
+      -- The plan's double constants are doubles' codes (`Rel.constsDblB`), which
+      -- Spark's soundness reads (ruling 277 Q2); the parser builds them by
+      -- `ofFloat`, so this never fires. M4's parser lemma replaces it (#2516).
+      if let some T := R.transform then
+        if !T.root.constsDblB then
+          throw s!"internal error: a double constant that is not a double's code: {T.root.nonDblLit}"
+      return (j, R, ← R.check, ← R.runPlanJson) : Except String _) with
   | .error e => IO.eprintln s!"error: {e}"; return 1
-  | .ok (j, R, report) =>
+  | .ok (j, R, report, runPlan) =>
     -- The profile it was checked under (`underProfile`), and the options
     -- the transformation meets (#444).
     let depends := (Epsilon.depends j).toOption.getD Lean.Json.null
@@ -435,7 +441,7 @@ def contract (es : List EngineProfile) (input : String) : IO UInt32 := do
     let engines := (Realize.enginesJson es j rowsExact report robust eps).toOption.getD []
     -- The plan an engine runs, or the gate that keeps the plan as
     -- written (#1787, `SubstraitLean/RunPlan.lean`).
-    let runPlan := R.runPlanJson ++ [("assumed_check", R.assumedCheckJson R.kenv)]
+    let runPlan := runPlan ++ [("assumed_check", R.assumedCheckJson R.kenv)]
     let withRun := runPlan.foldl (fun b (k, v) => b.setObjVal! k v) report.json
     -- A decision on a marked value (D52, ruling 104): an error issue.
     let source := (EngineRobust.sourceIssues es j).toOption.getD []
@@ -652,9 +658,16 @@ def commands (entries : List EngineEntry) : List (Flag (Unit → IO UInt32)) :=
        for (c, how, _) in polarsOn.coverage do
          IO.println s!"{c}\t{how}"
        return 0 },
+   { flag := "--lowering-coverage-spark", group := .tables,
+     help := "how each construct is lowered to Spark (#271), one per line",
+     run := fun _ => do
+       for (c, how, _) in sparkOn.coverage do
+         IO.println s!"{c}\t{how}"
+       return 0 },
    prints "--lowering-table" .tables
-     "the DuckDB lowering's templates, and Polars's under \"polars\", as JSON (#241, #271)" fun _ =>
-     (Lowering.duckdbTableJson.setObjVal! "polars" Lowering.polarsTableJson).compress ++ "\n",
+     "the DuckDB lowering's templates, Polars's under \"polars\" and Spark's under \"spark\", as JSON (#241, #271)" fun _ =>
+     (((Lowering.duckdbTableJson.setObjVal! "polars" Lowering.polarsTableJson).setObjVal! "spark"
+       Lowering.sparkTableJson).setObjVal! "polars_asks" Lowering.polarsAsksJson).compress ++ "\n",
    prints "--lowering-cache" .tables "a new LoweringCache.lean from this build's coverage (#242)"
      fun _ => loweringCacheSource,
    prints "--lift-table" .tables "what each DuckDB SQL function lifts to, as JSON (#268)" fun _ =>

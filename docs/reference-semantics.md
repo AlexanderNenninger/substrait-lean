@@ -15,7 +15,7 @@ contributors.
 
 Status marks: ✓ holds on `main`. A row that holds "on DuckDB" runs there
 only: the other engines refuse it until their lowerings exist, tracked in
-[an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/271).
+[an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/2540).
 
 Where this page and the code disagree, the code is what `verify` proves, and
 this page has a bug.
@@ -264,6 +264,7 @@ exact, and a result of more than `p` digits is an overflow error
 | `a × b` | `DECIMAL(p₁ + p₂ + 1, s₁ + s₂)`, at most 38 digits | Exact. A scale over 38 is refused. | ✓ |
 | negate, `abs` | the argument's type | | ✓ |
 | comparisons | — | At the larger scale. | ✓ |
+| `a % b` | `DECIMAL(min(p₁−s₁, p₂−s₂) + max(s₁, s₂), max(s₁, s₂))` | The truncated remainder at the larger scale: it takes the dividend's sign (`-7.50 % 2.0` is `-1.50`). A zero divisor raises. Refused where `max(p₁−s₁, p₂−s₂) + max(s₁, s₂)` passes 38, where DuckDB computes a `DOUBLE`: cast an operand to fewer digits ([D62](decisions.md#d62--of-decimals-is-the-truncated-remainder-at-the-common-scale), [#1941](https://github.com/AlexanderNenninger/substrait-lean/issues/1941)). DuckDB gives it in its operands' common type, and Polars with the divisor's sign; the translations cast and shim ([duckdb-decimal-modulus](../engines/duckdb/facts/duckdb-decimal-modulus.json), [polars-decimal-modulus](../engines/polars/facts/polars-decimal-modulus.json)). | ✓ |
 | `/` | — | Refused (apart from sverify's own `sverify_decimal_div`, a decimal by an integer, which is how a windowed `AVG` is written). | ✓ |
 | declared output type | If the plan declares a precision, it is used. A declared scale that differs from the exact one is refused. | | ✓ |
 | mixed with a double | Refused; cast one side. | | ✓ |
@@ -356,6 +357,7 @@ Design notes: [nested-values.md](nested-values.md).
 | `typeof` | Of a column, a string constant: DuckDB's name of the column's type (`BIGINT`, `DECIMAL(10,2)`, `VARCHAR[]`; [`duckdb-typeof-names`](../engines/duckdb/facts/duckdb-typeof-names.json)), whichever engine runs the plan, so every engine gives the same string. The Ibis producer folds it before the plan is checked. Of an expression, or of a struct or map, it is refused: DuckDB infers that type its own way. | ✓ |
 | `date` ↔ `timestamp` | A date is days since 1970-01-01, a timestamp microseconds. `date` to `timestamp` is midnight (`UnFn.dateTime`), an error outside the reference's dates; `timestamp` to `date` rounds down, before 1970 too. A date compared with a timestamp is cast to one, as DuckDB does. | ✓; other engines refuse the cast of a DATE column |
 | `timestamp` to `BIGINT` | `epoch_us(ts)`: the microseconds since 1970-01-01 (`UnFn.epochUs`), the same number. | ✓ on DuckDB |
+| A number to `timestamp`, in Ibis | Seconds since 1970-01-01, as Ibis reads them. An integer `x` is `as_timestamp("s")`, `x · 10⁶` microseconds. A double `x` is `x · 10⁶` computed as a double, rounded half to even, then cast to `BIGINT` microseconds: the double product rounds, not the exact `x · 10⁶`, so `2.5e-6` seconds is 2 microseconds and `1.5e-6` is 2. DuckDB's `to_timestamp` gives the same ([`duckdb-to-timestamp-double`](../engines/duckdb/facts/duckdb-to-timestamp-double.json)). Outside 64 bits, NaN and `±∞` raise. `try_cast` and a target with a time zone are refused ([#1922](https://github.com/AlexanderNenninger/substrait-lean/issues/1922)). | ✓ |
 
 ## DuckDB SQL under the reference
 

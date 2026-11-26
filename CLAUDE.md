@@ -208,7 +208,7 @@ at most 8 (the user's services share the box), checked inside the lock.
 takes 2, a light task `--slots 1`); `homelab-run` has the same options. `capacity homelab` lists the holders and waiters.
 
 - **Three slots.** A `/tmp/substrait-lean-*` directory means a run is going.
-  Long jobs that aren't QA (a replay, fuzzing, TLC) go through `homelab-run`
+  Long jobs that aren't QA (a replay, fuzzing) go through `homelab-run`
   and take a slot too. The chaos run (the `chaos-run` skill) takes none.
 - **Cap workers** with `PYTEST_XDIST_AUTO_NUM_WORKERS=2`, the script's
   default, and run under `nice -n 10`.

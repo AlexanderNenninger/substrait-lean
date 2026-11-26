@@ -7,6 +7,7 @@
   "agree_oracle_a_only": 0,
   "disagree_sides": {},
   "skipped_files": {"trigger/create_trigger_parse.test": "require sqlite_scanner", "trigger/drop_trigger_unsupported_table.test": "require sqlite_scanner"},
+  "refreshed": {"trigger/create_trigger_catalog.test": "2.0.1", "trigger/drop_trigger_unsupported_table.test": "2.0.1", "trigger/row_trigger_into_table_with_statement_trigger.test": "2.0.1"},
   "results": [
     {"file": "trigger/create_trigger_catalog.test", "line": 21, "sql": "SELECT trigger_name, table_name, action_timing, event_manipulation FROM duckdb_triggers() WHERE trigger_name = 'my_trig…", "cls": "refused", "reason": "lift: SqlUnsupported: unknown function duckdb_triggers(): DuckDB SQL here has no such function; check the name against …"},
     {"file": "trigger/create_trigger_catalog.test", "line": 31, "sql": "SELECT COUNT(*) FROM duckdb_triggers() WHERE table_name = 't1';", "cls": "refused", "reason": "lift: SqlUnsupported: unknown function duckdb_triggers(): DuckDB SQL here has no such function; check the name against …"},

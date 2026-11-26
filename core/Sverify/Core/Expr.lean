@@ -319,6 +319,10 @@ inductive BinFn where
   /-- `a / b` of decimals, rounded half away from zero (`roundDivInt?`), and
   `NULL` for `b = 0`: a decimal `AVG`'s sum by its count (#27). -/
   | ddiv
+  /-- `a % b` of decimals at one scale (D62, #1941): the truncated remainder of
+  the unscaled integers, so it takes the dividend's sign. `NULL` for `b = 0`,
+  where the parser's division-by-zero check raises, as for `imod`. -/
+  | dmod
   /-- The two values as a list, `NULL` if either is: the argument of a
   two-argument aggregate (`COVAR_SAMP(x, y)`, #54), whose rows with a NULL
   are skipped. -/
@@ -859,6 +863,9 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .dmul, a, b => match a.unscaled?, b.unscaled? with
     | some x, some y => .int (x * y)
     | _, _ => .null
+  | .dmod, a, b => match a.unscaled?, b.unscaled? with
+    | some x, some y => if y = 0 then .null else .int (x.tmod y)
+    | _, _ => .null
   | .ddiv, a, b => match a.unscaled?, b.unscaled? with
     | some x, some y => match roundDivInt? x y with
       | some r => .int r
@@ -1015,6 +1022,21 @@ def Expr.floorModOf (a b : Expr) : Expr :=
         (.bin .imod a b))
       (.bin .imod a b))
 
+/-- `a % b` of decimals at one scale with `division_type` = `FLOOR` (D62): the truncated remainder `r`
+of the unscaled integers, plus the divisor where `r` is not zero and its sign
+differs from the divisor's, so the result takes the divisor's sign. The
+divisor is compared as its unscaled integer (`b + 0`), since a decimal and
+the integer `0` do not compare (`Value.numPair`); decimal arithmetic is
+exact, so no step overflows. `Write` writes the shape back as the call. -/
+def Expr.floorDModOf (a b : Expr) : Expr :=
+  let r : Expr := .bin .dmod a b
+  let y : Expr := .bin .dadd b (.lit (.int 0))
+  .ifThen (.bin .lt r (.lit (.int 0)))
+    (.ifThen (.bin .lt (.lit (.int 0)) y) (.bin .dadd r y) r)
+    (.ifThen (.bin .lt (.lit (.int 0)) r)
+      (.ifThen (.bin .lt y (.lit (.int 0))) (.bin .dadd r y) r)
+      r)
+
 /-- `a % b` of doubles with `division_type` = `FLOOR` (the expression a plan with that
 `division_type` means): `a - b * floor(a / b)`, in the
 reference's double operations. A zero divisor raises, and so does a finite
@@ -1169,7 +1191,8 @@ theorem Expr.eval_append {I : Impl} {e : Expr} {n : Nat} {row : Row} (extra : Ro
     congr 1; funext x
     exact ihb (row := x :: row) he.2 (by simp [hlen])
 
-/-- The columns `e` reads; a lambda's body reads none of the row's. -/
+/-- The columns `e` reads. A lambda's body reads its parameter as field 0 and the row's columns
+from 1, so its row columns are the body's fields past 0, shifted down by one. -/
 def Expr.cols : Expr → List Nat
   | .lit _ => []
   | .field i => [i]
