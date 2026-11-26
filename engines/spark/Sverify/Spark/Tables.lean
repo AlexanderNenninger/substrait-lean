@@ -107,6 +107,10 @@ def Profile.spark.obs : ObsTable := [
   (none, "division_type", (ObsRow.native ["spark-int-modulus"]).proved "Rel.spark_sound"),
   (some "int.div", "division_type", (ObsRow.native ["spark-int-divide"]).proved "Rel.spark_sound"),
   (some "int.mod", "division_type", (ObsRow.native ["spark-int-modulus"]).proved "Rel.spark_sound"),
+  -- Decimal `%` truncates, exactly, at Substrait's type; ANSI raises by zero (D62).
+  (some "dec.mod", "division_type", (ObsRow.native ["spark-decimal-modulus"]).proved "Rel.spark_sound"),
+  (some "dec.mod", "on_division_by_zero", (ObsRow.native ["spark-decimal-modulus"]).proved
+    "Rel.spark_sound_or_raises"),
   (none, "min_mod_neg_one", (ObsRow.native ["spark-int-modulus"]).proved "Rel.spark_sound"),
   (none, "rounding", (ObsRow.native ["spark-double-arith"]).proved "Rel.spark_sound"),
   (some "fp.round", "rounding", ({ ObsRow.native ["spark-round"] with

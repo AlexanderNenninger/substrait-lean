@@ -36,6 +36,13 @@ DECIMAL_38_38 = (
     "a DECIMAL(38, 38) cast to VARCHAR is not supported on DuckDB: DuckDB prints it without its "
     "integer part and has no wider decimal to print it from; cast it to DECIMAL(38, 37) first"
 )
+#: Why `%` of decimals past 38 digits is refused (D62, ruling 188): an operand at the larger
+#: scale would need more than 38 digits, where DuckDB computes a DOUBLE. The parser's message
+#: (`Parse.decimalCall`) is the same.
+DECIMAL_MOD_38 = (
+    "% of decimals whose operands need more than 38 digits at the larger scale is not "
+    "supported; cast an operand to a DECIMAL with fewer digits"
+)
 #: The end of a refusal of what only DuckDB runs: its exit.
 DUCKDB_ONLY = f"run it with engine='duckdb' ({ISSUE_2540})"
 

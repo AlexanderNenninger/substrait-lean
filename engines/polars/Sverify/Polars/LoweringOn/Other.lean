@@ -39,3 +39,14 @@ abbrev Substrait.polarsOn.froundEven : Substrait.UnEntry Substrait.Profile.polar
 abbrev Substrait.polarsOn.dround : (k : Nat) → Substrait.UnEntry Substrait.Profile.polars (Substrait.UnFn.dround k) :=
   Substrait.Polars.droundEntry
 
+theorem Substrait.polarsOn.dmod_agree : ∀ (x y : Substrait.Value),
+  Substrait.Outcome.Agree
+    (Substrait.Expr.evalP Substrait.Profile.polars [x, y] Substrait.Polars.dmodTemplate)
+    (Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.dmod x y) := by
+  intros; apply Substrait.Polars.dmod_agree
+
+abbrev Substrait.polarsOn.dmod : Substrait.BinEntry Substrait.Profile.polars Substrait.BinFn.dmod :=
+  Substrait.BinEntry.ofAgree
+  (Substrait.Polars.dmodTemplate)
+  (by exact Substrait.Polars.dmodTemplate_must) Substrait.polarsOn.dmod_agree
+

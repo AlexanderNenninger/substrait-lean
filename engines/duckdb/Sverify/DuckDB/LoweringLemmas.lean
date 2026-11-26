@@ -104,6 +104,11 @@ theorem Lowering.duck_dsub (s : DuckDBSettings) (x y : Value) :
 theorem Lowering.duck_dmul (s : DuckDBSettings) (x y : Value) :
     (Profile.duckdb s).bin .dmul x y = .ok (BinFn.apply .dmul x y) :=
   (Lowering.duck_bin_ref (fun _ _ => rfl) x y).trans (Lowering.ref_dmul x y)
+/-- Decimal `%` (D62) is the reference's: DuckDB truncates natively
+(duckdb-decimal-modulus), and its wider result type is the writer's cast. -/
+theorem Lowering.duck_dmod (s : DuckDBSettings) (x y : Value) :
+    (Profile.duckdb s).bin .dmod x y = Profile.reference.bin .dmod x y :=
+  Lowering.duck_bin_ref (fun _ _ => rfl) x y
 theorem Lowering.duck_not (s : DuckDBSettings) (x : Value) :
     (Profile.duckdb s).un .not x = .ok (match x with | .bool b => .bool !b | _ => .null) :=
   (Lowering.duck_un_ref (fun _ => rfl) x).trans (Lowering.ref_not x)

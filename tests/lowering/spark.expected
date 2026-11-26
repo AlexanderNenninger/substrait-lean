@@ -108,6 +108,7 @@ BinFn.dadd	native
 BinFn.dsub	native
 BinFn.dmul	native
 BinFn.ddiv	native
+BinFn.dmod	native
 BinFn.pair	native
 BinFn.greatest	native
 BinFn.least	native

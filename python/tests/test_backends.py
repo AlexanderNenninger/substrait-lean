@@ -98,16 +98,17 @@ def tables(draw) -> dict[str, pa.Table]:
     }
 
 
-def rows(table: pa.Table) -> list[tuple]:
-    """An engine may type `ROW_NUMBER()` as a decimal; the model has one integer type."""
+def value(v):
+    """An engine may type `ROW_NUMBER()` as a decimal; the model has one integer type: an
+    integral decimal as an `int`, any other decimal by its value (`0.50` as `0.5`)."""
+    if isinstance(v, Decimal):
+        return int(v) if v == v.to_integral_value() else v.normalize()
     # `-0.0` as `0.0`: values are raw (D31) and the engines' writers differ in the sign.
-    return [
-        tuple(
-            int(v) if isinstance(v, Decimal) else v + 0.0 if isinstance(v, float) else v
-            for v in r.values()
-        )
-        for r in table.to_pylist()
-    ]
+    return v + 0.0 if isinstance(v, float) else v
+
+
+def rows(table: pa.Table) -> list[tuple]:
+    return [tuple(value(v) for v in r.values()) for r in table.to_pylist()]
 
 
 def bags(rs: list[tuple]) -> list[tuple]:
@@ -330,7 +331,7 @@ def test_spark_agrees_with_duckdb(con, data):
                 query(sql)
             continue
         try:
-            got = query(sql)
+            got = [tuple(value(v) for v in r) for r in query(sql)]
         except Exception as error:
             # IEEE division (`cot` is `1 / tan`) raises on Spark at a zero
             # divisor, where DuckDB gives ±inf: `sparkBin .fdivIeee` (ruling 161).

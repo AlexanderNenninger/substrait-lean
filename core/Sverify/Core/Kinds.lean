@@ -280,7 +280,7 @@ def BinFn.kindOf (f : BinFn) (a b : KT) : Option KT :=
   | .substr _ _ | .strRepeat => need (a.okK .str && b.okI Kind.isInt) (.kind .str)
   | .dateAdd => need (a.okI Kind.isDate && b.okI Kind.isInt) (.kind .date)
   | .dateDiff => need (num Kind.isDate) (.kind .int)
-  | .dadd | .dsub | .dmul | .ddiv => need (num Kind.isIntOrDec) (.kind .int)
+  | .dadd | .dsub | .dmul | .ddiv | .dmod => need (num Kind.isIntOrDec) (.kind .int)
   | .pair => some (.kind (.list .other))
   | .greatest | .least => some (a.join b)
   | .bbox2 _ => some (.kind .other)
@@ -476,7 +476,7 @@ def BinFn.out : BinFn → Kind
   | .concat | .substr _ _ | .trim _ _ | .strRepeat => .str
   | .fadd | .fsub | .fmul | .fdiv | .fdivIeee | .fmod | .fpow | .fatan2 | .flogb => .float
   | .strpos | .levenshtein | .idiv | .ipow | .bit _ | .dateDiff | .dadd | .dsub | .dmul | .ddiv
-  | .listFn .position => .int
+  | .dmod | .listFn .position => .int
   | .dateAdd => .date
   | .add | .sub | .mul | .imod | .pair | .greatest | .least | .bbox2 _ | .listFn .prepend
   | .listFn .concat => .other
