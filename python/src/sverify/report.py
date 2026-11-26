@@ -47,7 +47,7 @@ from sverify.engine import (
     run_plan,
     written_plan,
 )
-from sverify.observation import Observation
+from sverify.observation import Lenses
 from sverify.routes import RouteError
 
 if TYPE_CHECKING:
@@ -57,13 +57,13 @@ from sverify.conditions import (
     DATA_CHECK,
     ROWS_SHOWN,
     ArrivesWithin,
-    CheckedCondition,
     Discharged,
     Inferred,
     Key,
     MaxRows,
     NonOverlapping,
     PlannedCondition,
+    Postcondition,
     PreconditionError,
     References,
     RelationRows,
@@ -110,7 +110,7 @@ Condition = (
     | MaxRows
     | RowsPer
     | NonOverlapping
-    | Observation
+    | Lenses
     | PlannedCondition
     | Callable[[ir.Table], ir.BooleanValue]
 )
@@ -130,7 +130,7 @@ UnprovedReason = Literal[
     "not_proved_kind",
     "unknown",
 ]
-"""`CheckedCondition.reason`: why a postcondition is not proved."""
+"""`Postcondition.reason`: why a postcondition is not proved."""
 
 
 @dataclass(frozen=True)
@@ -379,7 +379,9 @@ class Issue:
     """The preconditions that rule it out, one `Needed` each, where the
     inference found them: what `hint` says to state in `requires`, as data.
     Empty where it found none."""
-    hint_needs: dict[str, list[Condition]] = field(default_factory=dict, repr=False, compare=False)
+    suggested_requires: dict[str, list[Condition]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
     """The preconditions per input table that `hint` proposes, as code; a
     hint is shown only where a proof with them rules the issue out
     (`_confirm_hints`)."""
@@ -453,7 +455,7 @@ class Report:
 
     requires: dict[str, list[str]]
     """The preconditions that were assumed, as labels, per input table."""
-    ensures: list[CheckedCondition]
+    ensures: list[Postcondition]
     """Each postcondition, in the order given: its label, whether it was
     proved, what the checker established about it, and a counterexample if one was
     found."""
@@ -491,6 +493,9 @@ class Report:
     _windows_total: bool = field(default=True, repr=False)
     """False only for the window and ordered-aggregate ties of
     `deterministic`."""
+    _table_ignores: list[tuple[list[str], list[str]]] = field(default_factory=list, repr=False)
+    """For each table condition of the postconditions, the open aggregate columns it reads and the
+    components the observation ignores that it depends on, as the checker reports them (#1071)."""
     _tie_places: list[TiePlace] = field(default_factory=list, repr=False)
     """Where the plan leaves its result open, one entry per window, ordered
     aggregate, `LIMIT` or value the reference leaves open, class picks
@@ -522,6 +527,11 @@ class Report:
     did not return one."""
     _rewrites: list[str] = field(default_factory=list, repr=False)
     """The rewrites in `optimized`, such as "DISTINCT on a key"."""
+    _fk_joins: list[tuple[str, str, str, str, bool]] = field(default_factory=list, repr=False)
+    """The transformation's left joins on a foreign key, as (table, column,
+    referenced table, column, declared): the proofs read the declared ones as
+    inner joins, since every left row has a match (`contract_sound_all_fk`);
+    for the others, `references` would be what the join needs."""
     _run_plan: dict | None = field(default=None, repr=False)
     """The plan an engine runs on a route that rests on this report
     (`_plan_to_run`): the transformation rewritten by the rules the gate turns
@@ -593,9 +603,9 @@ class Report:
     """Each relation of the plan, from the result down in pre-order, with
     the bounds Lean proves on its rows and, for an aggregate, on the rows
     of a group (#219)."""
-    semantics: Semantics = "reference"
+    semantics: Semantics = "portable"
     """The profile the report is under (`verify(semantics=...)`):
-    `"reference"`, sverify's reference semantics; `"duckdb"`, what DuckDB
+    `"portable"`, sverify's portable semantics (the reference profile); `"duckdb"`, what DuckDB
     computes; `"polars"`; `"spark"`; or `"substrait"`, Substrait's own."""
     engine_version: str | None = None
     """The engine version the profile of `semantics` describes: the version
@@ -607,7 +617,7 @@ class Report:
     """The plan the report is about, as Substrait protobuf JSON: the
     transformation as `verify` compiled it and Lean checked it, with the
     `params` bound and the SQL lifted with `semantics`. `run` runs it."""
-    lenses: Observation = field(default_factory=lambda: _observation.PLAN_BOUND)
+    lenses: Lenses = field(default_factory=lambda: _observation.PLAN_BOUND)
     """What the result's consumer observes (`sv.equivalent` in `ensures`).
     When `ensures` names none: rows and list elements as multisets, one zero
     and one NaN (`zeros="canon"`), doubles within the plan's bound
@@ -647,7 +657,10 @@ class Report:
     the checker's, which a run returns, not Ibis's. A column is not nullable
     where the checker proves it never NULL (`count(*)`, a key, a column of
     a NOT NULL input), from what it established about it (`facts`); a stored
-    node of a proved report writes those as NOT NULL columns."""
+    node of a proved report writes those as NOT NULL columns. These are the
+    plan's types, which `run` and `to_sql` give. Under `semantics="duckdb"`,
+    DuckDB running the SQL as written may type a column wider: a `SUM` of
+    integers is a `HUGEINT` there, and `BIGINT` here (#703)."""
     _epsilon: dict[str, dict[str, Any]] | None = field(default=None, repr=False, compare=False)
     """How far each double output column may be from a result the reference
     allows on an engine whose summation order differs (`{"abs", "rel"}` per
@@ -657,7 +670,7 @@ class Report:
     """Per as-of join of the plan (#1447, `Rel.asofSite`), a plan that counts
     the pairs its range join compares (`AsofSite.pairs`). `run` runs each on
     the engine first and refuses the run above `_asof_max_pairs`
-    (`check_asof_pairs`)."""
+    (`_check_asof_pairs`)."""
     _asof_max_pairs: int | None = field(default=None, repr=False, compare=False)
     """The smallest `max_pairs` of the transform's `asof_join` calls; None: no
     cap (a SQL query's `ASOF JOIN`, or `max_pairs=None`)."""
@@ -665,7 +678,7 @@ class Report:
     """The margin checks of the plan's threshold filters on double sums
     (#929): per filter, a plan that counts the groups whose sum lies within
     its bound's margin of the threshold (`Rel.marginCheck`). `run` runs each
-    on the engine before the plan (`check_margins`); `rows_exact` holds
+    on the engine before the plan (`_check_margins`); `rows_exact` holds
     given them."""
     black_boxes: Mapping[str, tuple[Law, ...]] = field(
         default_factory=dict, repr=False, compare=False
@@ -797,7 +810,7 @@ class Report:
         The plan goes to the checker as it was exported, pinned options,
         shims and all, with the preconditions and postconditions it
         carries; the report says what the checker proves of it now. For an
-        export of a verified plan, `proved` is true again, with the same
+        export of a verified plan, the verdict is `PROVED` again, with the same
         postconditions.
 
         Args:
@@ -813,7 +826,7 @@ class Report:
             ValueError: The plan carries no sverify contract, or the
                 checker rejects the plan.
         """
-        return _hooks.export().recheck(data)
+        return _hooks.export()._recheck(data)
 
     @overload
     def to_substrait(
@@ -884,10 +897,16 @@ class Report:
         """The verified plan as SQL whose meaning is the proof's, in
         `dialect`.
 
-        The SQL keeps every run-time check, as `run` does. Where the report
-        is determined up to row order with no class pick (no window ties on
-        data that meets the preconditions), windows need no row-order tiebreak, so Snowflake and
-        Spark take them. A plan verified under an engine's semantics
+        The SQL keeps every run-time check, as `run` does. Under the default
+        observation (`rows="multiset"`) a window over ties is written with its
+        own sort keys alone for every dialect: which tied row gets which number
+        is open in the reference, so any engine's choice is allowed, and
+        `deterministic` is False. Under `rows="sequence"` the numbering must
+        follow the input's order, which no dialect can write for ties: the
+        window is refused (`RouteError` on DuckDB and Spark, `UnsupportedError`
+        on Snowflake, whose tables have no row order). On Snowflake a
+        `deterministic` report lifts it.
+        A plan verified under an engine's semantics
         (`semantics="duckdb"`) is written only for an engine its route
         reaches (`sverify.routes.choose`). Snowflake takes plans verified
         under the reference. Run the SQL on data that meets the
@@ -1042,10 +1061,10 @@ class Report:
             reason = None
             if not routes.verified(self):
                 reason = routes.not_verified(self)
-            elif self.semantics != "reference":
+            elif self.semantics != "portable":
                 reason = (
                     f"verified under {self.semantics} semantics; {d.name} SQL is written "
-                    "only for plans verified under the reference"
+                    "only for plans verified under portable semantics"
                 )
             chosen = routes.Route(
                 d.name,
@@ -1056,12 +1075,12 @@ class Report:
                 cls="refused" if reason else None,
             )
         if chosen.refused:
-            reason = chosen.reason.removesuffix("; run(..., unverified=True) runs it anyway")
-            chosen = replace(chosen, reason=reason)
+            reason = chosen.why.removesuffix("; run(..., unverified=True) runs it anyway")
+            chosen = replace(chosen, why=reason)
             if not routes.verified(self):
                 raise UnverifiedRunError(self, chosen)
             raise routes.RouteError(chosen)
-        return d, _finite(self.semantics == "reference" or chosen.kind == "translated")
+        return d, _finite(self.semantics == "portable" or chosen.taken == "translated")
 
     def check_inputs(
         self,
@@ -1189,7 +1208,7 @@ class Report:
         *,
         route: RouteKind | Literal["auto"] = "auto",
         unverified: bool = False,
-        reproducible: Observation | None = None,
+        reproducible: Lenses | None = None,
         check_requires: bool = True,
         streaming: Literal["allow", "require"] = "allow",
         optimize: bool = True,
@@ -1201,7 +1220,7 @@ class Report:
         runs on `engine` as `sverify.engines.run` runs a plan, with the
         meaning `Rel.eval` gives it.
 
-        A plan that is not proved (`proved` is False) is refused
+        A plan whose verdict is not `PROVED` is refused
         (`UnverifiedRunError`), with what was not proved in the message;
         `unverified=True` runs it anyway, and
         says so: a warning (`UnverifiedRunWarning`), the route `"unverified"`
@@ -1225,7 +1244,7 @@ class Report:
                 Spark session. Default: the connection's engine.
             route: `"auto"` (the default) chooses a route; `"native"`,
                 `"translated"`, `"transfer"` or `"recheck"` takes that one or
-                refuses .
+                refuses.
             unverified: Run a plan that is not proved, or an engine version
                 outside its profile's range (D70), without a route. Default
                 False: such a run is refused.
@@ -1305,9 +1324,9 @@ class Report:
         if unverified and not routes.verified(self):
             chosen = routes.unverified(self, target)
             self.routes[chosen.engine] = chosen
-            kind = chosen.kind
+            kind = chosen.taken
             warnings.warn(
-                f"running on {chosen.engine} unverified: {chosen.reason}",
+                f"running on {chosen.engine} unverified: {chosen.why}",
                 routes.UnverifiedRunWarning,
                 stacklevel=2,
             )
@@ -1320,12 +1339,12 @@ class Report:
                 # A proved plan on a version outside the range (D70).
                 chosen = routes.unverified(self, target, str(err))
                 warnings.warn(
-                    f"running on {chosen.engine} unverified: {chosen.reason}",
+                    f"running on {chosen.engine} unverified: {chosen.why}",
                     routes.UnverifiedRunWarning,
                     stacklevel=2,
                 )
             self.routes[chosen.engine] = chosen
-            kind = chosen.kind
+            kind = chosen.taken
             if chosen.refused:
                 if not routes.verified(self):
                     raise UnverifiedRunError(self, chosen)
@@ -1355,9 +1374,9 @@ class Report:
             # The proof is about this schema, so it is checked whatever
             # `check_requires` says.
             self._check_schema(con, target)
-        self.check_asof_pairs(con, engine, skip=self._native_asof(plan, run_engine))
+        self._check_asof_pairs(con, engine, skip=self._native_asof(plan, run_engine))
         if kind != "unverified":
-            self.check_margins(con, engine, target, reproducible is not None)
+            self._check_margins(con, engine, target, reproducible is not None)
         plugin = profiles.find(target)
         fallbacks = plugin.fallbacks if plugin is not None else None
         if (
@@ -1371,7 +1390,7 @@ class Report:
         # reference, and for one that reaches the engine through the
         # reference's route. An aggregate's keeps it on every route: the
         # engine's running sum overflows where the exact one does not.
-        finite = _finite(self.semantics == "reference" or kind == "translated")
+        finite = _finite(self.semantics == "portable" or kind == "translated")
         # The checks the checker discharged (#1166): where the preconditions
         # were checked on these tables and the plan runs by the reference's
         # translation, a guard-free plan runs without its per-row checks on an
@@ -1383,7 +1402,7 @@ class Report:
         # without their checks, the one against `±∞` included, on an engine
         # whose writer a theorem covers so (`"marks_theorem"`, ruling 223), on
         # the same gate: the preconditions were checked on these tables.
-        checked = check_requires and kind == "translated" and self.semantics == "reference"
+        checked = check_requires and kind == "translated" and self.semantics == "portable"
         marked = (
             checked and ((self._engines or {}).get(name) or {}).get("marks_theorem") is not None
         )
@@ -1407,7 +1426,7 @@ class Report:
             if (
                 check_requires
                 and kind == "translated"
-                and self.semantics == "reference"
+                and self.semantics == "portable"
                 and self._guard_free
                 and theorem is not None
             ):
@@ -1481,7 +1500,7 @@ class Report:
             return []
         return native_asof_sites(plan, plugin.dialect(), self._asof_checks)
 
-    def check_asof_pairs(
+    def _check_asof_pairs(
         self, con: Connection, engine: Any, skip: Sequence[dict[str, Any]] = ()
     ) -> None:
         """Count, on `engine`, the pairs each as-of join of the plan compares
@@ -1506,7 +1525,7 @@ class Report:
             if n > cap:
                 raise UnsupportedError(too_many(n, cap))
 
-    def check_margins(
+    def _check_margins(
         self, con: Connection, engine: Any, target: str, deterministic: bool = False
     ) -> int:
         """Run the margin checks of the plan's threshold filters on double
@@ -1637,9 +1656,9 @@ class Report:
         if streaming == "require" and nodes:
             refused = routes.Route(
                 engine=engine,
-                kind=None,
+                taken=None,
                 profile=chosen.profile if chosen is not None else self.semantics,
-                reason=(
+                why=(
                     f"{len(nodes)} node(s) of the streaming plan run on the in-memory engine "
                     f"(streaming='require'): "
                     + "; ".join(n[:120] for n in nodes)
@@ -1679,9 +1698,22 @@ class Report:
         """What a proved verdict needs besides its postconditions."""
         return not (self.errors or self._transfer or self.needs or self.floats_unmet)
 
-    def _unmet_ensures(self) -> list[CheckedCondition]:
+    def _unmet_ensures(self) -> list[Postcondition]:
         """The postconditions that are neither proved nor checked on the data."""
         return [c for c in self.ensures if not (c.portable or c.checked)]
+
+    def _unproved_reasons(self) -> list[str]:
+        """Why the report is not proved, one reason per field `_proved` reads:
+        each postcondition not proved, each runtime error, the proof that does
+        not carry over, each need and the doubles no engine meets."""
+        reasons = [f"not proved: {c.label}" for c in self.ensures if not c.portable]
+        reasons += [f"may fail: {i}" for i in self.errors]
+        if self._transfer:
+            reasons.append("the proof does not carry over to Substrait (see report.details())")
+        reasons += [f"needs {n}" for n in self._needs_lines()]
+        if self.floats_unmet:
+            reasons.append(f"no engine meets the lenses' doubles: {self.floats_unmet}")
+        return reasons
 
     @property
     def floats_unmet(self) -> str | None:
@@ -1793,7 +1825,13 @@ class Report:
         # The bounds a hint names, which a proof confirmed (`_confirm_hints`).
         extra = [(n.table, n.condition, n.label) for n in self._inferred_needs()]
         for i in self.issues:
-            extra += [(t, c, label(c)) for t, cs in i.hint_needs.items() for c in cs]
+            extra += [(t, c, label(c)) for t, cs in i.suggested_requires.items() for c in cs]
+        if self._unmet_ensures():
+            from sverify.conditions import References
+
+            for t, col, s, p in self._fk_candidates():
+                ref = References(cols=(col,), table=s, others=(p,))
+                extra.append((t, ref, label(ref)))
         for t, c, lab in extra:
             have = out.setdefault(t, [])
             if c is not None and lab not in {label(x) for x in have}:
@@ -1836,7 +1874,7 @@ class Report:
         return [i for i in self.issues if i.error]
 
     @property
-    def unproved(self) -> list[CheckedCondition]:
+    def unproved(self) -> list[Postcondition]:
         """The postconditions in `ensures` that were not proved."""
         return [c for c in self.ensures if not c.proved]
 
@@ -1859,7 +1897,7 @@ class Report:
         engine: Any,
         route: RouteKind | Literal["auto"] = "auto",
         *,
-        reproducible: Observation | None = None,
+        reproducible: Lenses | None = None,
     ) -> Route:
         """The route by which `run` would take the plan to `engine`, and the
         plan's class there, without running it: the route `report.routes`
@@ -1869,7 +1907,7 @@ class Report:
             engine: The engine's name (`"duckdb"`, `"polars"`, …) or a Spark
                 session.
             route: `"auto"` (the default) tries the routes in turn; a route
-                by name (`"native"`, `"reference"`, `"transfer"`,
+                by name (`"native"`, `"translated"`, `"transfer"`,
                 `"recheck"`) is taken or refused.
             reproducible: What a rerun must reproduce, as `run` takes it.
 
@@ -1929,7 +1967,7 @@ class Report:
         if ignored := [c for c in self.ensures if c.proved and c.ignores]:
             out.append(
                 f"{n(len(ignored), 'postcondition')} "
-                f"{'depends' if len(ignored) == 1 else 'depend'} on what the observation ignores"
+                f"{'depends' if len(ignored) == 1 else 'depend'} on what the lenses ignore"
             )
         if self.errors:
             out.append(n(len(self.errors), "possible runtime error"))
@@ -1938,7 +1976,7 @@ class Report:
         if self._transfer:
             out.append(n(len(self._transfer), "option") + " where Substrait allows more")
         if self.floats_unmet:
-            out.append("no engine's doubles meet the observation")
+            out.append("no engine's doubles meet the lenses")
         return out or ["see the report"]
 
     def _ties_hint(self) -> str:
@@ -1975,7 +2013,7 @@ class Report:
         if bad:
             lines += ["Not proved:", *[f"  {b}" for b in bad]]
         lines += self._trusts_lines()
-        notes = [*self._all_hints(), *self.notes]
+        notes = [*self._all_hints(), *self.notes, *self._fk_notes()]
         if notes:
             lines += ["Notes:", *[f"  {n}" for n in notes]]
         if self.facts or self.rows is not None:
@@ -1984,6 +2022,20 @@ class Report:
                 lines.append(f"  rows: at most {self.rows:,}")
             lines += [f"  {name}: {value}" for name, value in self.facts.items()]
         return "\n".join(lines)
+
+    def _fk_notes(self) -> list[str]:
+        """The left joins the proofs read through a declared foreign key."""
+        return [
+            f"left join on a foreign key, under references {t}.{c} -> {s}.{p}: every row of "
+            f"{t} has a match, so the columns of the right side are as non-NULL as its own"
+            for t, c, s, p, declared in self._fk_joins
+            if declared
+        ]
+
+    def _fk_candidates(self) -> list[tuple[str, str, str, str]]:
+        """The foreign keys whose declaration the unproved columns could use: the
+        left joins that would be inner joins if the left rows all had a match."""
+        return [(t, c, s, p) for t, c, s, p, declared in self._fk_joins if not declared]
 
     def _trusts_lines(self) -> list[str]:
         """One `trusts:` line per black box the plan calls, with its laws:
@@ -2042,6 +2094,11 @@ class Report:
                 more.append(f"counterexample: {c.counterexample}")
             if w := _would_hold(c):
                 more.append(w)
+            more += [
+                f"would hold if every {t}.{col} has a row in {s}.{p}: declare "
+                f"sv.references({col!r}, to=({s!r}, {p!r})) in the requires of {t!r}"
+                for t, col, s, p in self._fk_candidates()
+            ]
             why = c.why if not c.proved else _observation.why(c.ignores)
             out.append((f"{plain(c.label)}: {why}", more))
         out += [(n, []) for n in self._needs_lines()]
@@ -2100,7 +2157,7 @@ class Report:
         return "\n".join(lines)
 
     def _repr_markdown_(self) -> str:
-        def status(c: CheckedCondition) -> str:
+        def status(c: Postcondition) -> str:
             if c.proved:
                 return "✅ proved"
             if c.checked:
@@ -2158,7 +2215,7 @@ class Report:
         )
 
 
-def _would_hold(c: CheckedCondition) -> str | None:
+def _would_hold(c: Postcondition) -> str | None:
     """The suggestion line of an unproved postcondition; None where it has
     no suggestion, or where `why` names what it needs already."""
     if not c.needs or c.reason == "needs":
@@ -2254,7 +2311,7 @@ class UnverifiedRunError(VerificationError, RouteError):
     def __init__(self, report: Report, route: Route):
         self.report = report
         self.route = route
-        Exception.__init__(self, f"refused on {route.engine}: {route.reason}")
+        Exception.__init__(self, f"refused on {route.engine}: {route.why}")
 
 
 class PostconditionError(SverifyError):
@@ -2459,7 +2516,7 @@ class Needed:
     """A precondition a proof needs that `requires` does not state: a bound
     on one input column. `Report.needs` lists those the proof needs
     (`on_inferred="error"` does not assume them), `Issue.needs` those that
-    rule out one runtime error, and `CheckedCondition.needs` those under
+    rule out one runtime error, and `Postcondition.needs` those under
     which an unproved postcondition is proved."""
 
     table: str
@@ -2570,7 +2627,7 @@ def _needed_deferred(n: Needed) -> Deferred | None:
     return col.isnull() | cmp if n.sql.startswith(nulls) else cmp
 
 
-def condition_query(table: Transform, cond: Condition, semantics: str = "reference") -> Transform:
+def condition_query(table: Transform, cond: Condition, semantics: str = "portable") -> Transform:
     """A query selecting one condition column from a table or transformation:
     SQL for a SQL condition on a SQL transformation, an Ibis expression
     otherwise (a SQL condition on an Ibis table is a SQL model over it, with
@@ -2621,9 +2678,12 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
     """Rows of a bound table where `cond` is not TRUE (FALSE or NULL), or for
     `unique`, rows beyond the first for each repeated key.
 
-    With an engine named, the condition's plan runs there, over the tables of
-    the connection `table` is bound to, and counts the rows in the engine
-    (no row reaches Python); otherwise Ibis counts on that connection."""
+    The condition's plan, as the checker wrote it, runs on `engine`, or with
+    none named on the engine of the connection `table` is bound to, over that
+    connection's tables, and counts the rows in the engine (no row reaches
+    Python; F219). A table of another Ibis backend is counted by Ibis there."""
+    if engine is None:
+        engine = _own_engine(table)
     if not isinstance(cond, TableCondition) and engine is not None:
         con = connection_of(table)
         if con is None:
@@ -2647,6 +2707,14 @@ def violations(table: ir.Table, cond: Condition, engine: Engine | None = None) -
         return int(backend.raw_sql(query).fetchall()[0][0])
     count: Any = table.filter(~resolve(cond, table).fill_null(ibis.literal(False))).count()
     return _count(count)
+
+
+def _own_engine(table: ir.Table) -> Engine | None:
+    """The engine of the `sverify.connect()` connection `table` is bound to,
+    which runs its data checks when none is named; None for a table of
+    another Ibis backend."""
+    con = connection_of(table)
+    return None if con is None else con.engine
 
 
 def _table_violations(table: ir.Table, cond: TableCondition, engine: str | None) -> int:
@@ -2705,8 +2773,10 @@ def violation_counts(
     per table where each condition had one. A plan that raises is a violation
     of the first condition that raises alone. A condition the writer refuses
     for the engine refuses the check (`SverifyError`), with no fallback to
-    Ibis. Without an `engine`, Ibis counts each condition on the table's own
-    backend (`violations`)."""
+    Ibis. Without an `engine`, the connection's engine runs them; Ibis counts
+    each condition on a table of another backend (`violations`)."""
+    if engine is None:
+        engine = _own_engine(table)
     counts: dict[int, tuple[int, str | None]] = {}
     on_table = [i for i, c in enumerate(conds) if isinstance(c, TableCondition)]
     if on_table:
@@ -2819,9 +2889,9 @@ def _run_conditions(
         query = f'SELECT {items} FROM "t" AS "t"'
         from sverify.ibis_substrait import SQLModel, sql_model_schema
 
-        schema = sql_model_schema(query, {"t": table.schema()}, "reference")
+        schema = sql_model_schema(query, {"t": table.schema()}, "portable")
         inputs: Any = (table.op(),)  # a table's op is the relation the model reads
-        q = SQLModel(query, inputs, ("t",), schema, "duckdb", "reference").to_expr()
+        q = SQLModel(query, inputs, ("t",), schema, "duckdb", "portable").to_expr()
     else:
         q = table.select(**{f"c{i}": resolve(c, table) for i, c in enumerate(conds)})
     return run_plan(con, written_plan(plan_json(con, q)), engine)

@@ -35,6 +35,9 @@ def checkPlan (plan : Plan) : Option (UInt32 × String) :=
     some (2, s!"well-formed: no (root names {plan.names} do not match arity {arity})")
   -- `Rel.kinds_sound`: a well-kinded plan evaluates to its kinds.
   else if (plan.root.inferKinds cat plan.tableKinds).isNone then some (2, "well-kinded: no")
+  -- D67: an opaque column is carried, and nothing reads it.
+  else if let some use := plan.root.opaqueUse? cat plan.tableKinds then
+    some (2, s!"well-kinded: no ({opaqueRefusal use})")
   else none
 
 /-- Why a plan has no delta rule: each operator that blocks it (`Rel.blockers`)
@@ -132,19 +135,28 @@ def firstError (p : Profile) (rows : Relation) (es : List Expr) : Option String 
     | .ok _ => none
 
 /-- The first error the reference profile `p` raises in the arguments and filters
-of a window's aggregates, each on the frame of each row (`WinFn.valueIn`):
-`before` are the sorted rows already visited. -/
-def windowRaised (p : Profile) (part : List Nat) (fns : List WinFn) :
-    List Row → List Row → Option String
+of a window's aggregates, each on the frame of each row (`WinFn.valueIn`), the
+rows in sort order. A row's partition comes from `idx` and its place in it from
+`seen`, as in `windowRowsFast`. -/
+def windowRaisedIn (p : Profile) (part : List Nat) (fns : List WinFn)
+    (idx : Std.HashMap Row (Array Row)) : Std.HashMap Row Nat → List Row → Option String
   | _, [] => none
-  | before, x :: after =>
-    let pb := before.filter (samePart part x)
-    let pa := after.filter (samePart part x)
+  | seen, x :: after =>
+    let k := partKey part x
+    let i := seen.getD k 0
+    let rows := (idx.getD k #[]).toList
+    let pb := rows.take i
+    let pa := rows.drop (i + 1)
     (fns.findSome? fun
       | .agg m sort fr =>
         let frame := fr.rows sort pb x pa
         firstError p frame m.filter.toList <|> firstError p (m.kept frame) [m.arg]
-      | _ => none) <|> windowRaised p part fns (before ++ [x]) after
+      | _ => none) <|> windowRaisedIn p part fns idx (seen.insert k (i + 1)) after
+
+/-- `windowRaisedIn` over `rows`, sorted. -/
+def windowRaised (p : Profile) (part : List Nat) (fns : List WinFn) (rows : List Row) :
+    Option String :=
+  windowRaisedIn p part fns (indexBy (partKey part) rows) ∅ rows
 
 -- A window aggregate raises only on the rows a frame holds: `12.35` (a `DECIMAL(3, 2)` of
 -- 4 digits) is the last row, so `1 PRECEDING` holds it in no frame, and the whole
@@ -154,9 +166,9 @@ local instance : Boxes.Ambient := Boxes.Ambient.none
 private def windowRows' : Relation := [[.int 1, .dec 2 5], [.int 2, .dec 2 1235]]
 private def windowAgg (fr : Frame) : List WinFn :=
   [.agg { fn := .sum, arg := .un (.decimal 3 2) (.field 1) } [{ col := 0 }] fr]
-#guard (windowRaised Profile.reference [] (windowAgg ⟨false, .preceding 1, .preceding 1⟩) []
+#guard (windowRaised Profile.reference [] (windowAgg ⟨false, .preceding 1, .preceding 1⟩)
   windowRows').isNone
-#guard (windowRaised Profile.reference [] (windowAgg Frame.all) [] windowRows').isSome
+#guard (windowRaised Profile.reference [] (windowAgg Frame.all) windowRows').isSome
 end
 
 /-- The first error the reference profile `p` raises in the plan: each
@@ -179,7 +191,7 @@ def relRaised (cat : Catalog) (p : Profile) : Rel → Option String
   | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ =>
     relRaised cat p r
   | .window r part sort fns =>
-    relRaised cat p r <|> windowRaised p part fns [] ((r.evalFast cat).mergeSort (sortLe sort))
+    relRaised cat p r <|> windowRaised p part fns ((r.evalFast cat).mergeSort (sortLe sort))
   | .cross a b | .unionAll a b => relRaised cat p a <|> relRaised cat p b
   | .join a b _ on | .semi a b _ on =>
     let index := JoinIndex.make on (a.arity cat) (b.evalFast cat)
@@ -399,9 +411,15 @@ def contract (es : List EngineProfile) (input : String) : IO UInt32 := do
   match (do
       let j ← Lean.Json.parse input
       let R ← ContractCheck.parse j
-      return (j, R, ← R.check) : Except String _) with
+      -- The plan's double constants are doubles' codes (`Rel.constsDblB`), which
+      -- Spark's soundness reads (ruling 277 Q2); the parser builds them by
+      -- `ofFloat`, so this never fires. M4's parser lemma replaces it (#2516).
+      if let some T := R.transform then
+        if !T.root.constsDblB then
+          throw s!"internal error: a double constant that is not a double's code: {T.root.nonDblLit}"
+      return (j, R, ← R.check, ← R.runPlanJson) : Except String _) with
   | .error e => IO.eprintln s!"error: {e}"; return 1
-  | .ok (j, R, report) =>
+  | .ok (j, R, report, runPlan) =>
     -- The profile it was checked under (`underProfile`), and the options
     -- the transformation meets (#444).
     let depends := (Epsilon.depends j).toOption.getD Lean.Json.null
@@ -423,7 +441,7 @@ def contract (es : List EngineProfile) (input : String) : IO UInt32 := do
     let engines := (Realize.enginesJson es j rowsExact report robust eps).toOption.getD []
     -- The plan an engine runs, or the gate that keeps the plan as
     -- written (#1787, `SubstraitLean/RunPlan.lean`).
-    let runPlan := R.runPlanJson ++ [("assumed_check", R.assumedCheckJson R.kenv)]
+    let runPlan := runPlan ++ [("assumed_check", R.assumedCheckJson R.kenv)]
     let withRun := runPlan.foldl (fun b (k, v) => b.setObjVal! k v) report.json
     -- A decision on a marked value (D52, ruling 104): an error issue.
     let source := (EngineRobust.sourceIssues es j).toOption.getD []
@@ -640,9 +658,16 @@ def commands (entries : List EngineEntry) : List (Flag (Unit → IO UInt32)) :=
        for (c, how, _) in polarsOn.coverage do
          IO.println s!"{c}\t{how}"
        return 0 },
+   { flag := "--lowering-coverage-spark", group := .tables,
+     help := "how each construct is lowered to Spark (#271), one per line",
+     run := fun _ => do
+       for (c, how, _) in sparkOn.coverage do
+         IO.println s!"{c}\t{how}"
+       return 0 },
    prints "--lowering-table" .tables
-     "the DuckDB lowering's templates, and Polars's under \"polars\", as JSON (#241, #271)" fun _ =>
-     (Lowering.duckdbTableJson.setObjVal! "polars" Lowering.polarsTableJson).compress ++ "\n",
+     "the DuckDB lowering's templates, Polars's under \"polars\" and Spark's under \"spark\", as JSON (#241, #271)" fun _ =>
+     (((Lowering.duckdbTableJson.setObjVal! "polars" Lowering.polarsTableJson).setObjVal! "spark"
+       Lowering.sparkTableJson).setObjVal! "polars_asks" Lowering.polarsAsksJson).compress ++ "\n",
    prints "--lowering-cache" .tables "a new LoweringCache.lean from this build's coverage (#242)"
      fun _ => loweringCacheSource,
    prints "--lift-table" .tables "what each DuckDB SQL function lifts to, as JSON (#268)" fun _ =>

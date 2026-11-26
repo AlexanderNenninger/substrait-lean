@@ -145,6 +145,33 @@ abbrev Substrait.polarsOn.itos : Substrait.UnEntry Substrait.Profile.polars Subs
   Substrait.UnEntry.native Substrait.UnFn.itos
   (Substrait.Lowering.un_agree_of_eq Substrait.polarsOn.itos_native)
 
+theorem Substrait.polarsOn.dtext_native : ∀ (x : Substrait.Value),
+  Substrait.Profile.un Substrait.Profile.polars Substrait.UnFn.dtext x =
+    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.dtext x := by
+  native_tac
+
+abbrev Substrait.polarsOn.dtext : Substrait.UnEntry Substrait.Profile.polars Substrait.UnFn.dtext :=
+  Substrait.UnEntry.native Substrait.UnFn.dtext
+  (Substrait.Lowering.un_agree_of_eq Substrait.polarsOn.dtext_native)
+
+theorem Substrait.polarsOn.dtextFull_native : ∀ (x : Substrait.Value),
+  Substrait.Profile.un Substrait.Profile.polars Substrait.UnFn.dtextFull x =
+    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.dtextFull x := by
+  native_tac
+
+abbrev Substrait.polarsOn.dtextFull : Substrait.UnEntry Substrait.Profile.polars Substrait.UnFn.dtextFull :=
+  Substrait.UnEntry.native Substrait.UnFn.dtextFull
+  (Substrait.Lowering.un_agree_of_eq Substrait.polarsOn.dtextFull_native)
+
+theorem Substrait.polarsOn.dwiden_native : ∀ (x : Substrait.Value),
+  Substrait.Profile.un Substrait.Profile.polars Substrait.UnFn.dwiden x =
+    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.dwiden x := by
+  native_tac
+
+abbrev Substrait.polarsOn.dwiden : Substrait.UnEntry Substrait.Profile.polars Substrait.UnFn.dwiden :=
+  Substrait.UnEntry.native Substrait.UnFn.dwiden
+  (Substrait.Lowering.un_agree_of_eq Substrait.polarsOn.dwiden_native)
+
 theorem Substrait.polarsOn.widen_native : ∀ (x : Substrait.Value),
   Substrait.Profile.un Substrait.Profile.polars Substrait.UnFn.widen x =
     Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.widen x := by
@@ -421,16 +448,6 @@ abbrev Substrait.polarsOn.dkind : (p s : Nat) → Substrait.UnEntry Substrait.Pr
   Substrait.UnEntry.native (Substrait.UnFn.dkind p s)
     (Substrait.Lowering.un_agree_of_eq (Substrait.polarsOn.dkind_native p s))
 
-theorem Substrait.polarsOn.dround_native : ∀ (k : Nat) (x : Substrait.Value),
-  Substrait.Profile.un Substrait.Profile.polars (Substrait.UnFn.dround k) x =
-    Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.dround k) x := by
-  native_tac
-
-abbrev Substrait.polarsOn.dround : (k : Nat) → Substrait.UnEntry Substrait.Profile.polars (Substrait.UnFn.dround k) :=
-  fun k =>
-  Substrait.UnEntry.native (Substrait.UnFn.dround k)
-    (Substrait.Lowering.un_agree_of_eq (Substrait.polarsOn.dround_native k))
-
 theorem Substrait.polarsOn.dtrunc_native : ∀ (k : Nat) (x : Substrait.Value),
   Substrait.Profile.un Substrait.Profile.polars (Substrait.UnFn.dtrunc k) x =
     Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.dtrunc k) x := by
@@ -440,16 +457,6 @@ abbrev Substrait.polarsOn.dtrunc : (k : Nat) → Substrait.UnEntry Substrait.Pro
   fun k =>
   Substrait.UnEntry.native (Substrait.UnFn.dtrunc k)
     (Substrait.Lowering.un_agree_of_eq (Substrait.polarsOn.dtrunc_native k))
-
-theorem Substrait.polarsOn.ftod_native : ∀ (s : Nat) (x : Substrait.Value),
-  Substrait.Profile.un Substrait.Profile.polars (Substrait.UnFn.ftod s) x =
-    Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.ftod s) x := by
-  native_tac
-
-abbrev Substrait.polarsOn.ftod : (s : Nat) → Substrait.UnEntry Substrait.Profile.polars (Substrait.UnFn.ftod s) :=
-  fun s =>
-  Substrait.UnEntry.native (Substrait.UnFn.ftod s)
-    (Substrait.Lowering.un_agree_of_eq (Substrait.polarsOn.ftod_native s))
 
 theorem Substrait.polarsOn.dtof_native : ∀ (s : Nat) (x : Substrait.Value),
   Substrait.Profile.un Substrait.Profile.polars (Substrait.UnFn.dtof s) x =
@@ -804,16 +811,6 @@ theorem Substrait.polarsOn.flogb_native : ∀ (x y : Substrait.Value),
 abbrev Substrait.polarsOn.flogb : Substrait.BinEntry Substrait.Profile.polars Substrait.BinFn.flogb :=
   Substrait.BinEntry.native Substrait.BinFn.flogb
   (Substrait.Lowering.bin_agree_of_eq Substrait.polarsOn.flogb_native)
-
-theorem Substrait.polarsOn.bit_native : ∀ (op : Substrait.BitOp) (x y : Substrait.Value),
-  Substrait.Profile.bin Substrait.Profile.polars (Substrait.BinFn.bit op) x y =
-    Substrait.Profile.bin Substrait.Profile.reference (Substrait.BinFn.bit op) x y := by
-  native_tac
-
-abbrev Substrait.polarsOn.bit : (op : Substrait.BitOp) → Substrait.BinEntry Substrait.Profile.polars (Substrait.BinFn.bit op) :=
-  fun op =>
-  Substrait.BinEntry.native (Substrait.BinFn.bit op)
-    (Substrait.Lowering.bin_agree_of_eq (Substrait.polarsOn.bit_native op))
 
 theorem Substrait.polarsOn.dadd_native : ∀ (x y : Substrait.Value),
   Substrait.Profile.bin Substrait.Profile.polars Substrait.BinFn.dadd x y =

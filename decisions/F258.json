@@ -1,0 +1,18 @@
+{
+  "id": "F258",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "A fired run-time check during `refresh` is a hold, exit 8: the data broke a condition and the node committed nothing. A pre-check on the input batch and exit 5 are both declined. One classifier per engine decides that a run-time check fired: the writer's `sverify: ` text for DuckDB, Spark and Snowflake, and `RuntimeIssue` for Polars. Anything else stays exit 6. #2330 is After 1.0. #2332 is 1.0 only if it is proved without a new axiom.",
+  "issues": [
+    2331,
+    2330,
+    2332
+  ],
+  "amended_by": [
+    "U-2026-11-22-exit-code-severity"
+  ],
+  "source": "fable-ruling-258-2331-fired-check-exit.md",
+  "note": "Conditions: E1, the classifier is one function per engine, tested with a fired guard, and a crash is never reported as a hold. E2, the alert names the check and the engine's message and has no rows, and the held state is the same as for a failed condition (F260 reads this). E3, only `refresh` changes; `check` and `Report.run` keep their behaviour. E4, the changelog fragment and `cli.schema.json` say a fired check exits 8, before the release branch, since the exit codes freeze. For #2330, the hold's alert adds one sentence saying a bound on the input removes the check. For #2332, strict positivity under a scale of at least 1 follows from rounding monotonicity. Amended 2026-11-22 by the maintainer's renumbering of exit codes by severity (#2458): a held node now exits 7."
+}

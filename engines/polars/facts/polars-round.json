@@ -9,8 +9,21 @@
     "rounding"
   ],
   "rows": [
-    {"group": "fp.round", "option": "rounding", "types": ["fp64"]},
-    {"group": "fp.round", "option": "rounding", "types": ["fp32"], "evidence": "engine_test"}
+    {
+      "group": "fp.round",
+      "option": "rounding",
+      "types": [
+        "fp64"
+      ]
+    },
+    {
+      "group": "fp.round",
+      "option": "rounding",
+      "types": [
+        "fp32"
+      ],
+      "evidence": "engine_test"
+    }
   ],
   "constructs": [
     "round"
@@ -21,8 +34,8 @@
       "streaming"
     ]
   },
-  "description": "`round()` rounds half to even (`round_ties_even`): `0.5` is 0, `2.5` is 2, `-2.5` is -2. `round(mode='half_away_from_zero')` is Rust's `f64::round`, and `mode='to_zero'` truncates. `floor` and `ceil` agree with the reference on every edge case. A negative value that rounds to zero gives `-0.0` (`round(-0.4)`, `ceil(-0.4)`), as IEEE 754 does, in-memory and streaming.",
-  "reference": "`round` with `rounding: TIE_AWAY_FROM_ZERO` (#335), the only value the model accepts. So the writer needs `mode='half_away_from_zero'`, which matches on every row.",
+  "description": "`round()` rounds half to even (`round_ties_even`): `0.5` is 0, `2.5` is 2, `-2.5` is -2. `round(mode='half_away_from_zero')` is Rust's `f64::round`, and `mode='to_zero'` truncates. `floor` and `ceil` agree with the reference on every edge case. A negative value that rounds to zero gives `-0.0` (`round(-0.4)`, `ceil(-0.4)`), as IEEE 754 does, in-memory and streaming. `round(d)` to `d` digits (2,500 rows, streaming, #2572): with `mode='half_away_from_zero'` Polars matches the reference's `round(x, d)` (`FloatCode.roundTo`): 1.005 and 2.675 to 2 digits are 1.0 and 2.68, 1234.5678 to 1 digit is 1234.6, and -2.675 to 3 digits is -2.675. By default it rounds the product `x · 10^d` half to even, as `round()` does. Written as `(x * 10^d).round(0, mode='half_away_from_zero') / 10^d` it takes the reciprocal kernel for the literal divisor (polars-scalar-divisor): 1234.6000000000001, 1.0050000000000001 and 2.6750000000000003, so no template from those calls is the reference's. Polars rounds to no negative digits (polars-round-digits). The call the lowering renders, `round(d, mode='half_away_from_zero')`, matches the reference's `round(x, d)` on every value probed at d = 0, 1, 2, 3, 10 and 22: ±0.5, ±1.5, ±2.5, -0.0 (its sign kept), ±0.49999999999999994 (to 0.0 and -0.0), values around 2^52, 1e300, -1e-300, 5e-324, NaN and ±∞ (`engines/polars/probes/round_mode_ties.py`). Polars rounds to no negative digits.",
+  "reference": "`round` with `rounding: TIE_AWAY_FROM_ZERO` (#335) needs `mode='half_away_from_zero'`, which matches on every row. `rounding: TIE_TO_EVEN` at zero digits (D55, `froundEven`) is `round()`, Polars's default: the same values, and the same `-0.0` for a negative value that rounds to zero, which the lowering's `round_zero_sign` template states (`Polars.froundEven_agree`).",
   "status": "open",
   "evidence": "probe",
   "provenance": [
@@ -146,6 +159,62 @@
       "notes": [
         "Polars py-2.1.0. The sign of a zero result, for the round-to-zero sign option."
       ]
+    },
+    {
+      "checked_at": "2026-11-22",
+      "method": "probe",
+      "checked_by": "#322 session (claude/duckdb-rounding-casts), Python 3.12, polars 2.1.0",
+      "evidence": [
+        {
+          "sql": "pl.DataFrame({'x': [-0.4, -0.5, 0.5, 1.5, 2.5, -2.5, nan, inf, 4500000000000000.5, 2.0**53, -0.0]}).select(pl.col('x').round(0, mode='half_to_even'), pl.col('x').round(0))",
+          "observed": "both columns: [-0.0, -0.0, 0.0, 2.0, 2.0, -2.0, nan, inf, 4500000000000000.0, 9007199254740992.0, -0.0]; the sign of the zero results by math.copysign: -1 for -0.4 and -0.5"
+        },
+        {
+          "file": "engines/polars/probes/probes.json",
+          "probe": "Float64.round()"
+        }
+      ],
+      "notes": [
+        "The edge cases the cast needs (D55, #322): ties go to the even integer, NaN and ±inf stay, values from 2^52 up are unchanged, and a negative value that rounds to zero keeps IEEE's `-0.0`. `probes.json` now matches `rounding: TIE_TO_EVEN` for `Float64.round()`.",
+        "Polars py-2.1.0, in memory."
+      ]
+    },
+    {
+      "checked_at": "2026-11-24",
+      "method": "manual-repro",
+      "checked_by": "#2572 session (polars 2.1.0, collect(engine='streaming'), 2,500 rows)",
+      "evidence": [
+        {
+          "sql": "x.round(2, mode='half_away_from_zero') for x in 1.005, 2.675, 0.125, 1234.5678, -2.675",
+          "observed": "1.0, 2.68, 0.13, 1234.57, -2.68"
+        },
+        {
+          "sql": "x.round(1, mode='half_away_from_zero') for 1234.5678",
+          "observed": "1234.6"
+        },
+        {
+          "sql": "(x * 10.0).round(0, mode='half_away_from_zero') / 10.0 for 1234.5678",
+          "observed": "1234.6000000000001"
+        },
+        {
+          "sql": "(x * 1000.0).round(0, mode='half_away_from_zero') / 1000.0 for 1.005, 2.675, -2.675",
+          "observed": "1.0050000000000001, 2.6750000000000003, -2.6750000000000003"
+        }
+      ]
+    },
+    {
+      "checked_at": "2026-11-24",
+      "method": "probe",
+      "checked_by": "#2572 session (polars 2.1.0, collect(engine='streaming'), 2,400 rows)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/round_mode_ties.py"
+        },
+        {
+          "url": "https://github.com/pola-rs/polars/blob/py-2.1.0/crates/polars-ops/src/series/ops/round.rs#L141-L151"
+        }
+      ],
+      "notes": "Each value at each d compared with a model of FloatCode.roundTo (an exact half-away rounding of x · 10^d, divided by 10^d; x itself where that is not finite), sign of zero included: 0 mismatches. The mode is RoundMode::HalfAwayFromZero, Rust's f64::round, at the pinned tag."
     }
   ],
   "issues": [

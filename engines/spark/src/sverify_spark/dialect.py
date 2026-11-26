@@ -74,7 +74,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar
 
-from sverify._unsupported import ISSUE_1725
+from sverify._unsupported import DUCKDB_ONLY, ISSUE_1725
 from sverify.sql.core import (
     I64_MAX,
     I64_MIN,
@@ -85,6 +85,7 @@ from sverify.sql.core import (
     Lst,
     Unsupported,
     _timestamp_text,
+    raised_issue,
 )
 
 #: Session settings the SQL relies on; `SparkSession.builder.config` each.
@@ -118,7 +119,7 @@ def _digits(k: Kind) -> tuple[int, int]:
         return k.p, k.s
     if k == "int":
         return 20, 0
-    raise Unsupported(f"decimal arithmetic with a {k} operand on Spark")
+    raise Unsupported(f"decimal arithmetic with a {k} operand on Spark; {DUCKDB_ONLY}")
 
 
 @dataclass(frozen=True)
@@ -128,6 +129,8 @@ class SparkDialect(Dialect):
     # A `MIN` or `MAX` of mixed zeros depends on order and partitioning
     # (spark-zero-order); its keys are canonical already.
     canonical_zero_reps: ClassVar[frozenset[str]] = frozenset({"extreme"})
+    # NaN equals NaN and sorts above `+inf` (spark-nan-order, spark-nan-equality).
+    nan_orders: ClassVar[bool] = True
 
     def quote(self, ident: str) -> str:
         return "`" + ident.replace("`", "``") + "`"
@@ -213,25 +216,65 @@ class SparkDialect(Dialect):
         reps = f"array_repeat({a}, CAST({n} AS INT))"
         return f"aggregate({reps}, {self.int_lit(1)}, (acc, e) -> acc * e)"
 
+    # The generated, proved lowering (`engines/spark/Sverify/Spark/Lowering.lean`, #271)
+
+    def lowered(
+        self, fn: str, args: list[str], kind: Kind, consts: Sequence[float | int | None] = ()
+    ) -> str | None:
+        from sverify.sql import lowering
+
+        return lowering.render(
+            fn,
+            args,
+            lambda message, dep: self.raise_(message, dep, kind, raised_issue(message)),
+            self.float_lit,
+            self.int_lit,
+            self.guards,
+            consts,
+            engine="spark",
+            call=self._call,
+            date_lit=lambda days: f"date_from_unix_date({days})",
+        )
+
+    def _call(self, name: str, xs: list[str]) -> str | None:
+        """A call of a Spark template, as `Profile.spark` states Spark computes
+        it: `FLOOR` and `CEIL` give a `BIGINT`, which the template applies only
+        below 2⁵², so the cast back is exact."""
+        match name, xs:
+            case ("ffloor" | "Substrait.UnFn.fceil") as f, [x]:
+                return f"CAST({'FLOOR' if f == 'ffloor' else 'CEIL'}({x}) AS DOUBLE)"
+            case "Substrait.BinFn.dateAdd", [d, n]:
+                return f"date_add({d}, CAST({n} AS INT))"
+            case "Substrait.BinFn.dateDiff", [a, b]:
+                return f"CAST(datediff({a}, {b}) AS BIGINT)"
+            case str(b), [x, y] if b.startswith("bit:"):
+                return self.fn(b.removeprefix("bit:"), x, y)
+        return None
+
     # Doubles
 
-    def whole(self, fn: str, x: str) -> str:
-        """`fn` (FLOOR or CEIL, which return BIGINT) on a double. Doubles of
-        magnitude 2⁵² and more are whole already; NaN and ±inf stay."""
-        big = self.float_lit(2.0**52)
-        value = f"CAST({fn}({x}) AS DOUBLE)"
-        return f"(CASE WHEN isnan({x}) OR abs({x}) >= {big} THEN {x} ELSE {value} END)"
+    def _table(self, fn: str, args: list[str], kind: Kind) -> str:
+        """`fn` from Spark's table, which has an entry for it."""
+        low = self.lowered(fn, args, kind)
+        if low is None:
+            raise RuntimeError(f"Spark's lowering table has no entry for {fn}")
+        return low
 
     def float_floor(self, x: str) -> str:
-        return self.whole("FLOOR", x)
+        return self._table("ffloor", [x], "float")
 
     def float_ceil(self, x: str) -> str:
-        return self.whole("CEIL", x)
+        return self._table("Substrait.UnFn.fceil", [x], "float")
 
     def float_round(self, x: str) -> str:
         # Half away from zero on the shortest decimal of the double, which is
         # the double's own rounding (a halfway double prints as one).
         return f"ROUND({x})"
+
+    def float_round_even(self, x: str) -> str:
+        # `BROUND` is HALF_EVEN on the double's shortest decimal, which at zero digits is
+        # IEEE's half-to-even: a double prints as `k.5` only when it is `k + 0.5` (D55).
+        return f"BROUND({x})"
 
     def float_pow(self, a: str, b: str) -> str:
         raise self.to_duckdb(
@@ -247,12 +290,6 @@ class SparkDialect(Dialect):
 
     def is_nan(self, x: str) -> str:
         return f"isnan({x})"
-
-    def float_eq(self, a: str, b: str) -> str:
-        return f"({a} = {b})"
-
-    def float_lt(self, a: str, b: str) -> str:
-        return f"({a} < {b})"
 
     # Temporal
 
@@ -294,7 +331,7 @@ class SparkDialect(Dialect):
         return f"CAST(unix_date({d}) AS BIGINT)"
 
     def date_add_days(self, d: str, n: str) -> str:
-        return f"date_add({d}, CAST({n} AS INT))"
+        return self._table("Substrait.BinFn.dateAdd", [d, n], "date")
 
     def add_months(self, x: str, months: int, kind: Kind) -> str:
         # `add_months` clamps to the end of a shorter month, as
@@ -339,7 +376,7 @@ class SparkDialect(Dialect):
         self, op: str, a: str, b: str, sa: int, k: Dec, kinds: tuple[Kind, Kind] | None = None
     ) -> str:
         if kinds is None:
-            raise Unsupported(f"decimal {op} of operands of unknown types on Spark")
+            raise Unsupported(f"decimal {op} of operands of unknown types on Spark; {DUCKDB_ONLY}")
         (p1, s1), (p2, s2) = (_digits(x) for x in kinds)
         if op == "*":
             p, sc = p1 + p2 + 1, s1 + s2

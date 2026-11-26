@@ -98,7 +98,7 @@ catalog = SqlCatalog(
 )
 ice = IcebergSource(catalog, "db.events")
 samples = FlightSource(
-    os.environ["SVLEAK_FLIGHT_AT"], "samples", secret="flight-token",
+    os.environ["SVLEAK_FLIGHT_AT"], "samples", credentials="flight-token",
     schema=pa.schema([("id", pa.int64()), ("amount", pa.int64())]),
 )
 
@@ -313,7 +313,7 @@ def test_no_secret_reaches_any_output(lake, capsys, caplog):
     # database, sverify's state.
     for f in root.rglob("*"):
         if f.is_file():
-            outputs[f"file {f.relative_to(root)}"] = f.read_bytes()
+            outputs[f"file {f.relative_to(root).as_posix()}"] = f.read_bytes()
 
     # A failed resolution, with its whole traceback.
     set_resolver(Resolver(backends={"leaky": _Leaky()}, default="leaky"))

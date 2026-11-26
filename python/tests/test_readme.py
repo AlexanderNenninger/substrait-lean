@@ -12,6 +12,7 @@ The tour's notebooks are checked by `poe notebooks`.
 
 import contextlib
 import io
+import os
 import re
 import shlex
 from pathlib import Path
@@ -25,6 +26,20 @@ READMES = [
     ROOT / "README.md",
     ROOT / "python" / "README.md",
     ROOT / "docs" / "tasks.md",
+    ROOT / "docs" / "how-to-contracts.md",
+    ROOT / "docs" / "how-to-guards.md",
+    ROOT / "docs" / "how-to-bounds.md",
+    ROOT / "docs" / "how-to-command-line.md",
+    ROOT / "docs" / "how-to-nodes.md",
+    ROOT / "docs" / "how-to-quarantine.md",
+    ROOT / "docs" / "how-to-table-formats.md",
+    ROOT / "docs" / "how-to-credentials.md",
+    ROOT / "docs" / "how-to-openlineage.md",
+    ROOT / "docs" / "how-to-time-buckets.md",
+    ROOT / "docs" / "how-to-engines-and-sql.md",
+    ROOT / "docs" / "how-to-export.md",
+    ROOT / "docs" / "how-to-production.md",
+    ROOT / "docs" / "how-to-install.md",
     ROOT / "docs" / "getting-started.md",
     ROOT / "docs" / "how-it-works.md",
     ROOT / "docs" / "core-semantics.md",
@@ -121,6 +136,8 @@ def run_blocks(path: Path, text: str) -> None:
         with contextlib.redirect_stdout(printed):
             exec(compile(block, f"{path.name} block {k + 1}", "exec"), namespace)
         lines = [line.rstrip() for line in printed.getvalue().splitlines()]
+        if os.sep == "\\":  # a path prints with Windows' separators; the comments write `/`
+            lines = [line.replace("\\", "/") for line in lines]
         for expected in shown_output(block):
             expected = expected.removesuffix("...").rstrip()  # "..." elides the rest
             if not expected:
@@ -143,6 +160,26 @@ def test_readme_examples_run(readme, tmp_path, monkeypatch):
     run_bash(readme, readme.read_text())
     for reason in skipped_blocks(readme.read_text()) + skipped_bash(readme.read_text()):
         print(f"{readme.relative_to(ROOT)}: block skipped: {reason}")
+
+
+#: Pages a reader finishes in one sitting (#753): a tutorial or how-to page, and the user's README.
+#: `docs/README.md` records the ceilings.
+MAX_PAGE_LINES = 600
+MAX_README_LINES = 90
+
+
+@needs_repo
+def test_the_pages_fit_a_sitting():
+    pages = [
+        ROOT / "docs" / "getting-started.md",
+        ROOT / "docs" / "tasks.md",
+        ROOT / "docs" / "coverage.md",
+        *sorted((ROOT / "docs").glob("how-to-*.md")),
+    ]
+    long = {p.name: n for p in pages if (n := len(p.read_text().splitlines())) > MAX_PAGE_LINES}
+    assert long == {}, f"over {MAX_PAGE_LINES} lines: split the page"
+    n = len((ROOT / "python" / "README.md").read_text().splitlines())
+    assert n <= MAX_README_LINES, f"python/README.md has {n} lines, over {MAX_README_LINES}"
 
 
 @needs_repo

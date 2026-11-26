@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://alexandernenninger.github.io/substrait-lean/schemas/refresh/1.json",
+  "$id": "https://alexandernenninger.github.io/substrait-lean/schemas/refresh/2.json",
   "title": "sverify refresh report",
-  "description": "What a refresh did, node by node (sverify.Refresh.to_json): for a scheduled job or a command line to read. Format 1. Within 1.x the format only gains optional keys, and readers ignore keys they do not know (docs/stability.md).",
+  "description": "What a refresh did, node by node (sverify.Refresh.to_json): for a scheduled job or a command line to read. Format 2. Within 1.x the format only gains optional keys, and readers ignore keys they do not know (docs/stability.md). Format 1, before 1.0, named a write's inserts and deletes inserted and deleted.",
   "type": "object",
   "required": [
     "format",
@@ -15,8 +15,8 @@
       "type": "string"
     },
     "format": {
-      "description": "The version of this format.",
-      "const": 1
+      "description": "The version of this format: 2, or 1 in a document written before 1.0.",
+      "enum": [1, 2]
     },
     "outcome": {
       "$ref": "#/$defs/outcome"
@@ -191,10 +191,12 @@
                 "null"
               ]
             },
-            "inserted": {
+            "inserts": {
+              "description": "Rows written.",
               "type": "integer"
             },
-            "deleted": {
+            "deletes": {
+              "description": "Rows deleted.",
               "type": "integer"
             }
           }

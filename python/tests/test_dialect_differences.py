@@ -17,12 +17,12 @@ from sverify import _dialect
 from sverify._unsupported import UnsupportedError
 from sverify.report import Report
 from sverify.sql_lift import lift
-from sverify.sql_lift._base import DUCKDB, REFERENCE
+from sverify.sql_lift._base import DUCKDB, PORTABLE
 
 SCHEMA = {"t": ibis.schema({"x": "float64", "d": "decimal(10,2)", "y": "float64"})}
 
 
-def _found(sql: str, semantics: str = "reference") -> list[str]:
+def _found(sql: str, semantics: str = "portable") -> list[str]:
     return [d.key for d in lift(sql, SCHEMA, semantics).differences]
 
 
@@ -32,24 +32,23 @@ def test_each_silent_difference_is_refused_or_listed() -> None:
     with neither fails."""
     keys = {
         f.name
-        for f in dataclasses.fields(REFERENCE)
+        for f in dataclasses.fields(PORTABLE)
         if f.name != "name"
-        and getattr(REFERENCE, f.name) != getattr(DUCKDB, f.name)
-        and "ERROR" not in (getattr(REFERENCE, f.name), getattr(DUCKDB, f.name))
+        and getattr(PORTABLE, f.name) != getattr(DUCKDB, f.name)
+        and "ERROR" not in (getattr(PORTABLE, f.name), getattr(DUCKDB, f.name))
     }
-    assert keys | _dialect.NATIVE == set(_dialect.TABLE) | set(_dialect.REFUSED)
-    assert not set(_dialect.TABLE) & set(_dialect.REFUSED)
+    assert keys | _dialect.NATIVE == set(_dialect.TABLE)
 
 
 @pytest.mark.parametrize(
     ("sql", "spelling"),
     [
-        ("SELECT CAST(x AS BIGINT) AS a FROM t", "CAST(round(x) AS BIGINT)"),
+        ("SELECT CAST(x AS INTEGER) AS a FROM t", "CAST(x AS BIGINT)"),
     ],
 )
-def test_the_rounding_cast_is_refused_with_its_spellings(sql: str, spelling: str) -> None:
+def test_a_narrower_rounding_cast_is_refused_with_its_spellings(sql: str, spelling: str) -> None:
     with pytest.raises(UnsupportedError) as e:
-        lift(sql, SCHEMA, "reference")
+        lift(sql, SCHEMA, "portable")
     assert spelling in str(e.value)
     assert "round(CAST(d AS DOUBLE))" not in str(e.value)
 
@@ -61,10 +60,9 @@ def test_the_rounding_cast_is_refused_with_its_spellings(sql: str, spelling: str
         "SELECT CAST((round(x, 2)) AS BIGINT) AS a FROM t",
     ],
 )
-def test_a_round_with_digits_is_not_integral_and_is_refused(sql: str) -> None:
-    """`round(2.567, 2)` is 2.57, which DuckDB's cast rounds to 3 and the plan truncates to 2."""
-    with pytest.raises(UnsupportedError, match="DuckDB's cast"):
-        lift(sql, SCHEMA, "reference")
+def test_a_round_with_digits_casts_as_any_double(sql: str) -> None:
+    """`round(2.567, 2)` is 2.57, which DuckDB's cast rounds to 3: the lift states that rounding."""
+    assert _found(sql) == []
 
 
 def test_a_parenthesised_round_lifts() -> None:
@@ -104,7 +102,7 @@ def test_the_corr_construct_is_listed() -> None:
 LISTS = {"t": ibis.schema({"l": "array<int64>", "x": "int64"})}
 
 
-def _found_lists(sql: str, semantics: str = "reference") -> list[str]:
+def _found_lists(sql: str, semantics: str = "portable") -> list[str]:
     return [d.key for d in lift(sql, LISTS, semantics).differences]
 
 
@@ -218,7 +216,7 @@ def test_a_difference_has_the_refusal_category_and_the_sql_as_written() -> None:
     assert str(d).startswith("CORR(t.x, t.y) in the query")
 
 
-@pytest.mark.parametrize("semantics", ["reference", "duckdb"])
+@pytest.mark.parametrize("semantics", ["portable", "duckdb"])
 @pytest.mark.parametrize(
     "sql",
     [

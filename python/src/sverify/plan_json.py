@@ -150,15 +150,23 @@ def _type_json(dtype: Any) -> Json:
                 f"{INSTANT_NOTE}; only UTC is read, as an instant"
             )
         # Seconds and milliseconds are encodings of the source: the read widens
-        # them to microseconds, exactly (D61).
-        if dtype.scale not in (None, 0, 3, 6):
+        # them to microseconds, exactly. Nanoseconds are a kind of their own,
+        # 1677-09-21 to 2262-04-11 (D61).
+        if dtype.scale not in (None, 0, 3, 6, 9):
             raise Unsupported(
-                "only second, millisecond and microsecond timestamps are supported (#323); "
-                "cast the column to microseconds before sverify reads the table"
+                "only second, millisecond, microsecond and nanosecond timestamps are "
+                "supported (#323); cast the column to microseconds before sverify reads it"
+            )
+        precision = 9 if dtype.scale == 9 else 6
+        if precision == 9 and dtype.timezone is not None:
+            # DuckDB's TIMESTAMPTZ holds microseconds only.
+            raise Unsupported(
+                "timestamps with a time zone in nanoseconds are not supported; cast the column "
+                "to microseconds, or drop its zone, before sverify reads it (#323)"
             )
         if dtype.timezone is not None:
-            return {"precisionTimestampTz": {"precision": 6, **NULLABLE}}
-        return {"precisionTimestamp": {"precision": 6, **NULLABLE}}
+            return {"precisionTimestampTz": {"precision": precision, **NULLABLE}}
+        return {"precisionTimestamp": {"precision": precision, **NULLABLE}}
     if dtype.is_time():
         return {"precisionTime": {"precision": 6, **NULLABLE}}
     if dtype.is_null():
@@ -167,11 +175,17 @@ def _type_json(dtype: Any) -> Json:
         return {"list": {"type": type_json(dtype.value_type), **NULLABLE}}
     if dtype.is_struct():
         return {"struct": {"types": [type_json(t) for t in dtype.types], **NULLABLE}}
+    # An opaque column (D67): carried, and never read.
     if dtype.is_binary():
-        raise Unsupported(
-            "sverify reads no binary values (#1918): encode them as text at the source "
-            "(hex or base64), or leave the column out"
-        )
+        return {"binary": NULLABLE}
+    if dtype.is_map():
+        return {
+            "map": {
+                "key": type_json(dtype.key_type),
+                "value": type_json(dtype.value_type),
+                **NULLABLE,
+            }
+        }
     if dtype.is_uuid():
         raise Unsupported(
             "type uuid is not supported; read it as text with CAST(column AS VARCHAR) in the "
@@ -203,6 +217,11 @@ def _instant(value: dt_.datetime) -> str:
 
 
 def literal(value: Any, dtype: Any) -> Json:
+    if dtype.is_binary():
+        raise ProducerUnsupported(
+            "sverify reads no binary values (#1918): it carries a binary column, but a binary "
+            "constant is not modelled; encode it as text at the source (hex or base64)"
+        )
     if value is None or dtype.is_null():
         return {"literal": {"null": type_json(dtype)}}
     if dtype.is_boolean():
@@ -230,6 +249,12 @@ def literal(value: Any, dtype: Any) -> Json:
         return {"literal": {"string": str(value)}}
     if dtype.is_timestamp():
         type_json(dtype)
+        if dtype.scale == 9:
+            # A literal is microseconds (`datetime`); nanoseconds are read from a column (D61).
+            raise ProducerUnsupported(
+                "a literal timestamp in nanoseconds is not supported (#2318); nanoseconds "
+                "(1677-09-21 to 2262-04-11) are read from a column"
+            )
         if value.tzinfo is not None or dtype.timezone is not None:
             return {"literal": {"precisionTimestampTz": {"precision": 6, "value": _instant(value)}}}
         micros = (value - EPOCH) // dt_.timedelta(microseconds=1)
@@ -253,8 +278,6 @@ def literal(value: Any, dtype: Any) -> Json:
     if dtype.is_struct():
         fields = [literal(value.get(f), t)["literal"] for f, t in dtype.items()]
         return {"literal": {"struct": {"fields": fields}}}
-    if dtype.is_binary():
-        type_json(dtype)  # refuses, saying why (#1918)
     raise ProducerUnsupported(f"literal of type {dtype} is not supported")
 
 
@@ -392,7 +415,7 @@ def call(name: str, args: Iterable[Json]) -> Json:
 
 #: The profile the plan being built is read under (`verify(semantics=...)`):
 #: under `"polars"`, integer `//` and `%` are Polars's (`floor_call`).
-_SEMANTICS: contextvars.ContextVar[str] = contextvars.ContextVar("_SEMANTICS", default="reference")
+_SEMANTICS: contextvars.ContextVar[str] = contextvars.ContextVar("_SEMANTICS", default="portable")
 
 
 def semantics() -> str:
@@ -745,7 +768,7 @@ def values_rel(schema: Any, rows: list[list[Json]]) -> Json:
 
 
 @contextlib.contextmanager
-def compiling(semantics: str = "reference") -> Iterator[Compiler]:
+def compiling(semantics: str = "portable") -> Iterator[Compiler]:
     """A fresh `Compiler` for the plan built inside the block, read under
     `semantics`."""
     compiler = Compiler()

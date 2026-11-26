@@ -10,6 +10,7 @@ from importlib.metadata import version as _version
 from pathlib import Path
 
 from sverify._duckdb import memory_limit_error
+from sverify.cli import ExitCode
 from sverify.errors import MemoryLimitError, UnsupportedError
 
 from sverify_dbt import formats
@@ -17,9 +18,17 @@ from sverify_dbt.check import check
 from sverify_dbt.manifest import ProjectError
 from sverify_dbt.result import CheckResult
 
-#: The exit codes of `sverify check`: 0 holds, 1 not proved, 2 usage, 3 a model
-#: refused (`--fail-on refused`) or the check unsupported, 4 a budget, 6 an error.
-NOT_PROVED, USAGE, REFUSED, BUDGET, ERROR = 1, 2, 3, 4, 6
+#: The exit codes of `sverify check` (`sverify.cli.ExitCode`), those a dbt check
+#: gives: a model refused (`--fail-on refused`) or the check unsupported is 3.
+#: This `REFUSED` is a model sverify cannot read, `ExitCode.UNSUPPORTED` (3); it is
+#: not `ExitCode.REFUSED` (4), a proved node with no route to the engine.
+NOT_PROVED, USAGE, REFUSED, BUDGET, ERROR = (
+    ExitCode.NOT_PROVED,
+    ExitCode.USAGE,
+    ExitCode.UNSUPPORTED,
+    ExitCode.BUDGET,
+    ExitCode.ERROR,
+)
 
 
 def _hard_stop() -> None:
@@ -190,7 +199,7 @@ def _fail(
 
         err = {"code": kind, "type": type(e).__name__, "message": message}
         doc = {
-            "format": 1,
+            "format": 2,
             "sverify": version("sverify"),
             "command": "check",
             "exit": code,
@@ -213,7 +222,7 @@ def _exit_code(result: CheckResult, fail_on: str) -> int:
     failed = bool(result.contract_errors or result.unproved_constraints or result.refused_contracts)
     if fail_on in ("unproved", "refused"):
         failed = failed or any(
-            m.by_status("not proved") or (not m.refused and m.by_status("not checked"))
+            m.by_status("not_proved") or (not m.refused and m.by_status("not_checked"))
             for m in result.models
         )
     if failed:

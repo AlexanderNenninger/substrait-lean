@@ -65,7 +65,7 @@ def test_on_unproved_warn_refreshes_unverified(tmp_path) -> None:
         r"ensures big > 100 is not proved",
     ):
         out = node.refresh()
-    assert out["sums"].route is not None and out["sums"].route.kind == "unverified"
+    assert out["sums"].route is not None and out["sums"].route.taken == "unverified"
     assert "route on duckdb: unverified: not verified" in str(out)
 
 
@@ -88,7 +88,7 @@ def test_a_mean_into_a_sink_needs_no_settings(tmp_path, engine) -> None:
     node = mean(orders).write(DeltaSink(str(tmp_path / "m")))
     out = node.refresh(engine=engine)
     route = out["m"].route
-    assert route is not None and route.kind == "translated"
+    assert route is not None and route.taken == "translated"
     assert node.to_arrow().to_pylist() == [{"customer": "ada", "m": 6.0}]
 
 
@@ -214,7 +214,7 @@ def test_an_engine_refusal_names_the_users_function(con) -> None:
     with pytest.raises(
         RouteError,
         match=r"median\(\) or quantile\(\) .*runs on duckdb only: run it with engine='duckdb' "
-        r".*https://github.com/AlexanderNenninger/substrait-lean/issues/271",
+        r".*https://github.com/AlexanderNenninger/substrait-lean/issues/2540",
     ):
         report.run(con, "polars")
 

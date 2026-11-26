@@ -1,3 +1,0 @@
-### Aggregates and windows over expressions
-
-`mode()` of an expression ([#1909](https://github.com/AlexanderNenninger/substrait-lean/issues/1909)), window partitions and sort keys that are expressions ([#1930](https://github.com/AlexanderNenninger/substrait-lean/issues/1930)), `quantile()` of several fractions ([#1910](https://github.com/AlexanderNenninger/substrait-lean/issues/1910)) and `nunique()` of whole rows ([#1912](https://github.com/AlexanderNenninger/substrait-lean/issues/1912)) are read: the Ibis producer projects the expressions into columns first, writes one measure for each fraction and counts the rows left after a `DISTINCT`.

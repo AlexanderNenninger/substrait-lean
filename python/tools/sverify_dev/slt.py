@@ -80,7 +80,7 @@ REPLAY_DIR = REPO / "engines" / "duckdb" / "replay"
 FACTS_README = REPO / "engines" / "duckdb" / "facts" / "README.md"
 
 #: The semantics the lift reads the queries under: DuckDB's, or (L2 of #1484,
-#: `--semantics reference`) the reference's, where the replay checks that
+#: `--semantics portable`) the reference's, where the replay checks that
 #: the values agree with DuckDB's own or the reference raises. A worker
 #: process reads it from the environment.
 SEMANTICS_ENV = "SVERIFY_SLT_SEMANTICS"
@@ -527,6 +527,9 @@ _SETTING = re.compile(
     re.I | re.S,
 )
 
+#: DuckDB's error when `max_execution_time` stops a query.
+_TIME_LIMIT = re.compile(r"maximum execution time", re.I)
+
 #: DuckDB errors from reading the query, not from running it.
 _FRONTEND = tuple(
     f"error: {k} Error"
@@ -774,6 +777,12 @@ class Replay:
             # DuckDB ran it above, so the state stays the test's.
             res.reason = f"modifies data ({dml} in a query), outside sverify's scope"
             return res
+        if ddb_err and _TIME_LIMIT.search(ddb_err):
+            # The test checks DuckDB's interrupt (`SET max_execution_time`): a time limit is
+            # an outcome no model states, and lifting a query built to run long would run Lean
+            # into the checker's watchdog (#2498).
+            res.reason = "DuckDB's time limit interrupted it"
+            return res
         if self.settings or _REDEFINES.search(rec.sql):
             res.reason = "setting " + ", ".join(sorted(self.settings or {"collation"}))
             return res
@@ -866,7 +875,7 @@ class Replay:
         expected ones."""
         from sverify.engine import run_checker, run_plan, written_plan
         from sverify.testing import LeanRaised, lean_values
-        from sverify_dev.checked import checked
+        from sverify_dev.checked import ambiguous, checked
 
         code, out, err = run_checker((), plan)
         if code != 0 or "well-formed: yes" not in out:
@@ -904,7 +913,7 @@ class Replay:
             lean_err = _error(e)
         if lean_err is not None:
             res.lean = lean_err
-        if lean_err is not None and semantics() == "reference":
+        if lean_err is not None and semantics() == "portable":
             if not raised:
                 # A crash or a timeout of this tool is no evidence either way.
                 res.cls, res.reason = "refused", f"tool: {_clip(lean_err, 200)}"
@@ -931,7 +940,7 @@ class Replay:
             flagged = not lean_ok
             lean_ok = outcome(None, res.reason, ordered)
 
-        if semantics() == "reference":
+        if semantics() == "portable":
             # L2 compares the reference's value with DuckDB's own on the same
             # text; the plan written back for DuckDB has the reference's
             # meaning, which is not what it is compared with.
@@ -974,9 +983,11 @@ class Replay:
                     # The written plan's own check of a reported assumption
                     # (ruling 230): the report lists it and Lean finds it.
                     data = json.dumps(_typed_inline(json.loads(written_plan(plan)), rows, self.con))
-                    if why := checked(str(e), listed(), data):
+                    issues = listed()
+                    if why := checked(str(e), issues, data):
                         res.cls, res.reason = "agree", why
                         return res
+                    res.reason = ambiguous(str(e), issues)
 
         if lean_ok and engine_ok is not False:
             res.cls = "agree"
@@ -1250,24 +1261,42 @@ class Known:
 #: `engines/duckdb/tests/test_unexplained.py` fails on a `disagree` entry of a
 #: ledger that none matches, and on an entry here that no ledger needs.
 KNOWN: tuple[Known, ...] = (
-    # DuckDB widens an integer SUM to HUGEINT; the reference raises past i64.
+    # Two SUMs in one query: the written plan's tagged check raises (the sum leaves 64 bits, as
+    # DuckDB's HUGEINT sum does), and the harness cannot tell which of the two listed issues
+    # raised (`checked.AMBIGUOUS`, ruling 236, C1). One SUM of the same shape agrees (#2162).
+    Known("#2162", ("aggregate/sparse_clustered_aggregation.test",), r"sum\(.*sum\("),
+    # `AND` runs in order in DuckDB's filter, and `CASE` and `COALESCE` run an operand only on
+    # the rows that reach it; in the reference both `AND` operands run, and the written plan's
+    # raising operand raises.
     Known(
-        "duckdb-R6",
+        "duckdb-exec-short-circuit",
         (
-            "aggregate/aggregates/test_sum.test",
-            "aggregate/aggregates/test_sum_fastpath.test",
-            "aggregate/sparse_clustered_aggregation.test",
-            "sql_export/aggregate_results.test",
+            "cast/signed_cast_repro.test",
+            "error/test_try_in_clause.test",
+            "function/generic/constant_argument_errors.test",
         ),
     ),
-    # `AND` runs in order in DuckDB's filter; in the reference both operands
-    # run, and the written plan's cast raises.
-    Known("duckdb-exec-short-circuit", ("cast/signed_cast_repro.test",)),
+    # `MIN % -1` raised at 2.0.0 and is 0 at 2.0.1 (D70, error-side).
+    Known(
+        "duckdb-int-modulus-min-neg-one",
+        (
+            "function/numeric/test_mod_min_negative_one.test",
+            "function/numeric/test_modulo_min_by_minus_one.test",
+        ),
+    ),
+    # A cast of a list of structs to the same field kinds under other names is the identity in
+    # the model, and DuckDB pairs the fields by name (#2376).
+    Known("#2376", ("cast/struct_cast_can_throw.test",), r"STRUCT\("),
     # A double that overflows is ±inf in DuckDB; the reference raises.
     Known(
         "duckdb-double-overflow",
         ("aggregate/aggregates/test_stddev.test", "overflow/test_numeric_overflow.test"),
     ),
+    # `ascii` of a non-ASCII character, and `upper`/`lower` of characters the engines map
+    # differently: DuckDB gives a value, the reference raises (D43, D51), as does the written
+    # plan's guard.
+    Known("duckdb-ascii", ("function/string/test_ascii.test",), r"\bascii\("),
+    Known("duckdb-case-mapping", ("function/string/test_caseconvert.test",), r"\b(upper|lower)\("),
     # The written plan does not raise on a length past 32 bits.
     Known("duckdb-substring-range", ("function/string/test_substring.test",), r"4294967296"),
     # Trigonometry of ±inf: NaN in DuckDB, a domain error in the reference.
@@ -1407,7 +1436,7 @@ def write_summary(out: Path = REPLAY_DIR, readme: Path | None = None) -> Path:
         top = ", ".join(f"{k} {n}" for k, n in reasons.most_common(2))
         d = led.get("disagree_sides", {})
         sides = ", ".join(f"{k} {n}" for k, n in sorted(d.items()))
-        link = os.path.relpath(p, readme.parent)
+        link = Path(os.path.relpath(p, readme.parent)).as_posix()
         rows.append(
             f"| [{led['area']}]({link}) | {s['agree']} | {_oracle_a_only(led['results'])} "
             f"| {s['disagree']} | {sides} "
@@ -1544,16 +1573,80 @@ def replay_files(
                 _stop_worker(conn, proc)
 
 
+def refresh_ledger(
+    old: dict | None,
+    files: Sequence[str],
+    version: str,
+    results: list[dict],
+    skipped: dict[str, str],
+) -> tuple[list[dict], dict[str, str], dict | None]:
+    """The ledger of an area after `files` (relative to `test/sql`) were replayed
+    alone at `version`: their entries replace the ones of the same files, every
+    other entry stays, and the head says which files are newer than the area's run
+    (`"refreshed"`). Without an `old` ledger the area is new: its run is at
+    `version`, whole, and nothing is refreshed. Returns the entries, the skipped
+    files and the head's overrides for `write_ledger`."""
+    if old is None:
+        return results, skipped, None
+    named = set(files)
+    kept = [r for r in old["results"] if r["file"] not in named]
+    gone = {k: v for k, v in old.get("skipped_files", {}).items() if k not in named}
+    head = {
+        "duckdb": old["duckdb"],
+        "source": old["source"],
+        "refreshed": {**old.get("refreshed", {}), **{f: version for f in sorted(named)}},
+    }
+    return kept + results, gone | skipped, head
+
+
+def refresh_files(
+    root: Path, version: str, files: Sequence[str], out: Path, jobs: int
+) -> list[Path]:
+    """Replay the named `.test` files (relative to `test/sql`) at `version`, and
+    merge each area's entries into its committed ledger with `write_ledger`
+    (`refresh_ledger`), so a changed file of an area too large to replay whole
+    is replayed alone (#2045, ruling 225 A5)."""
+    base = root / "test" / "sql"
+    by_area: dict[str, list[str]] = {}
+    for rel in files:
+        if not (base / rel).is_file():
+            raise SystemExit(f"{rel}: no such test file at {version}")
+        by_area.setdefault(area_of(rel), []).append(rel)
+    written = []
+    for area, rels in sorted(by_area.items()):
+        path = out / f"{area.replace('/', '__')}.json"
+        old = json.loads(path.read_text()) if path.exists() else None
+        results: list[dict] = []
+        skipped: dict[str, str] = {}
+        for rel, res, skip in replay_files([(str(base / r), r) for r in rels], jobs):
+            results += res
+            if skip:
+                skipped[rel] = skip
+        results, skipped, head = refresh_ledger(old, rels, version, results, skipped)
+        written.append(
+            write_ledger(area, old["duckdb"] if old else version, results, skipped, out, head=head)
+        )
+        print(f"{area}: {len(rels)} file(s) replayed at {version} -> {written[-1]}", flush=True)
+    return written
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("areas", nargs="*", help="areas under test/sql (default: all)")
     parser.add_argument("--version", help="DuckDB version (default: uv.lock's)")
     parser.add_argument(
+        "--files",
+        nargs="+",
+        metavar="TEST",
+        help="replay only these .test files (relative to test/sql) and merge their entries into "
+        'their areas\' ledgers, which keep the version of their own run ("refreshed")',
+    )
+    parser.add_argument(
         "--out",
         type=Path,
         default=None,
-        help="the ledgers' directory (default: engines/duckdb/replay, or its reference/ "
-        "subdirectory under --semantics reference)",
+        help="the ledgers' directory (default: engines/duckdb/replay, or its portable/ "
+        "subdirectory under --semantics portable)",
     )
     parser.add_argument("--jobs", type=int, default=2, help="processes (default 2)")
     parser.add_argument("--resume", action="store_true", help="skip areas with a ledger")
@@ -1564,20 +1657,24 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     parser.add_argument(
         "--semantics",
-        choices=("duckdb", "reference"),
+        choices=("duckdb", "portable"),
         default="duckdb",
-        help="the semantics the lift reads the queries under; with reference, an agreement is "
+        help="the semantics the lift reads the queries under; with portable, an agreement is "
         "DuckDB's own value or the reference raising (#1484, L2)",
     )
     args = parser.parse_args(argv)
     os.environ[SEMANTICS_ENV] = args.semantics
     if args.out is None:
-        args.out = REPLAY_DIR / "reference" if args.semantics == "reference" else REPLAY_DIR
+        args.out = REPLAY_DIR / "portable" if args.semantics == "portable" else REPLAY_DIR
     if args.write_summary:
         write_summary(args.out)
         return
     version = args.version or duckdb_version()
     root = fetch(version)
+    if args.files:
+        refresh_files(root, version, args.files, args.out, args.jobs)
+        write_summary(args.out)
+        return
     for area, files in test_files(root, args.areas).items():
         path = args.out / f"{area.replace('/', '__')}.json"
         if args.resume and path.exists():
@@ -1589,7 +1686,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             if skip:
                 skipped[rel] = skip
         # Only a reference ledger says so: the committed ones stay as they are.
-        head = {"semantics": "reference"} if args.semantics == "reference" else None
+        head = {"semantics": "portable"} if args.semantics == "portable" else None
         path = write_ledger(area, version, results, skipped, args.out, head=head)
         counts = Counter(r["cls"] for r in results)
         print(f"{area}: {dict(counts)} ({len(skipped)} files skipped) -> {path}", flush=True)

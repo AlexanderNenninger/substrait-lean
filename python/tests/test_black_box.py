@@ -10,6 +10,7 @@ Python table against Lean's."""
 import base64
 import json
 import math
+import re
 import subprocess
 
 import duckdb
@@ -96,7 +97,7 @@ def test_a_scalar_black_box_through_oracles_a_and_c():
     assert result.ok, f"{result.stage}: {result.detail}"
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize("query", AGGREGATES)
 def test_written_back_it_is_duckdbs_function(query, semantics):
     # Oracle C: DuckDB on the SQL, and DuckDB on the plan Lean writes back.
@@ -157,7 +158,7 @@ def test_a_raise_is_not_a_law_break():
     assert "broke a declared law" not in str(raised.value)
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize(
     ("query", "ensures"),
     [
@@ -211,7 +212,7 @@ def test_refusals_say_what(query, message):
 @pytest.mark.parametrize("query", [SCALAR, AGGREGATES[0]])
 def test_other_dialects_refuse(query, dialect):
     plan = json.loads(written_plan(json.dumps(lift(query, SCHEMAS).plan)))
-    with pytest.raises(Unsupported, match="see #271"):
+    with pytest.raises(Unsupported, match=re.escape(dialect.not_yet)):
         to_sql(plan, dialect)
 
 
@@ -225,7 +226,7 @@ def test_other_engines_refuse(query, engine):
     con.create("t", schema, [("a", 1), (None, 2)])
     plan = written_plan(json.dumps(lift(query, {"t": schema}).plan))
     # Each engine's own `Unsupported`, a `ValueError`.
-    with pytest.raises(ValueError, match="see #271"):
+    with pytest.raises(ValueError, match="see #2540"):
         run_plan(con, plan, engine)
 
 
@@ -314,7 +315,7 @@ def test_328_scalars_through_oracles_a_and_c(query):
     assert result.ok, f"{result.stage}: {result.detail}"
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize("query", FORMATS)
 def test_printf_written_back_is_duckdbs(query, semantics):
     plan = json.dumps(lift(query, SCHEMAS, semantics).plan)
@@ -330,7 +331,7 @@ def test_printf_may_raise():
     assert any("domain" in str(e) for e in report.errors), report
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize(
     ("query", "ensures"),
     [
@@ -549,7 +550,7 @@ LISTS = [
 ]
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize("query", VECTORS)
 def test_vectors_written_back_are_duckdbs(query, semantics):
     plan = json.dumps(lift(query, _VEC_SCHEMAS, semantics).plan)
@@ -579,7 +580,7 @@ def test_list_sum_raises_past_a_bigint():
     assert any("domain" in str(e) for e in report.errors), report
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize(
     ("query", "ensures"),
     [
@@ -702,7 +703,7 @@ STATS = [
 ]
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize("query", STATS)
 def test_statistics_written_back_are_duckdbs(query, semantics):
     plan = json.dumps(lift(query, SCHEMAS, semantics).plan)
@@ -717,7 +718,7 @@ def test_bit_count_through_oracles_a_and_c():
     assert result.ok, f"{result.stage}: {result.detail}"
 
 
-@pytest.mark.parametrize("semantics", ["duckdb", "reference"])
+@pytest.mark.parametrize("semantics", ["duckdb", "portable"])
 @pytest.mark.parametrize(
     ("query", "ensures"),
     [

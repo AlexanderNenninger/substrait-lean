@@ -11,9 +11,8 @@ from ibis import _
 
 import sverify as sv
 from _pipelines import bound_orders
-from sverify.contracts import OVERFLOW_HINT, violations
 from sverify.errors import PostconditionError, PreconditionError, VerificationError
-from sverify.report import ColumnFacts
+from sverify.report import OVERFLOW_HINT, ColumnFacts, violations
 from sverify_dev.examples import customers, orders
 
 

@@ -197,6 +197,10 @@ def kindType : Kind → Json
       ("nullability", "NULLABILITY_NULLABLE")])]
   | .timeTz => obj [("precisionTimestampTz", obj [("precision", toJson 6),
       ("nullability", "NULLABILITY_NULLABLE")])]
+  | .timeNs => obj [("precisionTimestamp", obj [("precision", toJson 9),
+      ("nullability", "NULLABILITY_NULLABLE")])]
+  | .timeTzNs => obj [("precisionTimestampTz", obj [("precision", toJson 9),
+      ("nullability", "NULLABILITY_NULLABLE")])]
   | .date => obj [("date", nullable)]
   | .dec p s => obj [("decimal", obj [("precision", toJson p), ("scale", toJson s),
       ("nullability", "NULLABILITY_NULLABLE")])]
@@ -204,7 +208,9 @@ def kindType : Kind → Json
   | .list k => obj [("list", obj [("type", kindType k), ("nullability", "NULLABILITY_NULLABLE")])]
   | .struct ks => obj [("struct", obj [("types", Json.arr (ks.attach.map fun ⟨k, _⟩ => kindType k).toArray),
       ("nullability", "NULLABILITY_NULLABLE")])]
-  | .int | .other => i64Type
+  -- An opaque column is only ever a column reference (D67 K8), so no plan
+  -- writes its type from its kind.
+  | .int | .other | .opaque => i64Type
 where nullable := obj [("nullability", "NULLABILITY_NULLABLE")]
 
 /-- The kind of a column or expression as the writer sees it: the parser's
@@ -214,6 +220,8 @@ them apart to write a literal compared with, or added to, an interval as an
 interval (#65). -/
 inductive WKind where
   | int | float | time | instant | date | interval | str | bool | tod | other
+  /-- Timestamps in nanoseconds (D61), naive and instants. -/
+  | timeNs | instantNs
   | list (elem : WKind)
   | struct (fields : List WKind)
   | dec (p s : Nat)
@@ -226,10 +234,14 @@ def WKind.ofKind : Kind → WKind
   | .dec p s => .dec p s
   -- An instant (#1725): compared with another instant, never mixed (`checkArgKinds`).
   | .timeTz => .instant
+  | .timeNs => .timeNs | .timeTzNs => .instantNs
+  -- Carried, never read (D67).
+  | .opaque => .other
 
 /-- The model's view: an interval is a time (`Expr.kind`). -/
 def WKind.toKind : WKind → Kind
   | .int => .int | .float => .float | .time | .interval => .time | .instant => .timeTz
+  | .timeNs => .timeNs | .instantNs => .timeTzNs
   | .date => .date
   | .str => .str | .bool => .bool | .tod => .tod | .other => .other | .list k => .list (toKind k)
   | .struct ks => .struct (ks.attach.map fun ⟨k, _⟩ => toKind k)
@@ -243,11 +255,6 @@ def isConst : Expr → Bool
   | .un _ a => isConst a
   | .bin _ a b => isConst a && isConst b
   | .ifThen c t e => isConst c && isConst t && isConst e
-
-/-- Is `i` a double's code rather than an integer? Integers are 64-bit, and
-every double but zero and the subnormals below 2⁻¹⁰¹¹ has a code outside
-that range (`FloatCode`); `Pretty` prints them as doubles by the same rule. -/
-def isDoubleCode (i : Int) : Bool := i < -(2 ^ 63) || 2 ^ 63 ≤ i
 
 /-- A literal's kind, by its constructor (#923). -/
 def litWKind (v : Value) : WKind := .ofKind (Parse.litKind v)
@@ -358,10 +365,6 @@ def narrowLit (n : Nat) (x : Expr) (j : Json) : Json :=
 /-- An argument of arithmetic at width `w`: a literal at that width. -/
 def fitArg (w : IntWidth) (x : Expr) (j : Json) : Json :=
   if w.bits < 64 then narrowLit w.bits x j else j
-
-def isLit : Expr → Bool
-  | .lit _ => true
-  | _ => false
 
 /-- A field reference with the segment `seg` into the value of `e`. -/
 def reference (seg e : Json) : Json :=
@@ -594,6 +597,13 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     obj [("cast", obj [("type", kindType (if inst then .timeTz else .time)),
       ("input", writeExpr cols (if inst then .time else .instant) a),
       ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
+  | .un .dtext a | .un .dtextFull a =>
+    castTo (obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])])
+      (writeExpr cols (wkind cols a) a)
+  -- The decimal at one more digit of precision (D72); the argument as it is otherwise.
+  | .un .dwiden a => match (wkind cols a).toKind with
+    | .dec p s => castTo (decType (p + 1) s) (writeExpr cols (wkind cols a) a)
+    | _ => writeExpr cols (wkind cols a) a
   | .un .itos a => obj [("cast", obj [("type", obj [("string", obj [("nullability", "NULLABILITY_NULLABLE")])]),
       ("input", writeExpr cols .int a), ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
   | .un (.froundTo d) a =>
@@ -603,6 +613,7 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
   | .un .ffloor a => call (fn "floor") [writeExpr cols .float a]
   | .un .fceil a => call (fn "ceil") [writeExpr cols .float a]
   | .un .fround a => call (fn "round") [writeExpr cols .float a]
+  | .un .froundEven a => callOpt (fn "round") [writeExpr cols .float a] "rounding" "TIE_TO_EVEN"
   | .un (.fmath f) a => call (UnFn.anchor (.fmath f)) [writeExpr cols .float a]
   | .un .neg a => call (fn "negate") [writeExpr cols ctx a]
   | .un (.regexMatch p) a =>
@@ -782,11 +793,43 @@ def withCommon (kind : String) (body : List (String × Json)) (emit : Option (Li
     else obj [("project", obj [common m, ("input", obj [(kind, obj body)]),
       ("expressions", Json.arr #[])])]
 
+/-- The number of nodes of an expression. -/
+def exprSize : Expr → Nat
+  | .lit _ | .field _ => 1
+  | .un _ a => exprSize a + 1
+  | .bin _ a b => exprSize a + exprSize b + 1
+  | .ifThen c t e => exprSize c + exprSize t + exprSize e + 1
+  | .hof _ l b => exprSize l + exprSize b + 1
+
+/-- The most nodes `unbindProject` lets a projection's expressions reach. -/
+def unbindBudget : Nat := 2048
+
+/-- The expressions of a projection over `below` with the columns that the
+projections under it bind (`Rel.bindStep`) written back in, level by level
+while they stay within `unbindBudget` nodes: a binding exists because an
+argument repeats, so each level can double them (#2338). The expressions as
+they stand when the next level would pass the budget, which find no declared
+kinds. -/
+def unbindProject (cat : Catalog) : Nat → Rel → List Expr → List Expr
+  | fuel + 1, .project r ss, es =>
+    let es' := es.map (·.subst ((List.range (r.arity cat)).map .field ++ ss))
+    if (es'.map exprSize).foldl (· + ·) 0 > unbindBudget then es
+    else unbindProject cat fuel r es'
+  | _, _, es => es
+
 /-- The kinds of a projection's expressions over columns of kinds `ks`:
 `wkind`, or the kind the source plan declares where `Parse.projectKey`
 records one (a projected `0.0`, timestamp or typed `NULL`, #96). -/
-def projKinds (schemas : Schemas) (ks : List WKind) (es : List Expr) : List WKind :=
+def projKinds (schemas : Schemas) (cat : Catalog) (below : Rel) (ks : List WKind)
+    (es : List Expr) : List WKind :=
   let declared := Parse.schemaKinds (schemas (Parse.projectKey es) 0)
+  -- The plan the writer prints binds the arguments of nested calls as columns
+  -- (`Rel.bindArgs`, #821), so this projection's expressions read them and
+  -- are not the ones the source plan declared kinds for: substituting the
+  -- bound columns back gives those (`Rel.bindStep_spec`, #2102).
+  let declared := if declared.isEmpty then
+      Parse.schemaKinds (schemas (Parse.projectKey (unbindProject cat 64 below es)) 0)
+    else declared
   es.zipIdx.map fun (e, i) => match declared[i]? with
     | some k => if k == .other then wkind ks e else .ofKind k
     | none => wkind ks e
@@ -802,7 +845,8 @@ def _root_.Substrait.Expr.decimalOps : Expr → Bool
   | .lit _ | .field _ => false
   | .un f a =>
     (match f with
-      | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ => true
+      | .decimal _ _ | .dkind _ _ | .dround _ | .dtrunc _ | .ftod _ | .dtof _ | .dtext
+      | .dtextFull | .dwiden => true
       | _ => false) ||
       a.decimalOps
   | .bin f a b =>
@@ -831,7 +875,7 @@ def relKinds (schemas : Schemas) (cat : Catalog) : Rel → List WKind
   | .filter r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .semi r _ _ _ => relKinds schemas cat r
   | .project r es =>
       let ks := relKinds schemas cat r
-      ks ++ projKinds schemas ks es
+      ks ++ projKinds schemas cat r ks es
   | .emit r m =>
       let ks := relKinds schemas cat r
       m.map (ks.getD · .other)
@@ -1048,7 +1092,7 @@ def writeRel (schemas : Schemas) (cat : Catalog)
       ("input", writeRel schemas cat [] r none),
       ("expressions",
         let ks := relKinds schemas cat r
-        Json.arr ((es.zip (projKinds schemas ks es)).zipIdx.map fun ((e, k), i) =>
+        Json.arr ((es.zip (projKinds schemas cat r ks es)).zipIdx.map fun ((e, k), i) =>
           writeExpr ks (if k == .other then hint.getD (ks.length + i) .other else k) e).toArray)] out
   | .cross a b, out => withCommon "cross" [
       ("left", writeRel schemas cat [] a none), ("right", writeRel schemas cat [] b none)] out

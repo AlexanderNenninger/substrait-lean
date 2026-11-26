@@ -15,7 +15,7 @@ contributors.
 
 Status marks: ✓ holds on `main`. A row that holds "on DuckDB" runs there
 only: the other engines refuse it until their lowerings exist, tracked in
-[an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/271).
+[an issue](https://github.com/AlexanderNenninger/substrait-lean/issues/2540).
 
 Where this page and the code disagree, the code is what `verify` proves, and
 this page has a bug.
@@ -311,6 +311,7 @@ DuckDB computes some of these differently (result types, `×` past 18 digits,
 | `date` | Days since 1970-01-01, proleptic Gregorian. | ✓ |
 | `timestamp` | Microseconds since 1970-01-01 00:00, no time zone. | ✓ |
 | `timestampTz` (an instant) | A timestamp with the time zone UTC: microseconds since 1970-01-01 00:00 UTC, its own kind ([D53](decisions.md#d53-a-timestamp-with-the-time-zone-utc-is-an-instant)). Compared, ordered, grouped, joined on and aggregated (`MIN`, `MAX`, `COUNT`) as an instant, and written back as one; calendar functions, interval arithmetic, casts to a date or a string, a naive timestamp in the same comparison and other zones are refused ([#1725](https://github.com/AlexanderNenninger/substrait-lean/issues/1725)). The conversion with a naive timestamp at UTC keeps the microseconds (`UnFn.atUtc`), and a literal with an offset is an instant. DuckDB and Polars. | ✓ |
+| `timestamp(9)`, `timestampTz(9)` (nanoseconds) | Nanoseconds since 1970-01-01 00:00, which 64 bits bound to 1677-09-21 to 2262-04-11: kinds of their own ([D61](decisions.md#d61-timestamp-precisions)). Compared, ordered, grouped, joined on and aggregated (`MIN`, `MAX`, `COUNT`) among their kind, and written back with every digit; calendar functions, interval arithmetic, casts and a microsecond timestamp or a literal in the same comparison are refused ([#323](https://github.com/AlexanderNenninger/substrait-lean/issues/323)). Seconds and milliseconds are read as microseconds. DuckDB and Polars; Spark holds microseconds ([`spark-timestamp-precision`](../engines/spark/facts/spark-timestamp-precision.json)) and refuses the column. | ✓ |
 | Timestamp delta | `a.delta(b, unit)` is the number of unit boundaries crossed from `b` to `a` ([D58](decisions.md#d58-a-timestamps-delta-counts-the-unit-boundaries-crossed)): each side floored to its unit, the difference divided by the unit. Units from microsecond to day; week, month, quarter, year and nanosecond are refused. DuckDB. | ✓ on DuckDB |
 | Intervals | Day-to-second intervals are microseconds; year-to-month intervals are months. Adding months keeps the day of month. | ✓ |
 | An integer's count of an interval | `n.as_interval(unit)` and `n.cast("interval(unit)")` of weeks, days, hours, minutes or seconds, added to or subtracted from a date or a timestamp, are `n` times the unit's microseconds, a checked multiplication: past ±106,751,991 days (64 bits of microseconds) it raises overflow, and the report shows the issue; a NULL count gives NULL ([#1926](https://github.com/AlexanderNenninger/substrait-lean/issues/1926)). A count of months or years, and other uses of the interval, are refused. | ✓ |
@@ -355,12 +356,13 @@ Design notes: [nested-values.md](nested-values.md).
 | `typeof` | Of a column, a string constant: DuckDB's name of the column's type (`BIGINT`, `DECIMAL(10,2)`, `VARCHAR[]`; [`duckdb-typeof-names`](../engines/duckdb/facts/duckdb-typeof-names.json)), whichever engine runs the plan, so every engine gives the same string. The Ibis producer folds it before the plan is checked. Of an expression, or of a struct or map, it is refused: DuckDB infers that type its own way. | ✓ |
 | `date` ↔ `timestamp` | A date is days since 1970-01-01, a timestamp microseconds. `date` to `timestamp` is midnight (`UnFn.dateTime`), an error outside the reference's dates; `timestamp` to `date` rounds down, before 1970 too. A date compared with a timestamp is cast to one, as DuckDB does. | ✓; other engines refuse the cast of a DATE column |
 | `timestamp` to `BIGINT` | `epoch_us(ts)`: the microseconds since 1970-01-01 (`UnFn.epochUs`), the same number. | ✓ on DuckDB |
+| A number to `timestamp`, in Ibis | Seconds since 1970-01-01, as Ibis reads them. An integer `x` is `as_timestamp("s")`, `x · 10⁶` microseconds. A double `x` is `x · 10⁶` computed as a double, rounded half to even, then cast to `BIGINT` microseconds: the double product rounds, not the exact `x · 10⁶`, so `2.5e-6` seconds is 2 microseconds and `1.5e-6` is 2. DuckDB's `to_timestamp` gives the same ([`duckdb-to-timestamp-double`](../engines/duckdb/facts/duckdb-to-timestamp-double.json)). Outside 64 bits, NaN and `±∞` raise. `try_cast` and a target with a time zone are refused ([#1922](https://github.com/AlexanderNenninger/substrait-lean/issues/1922)). | ✓ |
 
 ## DuckDB SQL under the reference
 
 A SQL text reads as DuckDB's under both semantics: `/`, `//`, NULL order and
 `replace` mean what they mean on DuckDB. The semantics is what the functions
-then do. Under `semantics="reference"` the lift refines the dialect
+then do. Under `semantics="portable"` the lift refines the dialect
 ([D54](decisions.md#d54-the-lift-refines-the-dialect)): where the reference
 gives a value, DuckDB running the same text gives that value; where the
 reference raises, DuckDB may give a value, and the inferred preconditions name
@@ -368,12 +370,15 @@ those inputs. Where the reference gives another value, the lift refuses the
 construct or lists it:
 
 - `float_to_int`: `CAST(x AS BIGINT)` of a double rounds half to even on DuckDB
-  and truncates in the reference (R9), so the lift refuses it until #322. The
-  hint names `CAST(round(x) AS BIGINT)`, `floor` and `ceil`, which mean the same
-  on both.
+  and truncates in the reference (R9). The lift reads it, under both semantics,
+  as the cast of `round(x, rounding: TIE_TO_EVEN)` (D55, #322). Narrower integer
+  targets are refused; the hint names `CAST(x AS BIGINT)` and `CAST(round(x) AS the type)`.
 - A cast of a decimal to an integer rounds half away from zero on DuckDB. The
   lift reads it, under both semantics, as the rescale to scale 0 (which rounds
   half away from zero) and the exact cast (#322).
+- `CAST(DECIMAL(p, p) AS VARCHAR)`: DuckDB prints `.500` and the reference `0.500`, so the lift
+  refuses it, under both semantics. The message names the cast to `DECIMAL(p + 1, p)` first
+  ([D72](decisions.md#d72-decimal-text), ruling 245).
 - `corr_degenerate`: `corr` of one pair or of a side whose values are all equal
   is NULL here and NaN on DuckDB. `Report.dialect_differences` lists it.
 - `list_contains_null_needle`: `list_contains([], NULL)` is NULL here and FALSE
@@ -413,7 +418,7 @@ Engines compute `VAR_*`, `STDDEV_*`, `COVAR_*` and `CORR` with different
 algorithms, none documented: DuckDB 2.0 and Spark 4.3 use Welford's update
 with Chan's merge, Polars 2.1 a two-pass per block of 128 values when
 ungrouped and Welford when grouped (`engines/*/facts/`, ids
-`duckdb-var-stddev`, `duckdb-covar`, `duckdb-corr`, `polars-var-std`,
+`duckdb-var-stddev`, `duckdb-covar`, `duckdb-corr`, `polars-var-std-streaming`,
 `polars-cov`, `polars-corr`, `spark-var-stddev`, `spark-covar`, `spark-corr`).
 The reference picks none. Its value is the
 exact moments rounded once
@@ -643,7 +648,7 @@ the first column are the names the tables below use.
 | Option | Core | Substrait | Reference | DuckDB |
 |---|---|---|---|---|
 | `rounding` (`+ - × /`, the elementary functions, `sum`, `avg`, `variance`, `std_dev`) | the five of the YAML | `TIE_TO_EVEN`, `TIE_AWAY_FROM_ZERO`, `TRUNCATE`, `CEILING`, `FLOOR` | `TIE_TO_EVEN`: the exact result rounded once for `+ - × /` and the aggregates, native `Float` for the elementary functions | `TIE_TO_EVEN` (native IEEE; no fact records it) |
-| `rounding` (`round`) | the ten of the YAML | ten modes | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` ([R15-round](../engines/duckdb/facts/duckdb-R15-round.json), [R15-round-digits](../engines/duckdb/facts/duckdb-R15-round-digits.json)) |
+| `rounding` (`round`) | the ten of the YAML | ten modes | `TIE_AWAY_FROM_ZERO` | `TIE_AWAY_FROM_ZERO` ([R15-round](../engines/duckdb/facts/duckdb-R15-round.json), [round-digits-2](../engines/duckdb/facts/duckdb-round-digits-2.json)) |
 | `on_division_by_zero` (doubles) | `IEEE`, `LIMIT`, `NULL`, `ERROR` | the four | `ERROR`; the others when asked | `IEEE` under `ieee_floating_point_ops`, `ERROR` with it off ([R5](../engines/duckdb/facts/duckdb-R5.json)) |
 | `on_domain_error` (`sqrt`, `asin`, `acos`, `atanh`, `acosh`, logs, `atan2`, `divide`) | `NAN`, `NULL`, `ERROR` | `NAN`, `ERROR` (logs and integer `divide` add `NULL`) | `ERROR` | `NAN` ([R15-math-domain](../engines/duckdb/facts/duckdb-R15-math-domain.json)); `atan2(0, 0)` is `0` ([R15-atan2](../engines/duckdb/facts/duckdb-R15-atan2.json)) |
 | `on_log_zero` | `NAN`, `ERROR`, `MINUS_INFINITY` | the three | `ERROR` | `MINUS_INFINITY` (R15-math-domain) |

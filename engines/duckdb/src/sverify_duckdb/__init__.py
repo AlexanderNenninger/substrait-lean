@@ -33,7 +33,7 @@ import pyarrow as pa
 
 from sverify import _meta
 
-if getattr(_meta, "PLUGIN_API", None) != 4:
+if getattr(_meta, "PLUGIN_API", None) != 5:
     raise ImportError(
         f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
         f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
@@ -45,7 +45,7 @@ from sverify._scan import Resident, _q
 from sverify._store import State, Store
 from sverify._unsupported import MIN_MOD_GUARD, RANGE_GUARD
 from sverify._weighted import WEIGHT, _same_rows
-from sverify.profiles import Finite, ProfilePlugin, Setting, SqlFrontEnd
+from sverify.profiles import Finite, ProfilePlugin, Setting, SQLFrontEnd
 from sverify_duckdb.declared import refuse_base_table
 
 if TYPE_CHECKING:
@@ -392,7 +392,7 @@ _duckdb.on_reset(lambda: setattr(DuckDBStore, "_db", None))
 
 def _lift(query: str, schemas: Any, semantics: str) -> Any:
     """DuckDB's SQL lifted to a plan (`sverify.sql_lift`), under the profile
-    `semantics` names (`"duckdb"` or `"reference"`)."""
+    `semantics` names (`"duckdb"` or `"portable"`)."""
     from sverify.sql_lift import lift
 
     return lift(query, schemas, semantics)
@@ -400,7 +400,7 @@ def _lift(query: str, schemas: Any, semantics: str) -> Any:
 
 PLUGIN = ProfilePlugin(
     "duckdb",
-    sql=SqlFrontEnd("duckdb", _lift),
+    sql=SQLFrontEnd("duckdb", _lift),
     title="DuckDB",
     store=DuckDBStore,
     refuse_declared_types=refuse_base_table,

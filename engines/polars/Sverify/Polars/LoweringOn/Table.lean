@@ -3,7 +3,9 @@ import Sverify.Polars.Profile
 import Sverify.Polars.LoweringLemmas
 import Sverify.Polars.LoweringOn.Native
 import Sverify.Polars.LoweringOn.Math
+import Sverify.Polars.LoweringOn.Other
 import Sverify.Polars.LoweringOn.Integers
+import Sverify.Polars.LoweringOn.Bits
 
 /-!
 # Substrait.polarsOn: the table
@@ -37,6 +39,7 @@ def Substrait.polarsOn : Substrait.Lowering (Substrait.Profile.polars) :=
     | Substrait.UnFn.ffloor  => some (Substrait.polarsOn.ffloor )
     | Substrait.UnFn.fceil  => some (Substrait.polarsOn.fceil )
     | Substrait.UnFn.fround  => some (Substrait.polarsOn.fround )
+    | Substrait.UnFn.froundEven  => some (Substrait.polarsOn.froundEven )
     | Substrait.UnFn.froundTo a0 => some (Substrait.polarsOn.froundTo a0)
     | Substrait.UnFn.ftoi  => some (Substrait.polarsOn.ftoi )
     | Substrait.UnFn.narrow a0 => some (Substrait.polarsOn.narrow a0)
@@ -44,6 +47,9 @@ def Substrait.polarsOn : Substrait.Lowering (Substrait.Profile.polars) :=
     | Substrait.UnFn.narrowOrNull a0 => some (Substrait.polarsOn.narrowOrNull a0)
     | Substrait.UnFn.wrap a0 => some (Substrait.polarsOn.wrap a0)
     | Substrait.UnFn.itos  => some (Substrait.polarsOn.itos )
+    | Substrait.UnFn.dtext  => some (Substrait.polarsOn.dtext )
+    | Substrait.UnFn.dtextFull  => some (Substrait.polarsOn.dtextFull )
+    | Substrait.UnFn.dwiden  => some (Substrait.polarsOn.dwiden )
     | Substrait.UnFn.widen  => some (Substrait.polarsOn.widen )
     | Substrait.UnFn.atUtc a0 => some (Substrait.polarsOn.atUtc a0)
     | Substrait.UnFn.upper  => some (Substrait.polarsOn.upper )
@@ -74,7 +80,7 @@ def Substrait.polarsOn : Substrait.Lowering (Substrait.Profile.polars) :=
     | Substrait.UnFn.dkind a0 a1 => some (Substrait.polarsOn.dkind a0 a1)
     | Substrait.UnFn.dround a0 => some (Substrait.polarsOn.dround a0)
     | Substrait.UnFn.dtrunc a0 => some (Substrait.polarsOn.dtrunc a0)
-    | Substrait.UnFn.ftod a0 => some (Substrait.polarsOn.ftod a0)
+    | Substrait.UnFn.ftod _ => none
     | Substrait.UnFn.dtof a0 => some (Substrait.polarsOn.dtof a0)
     | Substrait.UnFn.structField a0 => some (Substrait.polarsOn.structField a0)
     | Substrait.UnFn.listElement a0 => some (Substrait.polarsOn.listElement a0)
@@ -117,7 +123,11 @@ def Substrait.polarsOn : Substrait.Lowering (Substrait.Profile.polars) :=
     | Substrait.BinFn.dateDiff  => some (Substrait.polarsOn.dateDiff )
     | Substrait.BinFn.fatan2  => some (Substrait.polarsOn.fatan2 )
     | Substrait.BinFn.flogb  => some (Substrait.polarsOn.flogb )
-    | Substrait.BinFn.bit a0 => some (Substrait.polarsOn.bit a0)
+    | Substrait.BinFn.bit Substrait.BitOp.and => some Substrait.polarsOn.bit_and
+    | Substrait.BinFn.bit Substrait.BitOp.or => some Substrait.polarsOn.bit_or
+    | Substrait.BinFn.bit Substrait.BitOp.xor => some Substrait.polarsOn.bit_xor
+    | Substrait.BinFn.bit Substrait.BitOp.shl => some Substrait.polarsOn.bit_shl
+    | Substrait.BinFn.bit Substrait.BitOp.shr => some Substrait.polarsOn.bit_shr
     | Substrait.BinFn.dadd  => some (Substrait.polarsOn.dadd )
     | Substrait.BinFn.dsub  => some (Substrait.polarsOn.dsub )
     | Substrait.BinFn.dmul  => some (Substrait.polarsOn.dmul )
@@ -138,6 +148,7 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("UnFn.ffloor", "native", 0),
   ("UnFn.fceil", "hand-written schema: ceil: 0.0 for a negative value that rounds to zero", 0),
   ("UnFn.fround", "hand-written schema: round: 0.0 for a negative value that rounds to zero", 0),
+  ("UnFn.froundEven", "hand-written schema: round(mode='half_to_even'): 0.0 for a negative value that rounds to zero", 0),
   ("UnFn.froundTo", "native", 0),
   ("UnFn.ftoi", "native", 0),
   ("UnFn.narrow", "native", 0),
@@ -145,6 +156,9 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("UnFn.narrowOrNull", "native", 0),
   ("UnFn.wrap", "native", 0),
   ("UnFn.itos", "native", 0),
+  ("UnFn.dtext", "native", 0),
+  ("UnFn.dtextFull", "native", 0),
+  ("UnFn.dwiden", "native", 0),
   ("UnFn.widen", "native", 0),
   ("UnFn.atUtc", "native", 0),
   ("UnFn.upper", "native", 0),
@@ -173,9 +187,9 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("UnFn.fmath", "native", 0),
   ("UnFn.decimal", "native", 0),
   ("UnFn.dkind", "native", 0),
-  ("UnFn.dround", "native", 0),
+  ("UnFn.dround", "hand-built entry: Substrait.Polars.droundEntry", 0),
   ("UnFn.dtrunc", "native", 0),
-  ("UnFn.ftod", "native", 0),
+  ("UnFn.ftod", "refused", 0),
   ("UnFn.dtof", "native", 0),
   ("UnFn.structField", "native", 0),
   ("UnFn.listElement", "native", 0),
@@ -217,7 +231,11 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("BinFn.dateDiff", "native", 0),
   ("BinFn.fatan2", "native", 0),
   ("BinFn.flogb", "native", 0),
-  ("BinFn.bit", "native", 0),
+  ("BinFn.bit .and", "hand-written schema: native: #0 & #1", 0),
+  ("BinFn.bit .or", "hand-written schema: native: #0 | #1", 0),
+  ("BinFn.bit .xor", "hand-written schema: native: #0 ^ #1", 0),
+  ("BinFn.bit .shl", "hand-written schema: shl: error outside 0-63, else the low 63-k bits of #0 & -1 times 2^k, the next bit the sign", 0),
+  ("BinFn.bit .shr", "hand-written schema: shr: error outside 0-63, else (#0 & -1) // 2^#1 floored", 0),
   ("BinFn.dadd", "native", 0),
   ("BinFn.dsub", "native", 0),
   ("BinFn.dmul", "native", 0),

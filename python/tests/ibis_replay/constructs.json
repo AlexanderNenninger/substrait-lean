@@ -10,8 +10,8 @@
       "design": "DuckDB has no cast between a timestamp and a number: CAST raises, TRY_CAST gives NULL, and Ibis reaches its values through epoch functions; cast through epoch_us"
     },
     {
-      "match": "cannot cast this value to a timestamp",
-      "issue": 1922
+      "match": "cast to a timestamp of precision N is not supported",
+      "issue": 2318
     },
     {
       "match": "substring with a length that comes from a column",
@@ -106,10 +106,6 @@
       "issue": 2156
     },
     {
-      "match": "comparison of float with int",
-      "issue": 2158
-    },
-    {
       "match": "casts of structs are not supported",
       "design": "sverify cannot build a struct value yet; cast its fields"
     },
@@ -120,10 +116,6 @@
     {
       "match": "strftime formats must be constants",
       "issue": 347
-    },
-    {
-      "match": "IndexError: list index out of range",
-      "issue": 2155
     }
   ]
 }

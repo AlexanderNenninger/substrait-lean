@@ -127,7 +127,7 @@ def census_case(c: Case, schemas: dict[str, Any]) -> dict[str, Any]:
             engines[e] = {"outcome": "error", "reason": f"{type(err).__name__}: {err}"}
             continue
         if r.refused:
-            engines[e] = {"outcome": "refused", "reason": FACTS.sub("", r.reason)}
+            engines[e] = {"outcome": "refused", "reason": FACTS.sub("", r.why)}
         elif r.evidence == "proved":
             engines[e] = {"outcome": "proved", "class": r.cls}
         else:
@@ -162,14 +162,25 @@ TESTED = [
 
 #: A refusal's class, by a phrase of its reason, the first that matches.
 REFUSED = [
-    ("no translation from the reference to", "refused: no route from the reference (Snowflake)"),
-    ("which the observation ignores", "refused: postcondition reads doubles a tolerance ignores"),
+    (
+        "no translation from portable semantics to",
+        "refused: no route from the reference (Snowflake)",
+    ),
+    ("which the lenses ignore", "refused: postcondition reads doubles a tolerance ignores"),
+    (
+        "which has no bound on its distance to the reference",
+        "refused: postcondition reads an unbounded double (#1045)",
+    ),
     (
         "of the reference: write it as sv.approx",
         "refused: exact bound, the engine adds in another order",
     ),
     ("not verified: ensures", "refused: postcondition not proved"),
-    ("no engine meets the observation's tolerance", "refused: tolerance unmet"),
+    (
+        "and the postcondition asks exact doubles",
+        "refused: exact doubles on an unbounded column (#2486)",
+    ),
+    ("no engine meets the lenses' tolerance", "refused: tolerance unmet"),
     ("and the postcondition asks within", "refused: tolerance unmet"),
     ("may keep other rows", "refused: threshold rule (#568)"),
     ("not verified: may fail", "refused: may raise"),

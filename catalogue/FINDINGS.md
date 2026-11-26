@@ -17,7 +17,7 @@ reference, is retired: what the reference computes is in
 [docs/core-semantics.md](../docs/core-semantics.md), what each engine does
 is in its facts under `engines/<engine>/facts/`
 ([how facts are judged](../characterization/README.md)), and the cross-engine pitfalls are in [pitfalls.toml](pitfalls.toml) and
-[docs/guide.md](../docs/guide.md).
+[docs/tasks.md](../docs/tasks.md).
 
 How to read the tables:
 
@@ -165,19 +165,19 @@ Over the 137 queries that verify (some only as DOUBLE):
 | snowflake: refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet;  | 3 |
 | polars: refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckd | 2 |
 | snowflake: refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckd | 2 |
-| snowflake: refused: MAX of doubles is not yet supported on snowflake; run it with engine='duckdb' (see #271, https://gith | 2 |
+| snowflake: refused: MAX of doubles is not yet supported on snowflake: run it with engine='duckdb' (Snowflake is out of tr | 2 |
 | snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses; rewrite this step | 2 |
 | polars: refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' ( | 2 |
 | snowflake: refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' ( | 2 |
 | polars: refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (Polars does not r | 1 |
 | snowflake: refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (snowflake does no | 1 |
-| polars: refused: corr runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #271, https:// | 1 |
-| snowflake: refused: corr runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; see #271, https | 1 |
+| polars: refused: corr runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https:/ | 1 |
+| snowflake: refused: corr runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is ou | 1 |
 | polars: refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (Polars does not run it y | 1 |
 | snowflake: refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (snowflake does not run i | 1 |
 | polars: refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (Polars does not run | 1 |
 | snowflake: refused: group_concat() (SQL string_agg) runs on duckdb only: run it with engine='duckdb' (snowflake does not  | 1 |
-| snowflake: refused: Snowflake window functions need an ORDER BY: run it with engine='duckdb' (see #271, https://github.co | 1 |
+| snowflake: refused: Snowflake window functions need an ORDER BY: run it with engine='duckdb' (Snowflake is out of tree (p | 1 |
 | snowflake: refused: Snowflake has no interval type, so an interval result column is refused: run it with engine='duckdb'  | 1 |
 
 ### Pitfall frequency

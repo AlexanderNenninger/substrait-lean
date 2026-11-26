@@ -79,6 +79,9 @@ def Ctor.key : Ctor → Ctor
     | .bucket _ _ => .bucket 0 0
     | .raise _ => .raise ""
     | .approx _ => .approx 0
+    | .dtrunc _ => .dtrunc 0
+    | .dround _ => .dround 0
+    | .ftod _ => .ftod 0
     | f => f
   | .bin f => .bin <| match f with
     | .substr _ _ => .substr none true
@@ -140,6 +143,7 @@ def core : List FnRow := [
   { name := "round", anchor := 17, group := "fp.round", ctor := some (.un .fround),
     reads := .float, pretty := "ROUND" },
   { name := "round", anchor := 17, group := "fp.round", ctor := some (.un (.froundTo 0)) },
+  { name := "round", anchor := 17, group := "fp.round", ctor := some (.un .froundEven) },
   { name := "modulus", anchor := 18, group := "int.mod", ctor := some (.bin .imod),
     reads := .plain, pretty := "%" },
   { name := "power", anchor := 19, group := "int.pow", ctor := some (.bin .ipow),
@@ -383,6 +387,19 @@ def areas : List (String × List FnRow × Nat) :=
 
 def all : List FnRow := areas.flatMap (·.2.1)
 
+/-- The casts that read options: a double or a decimal to an integer reads
+`float_to_int` (ST-6, ruling 272), and a decimal to a smaller scale and a
+double to a decimal read `decimal_rescale` (ST-8, rulings 273 and 278). They are
+written as Substrait's `cast`, so they have no anchor and are in no area: the
+writer, the parser and the Python mirror read `all`, and only `rowOf` finds
+these. -/
+def casts : List FnRow := [
+  { name := "cast", anchor := 0, group := "cast.num", ctor := some (.un .ftoi) },
+  { name := "cast", anchor := 0, group := "cast.num", ctor := some (.un .ftoiOrNull) },
+  { name := "cast", anchor := 0, group := "cast.num", ctor := some (.un (.dtrunc 0)) },
+  { name := "cast", anchor := 0, group := "cast.dec", ctor := some (.un (.dround 0)) },
+  { name := "cast", anchor := 0, group := "cast.dec", ctor := some (.un (.ftod 0)) }]
+
 /-- The groups of `docs/core-semantics.md` that have functions here, with
 the options each takes. -/
 def groups : List (String × List String) := [
@@ -407,6 +424,7 @@ def groups : List (String × List String) := [
   -- `float_to_int`, the conversion.
   ("fp.round", ["rounding", "round_zero_sign", "float_to_int"]),
   ("fp.floor", ["round_zero_sign", "float_to_int"]),
+  ("cast.num", ["float_to_int"]), ("cast.dec", ["decimal_rescale"]),
   ("cmp", ["nan_equality", "nan_order", "zero_sign"]), ("sverify", []),
   ("str.sub", ["negative_start", "substring_range", "string_positions"]),
   ("str.match", ["case_sensitivity", "string_positions"]),
@@ -416,8 +434,12 @@ def groups : List (String × List String) := [
   ("list.order", ["list_null_order"]), ("list.plain", []),
   ("agg.isum", ["overflow", "avg_int_result", "empty_group_aggregates"]),
   ("agg.fsum", ["sum_order", "rounding", "nan_creation", "empty_group_aggregates", "float_overflow"]),
-  ("agg.var", ["distribution", "rounding", "stat_algo", "nan_creation", "stat_degenerate"]),
-  ("agg.stat", ["stat_algo", "nan_creation", "stat_degenerate"]),
+  -- `float_overflow`: a variance or covariance of finite doubles whose correctly
+  -- rounded value overflows (`AggFn.infAgg`, #1601). `CORR`'s exact value is
+  -- finite, so its calls never fall in the option's scope.
+  ("agg.var", ["distribution", "rounding", "stat_algo", "nan_creation", "stat_degenerate",
+    "float_overflow"]),
+  ("agg.stat", ["stat_algo", "nan_creation", "stat_degenerate", "float_overflow"]),
   ("agg.order", ["nan_order", "zero_sign", "list_null_order"]),
   ("agg.quant", ["quantile_interp", "nan_creation", "nan_order"]), ("agg.pick", ["tie_pick"]),
   ("agg.seq", ["tie_order"]), ("agg.plain", []),
@@ -426,11 +448,11 @@ def groups : List (String × List String) := [
 
 /-! ## Lookups -/
 
-/-- The row of a constructor. -/
-def rowOf (c : Ctor) : Option FnRow := all.find? (·.ctor == some c.key)
+/-- The row of a constructor, a cast's among them. -/
+def rowOf (c : Ctor) : Option FnRow := (all ++ casts).find? (·.ctor == some c.key)
 
-/-- The anchor a constructor is written with; 0 for one without a row (casts,
-references, the arithmetic of `wrap` and `fit`, decimals' rescaling). -/
+/-- The anchor a constructor is written with; 0 for a cast (`casts`) and for one
+without a row (references, the arithmetic of `wrap` and `fit`, decimals' rescaling). -/
 def anchorOf (c : Ctor) : Nat := ((rowOf c).map (·.anchor)).getD 0
 
 /-- The anchor of a name (0 for a name without a row). -/
@@ -452,11 +474,16 @@ def read? (rows : List FnRow) (path : Reads) (name : String) : List Expr → Opt
     else none
   | _ => none
 
+theorem casts_anchor : ∀ r ∈ casts, r.anchor = 0 := by decide
+
 theorem anchorOf_mem (c : Ctor) : anchorOf c = 0 ∨ ∃ r ∈ all, r.anchor = anchorOf c := by
   unfold anchorOf
   cases h : rowOf c with
   | none => exact Or.inl rfl
-  | some r => exact Or.inr ⟨r, List.mem_of_find?_eq_some h, rfl⟩
+  | some r =>
+    rcases List.mem_append.mp (List.mem_of_find?_eq_some h) with hr | hr
+    · exact Or.inr ⟨r, hr, rfl⟩
+    · exact Or.inl (casts_anchor r hr)
 
 theorem anchorNamed_mem (name : String) :
     anchorNamed name = 0 ∨ ∃ r ∈ all, r.anchor = anchorNamed name := by
@@ -473,6 +500,10 @@ example : all.all fun r => all.all fun s => (r.name == s.name) == (r.anchor == s
 /-- A constructor has one row, and a row stands for itself. -/
 example : ((all.filterMap (·.ctor)).Nodup) := nodup_of_nodupB (by decide +kernel)
 example : all.all fun r => r.ctor.all fun c => c.key == c := by decide +kernel
+/-- A cast's row stands for itself, its constructor has no other row, and its
+group is the design's. -/
+example : casts.all fun r => r.ctor.all (fun c => c.key == c && !all.any (·.ctor == some c)) &&
+    (groups.lookup r.group).isSome := by decide +kernel
 /-- New anchors are in their area's range. -/
 example : areas.all fun (_, rs, lo) => rs.all fun r =>
     r.anchor < 100 || (lo ≤ r.anchor && r.anchor < lo + 100) := by

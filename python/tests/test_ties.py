@@ -143,9 +143,9 @@ def test_a_rerun_requirement_refuses_open_ties_and_names_the_place(engine) -> No
     report = sv.verify(RANKED, ensures=[_.rn >= 0])
     r = routes.choose(report, engine, reproducible=sv.equivalent())
     assert r.refused
-    assert "the window at relation" in r.reason
-    assert "ROW_NUMBER() over rows that tie in PARTITION BY [$0] ORDER BY [$3]" in r.reason
-    assert "sv.unique('k', 'o')" in r.reason
+    assert "the window at relation" in r.why
+    assert "ROW_NUMBER() over rows that tie in PARTITION BY [$0] ORDER BY [$3]" in r.why
+    assert "sv.unique('k', 'o')" in r.why
 
 
 def test_a_rerun_requirement_takes_a_total_order() -> None:
@@ -158,7 +158,7 @@ def test_an_ordered_aggregate_is_named_too() -> None:
     report = sv.verify(T.group_by("k").aggregate(last=T.x.argmax(T.o)))
     assert [p.op for p in report._tie_places] == ["aggregate"]
     r = routes.choose(report, "duckdb", reproducible=sv.equivalent())
-    assert r.refused and "the aggregate at relation" in r.reason
+    assert r.refused and "the aggregate at relation" in r.why
 
 
 def test_a_sink_that_must_reproduce_refuses_open_ties() -> None:
@@ -339,9 +339,9 @@ def test_a_class_pick_reruns_under_the_default_and_not_under_exact_zeros(expr):
         problems, _ = routes.reproducibility(report, engine, sv.equivalent(floats="plan"))
         assert not [p for p in problems if "zeros" in p or "class of doubles" in p], engine
     r = routes.choose(report, "duckdb", reproducible=sv.equivalent())
-    assert r.refused and "reads the members of a class of doubles" in r.reason
-    assert "picks one at the aggregate" in r.reason and routes.CLASS_PICKS in r.reason
-    assert "unique(" not in r.reason
+    assert r.refused and "reads the members of a class of doubles" in r.why
+    assert "picks one at the aggregate" in r.why and routes.CLASS_PICKS in r.why
+    assert "unique(" not in r.why
 
 
 def test_a_refresh_of_a_max_of_doubles(tmp_path):

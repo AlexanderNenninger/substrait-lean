@@ -11,13 +11,18 @@ The protocol, which any Flight server can implement:
   `after` and `until` may be null or left out) streams the batches of `t`
   numbered in `(n, m]`, in order, each with `{"seq": s}` as app metadata.
   The stream's schema metadata has `floor`, the lowest number the server
-  still holds for `t` (the next number to come if it holds none). A table
-  nothing was sent to yet streams no batches.
+  still holds for `t` (the next number to come if it holds none), and may
+  have `log`, the identity the server chose when it started (a server that
+  numbers its batches from 1 again after a restart must choose a new one).
+  A table nothing was sent to yet streams no batches.
 * The server drops only whole batches, and only below its floor: the
   batches past its retention.
 
-`FlightSource`'s cursor is `{"seq": n, "floor": f}`: the number of the last
-batch read and the floor it was read at. A refresh asks for the batches after
+`FlightSource`'s cursor is `{"seq": n, "floor": f}`, and `"log": id` when the
+server names one: the number of the last batch read, the floor it was read at
+and the log it was read from. A source whose cursor names another log than
+the server's, or none where the server names one, raises: the numbers mean
+another log's batches. A refresh asks for the batches after
 `n` and appends them; the batches it holds that are now below the floor come
 back as deletes, so the source holds the server's window of rows. The
 batches are registered with the engine as they arrived, without a copy.
@@ -30,6 +35,7 @@ from __future__ import annotations
 
 import json
 import threading
+import uuid
 from collections.abc import Iterator
 from typing import Any
 
@@ -42,12 +48,14 @@ except ImportError as e:  # pragma: no cover - pyarrow built without Flight
         "sverify.io.flight needs pyarrow with Flight: pip install 'sverify[flight]'"
     ) from e
 
-from sverify.io._secrets import Secret, as_secret
+from sverify.io._common import public_uri
+from sverify.io._secrets import Secret
 from sverify.io._source import Batch, Source
 
 ASSUMES = (
     "the Flight server numbers batches in order of arrival, never changes one, "
-    "and drops only whole batches below its floor"
+    "drops only whole batches below its floor, and names a new log (`log`) "
+    "when it numbers batches from 1 again"
 )
 
 
@@ -60,16 +68,18 @@ class FlightSource(Source):
     `FlightLog` (the module's docstring has the protocol).
 
     The cursor is `{"seq": n, "floor": f}`, the number of the last batch
-    read and the server's floor at that read. Each refresh streams the
+    read, the server's floor at that read and, where the server names its
+    log, the log's identity. Each refresh streams the
     batches after `n` (`do_get`) and appends them; the batches below the
     server's floor, dropped past its retention, come back as deletes. A
     restarted job resumes at a cursor its sink recorded (`restore`) unless
     the server dropped batches since: their rows can't be read as deletes
     any more, so the job reads the whole log again. The refresh report
     states what this rests on: the server numbers batches in order of
-    arrival, never changes one, and drops only whole batches below its
-    floor. `refresh(audit=True)` reads the batches
-    up to the cursor again and compares.
+    arrival, never changes one, drops only whole batches below its
+    floor, and names a new log when it numbers batches from 1 again.
+    `refresh(audit=True)` reads the batches up to the cursor again and
+    compares.
 
     Args:
         location: The server, such as `"grpc://pi3:8815"`.
@@ -78,9 +88,10 @@ class FlightSource(Source):
         schema: The table's schema. With it, contracts are proved without
             asking the server, and a log that starts empty works. Default:
             the first batch's.
-        secret: The bearer token, by name or reference (`sverify.io.Secret`,
-            such as `"env:FLIGHT_TOKEN"`), read at each connection and sent
-            as the `authorization` header. Default: None.
+        credentials: The bearer token, by name or reference
+            (`sverify.io.Secret`, such as `"env:FLIGHT_TOKEN"`), read at each
+            connection and sent as the `authorization` header, and named in
+            the refresh's `credentials` as every source's are. Default: None.
         timeout: Seconds a call may take. Default: 30.
 
     Examples:
@@ -117,13 +128,11 @@ class FlightSource(Source):
         *,
         name: str | None = None,
         schema: pa.Schema | None = None,
-        secret: str | Secret | None = None,
+        credentials: str | Secret | None = None,
         timeout: float = 30.0,
     ):
-        super().__init__(name or table, schema=schema, assumes=ASSUMES)
+        super().__init__(name or table, schema=schema, assumes=ASSUMES, credentials=credentials)
         self.location, self.table = location, table
-        self.secret = as_secret(secret, "FlightSource(secret=)")
-        """The bearer token, by name or reference, or None."""
         self.timeout = timeout
         self._client: fl.FlightClient | None = None
         self._held: dict[int, pa.RecordBatch] = {}
@@ -137,13 +146,17 @@ class FlightSource(Source):
     def __repr__(self) -> str:
         return f"FlightSource({self.location!r}, {self.table!r})"
 
+    def _fingerprint(self) -> str:
+        return f"flight:{public_uri(self.location)}/{self.table}"
+
     def _get(
         self, after: int | None, until: int | None = None
-    ) -> tuple[list[tuple[int, pa.RecordBatch]], int]:
-        """The batches numbered in `(after, until]`, and the server's floor."""
+    ) -> tuple[list[tuple[int, pa.RecordBatch]], int, str | None]:
+        """The batches numbered in `(after, until]`, the server's floor and
+        the identity of its log (None where it names none)."""
         if self._client is None:
             self._client = fl.connect(self.location)
-        token = self.secret.value() if self.secret is not None else None
+        token = self.credentials[0].value() if self.credentials else None
         headers = [(b"authorization", f"Bearer {token}".encode())] if token else []
         options = fl.FlightCallOptions(headers=headers, timeout=self.timeout)
         ticket = {"table": self.table, "after": after, "until": until}
@@ -155,6 +168,7 @@ class FlightSource(Source):
                     f"{self.name}: the Flight stream names no floor in its schema metadata"
                 )
             floor = int(meta[b"floor"])
+            log = meta[b"log"].decode() if b"log" in meta else None
             got = []
             for chunk in reader:
                 seq = json.loads(chunk.app_metadata.to_pybytes())["seq"]
@@ -162,7 +176,22 @@ class FlightSource(Source):
         except fl.FlightUnavailableError:
             self._client = None  # connect again on the next read
             raise
-        return got, floor
+        return got, floor, log
+
+    def _same_log(self, cursor: dict[str, Any], log: str | None) -> None:
+        """Raise unless `cursor` was read from the server's log: a server that
+        names its log answers to the cursor that names the same one."""
+        if log is None or cursor.get("log") == log:
+            return
+        was = cursor.get("log")
+        raise ValueError(
+            f"{self.name}: the cursor was read from "
+            f"{'a log that was not named' if was is None else f'the Flight log {was!r}'}, "
+            f"and the server at {self.location} now serves the log {log!r}. A server "
+            "that restarted numbers its batches from 1 again, so the cursor's batch "
+            f"numbers ({cursor['seq']}) mean other batches. Reading the log again "
+            "from the start is your choice: start the node on a new sink."
+        )
 
     def _window(self) -> pa.Table:
         """The batches held, as one table without a copy."""
@@ -180,13 +209,17 @@ class FlightSource(Source):
         if since is None:
             self._held.clear()
         after = None if since is None else since["seq"]
-        got, floor = self._get(after)
+        got, floor, log = self._get(after)
+        if since is not None:
+            self._same_log(since, log)
         deletes = [self._held.pop(s) for s in [s for s in self._held if s < floor]]
         self._held.update(got)
         if not got and not deletes:
             return None
         table = pa.Table.from_batches([b for _, b in got]) if got else None
         cursor = {"seq": got[-1][0] if got else after, "floor": floor}
+        if log is not None:
+            cursor["log"] = log
         if not deletes:
             return Batch(table=table, cursor=cursor)
         empty = pa.Table.from_batches([], schema=deletes[0].schema)
@@ -201,7 +234,8 @@ class FlightSource(Source):
         """The server's batches up to `cursor`, for `refresh(audit=True)`."""
         if cursor is None:
             return self._st().table.schema.empty_table()
-        got, _ = self._get(None, until=cursor["seq"])
+        got, _, log = self._get(None, until=cursor["seq"])
+        self._same_log(cursor, log)
         schema = self._st().table.schema
         return pa.Table.from_batches([b for _, b in got]) if got else schema.empty_table()
 
@@ -211,7 +245,8 @@ class FlightSource(Source):
         batches since (their rows would never come back as deletes)."""
         if not isinstance(cursor, dict) or not {"seq", "floor"} <= cursor.keys():
             return None
-        got, floor = self._get(None, until=cursor["seq"])
+        got, floor, log = self._get(None, until=cursor["seq"])
+        self._same_log(cursor, log)
         if cursor["floor"] <= cursor["seq"] and floor > cursor["floor"]:
             return None  # the lowest batch held at the cursor is gone
         self._held = dict(got)
@@ -235,6 +270,9 @@ class FlightLog(fl.FlightServerBase):
 
     Attributes:
         port: The port it listens on.
+        id: The identity of this log, chosen when it starts: a server that
+            numbers its batches from 1 again is another log. None for a log
+            that names none, as a server of another make.
         keep: The batches each table keeps, or None for all of them.
         seq: The number of the last batch stored, over every table.
         tables: Each table's schema and its numbered batches, oldest first.
@@ -243,6 +281,7 @@ class FlightLog(fl.FlightServerBase):
     def __init__(self, location: str = "grpc://127.0.0.1:0", *, keep: int | None = None, **kwargs):
         super().__init__(location, **kwargs)
         self.keep = keep
+        self.id: str | None = uuid.uuid4().hex
         self.seq = 0
         self.tables: dict[str, tuple[pa.Schema, list[tuple[int, pa.RecordBatch]]]] = {}
         self._lock = threading.Lock()
@@ -286,6 +325,11 @@ class FlightLog(fl.FlightServerBase):
         try:
             req = json.loads(ticket.ticket)
             name, after, until = req["table"], req.get("after"), req.get("until")
+            if not isinstance(name, str) or not all(
+                v is None or (isinstance(v, int) and not isinstance(v, bool))
+                for v in (after, until)
+            ):
+                raise TypeError("table is a string, after and until integers or null")
         except (ValueError, KeyError, TypeError, AttributeError) as e:
             raise fl.FlightServerError(f'the ticket is {{"table": ..., "after": ...}}: {e}') from e
         with self._lock:
@@ -301,4 +345,7 @@ class FlightLog(fl.FlightServerBase):
             for s, b in picked:
                 yield b, _meta(s)
 
-        return fl.GeneratorStream(schema.with_metadata({"floor": str(floor)}), stream())
+        meta = {"floor": str(floor)}
+        if self.id is not None:
+            meta["log"] = self.id
+        return fl.GeneratorStream(schema.with_metadata(meta), stream())

@@ -1,0 +1,16 @@
+{
+  "id": "F254",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#271: a lowering entry stores two flags, `exact` and `onDbl`, and agrees on all arguments that are doubles when `onDbl` is set, exactly if `exact` and as `AgreeOrRaises` otherwise. Dbl is a catalogue fact threaded only into the soundness of a table with an `onDbl` entry (Spark today), so DuckDB's and Polars's statements keep their form. Ruling 252's L4 governs over 250 (ii).",
+  "issues": [
+    271
+  ],
+  "amends": [
+    "F250"
+  ],
+  "source": "fable-ruling-254-271-ondbl-flag.md",
+  "note": "Stating every entry on Dbl arguments with DuckDB taking the hypothesis is declined: it weakens DuckDB's theorems for no gain. Conditions: M1, the `onDbl` entries are exactly Spark's `ffloor` and `fceil`, by a decidable list check. M2, one name per concept across the flags (`L.allExact` and `L.noneOnDbl`, or a pair of that shape). M3, one induction, `Rel.evalI_mapExprs_on` with a row predicate replacing the existing lemma. M4, Spark's Dbl hypotheses are discharged at the boundary (`ofFloat_dbl`, and a lemma that the parser builds every float constant as `ofFloat f`). M5, core's `ExactAt` names no engine. F252's L1–L4 stand."
+}

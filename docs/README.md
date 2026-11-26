@@ -44,11 +44,26 @@ release on PyPI.
 
 ## How-to
 
+A page of this kind runs its Python examples in `tests/test_readme.py`, and the test fails a page of more than 600 lines (a tutorial or how-to page) or `python/README.md` of more than 90, two screens.
+
 | Page | Job | Site |
 |---|---|---|
-| [tasks.md](tasks.md) | One section per task: contracts, runtime errors and guards, inferred bounds, the command line, nodes and refresh, quarantine, Delta and Iceberg, credentials, OpenLineage, engines and SQL, routes, export, ODCS, pytest | |
+| [tasks.md](tasks.md) | The index of the how-to pages, with the setup their examples share | |
+| [how-to-contracts.md](how-to-contracts.md) | State what a transform assumes and promises, and read the report | |
+| [how-to-guards.md](how-to-guards.md) | Runtime errors and the guards that rule them out | |
+| [how-to-bounds.md](how-to-bounds.md) | Inferred bounds, row caps, non-overlapping ranges, rows per key and suggested preconditions | |
+| [how-to-command-line.md](how-to-command-line.md) | Checking without running, `sverify check`, its formats and exit codes, the environment variables | |
+| [how-to-nodes.md](how-to-nodes.md) | Nodes, composing contracts, refresh | |
+| [how-to-quarantine.md](how-to-quarantine.md) | What a refresh does with rows that break a precondition | |
+| [how-to-table-formats.md](how-to-table-formats.md) | A complete job in outline, and Delta Lake and Iceberg sources and sinks | |
+| [how-to-credentials.md](how-to-credentials.md) | Named secrets and what each node uses | |
+| [how-to-openlineage.md](how-to-openlineage.md) | Lineage events with the contract | |
+| [how-to-time-buckets.md](how-to-time-buckets.md) | Bounded state for late-arriving streams | |
+| [how-to-engines-and-sql.md](how-to-engines-and-sql.md) | Running a proved plan on an engine, its SQL, routes, classes and profiles | |
+| [how-to-export.md](how-to-export.md) | Exporting a contract to Substrait and ODCS | |
+| [how-to-production.md](how-to-production.md) | Reproducible sinks, engine settings and versions, sharding, testing with pytest | |
+| [how-to-install.md](how-to-install.md) | The extras, the wheels and the nightly builds | |
 | [examples.md](examples.md) | Moved: a list of links to the steps of getting-started.md | |
-| [guide.md](guide.md) | Moved: each section links to its home in getting-started.md or tasks.md | |
 
 ## Reference
 
@@ -65,6 +80,7 @@ release on PyPI.
 | Page | Job | Site |
 |---|---|---|
 | [core-and-profiles.md](core-and-profiles.md) | The core, an abstract machine, and the profiles that narrow it: the reference, each engine's, Substrait's | Design |
+| [what-sverify-proves.md](what-sverify-proves.md) | What the checker proves, the reference semantics and the engines, in a page | Design |
 | [verifying.md](verifying.md) | Verifying under the reference or under an engine's profile, the routes each takes, and what the report says | Design |
 | [report.md](report.md) | What a report holds, and how a verdict traces to what supports it | Design |
 | [rejections.md](rejections.md) | Where the reference raises, the precondition that rules each case out, and how to read a refusal | Design |
@@ -74,6 +90,7 @@ release on PyPI.
 | [theorems/README.md](theorems/README.md) | One page per top-level theorem: what it says, what it assumes, the Lean statement line by line, an example | |
 | [engine-profiles.md](engine-profiles.md) | Each engine's profile, shims and translation | Design |
 | [float-bounds.md](float-bounds.md) | Error bounds for doubles and their proofs | Design |
+| [refresh-findings.md](refresh-findings.md) | What the refresh protocol's model found, and what is proved of it | Design |
 | [optimizations.md](optimizations.md) | Proved optimizations and incremental maintenance | Design |
 | [nested-values.md](nested-values.md) | Lists, structs and lambdas in the model | Design |
 | [trusted-base.md](trusted-base.md) | What a result rests on: the kernel-checked theorems, what tests cover, what is trusted | Design |
@@ -90,17 +107,20 @@ release on PyPI.
 | [ledger.md](ledger.md) | Every project decision in one list, by scope, with who decided and what is in force, generated from [`decisions/`](../decisions/) |
 | [proofs.md](proofs.md) | Each guarantee with its theorem, what is trusted, one line per Lean module |
 | [coverage-targets.md](coverage-targets.md) | The constructs 1.0 covers, by area, with where each stands |
+| [coverage.md](coverage.md) | The Ibis operations that reach the checker and the engines that run their plans, generated on `main` |
 | [layers.md](layers.md) | The layers of the Python package |
 | [teaching.md](teaching.md) | How each feature is taught: its sentence, first contact, notebook and theorem; every refusal with its exit |
 | [build-performance.md](build-performance.md) | The Lean build's time and memory per module, how they are measured, and the budget CI checks |
+| [dbt-measurements.md](dbt-measurements.md) | sverify-dbt on jaffle_shop and Cal-ITP's warehouse: models read, tests proved, test queries skipped |
+| [release-notes-1.0.0rc1.md](release-notes-1.0.0rc1.md) | A draft of 1.0.0rc1's notes: what an upgrade from 0.8.0 changes, from the changelog fragments |
 
 ## Where each topic lives
 
 | Topic | Home |
 |---|---|
 | Which engines sverify supports | [stability.md, Engines](stability.md#engines) |
-| What refresh maintains incrementally | [tasks.md, Nodes](tasks.md#nodes-composing-storing-refreshing) |
-| Routes and classes, for users | [tasks.md, Routes, classes and profiles](tasks.md#routes-classes-and-profiles) |
+| What refresh maintains incrementally | [how-to-nodes.md, Nodes](how-to-nodes.md#nodes-composing-storing-refreshing) |
+| Routes and classes, for users | [how-to-engines-and-sql.md, Routes, classes and profiles](how-to-engines-and-sql.md#routes-classes-and-profiles) |
 | What a plan means | [reference-semantics.md](reference-semantics.md) |
 | What an Ibis expression means | [reference-semantics.md, The Ibis frontend](reference-semantics.md#the-ibis-frontend) |
 | How engine facts are judged | [characterization/README.md](../characterization/README.md) |
@@ -115,7 +135,7 @@ release on PyPI.
 | The Lean build's time and memory, and its budget | [build-performance.md](build-performance.md) |
 | How each feature is taught, and each refusal's exit | [teaching.md](teaching.md) |
 | Float error bounds | [float-bounds.md](float-bounds.md) |
-| The refresh protocol, model-checked | [models/refresh/README.md](../models/refresh/README.md) |
+| The refresh protocol: what the model found, and what is proved | [refresh-findings.md](refresh-findings.md) |
 | Credits | [prior-work.md](prior-work.md) |
 | Install | [python/README.md](../python/README.md) |
 | The formats sverify writes | [stability.md, The formats](stability.md#the-formats) |

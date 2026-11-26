@@ -29,7 +29,7 @@ instead.
 - The verdict. `report.verdict` is a `sverify.Verdict`: `proved` when
   every postcondition holds, under the observation where `ensures` states
   one, no runtime error is possible, no needed precondition is missing, the
-  chosen tolerance is one some engine's doubles actually meet, and, under
+  chosen tolerance is one some engine's doubles meet, and, under
   `semantics="substrait"`, the reference's proof carries over, and the
   report assumes nothing that a run checks on the data. `proved_with_checks`
   is the same with `report.assumed` non-empty: every run that finishes
@@ -85,13 +85,13 @@ without a search:
   list with their evidence.
 
 ```text
-semantics: reference
+semantics: portable
 evidence: duckdb exact, tested at 2.0.0 (facts duckdb-R6; ...)
 evidence: polars exact, proved by ... on polars's model (facts polars-sum-int)
 evidence: spark shim, proved by ... on spark's model (facts spark-sum-int, spark-exec-parallel)
 ```
 
-[How to, Row caps](tasks.md#row-caps) shows such a report in full, with
+[How to, Row caps](how-to-bounds.md#row-caps) shows such a report in full, with
 the names of the proofs.
 
 ## Running is separate
@@ -106,7 +106,7 @@ there too (`UnverifiedRunError`) unless `unverified=True` says otherwise.
 `report.to_json()` writes the report for another tool, and
 `report.to_substrait()` exports the proved plan with its contract.
 
-[How to, Contracts](tasks.md#contracts) shows reports in full, and
+[How to, Contracts](how-to-contracts.md#contracts) shows reports in full, and
 [the rejection set](reference-semantics.md#errors) what a report may
 refuse.
 

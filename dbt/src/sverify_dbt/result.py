@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+from sverify.cli import ExitCode
 
 from sverify_dbt.manifest import Relation, Test
 
+#: A test's or constraint's state: `pending` while the check runs.
+Status = Literal["pending", "proved", "not_proved", "not_checked"]
 
-@dataclass
+
+@dataclass(kw_only=True)
 class TestResult:
     """One of a model's tests or contract constraints."""
 
@@ -23,8 +28,8 @@ class TestResult:
     """`not_null(order_id)`, `primary_key(customer_id)`."""
     kind: str
     """`"test"` or `"constraint"`."""
-    status: str = "pending"
-    """`"proved"`, `"not proved"` or `"not checked"` (`"pending"` while
+    status: Status = "pending"
+    """`"proved"`, `"not_proved"` or `"not_checked"` (`"pending"` while
     the check runs)."""
     why: str | None = None
     """Why it is not proved or not checked."""
@@ -42,11 +47,11 @@ class TestResult:
     `not_a_key`, ...): the one `sverify explain` takes; `why` is the prose."""
 
     def skip(self, why: str) -> None:
-        self.status, self.why = "not checked", why
+        self.status, self.why = "not_checked", why
 
 
-@dataclass
-class Needed:
+@dataclass(kw_only=True)
+class NeededTest:
     """A test an input needs before sverify can prove anything of the model:
     a precondition sverify inferred (`Report.needs`)."""
 
@@ -55,13 +60,13 @@ class Needed:
     column: str | None
     test: str
     """The test to add, as YAML: `dbt_utils.accepted_range: {...}`."""
-    because: str | None
-    """The runtime error it rules out, and where."""
+    why: str | None
+    """The runtime error it rules out, and where, in words."""
     condition: str
     """The condition, as SQL."""
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ContractIssue:
     """Where the model's result and its contract disagree."""
 
@@ -69,7 +74,7 @@ class ContractIssue:
     problem: str
 
 
-@dataclass
+@dataclass(kw_only=True)
 class ModelResult:
     """Everything `check` found about one model."""
 
@@ -87,7 +92,7 @@ class ModelResult:
     contract: list[ContractIssue] | None = None
     """The contract's mismatches (empty: it matches); None without an
     enforced contract."""
-    needed: list[Needed] = field(default_factory=list)
+    needed: list[NeededTest] = field(default_factory=list)
     may_fail: list[str] = field(default_factory=list)
     """Runtime errors sverify could not rule out."""
     assumed: list[str] = field(default_factory=list)
@@ -107,20 +112,22 @@ class ModelResult:
                 t.skip("the model was refused")
         return self
 
-    def by_status(self, status: str) -> list[TestResult]:
+    def by_status(self, status: Status) -> list[TestResult]:
         return [t for t in self.tests + self.constraints if t.status == status]
 
 
-@dataclass
+@dataclass(kw_only=True)
 class CheckResult:
     """The result of `check` for a project."""
 
     project: str
     root: str
     models: list[ModelResult]
-    tests: dict[str, Test] = field(repr=False)
+    _tests: dict[str, Test] = field(default_factory=dict, repr=False)
+    """The manifest's tests, by unique id."""
     unit_tests: list[str] = field(default_factory=list)
-    relations: dict[str, Relation] = field(default_factory=dict, repr=False)
+    _relations: dict[str, Relation] = field(default_factory=dict, repr=False)
+    """The manifest's models, seeds, snapshots and sources, by unique id."""
     selected: bool = False
     """Whether the check reported on some models only (`check(select=...)`)."""
     adapter: str = "duckdb"
@@ -130,9 +137,9 @@ class CheckResult:
     def suggestions(self) -> list[Suggestion]:
         """The tests sverify suggests adding, so that it proves more: what
         each model needs (`Report.needs`), and the tests on the inputs under
-        which an unproved test would hold (`CheckedCondition.needs`).
+        which an unproved test would hold (`Postcondition.needs`).
         One per relation, column and test."""
-        by_ref = {r.ref: r for r in self.relations.values()}
+        by_ref = {r.ref: r for r in self._relations.values()}
         out: dict[tuple, Suggestion] = {}
 
         def add(ref: str, column: str | None, test: str, why: str) -> None:
@@ -141,9 +148,9 @@ class CheckResult:
                 return
             key = (r.unique_id, column, test)
             if key in out:
-                out[key].because.append(why)
+                out[key].why.append(why)
             else:
-                out[key] = Suggestion(r, column, test, [why])
+                out[key] = Suggestion(relation=r, column=column, test=test, why=[why])
 
         for m in self.models:
             for n in m.needed:
@@ -151,7 +158,7 @@ class CheckResult:
                     n.on,
                     n.column,
                     n.test,
-                    f"{m.name}: {n.because}" if n.because else f"{m.name} needs it",
+                    f"{m.name}: {n.why}" if n.why else f"{m.name} needs it",
                 )
             for t in m.tests + m.constraints:
                 for ref, tests in t.would_hold.items():
@@ -208,16 +215,16 @@ class CheckResult:
             (m.name, c)
             for m in self.models
             for c in m.constraints
-            if c.status == "not proved" or (c.status == "not checked" and not m.refused)
+            if c.status == "not_proved" or (c.status == "not_checked" and not m.refused)
         ]
 
     def summary(self) -> str:
         tests = [t for m in self.models for t in m.tests]
-        n = {s: sum(t.status == s for t in tests) for s in ("proved", "not proved", "not checked")}
+        n = {s: sum(t.status == s for t in tests) for s in ("proved", "not_proved", "not_checked")}
         refused = sum(m.refused is not None for m in self.models)
         return (
             f"{len(self.models)} model(s), {refused} refused; {len(tests)} test(s): "
-            f"{n['proved']} proved, {n['not proved']} not proved, {n['not checked']} not checked"
+            f"{n['proved']} proved, {n['not_proved']} not proved, {n['not_checked']} not checked"
         )
 
     def __str__(self) -> str:
@@ -250,7 +257,7 @@ class CheckResult:
             d.pop("sql", None)
             items.append(_item(m) | d)
         return {
-            "format": 1,
+            "format": 2,
             "sverify": version("sverify"),
             "command": "check",
             "exit": exit_code,
@@ -330,7 +337,7 @@ def _model_lines(m: ModelResult) -> list[str]:
     if kept:
         out.append("  proved for the full refresh (dbt build still runs them):")
         out += [f"    {t.label}" for t in kept]
-    unproved = [t for t in m.tests if t.status == "not proved"]
+    unproved = [t for t in m.tests if t.status == "not_proved"]
     if unproved:
         out.append("  not proved (dbt build still runs them):")
         for t in unproved:
@@ -344,7 +351,7 @@ def _model_lines(m: ModelResult) -> list[str]:
         for c in m.constraints:
             if c.status == "proved":
                 out.append(f"    {c.label}: proved")
-            elif c.status == "not proved":
+            elif c.status == "not_proved":
                 out += _unproved(c, "not proved, ")
             else:
                 out.append(f"    {c.label}: not checked, {c.why}")
@@ -353,9 +360,9 @@ def _model_lines(m: ModelResult) -> list[str]:
         for n in m.needed:
             where = f"{n.on}, column {n.column}" if n.column else n.on
             out.append(f"    on {where}: {n.test}")
-            if n.because:
-                out.append(f"      ({n.because})")
-    skipped = [t for t in m.tests if t.status == "not checked"]
+            if n.why:
+                out.append(f"      ({n.why})")
+    skipped = [t for t in m.tests if t.status == "not_checked"]
     if skipped:
         out.append("  not checked:")
         out += [f"    {t.label}: {t.why}" for t in skipped]
@@ -379,7 +386,7 @@ def _unproved(t: TestResult, status: str = "") -> list[str]:
     return out
 
 
-@dataclass
+@dataclass(kw_only=True)
 class Suggestion:
     """A test to add to a relation (`CheckResult.suggestions`)."""
 
@@ -388,8 +395,8 @@ class Suggestion:
     """The column it goes on; None for a test on the relation."""
     test: str
     """The test as YAML: `dbt_utils.accepted_range: {arguments: {...}}`."""
-    because: list[str]
-    """What it lets sverify prove, or which runtime error it rules out."""
+    why: list[str]
+    """What it lets sverify prove, or which runtime error it rules out, in words."""
 
 
 def suggestions_yaml(suggestions: list[Suggestion]) -> str:
@@ -446,20 +453,13 @@ def _relation_lines(g: dict[str, Any], pad: str) -> list[str]:
 def _test_lines(tests: list[Suggestion], pad: str) -> list[str]:
     out = []
     for s in tests:
-        out += [f"{pad}# {why}" for why in s.because]
+        out += [f"{pad}# {why}" for why in s.why]
         out.append(f"{pad}- {s.test}")
     return out
 
 
 #: `status` of the JSON envelope by exit code, as `sverify check` words them.
-EXIT_STATUS = {
-    0: "proved",
-    1: "not_proved",
-    2: "usage",
-    3: "unsupported",
-    4: "budget_exceeded",
-    6: "error",
-}
+EXIT_STATUS = {c.value: c.status for c in ExitCode}
 
 
 def _item(m: ModelResult) -> dict[str, Any]:

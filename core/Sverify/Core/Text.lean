@@ -80,6 +80,178 @@ def findFrom (t : List Char) : List Char → Nat → Option Nat
       | [] => none
       | _ :: r => findFrom t r (i + 1)
 
+/-! ### A linear search (#2497)
+
+`findFrom` tests `isPrefixOf` at every position: up to `n · m` comparisons
+for a needle of `m` characters in `n`, which took a long almost-matching
+needle in the SQL replay past its watchdog. `findFromFast` keeps a
+hash of the `m` characters at the current position, rolled forward one
+character at a time, and tests `isPrefixOf` only where it equals the needle's
+hash. A window equal to the needle has the needle's hash, so this skips only
+positions that cannot match: the result is `findFrom`'s
+(`findFrom_eq_fast`), and the compiled checker runs it (`findFrom_csimp`).
+The search is linear in `n + m` plus the cost of the positions whose hashes
+collide. -/
+
+namespace Find
+
+/-- The hash's modulus and base. A hash stays below `2³¹` and a product below
+`2⁶²`, a scalar at run time. -/
+def P : Int := 2147483647
+def B : Int := 1000003
+
+/-- A character's digit. -/
+def dig (c : Char) : Int := c.toNat
+
+/-- The exact polynomial of a list, `Σ dig cₖ · B^(m-1-k)`, for proofs. -/
+def poly (l : List Char) : Int := l.foldl (fun h c => h * B + dig c) 0
+
+/-- The polynomial modulo `P`, as the checker computes it. -/
+def hashOf (l : List Char) : Int := l.foldl (fun h c => (h * B + dig c) % P) 0
+
+/-- `B ^ n` modulo `P`. -/
+def bPow : Nat → Int
+  | 0 => 1 % P
+  | n + 1 => bPow n * B % P
+
+theorem mul_add_emod (a c : Int) : (a % P * B + c) % P = (a * B + c) % P := by
+  rw [Int.add_emod, Int.mul_emod, Int.emod_emod]
+  conv => rhs; rw [Int.add_emod, Int.mul_emod]
+
+theorem foldl_emod (l : List Char) (a : Int) :
+    l.foldl (fun h c => (h * B + dig c) % P) (a % P) = l.foldl (fun h c => h * B + dig c) a % P := by
+  induction l generalizing a with
+  | nil => rfl
+  | cons c l ih => simp only [List.foldl_cons]; rw [mul_add_emod, ← ih]
+
+theorem hashOf_eq (l : List Char) : hashOf l = poly l % P := by
+  have := foldl_emod l 0
+  simpa [hashOf, poly] using this
+
+theorem bPow_eq : ∀ n, bPow n = B ^ n % P
+  | 0 => rfl
+  | n + 1 => by
+    have := mul_add_emod (B ^ n) 0
+    simp only [Int.add_zero] at this
+    rw [bPow, bPow_eq n, this, Int.pow_succ]
+
+theorem foldl_poly (l : List Char) (a : Int) :
+    l.foldl (fun h c => h * B + dig c) a = a * B ^ l.length + poly l := by
+  induction l generalizing a with
+  | nil => simp [poly]
+  | cons c l ih =>
+    simp only [List.foldl_cons, poly, List.length_cons]
+    rw [ih, ih (0 * B + dig c), Int.pow_succ]
+    simp only [Int.zero_mul, Int.zero_add, Int.add_mul, Int.mul_assoc, Int.mul_comm B]
+    omega
+
+theorem poly_cons (c : Char) (l : List Char) : poly (c :: l) = dig c * B ^ l.length + poly l := by
+  have := foldl_poly l (0 * B + dig c)
+  simp only [Int.zero_mul, Int.zero_add] at this
+  simpa [poly] using this
+
+theorem poly_snoc (l : List Char) (c : Char) : poly (l ++ [c]) = poly l * B + dig c := by
+  simp [poly, List.foldl_append]
+
+/-- The rolled hash: the window `x :: u` moves on to `u ++ [y]`. -/
+theorem roll {x y : Char} {u : List Char} {r : Int} (hr : r = poly (x :: u) % P) :
+    ((r - dig x * bPow u.length) * B + dig y) % P = poly (u ++ [y]) % P := by
+  rw [poly_snoc, bPow_eq, hr]
+  have e : poly u = poly (x :: u) - dig x * B ^ u.length := by rw [poly_cons]; omega
+  rw [e, Int.add_emod, Int.mul_emod, Int.sub_emod, Int.mul_emod (dig x), Int.emod_emod, Int.emod_emod]
+  conv => rhs; rw [Int.add_emod, Int.mul_emod, Int.sub_emod, Int.mul_emod (dig x)]
+
+/-- The search from position `i` of `front`, whose first `m` characters hash
+to `r`; `back` is `front` without them, `ht` the needle's hash and `bm`
+`B ^ (m - 1)` modulo `P`. -/
+def scan (t : List Char) (ht bm : Int) : List Char → List Char → Nat → Int → Option Nat
+  | front, back, i, r =>
+    if r == ht && t.isPrefixOf front then some i
+    else match back, front with
+      | y :: back', x :: front' => scan t ht bm front' back' (i + 1) (((r - dig x * bm) * B + dig y) % P)
+      | _, _ => none
+termination_by _ back => back.length
+
+theorem findFrom_short (t : List Char) : ∀ (cs : List Char) (i : Nat), cs.length < t.length →
+    findFrom t cs i = none
+  | cs, i, h => by
+    have hp : t.isPrefixOf cs = false := by
+      rw [Bool.eq_false_iff]; intro hp
+      have := (List.isPrefixOf_iff_prefix.mp hp).length_le; omega
+    unfold findFrom
+    rw [hp]
+    cases cs with
+    | nil => rfl
+    | cons c cs => exact findFrom_short t cs (i + 1) (by simp at h; omega)
+
+theorem prefix_eq {t w back : List Char} (hw : w.length = t.length)
+    (hp : t.isPrefixOf (w ++ back) = true) : t = w :=
+  (List.prefix_of_prefix_length_le (List.isPrefixOf_iff_prefix.mp hp) (List.prefix_append w back)
+    (by omega)).eq_of_length (by omega)
+
+theorem scan_eq {t : List Char} (ht0 : t ≠ []) :
+    ∀ (front back w : List Char) (i : Nat) (r : Int), front = w ++ back → w.length = t.length →
+      r = poly w % P →
+      scan t (poly t % P) (bPow (t.length - 1)) front back i r = findFrom t front i
+  | front, back, w, i, r, hf, hw, hr => by
+    unfold scan findFrom
+    by_cases hp : t.isPrefixOf front = true
+    · have e := prefix_eq hw (hf ▸ hp)
+      subst e
+      simp [hr, hp]
+    · simp only [Bool.not_eq_true] at hp
+      simp only [hp, Bool.and_false, Bool.false_eq_true, ite_false]
+      obtain ⟨x, u, rfl⟩ : ∃ x u, w = x :: u := by
+        cases w with
+        | nil => exact absurd (List.length_eq_zero_iff.mp hw.symm) ht0
+        | cons x u => exact ⟨x, u, rfl⟩
+      subst hf
+      simp only [List.cons_append]
+      have hu1 : u.length + 1 = t.length := by simpa using hw
+      have hu : u.length = t.length - 1 := by omega
+      cases back with
+      | nil =>
+        simp only [List.append_nil]
+        exact (findFrom_short t u (i + 1) (by omega)).symm
+      | cons y back' =>
+        simp only
+        have hroll := roll (y := y) hr
+        rw [hu] at hroll
+        exact scan_eq ht0 (u ++ y :: back') back' (u ++ [y]) (i + 1) _ (by simp)
+          (by simp; omega) hroll
+termination_by _ back => back.length
+
+/-- `findFrom`, by a rolling hash. -/
+def findFromFast (t cs : List Char) (i : Nat) : Option Nat :=
+  if t.isEmpty then some i
+  else scan t (hashOf t) (bPow (t.length - 1)) cs (cs.drop t.length) i (hashOf (cs.take t.length))
+
+theorem findFrom_eq_fast (t cs : List Char) (i : Nat) : findFrom t cs i = findFromFast t cs i := by
+  unfold findFromFast
+  by_cases ht : t.isEmpty = true
+  · rw [List.isEmpty_iff.mp ht]; unfold findFrom; simp
+  · have ht0 : t ≠ [] := fun e => ht (List.isEmpty_iff.mpr e)
+    simp only [ht, Bool.false_eq_true, ite_false, hashOf_eq]
+    by_cases hl : t.length ≤ cs.length
+    · exact (scan_eq ht0 cs _ _ i _ (List.take_append_drop _ _).symm (by simp; omega) rfl).symm
+    · have hd : cs.drop t.length = [] := List.drop_eq_nil_of_le (by omega)
+      rw [hd, findFrom_short t cs i (by omega)]
+      unfold scan
+      have hp : t.isPrefixOf cs = false := by
+        rw [Bool.eq_false_iff]; intro hp
+        have := (List.isPrefixOf_iff_prefix.mp hp).length_le; omega
+      simp [hp]
+
+end Find
+
+@[csimp] theorem findFrom_csimp : @findFrom = @Find.findFromFast := by
+  funext t cs i; exact Find.findFrom_eq_fast t cs i
+
+#guard Find.findFromFast "lo".toList "hello".toList 1 == some 4
+#guard Find.findFromFast "".toList "ab".toList 1 == some 1
+#guard Find.findFromFast "abc".toList "ab".toList 1 == none
+#guard Find.findFromFast "ab".toList "aab".toList 1 == some 2
+
 /-- **The size hypothesis for strings** (trusted, #202, #336): every string
 has fewer than `2³²` characters, a bound of the reference's that the engines'
 strings stay within (duckdb-exec-size-limits). So a length or
@@ -164,8 +336,11 @@ def trim (left right : Bool) (s set : String) : String :=
 /-! ## Repeating, reversing, replacing -/
 
 /-- The longest string `repeat` writes, in bytes; past it, `repeat` raises.
-What the engines do there is pending a probe on homelab (it allocates
-gigabytes), which will give the reference's own reason. -/
+It lies at or below every engine's own limit on a string's length
+(`duckdb-exec-size-limits`, `polars-exec-size-limits`,
+`spark-exec-size-limits`), so every route raises at the writers' guard before
+an engine fails on its own, and the bound also caps what the checker's
+evaluator writes (#1074; ruling 267). -/
 def repeatMax : Nat := 2 ^ 31 - 1
 
 /-- Does `repeat(s, n)` fit in `repeatMax` bytes? (`n ≤ 0` gives `''`.) -/
@@ -180,8 +355,11 @@ def repeatOnto (s : String) : Nat → String → String
 /-- `repeat(s, n)`: `s` `n` times. It writes the result into one string
 (`repeatStr_eq` gives the plain form): the plain form's list of `n` pieces
 took about 32 bytes a piece, so `repeat(' ', 10⁹)`, a 1 GB result within
-`repeatFits`, took over 30 GB of the checker's memory (#1074). -/
-def repeatStr (s : String) (n : Int) : String := repeatOnto s n.toNat ""
+`repeatFits`, took over 30 GB of the checker's memory (#1074). The empty string is `""`
+whatever `n` is, so it never loops: `repeatFits` holds for it at every `n`, and
+`n = 2⁶³ - 1` would spin forever (#2278). -/
+def repeatStr (s : String) (n : Int) : String :=
+  if s.isEmpty then "" else repeatOnto s n.toNat ""
 
 theorem repeatOnto_eq (s : String) :
     ∀ k acc, repeatOnto s k acc = acc ++ String.join (List.replicate k s)
@@ -191,7 +369,15 @@ theorem repeatOnto_eq (s : String) :
 
 theorem repeatStr_eq (s : String) (n : Int) :
     repeatStr s n = String.join (List.replicate n.toNat s) := by
-  simp [repeatStr, repeatOnto_eq]
+  by_cases h : s.isEmpty
+  · have : s = "" := String.isEmpty_iff.mp h
+    subst this
+    have hj : ∀ k, String.join (List.replicate k "") = "" := by
+      intro k; induction k with
+      | zero => simp
+      | succ k ih => simp [List.replicate_succ, ih]
+    simp [repeatStr, hj]
+  · simp [repeatStr, h, repeatOnto_eq]
 
 def reverse (s : String) : String := String.ofList s.toList.reverse
 
@@ -482,6 +668,7 @@ def rewriteOk (g : Nat) : List Char → Bool
 #guard trim true true "  ab  " " " == "ab" && trim true true "xyabyx" "xy" == "ab"
 #guard repeatStr "ab" 3 == "ababab" && repeatStr "ab" (-1) == "" && repeatStr "ab" 0 == ""
 #guard repeatFits "ab" (2 ^ 30 - 1) && !repeatFits "ab" (2 ^ 30) && !repeatFits "é" (2 ^ 30)
+#guard repeatStr "" (2 ^ 63 - 1) == "" && repeatStr "ab" (2 ^ 63 - 1 - 2 ^ 63) == ""
 #guard repeatFits "" (2 ^ 62) && repeatFits "ab" (-(2 ^ 62))
 #guard reverse "héllo" == "olléh" && reverse "" == ""
 #guard replace "ab" "" "x" == "ab" && replace "aaa" "aa" "b" == "ba" && replace "ab" "a" "" == "b"

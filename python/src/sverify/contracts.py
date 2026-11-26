@@ -56,11 +56,11 @@ Conditions are Ibis expressions (`_.amount >= 0`, or a function of the table)
 or SQL snippets (`"amount >= 0"`). SQL snippets are DuckDB's SQL, compiled to
 Substrait by sverify's lift (`sverify.sql_lift`).
 
-Runtime checks run through Ibis, on the connection the tables are bound to
-(`sverify.connect()`), by default; naming an engine (`engine="duckdb"`,
-or `"polars"`, see `sverify.engines.run`) runs each
-condition's plan, as Lean wrote it, there instead, so such conditions must be
-inside the Lean model. `unique` checks always run through Ibis.
+Runtime checks run each condition's plan, as Lean wrote it, on the engine of
+the connection the tables are bound to (`sverify.connect()`), or on the
+engine named (`check_engine="polars"`, see `sverify.engines.run`), so the
+conditions must be inside the Lean model (F219). A table of another Ibis
+backend is checked by Ibis there.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
 from ibis.common.graph import Node
 
-from sverify import _decimals, _engines, _hooks, _pipe, _stages
+from sverify import _engines, _hooks, _pipe, _stages
 from sverify import observation as _observation
 from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double  # noqa: F401
 from sverify._dialect import DialectDifference
@@ -95,47 +95,30 @@ from sverify._unsupported import ConditionError, SverifyWarning
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify._user_text import did_you_mean
 from sverify._verdict import split_assumed, verdict
-from sverify.conditions import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
-    _DATA_ONLY,
-    DATA_CHECK,
+from sverify.conditions import (
     ON_DATA,
-    ROWS_SHOWN,
     Approx,
     ArrivesWithin,
-    CheckedCondition,
     Discharged,
     Inferred,
     Key,
     MaxRows,
     NonOverlapping,
+    Postcondition,
     PreconditionError,
     References,
-    RelationRows,
     RowsPer,
     TableCondition,
     TextFact,
     Unique,
-    _check_approx,
-    _count,
-    _duplicate_rows,
-    _KeyResult,
     _positions,
-    _relax,
-    _Rows,
-    approx,
-    arrives_within,
     expand_keys,
     label,
-    max_rows,
     q,
-    references,
     resolve,
-    rows_per,
-    show_duration,
     unique,
 )
 from sverify.counterexample import Counterexample
-from sverify.counterexample import search as search_counterexample
 from sverify.engine import (
     Connection,
     Engine,
@@ -143,23 +126,20 @@ from sverify.engine import (
     plan_and_differences,
     run_checker,
 )
-from sverify.observation import Observation
-from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` keeps its names)
-    _DECIMAL_ARG,
-    _EPOCH_DAY,
-    _MICROSECOND,
-    _ORDERED,
+from sverify.observation import Lenses
+from sverify.proposers import (
+    _EPOCH,
+    INFER,
+    SEARCH,
+    Obligation,
+    _text_condition,
+)
+from sverify.report import (
     CONSTANT_HINT,
-    FINITE_ASSUMED,
     INFINITE,
     INFINITE_HINT,
-    OVERFLOW_HINT,
-    PARAMS_NOTE,
-    RUNTIME_CHECK,
     SOURCE_THRESHOLD,
     SOURCE_THRESHOLD_HINT,
-    SUM_ASSUMED,
-    TIES_HINT,
     TRUNC_HINT,
     ColumnFacts,
     Condition,
@@ -170,31 +150,18 @@ from sverify.report import (  # noqa: F401  (re-exported: `sverify.contracts` ke
     PostconditionError,
     Report,
     Semantics,
-    TiePlace,
     Transform,
-    UnprovedReason,
-    UnverifiedRunError,
     VerificationError,
-    _assumption,
     _by_table,
-    _cause,
-    _labels_by_table,
     _needed,
-    _needed_deferred,
-    _sql_value,
     _sum,
-    _sum_assumed,
-    _transfer_failure,
     _truncates,
-    _unparen,
-    _would_hold,
     column_facts,
     condition_query,
-    error_text,
     proved_not_null,
     render_fact,
-    tie_places,
     violating_rows,
+    violation_counts,
     violations,
 )
 
@@ -204,9 +171,10 @@ states the condition (None: unset)."""
 
 
 #: The semantics a plan is verified under besides the installed profiles:
-#: the reference, and DuckDB's, reached through its SQL lift until the checker
-#: evaluates under DuckDB's run profile (#271, #1189).
-_LIFTED = ("reference", "duckdb")
+#: portable (the reference profile, `Profile.reference`), and DuckDB's,
+#: reached through its SQL lift until the checker evaluates under DuckDB's
+#: run profile (#2545, #1189).
+_LIFTED = ("portable", "duckdb")
 
 
 #: The rewrite rules the checker may apply to the plan an engine runs, by
@@ -220,14 +188,14 @@ def _expr_semantics(transform: Transform) -> Semantics:
     """The semantics an unstated `verify(semantics=...)` takes: an expression
     whose SQL (`sverify.sql`) is all lifted with DuckDB's semantics has
     them (#575: so its report assumes no ±∞ precondition and `Report.run`
-    writes no check of one); anything else, the reference."""
+    writes no check of one); anything else, `"portable"`."""
     if isinstance(transform, str):
-        return "reference"
+        return "portable"
     from sverify.ibis_substrait.relations import SQLModel
 
     found = transform.op().find(SQLModel)
-    sems = {op.semantics or "reference" for op in found}
-    return "duckdb" if sems == {"duckdb"} else "reference"
+    sems = {op.semantics or "portable" for op in found}
+    return "duckdb" if sems == {"duckdb"} else "portable"
 
 
 def _profile_requests() -> frozenset[str]:
@@ -240,17 +208,20 @@ def _profile_requests() -> frozenset[str]:
 
 
 def semantics_names() -> tuple[str, ...]:
-    """The semantics `verify` takes: the reference, DuckDB's (through its
+    """The semantics `verify` takes: `"portable"`, DuckDB's (through its
     lift) and each installed profile."""
     return (*_LIFTED, *sorted(_profile_requests() - set(_LIFTED)))
 
 
 def _checked_semantics(semantics: str) -> Semantics:
     if semantics not in semantics_names():
+        from sverify.report_json import RENAMED
+
         named = ", ".join(map(repr, semantics_names()))
+        renamed = f" ({RENAMED})" if semantics == "reference" else ""
         raise _engines.not_installed(semantics) or ValueError(
             f"semantics must be one of {named} (each installed engine profile, "
-            f"sverify.profiles), not {semantics!r}"
+            f"sverify.profiles), not {semantics!r}{renamed}"
         )
     return semantics
 
@@ -317,254 +288,40 @@ def _implied_sql(raw: Sequence[dict], schemas: Mapping[str, Any]) -> dict[str, s
     return out
 
 
-def _nice(x: int, up: bool) -> tuple[int, str]:
-    """A round number near `x`, at or above it if `up`, else at or below,
-    and how to write it: `2**62`, `3 * 10**18` or `1_000`."""
-    if x < 0:
-        v, text = _nice(-x, not up)
-        return -v, f"-{text}" if v else "0"
-    if x < 10**6:
-        return x, f"{x:_}"
-    k = x.bit_length() - 1
-    two = 2 ** (k + 1 if up and 2**k < x else k)
-    e = len(str(x)) - 1
-    d = x // 10**e + (1 if up and x % 10**e else 0)
-    ten = d * 10**e
-    better = min if up else max
-    v = better(two, ten)
-    if v == two:
-        return v, f"2**{v.bit_length() - 1}"
-    d, e = (v // 10**e, e) if v // 10**e < 10 else (1, e + 1)
-    return v, (f"10**{e}" if d == 1 else f"{d} * 10**{e}")
-
-
-_EPOCH = datetime(1970, 1, 1)
-
-
-_US_MIN = (datetime.min - _EPOCH) // timedelta(microseconds=1)
-
-
-_US_MAX = (datetime.max - _EPOCH) // timedelta(microseconds=1)
-
-
-def _year_of(code: int, per_year_unit: timedelta) -> int:
-    """The year of a timestamp (microseconds) or date (days) code, clamped to
-    Python's years."""
-    us = code * (per_year_unit // timedelta(microseconds=1))
-    if us < _US_MIN:
-        return 1
-    if us > _US_MAX:
-        return 9999
-    return (_EPOCH + timedelta(microseconds=us)).year
-
-
-def _bound_conditions(col: str, dtype: Any, lo: int | None, hi: int | None) -> list[Inferred]:
-    """`lo <= col <= hi` as conditions, rounded inward to round numbers (or
-    whole years), each side its own condition. Empty for a type the
-    inference does not write bounds for."""
-    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
-    sql = '"' + col.replace('"', '""') + '"'
-    # NULL cannot overflow, so a bound lets it pass.
-    null = f"{sql} IS NULL OR " if dtype.nullable else ""
-    out = []
-    if dtype.is_integer():
-        # A side at or past 64 bits holds for every integer column, and its
-        # constant (2**63) would be a HUGEINT, which the lift refuses (#616).
-        # A narrower column's own limits stay, the proof needs them stated,
-        # each a constant of the column's type, so it is a fact about the
-        # column (`v <= 127` on a TINYINT, not `v < 128`).
-        if lo is not None and lo <= -(2**63):
-            lo = None
-        if hi is not None and hi >= 2**63 - 1:
-            hi = None
-        if lo is not None:
-            if lo <= dtype.bounds.lower:
-                v, text = dtype.bounds.lower, f"{dtype.bounds.lower:_}"
-            else:
-                v, text = _nice(lo, up=True)
-            out.append(Inferred(f"{null}{sql} >= {v}", f"({ref} >= {text})"))
-        if hi is not None:
-            if hi >= dtype.bounds.upper:
-                top = dtype.bounds.upper
-                out.append(Inferred(f"{null}{sql} <= {top}", f"({ref} <= {top:_})"))
-            else:
-                v, text = _nice(hi + 1, up=False)
-                out.append(Inferred(f"{null}{sql} < {v}", f"({ref} < {text})"))
-        return out
-    if dtype.is_floating():
-        return _double_conditions(ref, sql, null, lo, hi)
-    if dtype.is_decimal() and dtype.scale is not None:
-        scale = dtype.scale
-
-        def dec(k: int) -> str:
-            text = f"{_decimals.scaled(k, -scale):.{scale}f}"
-            if scale == 0 and abs(k) >= 2**63:
-                # A whole number past 64 bits reads as a HUGEINT, which the
-                # lift refuses (#1252); cast from a string it stays a decimal.
-                return f"CAST('{text}' AS DECIMAL(38, 0))"
-            return text
-
-        # Large bounds as round whole numbers (`5 * 10**35`), small ones exactly.
-        if lo is not None:
-            if abs(lo) >= 10 ** (scale + 6):
-                v, text = _nice(-((-lo) // 10**scale), up=True)
-                out.append(Inferred(f"{null}{sql} >= {dec(v * 10**scale)}", f"({ref} >= {text})"))
-            else:
-                out.append(Inferred(f"{null}{sql} >= {dec(lo)}", f"({ref} >= {dec(lo)})"))
-        if hi is not None:
-            if abs(hi) >= 10 ** (scale + 6):
-                v, text = _nice(hi // 10**scale + 1, up=False)
-                out.append(Inferred(f"{null}{sql} < {dec(v * 10**scale)}", f"({ref} < {text})"))
-            else:
-                out.append(Inferred(f"{null}{sql} <= {dec(hi)}", f"({ref} <= {dec(hi)})"))
-        return out
-    if dtype.is_timestamp() and dtype.timezone is None:
-        unit, kind, py = timedelta(microseconds=1), "TIMESTAMP", "datetime"
-    elif dtype.is_date():
-        unit, kind, py = timedelta(days=1), "DATE", "date"
-    else:
-        return []
-
-    def code(year: int) -> int:
-        return (datetime(year, 1, 1) - _EPOCH) // unit
-
-    def lit(year: int) -> str:
-        day = date(year, 1, 1)
-        return f"{kind} '{day.isoformat()}{' 00:00:00' if kind == 'TIMESTAMP' else ''}'"
-
-    if lo is not None and hi is not None and lo > hi:
-        return []  # no value meets it: nothing to suggest
-    if lo is not None:
-        y = _year_of(lo, unit)
-        if code(y) < lo:
-            y += 1
-        if y > 9999 and lo > (datetime.max - _EPOCH) // unit:
-            return []  # past Python's last datetime: no value meets it
-        if y > 9999:
-            # Inside the last year: no whole year to round up to, so the bound
-            # itself, as Python's last datetime or date allows.
-            exact = _EPOCH + lo * unit
-            text = exact.isoformat(sep=" ") if kind == "TIMESTAMP" else exact.date().isoformat()
-            args = (
-                ", ".join(map(str, exact.timetuple()[:6]))
-                if kind == "TIMESTAMP"
-                else (f"{exact.year}, {exact.month}, {exact.day}")
-            )
-            out.append(Inferred(f"{null}{sql} >= {kind} '{text}'", f"({ref} >= {py}({args}))"))
-        else:
-            out.append(Inferred(f"{null}{sql} >= {lit(y)}", f"({ref} >= {py}({y}, 1, 1))"))
-    if hi is not None:
-        last = (
-            datetime(9999, 12, 31, 23, 59, 59, 999999)
-            if kind == "TIMESTAMP"
-            else datetime(9999, 12, 31)
-        )
-        if hi >= (last - _EPOCH) // unit:
-            # Up to the reference's last one (D32): 9999-12-31 itself holds.
-            if kind == "TIMESTAMP":
-                text, args = "9999-12-31 23:59:59.999999", "9999, 12, 31, 23, 59, 59, 999999"
-            else:
-                text, args = "9999-12-31", "9999, 12, 31"
-            out.append(Inferred(f"{null}{sql} <= {kind} '{text}'", f"({ref} <= {py}({args}))"))
-        else:
-            y = _year_of(hi + 1, unit)
-            out.append(Inferred(f"{null}{sql} < {lit(y)}", f"({ref} < {py}({y}, 1, 1))"))
-    return out
-
-
-# Codes of the smallest positive and the largest finite double.
-_TINY_CODE = 1
-
-
-_MAX_CODE = 2 * MAX_MAG + 1
-
-
-def _double_conditions(
-    ref: str, sql: str, null: str, lo: int | None, hi: int | None
-) -> list[Inferred]:
-    """`lo <= col <= hi` on double codes: `> 0` for the smallest positive
-    double, round powers of two near ±2⁶³ (a cast to BIGINT), and the
-    decoded doubles otherwise."""
-
-    def num(x: float) -> str:
-        if x.is_integer() and abs(x) >= 1e6:
-            return _nice(int(x), up=x < 0)[1]
-        return repr(x)
-
-    out = []
-    if lo is not None:
-        if lo == _TINY_CODE:
-            out.append(Inferred(f"{null}{sql} > 0", f"({ref} > 0)"))
-        elif lo > -_MAX_CODE:
-            x = decode_double(lo)
-            out.append(Inferred(f"{null}{sql} >= {x!r}", f"({ref} >= {num(x)})"))
-        else:
-            x = decode_double(-_MAX_CODE)
-            out.append(Inferred(f"{null}{sql} >= {x!r}", f"({ref} >= {x!r})"))
-    if hi is not None:
-        nxt = decode_double(hi + 1)
-        if hi < _MAX_CODE and nxt.is_integer() and abs(nxt) >= 1e6:
-            # Just below a round number: `< 2**63`.
-            out.append(Inferred(f"{null}{sql} < {nxt!r}", f"({ref} < {num(nxt)})"))
-        else:
-            x = decode_double(min(hi, _MAX_CODE))
-            out.append(Inferred(f"{null}{sql} <= {x!r}", f"({ref} <= {x!r})"))
-    return out
-
-
-def _ne_condition(col: str, dtype: Any, k: int) -> Inferred | None:
-    """`col != k`, for a code `k` of the column's type (a divisor's 0)."""
-    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
-    sql = '"' + col.replace('"', '""') + '"'
-    null = f"{sql} IS NULL OR " if dtype.nullable else ""
-    if dtype.is_integer():
-        v = str(k)
-    elif dtype.is_floating():
-        v = repr(decode_double(k))
-    elif dtype.is_decimal() and dtype.scale is not None:
-        v = f"{_decimals.scaled(k, -dtype.scale):.{dtype.scale}f}"
-    else:
-        return None
-    return Inferred(f"{null}{sql} <> {v}", f"({ref} != {v})")
-
-
-def _not_null_condition(col: str) -> Inferred:
-    """`col IS NOT NULL` (a divisor's `COUNT` of the column)."""
-    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
-    sql = '"' + col.replace('"', '""') + '"'
-    return Inferred(f"{sql} IS NOT NULL", f"{ref}.notnull()")
-
-
-def _text_condition(col: str, fact: TextFact) -> Inferred:
-    """`col` holds text of the declared `fact` (NULL passes): `"ascii"`, the precondition
-    under which `ILIKE`, `reverse`, `ascii` and `levenshtein` agree across engines
-    (#1506); `"plain"` for a regular expression with `\\w`, `\\d`, `\\s` or `\\b`, no
-    vertical tab either (`Text.classesDiffer`); `"upper_agreed"` and `"lower_agreed"`,
-    in the agreed alphabet of `UPPER` or `LOWER`: no scalar the engines map differently
-    (`Text.upperRaises`, `lowerRaises`, D51).
-    Its SQL is the writers' guard in the default engine's dialect, the one the data is
-    checked on; its Ibis form is one regular expression with the same characters."""
-    from sverify.sql.core import ascii_text, case_class
-
-    dialect = _engines.sql_dialect()
-    sql = '"' + col.replace('"', '""') + '"'
-    ref = f"_.{col}" if col.isidentifier() else f"_[{col!r}]"
-    if fact in ("upper_agreed", "lower_agreed"):
-        which: Literal["upper", "lower"] = "upper" if fact == "upper_agreed" else "lower"
-        bad = case_class(which)
-        cond = f"NOT {dialect().case_differs(sql, which)}"
-    else:
-        bad = r"[^\x00-\x7f]|\x0b" if fact == "plain" else r"[^\x00-\x7f]"
-        cond = ascii_text(dialect(), sql, fact == "plain")
-    out = Inferred(f"{sql} IS NULL OR {cond}", f"(~{ref}.re_search({bad!r}))")
-    out.fact = fact
-    return out
-
-
 def _squeeze(code: str) -> str:
     """Ibis code without spaces or one pair of outer parentheses."""
     code = "".join(code.split())
     return code[1:-1] if code.startswith("(") and code.endswith(")") else code
+
+
+def _result_schema(transform: Transform, schemas: Mapping[str, Any], semantics: Semantics):
+    """The schema of the transform's result: SQL's types come from the lift, so a
+    timestamp is described as one (#452)."""
+    from sverify.ibis_substrait import sql_model_schema
+
+    if isinstance(transform, str):
+        return sql_model_schema(transform, schemas, semantics)
+    return transform.schema()
+
+
+def _observation_json(obs: _observation.Lenses) -> dict[str, Any]:
+    """The observation as the checker reads it (`Seen.ofJson?`): each component by name,
+    a tolerance on doubles as the exact decimal of each double the run compares with."""
+    from decimal import Decimal
+
+    out: dict[str, Any] = {
+        name: getattr(obs, name) for name, _ in _observation._COMPONENTS if name != "floats"
+    }
+    f = obs.floats
+    out["floats"] = (
+        f
+        if isinstance(f, str)
+        else {
+            **{k: str(Decimal(v)) for k in ("abs", "rel") if (v := getattr(f, k)) is not None},
+            **({"ulps": f.ulps} if f.ulps is not None else {}),
+        }
+    )
+    return out
 
 
 def _declared_text(columns: Sequence[str], conds: Sequence[Condition]) -> dict[str, list[str]]:
@@ -601,37 +358,9 @@ def _suggested(
     tables whose `requires` the caller states; none for a split or a why."""
     if bound is None or bound["why"] is not None or bound["split"]:
         return {}
-    conds = _render_needs(bound["needs"], schemas)
+    proposal = INFER.propose(Obligation("precondition", schemas, {"needs": bound["needs"]}))
+    conds = {} if proposal is None else proposal.value
     return {t: list[Condition](cs) for t, cs in conds.items() if t in assumable and cs}
-
-
-def _render_needs(
-    needs: Sequence[dict], schemas: Mapping[str, ibis.Schema]
-) -> dict[str, list[Inferred]]:
-    """The conditions of a list of `{table, col, lo, hi}`, `{table, col,
-    ne}` or `{table, col, not_null}` (column positions, integer codes as
-    strings), per table."""
-    out: dict[str, list[Inferred]] = {}
-    for n in needs:
-        schema = schemas.get(n["table"])
-        if schema is None or n["col"] >= len(schema):
-            continue
-        col = list(schema)[n["col"]]
-        have = out.setdefault(n["table"], [])
-        if "text" in n:
-            new = [_text_condition(col, n["text"])]
-        elif n.get("not_null"):
-            new = [_not_null_condition(col)] if schema[col].nullable else []
-        elif "ne" in n:
-            c = _ne_condition(col, schema[col], int(n["ne"]))
-            new = [] if c is None else [c]
-        else:
-            lo, hi = (None if n[k] is None else int(n[k]) for k in ("lo", "hi"))
-            new = _bound_conditions(col, schema[col], lo, hi)
-        for c in new:
-            c.column = col
-        have += [c for c in new if c not in have]
-    return {t: cs for t, cs in out.items() if cs}
 
 
 def _why_hint(why: str, show: Callable[[str], str]) -> str:
@@ -658,7 +387,7 @@ def _hint(
         return None
     if bound["why"] is not None:
         return _why_hint(bound["why"], show)
-    conds = _render_needs(bound["needs"], schemas)
+    conds = INFER.conditions(bound["needs"], schemas)
     if not conds:
         return None
 
@@ -817,17 +546,17 @@ def verify(
             transform with these values (`bind_params`); an unbound parameter
             is refused.
         semantics: What the SQL `verify` lifts means, the transformation
-            if it is a SQL string and every SQL condition: `"reference"`
-            (the default), sverify's reference semantics, where an
+            if it is a SQL string and every SQL condition: `"portable"`
+            (the default), sverify's portable semantics (the reference profile), where an
             operation that would create a NaN raises; or `"duckdb"`, what
             DuckDB computes, NaN and ±inf included. An `sv.sql` expression
             inside an Ibis transformation keeps its own `semantics`. Unstated
             (None), it is `"duckdb"` for a transformation whose SQL is all
-            `sv.sql(..., semantics="duckdb")`, else `"reference"`.
+            `sv.sql(..., semantics="duckdb")`, else `"portable"`.
             `"polars"` and `"spark"` name the engine's own profile, under
-            which the checker has no report yet (#271): `verify` warns
+            which the checker has no report yet (#2545): `verify` warns
             `ProfilePendingWarning` and returns the reference's report
-            (`Report.semantics` is `"reference"`).
+            (`Report.semantics` is `"portable"`).
             `"substrait"` checks an Ibis transformation under Substrait's
             own semantics (`Profile.substrait`): the proof under the
             reference holds there where Substrait allows nothing more at
@@ -961,7 +690,7 @@ def infer_bounds(
     params: list[str],
     infer: bool = True,
     inputs: Collection[str] | None = None,
-    semantics: Semantics = "reference",
+    semantics: Semantics = "portable",
     on_inferred: OnInferred,
 ) -> Report:
     """`verify`, with the bounds that rule out overflow inferred.
@@ -983,7 +712,7 @@ def infer_bounds(
 
     An observation in `ensures` (`sv.equivalent`) is no condition to prove:
     it goes to `Report.lenses`, and each other postcondition that
-    depends on what it ignores says so (`CheckedCondition.ignores`)."""
+    depends on what it ignores says so (`Postcondition.ignores`)."""
     observed, ensures = _observation.split(ensures)
     report = _infer_bounds(
         transform,
@@ -1000,8 +729,7 @@ def infer_bounds(
     conditions = {t: list(cs) for t, cs in requires.items()}
     _merge(conditions, report._inferred)
     report._conditions = conditions
-    opened = {} if report._windows_total or isinstance(transform, str) else _open_columns(transform)
-    out = _observed(report, observed or _observation.PLAN_BOUND, ensures, opened)
+    out = _observed(report, observed or _observation.PLAN_BOUND, ensures)
     out._stated = observed is not None
     from sverify import routes as _routes
 
@@ -1053,7 +781,7 @@ OnUnproved = Literal["error", "check", "warn"]
 class ProfilePendingWarning(SverifyWarning):
     """`verify` was asked for an engine's own profile (`semantics="spark"`)
     that the checker has no report under yet (#1288): the report is the
-    reference's, and says so (`Report.semantics` is `"reference"`)."""
+    reference's, and says so (`Report.semantics` is `"portable"`)."""
 
 
 class UnprovedWarning(SverifyWarning):
@@ -1078,7 +806,7 @@ def _typed(dtypes: Mapping[str, Any], facts: Mapping[str, ColumnFacts]) -> dict[
     }
 
 
-def _needing(c: CheckedCondition, needs: Sequence[Needed]) -> CheckedCondition:
+def _needing(c: Postcondition, needs: Sequence[Needed]) -> Postcondition:
     """`c` not proved where its proof used inferred preconditions (#701),
     with those it may have used as its `needs`: the bounds, and the `IS NOT
     NULL`s inferred for this postcondition; every inferred one where those
@@ -1104,61 +832,41 @@ def _checked_on_unproved(v: str) -> OnUnproved:
     return v  # type: ignore[return-value]
 
 
-def _observed(
-    report: Report,
-    observed: Observation,
-    ensures: Sequence[Condition],
-    opened: Mapping[str, str],
-) -> Report:
+def _observed(report: Report, observed: Lenses, ensures: Sequence[Condition]) -> Report:
     """`report` with the observation, and each postcondition marked with the
     components it depends on that the observation ignores, or that the plan
-    leaves open (D1, D12): the checker's (`ContractCheck`'s `Report.ignores`,
-    #1071) for every postcondition it reports them for. A table condition
-    (`unique`, `references`, `max_rows`, `rows_per`), which the checker does
-    not evaluate as an expression, depends on the values of the columns it
-    reads (`observation.dependencies`), and on the open choices of the plan
-    (`opened`) where it is unproved: a proved condition holds for every
-    choice the plan leaves open."""
-    checked = [
-        replace(
-            c,
-            reads=None if (r := _reads(cond, report.output)) is None else tuple(r),
-            approx=isinstance(cond, Approx),
-            nullable=None
-            if r is None or any(c not in report.facts for c in r)
-            else tuple(c for c in r if report.facts[c].nullable),
-            ignores=c.checker_ignores
-            if c.checker_ignores is not None
-            else tuple(
-                _observation.dependencies(
-                    observed, cond, report.output, r, {} if c.proved else opened
-                )
-            ),
+    leaves open (D1, D12): the checker's (`ContractCheck`'s `Report.ignores`
+    and `Report.tableIgnores`, #1071). A proved condition holds for every
+    choice the plan leaves open, so a table condition's open columns apply
+    where it is unproved."""
+    table = iter(report._table_ignores)
+    checked = []
+    for cond, c in zip(ensures, report.ensures, strict=True):
+        r = _reads(cond, report.output)
+        known = next(table, None) if isinstance(cond, TableCondition) else None
+        if known is not None:
+            opened, ignored = known
+            ignores = (
+                tuple(ignored) if c.proved else (*opened, *(x for x in ignored if x not in opened))
+            )
+        elif not isinstance(cond, TableCondition) and c._checker_ignores is not None:
+            ignores = c._checker_ignores
+        else:
+            # The checker did not read the condition (a plan that is not a selection of
+            # conditions, or no answer): it may depend on everything the observation ignores.
+            ignores = tuple(sorted(set(observed.ignored()) - {"rows", "zeros", "errors"}))
+        checked.append(
+            replace(
+                c,
+                reads=None if r is None else tuple(r),
+                approx=isinstance(cond, Approx),
+                nullable=None
+                if r is None or any(c not in report.facts for c in r)
+                else tuple(c for c in r if report.facts[c].nullable),
+                ignores=ignores,
+            )
         )
-        for cond, c in zip(ensures, report.ensures, strict=True)
-    ]
     return replace(report, ensures=checked, lenses=observed)
-
-
-def _open_columns(expr: ir.Table) -> dict[str, str]:
-    """The output columns of aggregates whose value the reference leaves
-    open: `"picks"` for `first`, `last` or `arbitrary` without an order,
-    `"elements"` for `collect` or `group_concat` without one."""
-    out: dict[str, str] = {}
-    for agg in expr.op().find(ops.Aggregate):
-        if not isinstance(agg, ops.Aggregate):
-            continue
-        for name, metric in agg.metrics.items():
-            if (
-                isinstance(metric, ops.First | ops.Last)
-                and not metric.order_by
-                or isinstance(metric, ops.Arbitrary)
-            ):
-                out[name] = "picks"
-            elif isinstance(metric, ops.ArrayCollect | ops.GroupConcat) and not metric.order_by:
-                out[name] = "elements"
-    names = set(expr.columns)
-    return {n: why for n, why in out.items() if n in names}
 
 
 def _reads(cond: Condition, columns: Mapping[str, Any]) -> list[str] | None:
@@ -1203,7 +911,7 @@ def _infer_bounds(
     infer: bool,
     inputs: Collection[str] | None,
     semantics: Semantics,
-    observed: _observation.Observation | None = None,
+    observed: _observation.Lenses | None = None,
 ) -> Report:
     def once(reqs: Mapping[str, Sequence[Condition]], n: int):
         return _verify_once(
@@ -1232,7 +940,7 @@ def _infer_bounds(
     stated = [c.proved for c in report.ensures]
     stated_facts = report.facts
     extra = {
-        t: cs for t, cs in _render_needs(raw, schemas).items() if inputs is None or t in inputs
+        t: cs for t, cs in INFER.conditions(raw, schemas).items() if inputs is None or t in inputs
     }
     if extra:
         guarded = and_or_hints(report.issues, transform)
@@ -1339,16 +1047,20 @@ def _confirm_hints(report: Report, requires, once) -> Report:
     tried: dict[str, set[tuple[str, str]]] = {}
     issues = []
     for i in report.issues:
-        if i.hint_needs:
-            key = repr(sorted((t, sorted(label(c) for c in cs)) for t, cs in i.hint_needs.items()))
+        if i.suggested_requires:
+            key = repr(
+                sorted((t, sorted(label(c) for c in cs)) for t, cs in i.suggested_requires.items())
+            )
             if key not in tried:
                 widened = {t: list(cs) for t, cs in requires.items()}
                 _merge(widened, report._inferred)
-                _merge(widened, i.hint_needs)
+                _merge(widened, i.suggested_requires)
                 again = once(widened, 0)[0]
                 tried[key] = {(j.kind, j.expr) for j in again.issues if j.error}
             if (i.kind, i.expr) in tried[key]:
-                i = replace(i, hint=i.unconfirmed, hint_needs={}, unconfirmed=None, needs=[])
+                i = replace(
+                    i, hint=i.unconfirmed, suggested_requires={}, unconfirmed=None, needs=[]
+                )
         issues.append(i)
     return replace(report, issues=issues)
 
@@ -1580,8 +1292,8 @@ def _prove_once(
     counterexamples: int,
     bound: list[str],
     inputs: Collection[str] | None,
-    semantics: Semantics = "reference",
-    observed: _observation.Observation | None = None,
+    semantics: Semantics = "portable",
+    observed: _observation.Lenses | None = None,
 ) -> tuple[Report, list[dict], dict[str, ibis.Schema]]:
     """One proof (see `verify`), with the bounds Lean inferred and the input
     schemas."""
@@ -1590,7 +1302,7 @@ def _prove_once(
     if semantics in _profile_requests() and isinstance(transform, str):
         raise ValueError(
             f"semantics={semantics!r} checks Ibis transformations; "
-            "SQL is DuckDB's, so its semantics is 'duckdb' or 'reference'"
+            "SQL is DuckDB's, so its semantics is 'duckdb' or 'portable'"
         )
     schemas = {name: input_schema(s) for name, s in (tables or {}).items()}
     if not isinstance(transform, str):
@@ -1605,7 +1317,7 @@ def _prove_once(
         # A SQL condition (an inferred bound, say) is DuckDB's SQL, lifted
         # under the reference where the profile has no lift of its own.
         own = not (isinstance(query, str) and semantics in _profile_requests())
-        return semantics if own else "reference"
+        return semantics if own else "portable"
 
     differences: dict[DialectDifference, None] = {}
 
@@ -1717,24 +1429,56 @@ def _prove_once(
         "max_rows": caps,
         "rows_per": per_key,
         "ranges": ranges,
+        "columns": {t: list(column_names(s)) for t, s in schemas.items()},
         "text": {t: _declared_text(names(t), cs) for t, cs in requires.items()},
     }
 
-    if observed is not None:
-        # What the checker needs to report each postcondition's ignored
-        # components itself (#1071, `Report.ignores` in ContractCheck.lean).
-        contract["observation"] = {
-            "coarsens": [c for c in observed.ignored()],
-            # The rows level by name: the plan to run may refine the plan
-            # as written up to the order of rows only under `multiset` (#1787).
-            "rows": observed.rows,
-            "floats_plan": observed.floats == "plan",
-            "approx": [isinstance(c, Approx) for c in ensures if not isinstance(c, TableCondition)],
-            "sql": isinstance(transform, str),
-        }
+    # What the checker needs to report each postcondition's ignored components
+    # itself (#1071, `Report.ignores` and `Report.tableIgnores` in
+    # ContractCheck.lean): the observation, the columns each table condition
+    # reads, and whether it allows for a tolerance.
+    obs = observed or _observation.PLAN_BOUND
+    result_schema = _result_schema(transform, schemas, semantics)
+    contract["observation"] = {
+        "coarsens": [c for c in obs.ignored()],
+        # The rows level by name: the plan to run may refine the plan
+        # as written up to the order of rows only under `multiset` (#1787).
+        "rows": obs.rows,
+        "floats_plan": obs.floats == "plan",
+        "approx": [isinstance(c, Approx) for c in ensures if not isinstance(c, TableCondition)],
+        "sql": isinstance(transform, str),
+        # The observation the checker meets each engine's rows against, and what each
+        # postcondition reads (`Realize.lean`, #1071). A tolerance goes as the exact
+        # decimal of the double the run compares with.
+        "lenses": _observation_json(obs),
+        "ensures_meta": [
+            {
+                "kind": "unique"
+                if isinstance(c, Unique)
+                else "other"
+                if isinstance(c, TableCondition)
+                else "expr",
+                "approx": isinstance(c, Approx),
+                "reads": None
+                if (r := _reads(c, dict(result_schema.items()))) is None
+                else [out_cols.index(n) for n in r if n in out_cols],
+            }
+            for c in ensures
+        ],
+        "table_reads": [
+            {
+                "reads": None
+                if (r := _reads(c, {})) is None
+                else [out_cols.index(n) for n in r if n in out_cols],
+                "tolerant": isinstance(c, _observation.Tolerant),
+            }
+            for c in ensures
+            if isinstance(c, TableCondition)
+        ],
+    }
     if _RULES is not None:
         contract["rules"] = list(_RULES)
-    if semantics != "reference":
+    if semantics != "portable":
         # The profile decides which issues are errors (an overflow to ±∞ is
         # the reference's alone, #575) and, for those beyond DuckDB's lift,
         # the report's profile (`underProfile`).
@@ -1747,7 +1491,11 @@ def _prove_once(
     code, stdout, stderr = run_checker(("--contract",), json.dumps(contract))
     if code not in (0, 4):
         raise checker_failed("--contract", stderr)
-    out = json.loads(stdout)
+    # A bound keeps the text it was printed as (`Printed`): its nearest double may
+    # lie below it.
+    from sverify.routes import Printed
+
+    out = json.loads(stdout, parse_float=Printed)
     if semantics in _profile_requests() and out.get("pending") == semantics:
         # The engine's profile is its own, with no report under it yet
         # (#1288): the reference's report, labelled as such.
@@ -1757,20 +1505,13 @@ def _prove_once(
             ProfilePendingWarning,
             stacklevel=3,
         )
-        semantics = "reference"
+        semantics = "portable"
     elif semantics in _profile_requests() and out.get("profile") != semantics:
         raise ValueError(
             f'the checker in use has no profile "{semantics}": install the package that '
             "registers it (sverify.profiles), or set SVERIFY_CHECKER to a checker built with it"
         )
-    # SQL's types come from the lift, so a timestamp is described as one (#452).
-    from sverify.ibis_substrait import sql_model_schema
-
-    result = (
-        sql_model_schema(transform, schemas, semantics)
-        if isinstance(transform, str)
-        else transform.schema()
-    )
+    result = _result_schema(transform, schemas, semantics)
     dtypes = _checker_decimals(dict(result.items()), out.get("outputKinds"))
 
     def describe(f: dict) -> ColumnFacts:
@@ -1791,16 +1532,22 @@ def _prove_once(
         if not counterexamples:
             return None
         with _stages.stage("counterexamples"):
-            return search_counterexample(
-                schemas,
-                req_named,
-                keys,
-                transform_plan,
-                target,
-                budget=counterexamples,
-                references=foreign_keys,
-                output_types=out_types,
+            found = SEARCH.propose(
+                Obligation(
+                    "counterexample",
+                    schemas,
+                    {
+                        "requires": req_named,
+                        "keys": keys,
+                        "transform": transform_plan,
+                        "ensures": target,
+                        "budget": counterexamples,
+                        "references": foreign_keys,
+                        "output_types": out_types,
+                    },
+                )
             )
+            return None if found is None else found.value
 
     def next_key() -> tuple[bool, Counterexample | None]:
         ok = next(key_results)["proved"]
@@ -1832,7 +1579,7 @@ def _prove_once(
             )
             depends = e.get("depends")
             checked.append(
-                CheckedCondition(
+                Postcondition(
                     e["name"],
                     e["proved"],
                     e["value"],
@@ -1843,7 +1590,7 @@ def _prove_once(
                     allowed=bool(e.get("allowed")),
                     robust=holds_on_engines,
                     robust_on=proved_on,
-                    checker_ignores=None if (ig := e.get("ignores")) is None else tuple(ig),
+                    _checker_ignores=None if (ig := e.get("ignores")) is None else tuple(ig),
                 )
             )
         checked[-1].condition = c
@@ -1879,7 +1626,7 @@ def _prove_once(
             # reference's form (`floorDivOf`), as does a FLOOR option.
             floor=dialect == "ibis" or '"FLOOR"' in plan_text,
             hint=lambda b: _hint(b, schemas, assumable, show),
-            needs=lambda b: _render_needs(b["needs"], schemas),
+            needs=lambda b: INFER.conditions(b["needs"], schemas),
             column=lambda e: _sum_column(transform, e),
             shown=shown,
             guess=lambda e: _guess_bounds(e, schemas, assumable, dialect),
@@ -2114,7 +1861,7 @@ def _issues(
                 [_needed(t, c, dialect) for t, cs in code.items() for c in cs]
                 if error and not fallback
                 else [],
-                hint_needs={t: list(cs) for t, cs in code.items()} if error else {},
+                suggested_requires={t: list(cs) for t, cs in code.items()} if error else {},
                 unconfirmed=fallback,
                 assumed=assumed,
             )
@@ -2163,7 +1910,7 @@ def _ibis_text(node: Any) -> str:
 def rounding_hints(
     transform: ir.Table,
     ensures: Sequence[Condition],
-    checked: Sequence[CheckedCondition],
+    checked: Sequence[Postcondition],
     facts: Sequence[dict],
     dtypes: Mapping[str, Any],
 ) -> list[str]:
@@ -2230,8 +1977,9 @@ def _checker_decimals(dtypes: dict[str, Any], kinds: Sequence[dict] | None) -> d
     """`dtypes` as the run returns them (`outputKinds`, from `Write.relKinds`
     and `Rel.outBits`): a decimal `AVG` or `SUM` and an integer's width differ
     from Ibis's (a computed integer is 64 bits, a passed-through column keeps its
-    declared width), and a timestamp has microseconds. A checker without the
-    field, or with another number of columns, leaves Ibis's types as they are."""
+    declared width, a cast has the width it names), and a timestamp has
+    microseconds. A checker without the field, or with another number of
+    columns, leaves Ibis's types as they are."""
     if kinds is None or len(kinds) != len(dtypes):
         return dtypes
     return {name: _checker_type(ty, k) for (name, ty), k in zip(dtypes.items(), kinds, strict=True)}
@@ -2656,8 +2404,12 @@ def discharge(
                 if label(c) in proved
             ]
             todo = [c for c in todo if label(c) not in proved]
-    for c in todo:
-        if n := violations(table, c, engine):
+    # One plan counts them all (`violation_counts`); a condition whose check
+    # raised runs alone, so the engine's own error is the one raised.
+    for c, n, error in violation_counts(table, todo, engine) if todo else []:
+        if error is not None:
+            n = violations(table, c, engine)
+        if n:
             raise PreconditionError(
                 f"{n} {what} violate {label(c)}",
                 source=name,
@@ -2856,7 +2608,7 @@ class ViewContract:
     policies: Policies = field(default_factory=dict)
     """The `on_violation` the transforms set on each precondition in
     `requires` (`Provenance.policies`)."""
-    profile: str = "reference"
+    profile: str = "portable"
     """The profile the transformation was verified under (`Report.semantics`)."""
     deterministic: bool = False
     """The report proves the result determined up to row order and the members of
@@ -2897,7 +2649,7 @@ def view_contract(expr: ir.Table) -> ViewContract:
         list(prov.checked) if prov else [],
         proved_not_null(prov.report) if prov and prov.report._proved else [],
         {t: {lab: set(ps) for lab, ps in by.items()} for t, by in policies.items()},
-        profile=prov.report.semantics if prov else "reference",
+        profile=prov.report.semantics if prov else "portable",
         deterministic=bool(prov and prov.report.deterministic),
     )
 
@@ -2951,7 +2703,7 @@ class ContractedTransform:
         on_unproved: OnUnproved = "error",
         check_requires: bool = True,
         check_engine: Engine | None = None,
-        semantics: Semantics = "reference",
+        semantics: Semantics = "portable",
         on_inferred: OnInferred = "error",
         on_violation: Policy | None = None,
         schemas: Mapping[str, Any] | None = None,
@@ -3390,7 +3142,7 @@ def transform(
     on_unproved: OnUnproved = "error",
     check_requires: bool = True,
     check_engine: Engine | None = None,
-    semantics: Semantics = "reference",
+    semantics: Semantics = "portable",
     on_inferred: OnInferred = "error",
     on_violation: Policy | None = None,
     schemas: Mapping[str, Any] | None = None,
@@ -3434,12 +3186,13 @@ def transform(
             inputs at call time. Default True. False with an
             `on_violation` other than `"error"` raises `ValueError`: that
             setting acts on those checks.
-        check_engine: Where checks on data run: `"duckdb"` or `"polars"` run each
-            condition's plan as Lean wrote it; None
-            (the default) runs them through Ibis on the inputs' connection.
-            `refresh(engine=)` says where a node's plan runs.
+        check_engine: Where checks on data run, each condition's plan as
+            Lean wrote it: `"duckdb"`, `"polars"` or `"spark"`, or None (the
+            default) for the engine of the inputs' `sverify.connect()`
+            connection. A table of another Ibis backend is checked by Ibis
+            there. `refresh(engine=)` says where a node's plan runs.
         semantics: What the contract's SQL conditions mean in its proofs,
-            as `verify`'s: `"reference"` (the default) or `"duckdb"`.
+            as `verify`'s: `"portable"` (the default) or `"duckdb"`.
         on_inferred: What a precondition sverify infers does, as
             `verify`'s. sverify infers the bounds it needs (`amount * 2` on
             BIGINT needs `_.amount < 2**62`). `"error"` (the default): the

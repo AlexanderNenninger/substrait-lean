@@ -79,12 +79,17 @@ REFUSERS = [
     *sorted((SRC / "ibis_substrait").glob("*.py")),
     *sorted((SRC / "sql_lift").glob("*.py")),
     *sorted((SRC / "sql" / "core").glob("*.py")),
+    # The engines' own refusals. Polars's `Unsupported` ends every message with
+    # the exit to DuckDB itself, so its translator is not scanned.
+    *sorted((ROOT / "engines" / "spark" / "src" / "sverify_spark").glob("*.py")),
+    ROOT / "engines" / "polars" / "src" / "sverify_polars" / "scan.py",
+    *sorted((ROOT / "engines" / "duckdb" / "src" / "sverify_duckdb").glob("*.py")),
 ]
 
 
 def _without_a_fix(path: Path) -> list[tuple[int, str]]:
     """The plain `raise Unsupported(...)` of `path` whose text names no fix. A
-    message that ends in a shared exit (`... + DUCKDB_ONLY`) has one."""
+    message that ends in a shared exit (`DUCKDB_ONLY`) has one."""
     bad = []
     for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
         if not (isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call)):
@@ -93,7 +98,9 @@ def _without_a_fix(path: Path) -> list[tuple[int, str]]:
         if getattr(call.func, "id", None) != "Unsupported" or len(call.args) != 1:
             continue
         parts = list(ast.walk(call.args[0]))
-        if any(isinstance(n, ast.BinOp) and isinstance(n.right, ast.Name) for n in parts):
+        if any(isinstance(n, ast.BinOp) and isinstance(n.right, ast.Name) for n in parts) or any(
+            isinstance(n, ast.Name) and n.id == "DUCKDB_ONLY" for n in parts
+        ):
             continue
         text = "".join(
             n.value for n in parts if isinstance(n, ast.Constant) and isinstance(n.value, str)

@@ -1,1 +1,0 @@
-The dbt replay covers the projects inside `dbt-tests-adapter` 1.20.0's pytest classes (175 distinct projects, 128 tests: 8 proved, none unsound), beside dbt-utils and dbt-expectations ([#859](https://github.com/AlexanderNenninger/substrait-lean/issues/859)). sverify-dbt refuses a model whose compiled SQL does not tokenize, where it crashed.

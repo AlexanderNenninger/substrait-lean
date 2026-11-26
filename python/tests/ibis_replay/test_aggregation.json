@@ -5,9 +5,9 @@
   "data": "https://github.com/ibis-project/testing-data/tree/b26bd40cf29004372319df620c4bbe41420bb6f8",
   "module": "test_aggregation",
   "summary": {
-    "agree": 110,
+    "agree": 114,
     "disagree": 0,
-    "refused": 31,
+    "refused": 27,
     "unproved": 16,
     "skipped": 10
   },
@@ -219,9 +219,7 @@
       "outcome": "agree"
     },
     "test_corr_cov[duckdb-cond-corr_pop_bool]": {
-      "outcome": "refused",
-      "construct": "run: Unsupported: comparison of float with int; cast one side first",
-      "issue": 2158
+      "outcome": "agree"
     },
     "test_corr_cov[duckdb-cond-corr_samp]": {
       "outcome": "skipped",
@@ -231,9 +229,7 @@
       "outcome": "agree"
     },
     "test_corr_cov[duckdb-cond-covar_pop_bool]": {
-      "outcome": "refused",
-      "construct": "run: Unsupported: comparison of float with int; cast one side first",
-      "issue": 2158
+      "outcome": "agree"
     },
     "test_corr_cov[duckdb-cond-covar_samp]": {
       "outcome": "agree"
@@ -242,9 +238,7 @@
       "outcome": "agree"
     },
     "test_corr_cov[duckdb-no_cond-corr_pop_bool]": {
-      "outcome": "refused",
-      "construct": "run: Unsupported: comparison of float with int; cast one side first",
-      "issue": 2158
+      "outcome": "agree"
     },
     "test_corr_cov[duckdb-no_cond-corr_samp]": {
       "outcome": "skipped",
@@ -254,9 +248,7 @@
       "outcome": "agree"
     },
     "test_corr_cov[duckdb-no_cond-covar_pop_bool]": {
-      "outcome": "refused",
-      "construct": "run: Unsupported: comparison of float with int; cast one side first",
-      "issue": 2158
+      "outcome": "agree"
     },
     "test_corr_cov[duckdb-no_cond-covar_samp]": {
       "outcome": "agree"

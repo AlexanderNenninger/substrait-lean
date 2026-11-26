@@ -9,21 +9,22 @@ run the same steps.
     python scripts/lake.py preview --refresh refresh.json --pr <n>
     python scripts/lake.py drop
 
-`check` runs `sverify check --json` on every pipeline file (`pipelines/*.py`
+`check` runs `sverify check --format json` on every pipeline file (`pipelines/*.py`
 but helpers starting with `_`), prints GitHub annotations for each problem
 and writes the plain-language contract as Markdown for the PR comment.
 With `--plans`, each proved node is also exported to Substrait in that folder
 and proved again from the export, for a consumer that runs the plan itself.
-`refresh` runs `sverify refresh --json` on each node `pipelines.toml` lists
+`refresh` runs `sverify refresh --format json` on each node `pipelines.toml` lists
 and, when one fails, writes the text of the alert issue. `catalog` writes a
 static site: an index and one page per stored table with its proved facts,
 description, lineage, freshness, a chart and a query box (DuckDB-WASM).
 `preview` prints a pull request's preview comment, and `drop` deletes the
 current stage's tables (a closed pull request's).
 
-Each command exits with the worst exit code of the `sverify` runs: 0
-proved, 1 not proved, 2 usage error, 3 unsupported, 4 budget exceeded, 5 rows
-quarantined, 6 error, 7 refused (no route), 8 a node held (`worst` orders them).
+Each command exits with the worst exit code of the `sverify` runs, their
+maximum (`sverify.cli.ExitCode` runs from the best to the worst): 0 proved, 1
+not proved, 2 usage error, 3 unsupported, 4 refused (no route), 5 budget
+exceeded, 6 rows quarantined, 7 a node held, 8 error.
 
 Only sverify's CLI (`sverify.cli.main`, in this process), its public
 `sverify.io` and delta-rs are used.
@@ -46,6 +47,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from sverify.cli import ExitCode
+
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "catalog"
 EXPLAIN = "`sverify explain <code>` says what a [code] means."
@@ -57,7 +60,7 @@ def config() -> dict[str, Any]:
 
 
 def sverify(*args: str) -> tuple[int, dict[str, Any]]:
-    """Run the `sverify` CLI with `--json` in this process (`sverify.cli.main`):
+    """Run the `sverify` CLI with `--format json` in this process (`sverify.cli.main`):
     its exit code and document.
 
     One process for every step: sverify, Ibis and DuckDB load once, and the
@@ -68,7 +71,7 @@ def sverify(*args: str) -> tuple[int, dict[str, Any]]:
     out = io.StringIO()
     try:
         with contextlib.redirect_stdout(out):
-            code = main([*args, "--json"])
+            code = main([*args, "--format", "json"])
     except SystemExit as e:  # argparse
         code = e.code if isinstance(e.code, int) else 2
     text = out.getvalue()
@@ -77,16 +80,16 @@ def sverify(*args: str) -> tuple[int, dict[str, Any]]:
     try:
         doc = json.loads(text[start:] if start >= 0 else text)
     except json.JSONDecodeError:
-        doc = {"exit": code or 6, "error": {"code": "error", "type": "CLI", "message": text}}
+        doc = {
+            "exit": code or ExitCode.ERROR,
+            "error": {"code": "error", "type": "CLI", "message": text},
+        }
     return code, doc
 
 
-#: The exit codes from the mildest to the worst: 7 (refused) ranks with 3, 8 (held) with 5.
-SEVERITY = [0, 1, 2, 3, 7, 4, 5, 8, 6]
-
-
 def worst(codes: list[int]) -> int:
-    return max(codes, key=SEVERITY.index, default=0)
+    """The worst of the runs' exit codes: their maximum, as `ExitCode` orders them."""
+    return max(codes, default=ExitCode.PROVED)
 
 
 def lake() -> str:
@@ -126,17 +129,7 @@ def annotate(level: str, file: str, line: int, title: str, message: str) -> None
 
 
 #: The exit codes in words.
-STATUS = {
-    0: "proved",
-    1: "not proved",
-    2: "usage error",
-    3: "unsupported",
-    4: "budget exceeded",
-    5: "quarantined",
-    6: "error",
-    7: "refused",
-    8: "held",
-}
+STATUS = {c.value: c.status.replace("_", " ") for c in ExitCode}
 
 
 def comment(docs: list[dict[str, Any]], code: int) -> str:
@@ -240,7 +233,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         for file in pipeline_files():
             for problem in export_plans(file, Path(args.plans)):
                 annotate("error", file, 1, "sverify export", problem)
-                code = worst([code, 6])
+                code = worst([code, ExitCode.ERROR])
     text = comment(docs, code)
     if args.out:
         Path(args.out).write_text(json.dumps({"exit": code, "files": docs}, indent=2))
@@ -292,10 +285,11 @@ def alert(runs: list[dict[str, Any]]) -> str:
         "What to do:",
         "- exit 1 (not proved), 3 (unsupported) or 7 (refused): the data or the pipeline "
         "changed. Run `sverify check` on the file, or comment `@claude fix this` here.",
-        "- exit 4 (budget): raise `SVERIFY_MEMORY_LIMIT` or the timeout.",
-        "- exit 5 (quarantined) or 8 (held): rows broke a precondition and were set aside; "
-        "the alert above names them.",
-        "- exit 2 (usage) or 6 (error): read the log of the run.",
+        f"- exit {ExitCode.BUDGET.value} (budget): raise `SVERIFY_MEMORY_LIMIT` or the timeout.",
+        f"- exit {ExitCode.QUARANTINED.value} (quarantined) or {ExitCode.HELD.value} (held): "
+        "rows broke a precondition and were set aside; the alert above names them.",
+        f"- exit {ExitCode.USAGE.value} (usage) or {ExitCode.ERROR.value} (error): "
+        "read the log of the run.",
         "",
         f"{EXPLAIN} This issue closes on the next refresh that succeeds.",
     ]
@@ -340,7 +334,7 @@ def cmd_refresh(args: argparse.Namespace) -> int:
             lines.append(
                 f"- `{n['node']}`: {n.get('started')}; "
                 + (
-                    f"v{w.get('version')}, +{w.get('inserted')} −{w.get('deleted')}"
+                    f"v{w.get('version')}, +{w.get('inserts')} −{w.get('deletes')}"
                     if w
                     else "no write"
                 )
@@ -530,7 +524,7 @@ def cmd_preview(args: argparse.Namespace) -> int:
         for n in r["result"].get("nodes", []):
             w = n.get("write") or {}
             lines.append(
-                f"- `{n['node']}`: {w.get('inserted', 0)} rows written, {w.get('deleted', 0)} deleted"
+                f"- `{n['node']}`: {w.get('inserts', 0)} rows written, {w.get('deletes', 0)} deleted"
             )
         if r["exit"]:
             e = r["result"].get("error") or {}
@@ -595,7 +589,7 @@ def cmd_catalog(args: argparse.Namespace) -> int:
         dt = DeltaTable(uri)
         contract = DeltaSource(uri).contract()
         arrow = dt.to_pyarrow_table()
-        last = dt.history(1)[0] if dt.version() >= 0 else {}
+        last = next(iter(dt.history(1)), {}) if dt.version() >= 0 else {}
         meta = cfg.get(name, {})
         files: list[str] = []
         if args.data == "snapshot":
@@ -832,7 +826,7 @@ def status_page(
     for r in runs:
         for n in r["result"].get("nodes", []):
             w, e = n.get("write") or {}, stored.get(n["node"])
-            wrote = f"+{w.get('inserted', 0):,} −{w.get('deleted', 0):,}" if w else "no write"
+            wrote = f"+{w.get('inserts', 0):,} −{w.get('deletes', 0):,}" if w else "no write"
             table = f'<a href="{html.escape(e["name"])}.html">{e["rows"]:,}</a>' if e else ""
             rows.append(
                 f"<tr><td>{html.escape(n['node'])}</td><td>{wrote}</td><td>{table}</td></tr>"

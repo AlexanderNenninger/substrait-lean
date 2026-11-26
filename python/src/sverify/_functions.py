@@ -66,7 +66,9 @@ OPTIONS: Mapping[str, Option] = MappingProxyType(
                    (("NAN", "duckdb-R15-math-domain"),)),
             Option("on_log_zero", "on_log_zero", ("NAN", "ERROR", "MINUS_INFINITY")),
             Option("pow_one_inf", None, ("ONE", "NAN"), (("NAN", "spark-math-domain"),)),
-            Option("zero_sign", None, ("IEEE", "ONE_ZERO"), (("IEEE", "polars-zero-sign"),)),
+            Option(
+                "zero_sign", None, ("IEEE", "ONE_ZERO"), (("IEEE", "polars-zero-sign-streaming"),)
+            ),
             Option("shift_range", None, ("ERROR", "ZERO", "DROP_BITS"),
                    (("ERROR", "duckdb-R15-shift-left"), ("ZERO", "duckdb-R15-shift-right"))),
             Option("negative_start", "negative_start",

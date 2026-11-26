@@ -43,7 +43,9 @@ theorem Substrait.duckdbOn.fpow_agree : ∀ (x y : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fpow : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   Substrait.BinFn.fpow :=
-  ⟨Substrait.Lowering.fpowTemplate, by exact Substrait.Lowering.fpowTemplate_must, Substrait.duckdbOn.fpow_agree⟩
+  Substrait.BinEntry.ofAgree
+  (Substrait.Lowering.fpowTemplate)
+  (by exact Substrait.Lowering.fpowTemplate_must) Substrait.duckdbOn.fpow_agree
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.duckdbOn.fatan2_agree : ∀ (x y : Substrait.Value),
@@ -64,12 +66,14 @@ theorem Substrait.duckdbOn.fatan2_agree : ∀ (x y : Substrait.Value),
 
 abbrev Substrait.duckdbOn.fatan2 : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
   Substrait.BinFn.fatan2 :=
-  ⟨Substrait.Expr.ifThen
+  Substrait.BinEntry.ofAgree
+  (Substrait.Expr.ifThen
   (Substrait.Expr.bin Substrait.BinFn.and
     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 0)
       (Substrait.Expr.lit (Substrait.Value.float 0)))
     (Substrait.Expr.bin Substrait.BinFn.eq (Substrait.Expr.field 1)
       (Substrait.Expr.lit (Substrait.Value.float 0))))
   (Substrait.Expr.un (Substrait.UnFn.raise "domain error") (Substrait.Expr.field 1))
-  (Substrait.Expr.bin Substrait.BinFn.fatan2 (Substrait.Expr.field 0) (Substrait.Expr.field 1)), by simp [Substrait.Expr.must], Substrait.duckdbOn.fatan2_agree⟩
+  (Substrait.Expr.bin Substrait.BinFn.fatan2 (Substrait.Expr.field 0) (Substrait.Expr.field 1)))
+  (by simp [Substrait.Expr.must]) Substrait.duckdbOn.fatan2_agree
 

@@ -17,6 +17,7 @@ from fractions import Fraction
 
 import duckdb
 import ibis
+import pyarrow as pa
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
@@ -650,7 +651,7 @@ def test_first_and_last_are_determined_by_a_key():
     con = connect()
     con.create("t", P.schema(), [(1, "a", 1)])
     written = written_plan(to_substrait_json(expr))
-    with pytest.raises(Exception, match="see #271"):
+    with pytest.raises(Exception, match="see #2540"):
         run_plan(con, written, "polars")
     # Without an order every row ties: determined only by a key on the group.
     any_row = P.group_by("k").aggregate(f=P.x.first())
@@ -743,6 +744,36 @@ def test_covariance_agrees_with_duckdb(rows):
         assert all(near(a, b) for a, b in zip(g, e, strict=True)), (g, e)
 
 
+BOOLS = ibis.table({"g": "int64", "year": "int64"}, name="t")
+
+
+def booleans_cov(t, fn: str, where: bool, how: str):
+    cond = t.year.isin([2009, 2015]) if where else None
+    return getattr(t.g > 34.0, fn)(t.g <= 34.0, where=cond, how=how)
+
+
+@pytest.mark.parametrize("where", [False, True], ids=["no_cond", "cond"])
+@pytest.mark.parametrize(
+    ("fn", "how"), [("corr", "pop"), ("cov", "pop"), ("cov", "sample")]
+)  # Ibis's DuckDB has no sample correlation
+def test_covariance_of_booleans_is_written_and_agrees(fn, where, how):
+    """#2158: the checker's run-time check of a plan over booleans takes `abs`
+    of a double built from an `IF`, which the writer once read as an integer
+    and compared with an integer zero. Lean, the written plan on DuckDB and
+    Ibis's own DuckDB give the same value."""
+    rows = [(10, 2009), (40, 2015), (50, 2015), (None, 2015), (20, 2000), (35, 2009)]
+    expr = booleans_cov(BOOLS, fn, where, how).name("v").as_table()
+    plan = to_substrait_json(expr)
+    (lean,) = lean_values(json.dumps(inline_tables(json.loads(plan), {"t": rows})))
+    con = connect()
+    con.create("t", BOOLS.schema(), rows)
+    (written,) = sv.verify(expr, on_inferred="warn").run(con, "duckdb").column("v").to_pylist()
+    memtable = ibis.memtable(pa.table({"g": [r[0] for r in rows], "year": [r[1] for r in rows]}))
+    expected = ibis.duckdb.connect().execute(booleans_cov(memtable, fn, where, how))
+    lean_value = decode_double(lean[0]) if isinstance(lean[0], int) else lean[0]
+    assert near(lean_value, written) and near(written, expected), (lean, written, expected)
+
+
 def test_correlation_is_null_where_the_standard_says():
     """Fewer than two pairs, or a side whose values are all equal: NULL (DuckDB's
     own CORR gives NaN); other engines refuse it for now (#271)."""
@@ -764,7 +795,7 @@ def test_correlation_is_null_where_the_standard_says():
         (3, None, None, None),
         (4, None, 0.0, None),
     ]
-    with pytest.raises(Exception, match="see #271"):
+    with pytest.raises(Exception, match="see #2540"):
         run_plan(con, written, "polars")
 
 
@@ -832,7 +863,7 @@ def test_group_concat_is_determined_by_a_key():
     con = connect()
     con.create("t", P.schema(), [(1, "a", 1)])
     written = written_plan(to_substrait_json(expr))
-    with pytest.raises(Exception, match="see #271"):
+    with pytest.raises(Exception, match="see #2540"):
         run_plan(con, written, "polars")
     unordered = P.group_by("k").aggregate(s=P.x.group_concat(","))
     assert not sv.verify(unordered).deterministic
@@ -1049,7 +1080,7 @@ def test_quantiles_are_refused_on_other_engines(agg):
     con = connect()
     con.create("t", Q.schema(), [(1, 1, 1.0, "a")])
     written = written_plan(to_substrait_json(Q.group_by("k").aggregate(v=agg)))
-    with pytest.raises(Exception, match="see #271"):
+    with pytest.raises(Exception, match="see #2540"):
         run_plan(con, written, "polars")
 
 

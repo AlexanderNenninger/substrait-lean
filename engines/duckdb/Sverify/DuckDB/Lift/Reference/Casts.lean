@@ -25,17 +25,15 @@ theorem Substrait.liftReference.castDoubleBigint_agree : ∀ (x : Substrait.Valu
   Substrait.DuckType.Has Substrait.DuckType.double x →
     Substrait.Outcome.Agree
       (Substrait.Expr.evalP Substrait.Profile.reference [x]
-        (Substrait.Expr.un Substrait.UnFn.ftoi (Substrait.Expr.field 0)))
+        (Substrait.Expr.un Substrait.UnFn.ftoi
+          (Substrait.Expr.un Substrait.UnFn.froundEven (Substrait.Expr.field 0))))
       (Substrait.DuckFn.eval Substrait.Semantics.reference Substrait.DuckFn.castDoubleBigint [x]) := by
   lift_tac1
 
 abbrev Substrait.liftReference.castDoubleBigint : Substrait.LiftEntry Substrait.Semantics.reference Substrait.DuckFn.castDoubleBigint :=
-  ⟨"{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"type\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un Substrait.UnFn.ftoi (Substrait.Expr.field 0),
+  ⟨"{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":47,\"options\":[{\"name\":\"rounding\",\"preference\":[\"TIE_TO_EVEN\"]}],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"type\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un Substrait.UnFn.ftoi
+  (Substrait.Expr.un Substrait.UnFn.froundEven (Substrait.Expr.field 0)),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.castDoubleBigint_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.castDoubleBigint)
-  ((Lean.Json.parse (Substrait.liftReference.castDoubleBigint).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.castDoubleBigint).tmpl
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.castBigintDouble_agree : ∀ (x : Substrait.Value),
@@ -49,10 +47,6 @@ theorem Substrait.liftReference.castBigintDouble_agree : ∀ (x : Substrait.Valu
 abbrev Substrait.liftReference.castBigintDouble : Substrait.LiftEntry Substrait.Semantics.reference Substrait.DuckFn.castBigintDouble :=
   ⟨"{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}},\"type\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un Substrait.UnFn.itof (Substrait.Expr.field 0),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.castBigintDouble_agree⟩
-
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.castBigintDouble)
-  ((Lean.Json.parse (Substrait.liftReference.castBigintDouble).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.castBigintDouble).tmpl
 
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.castRoundedBigint_round_agree : ∀ (x : Substrait.Value),
@@ -71,10 +65,6 @@ abbrev Substrait.liftReference.castRoundedBigint_round : Substrait.LiftEntry Sub
   (Substrait.Expr.un Substrait.UnFn.fround (Substrait.Expr.field 0)),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.castRoundedBigint_round_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.castRoundedBigint Substrait.IntRound.round)
-  ((Lean.Json.parse (Substrait.liftReference.castRoundedBigint_round).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.castRoundedBigint_round).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.castRoundedBigint_floor_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -92,10 +82,6 @@ abbrev Substrait.liftReference.castRoundedBigint_floor : Substrait.LiftEntry Sub
   (Substrait.Expr.un Substrait.UnFn.ffloor (Substrait.Expr.field 0)),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.castRoundedBigint_floor_agree⟩
 
-#guard Substrait.LiftSearch.parse (Substrait.DuckFn.castRoundedBigint Substrait.IntRound.floor)
-  ((Lean.Json.parse (Substrait.liftReference.castRoundedBigint_floor).json).toOption.getD Lean.Json.null) ==
-    some (Substrait.liftReference.castRoundedBigint_floor).tmpl
-
 set_option maxHeartbeats 800000 in
 theorem Substrait.liftReference.castRoundedBigint_ceil_agree : ∀ (x : Substrait.Value),
   Substrait.DuckType.Has Substrait.DuckType.double x →
@@ -112,6 +98,22 @@ abbrev Substrait.liftReference.castRoundedBigint_ceil : Substrait.LiftEntry Subs
   ⟨"{\"cast\":{\"failureBehavior\":\"FAILURE_BEHAVIOR_THROW_EXCEPTION\",\"input\":{\"scalarFunction\":{\"arguments\":[{\"value\":{\"selection\":{\"directReference\":{\"structField\":{\"field\":0}},\"rootReference\":{}}}}],\"functionReference\":48,\"options\":[],\"outputType\":{\"fp64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}},\"type\":{\"i64\":{\"nullability\":\"NULLABILITY_NULLABLE\"}}}}", Substrait.Expr.un Substrait.UnFn.ftoi
   (Substrait.Expr.un Substrait.UnFn.fceil (Substrait.Expr.field 0)),
     Substrait.LiftEntry.of₁ rfl Substrait.liftReference.castRoundedBigint_ceil_agree⟩
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.castDoubleBigint)
+  ((Lean.Json.parse (Substrait.liftReference.castDoubleBigint).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.castDoubleBigint).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.castBigintDouble)
+  ((Lean.Json.parse (Substrait.liftReference.castBigintDouble).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.castBigintDouble).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.castRoundedBigint Substrait.IntRound.round)
+  ((Lean.Json.parse (Substrait.liftReference.castRoundedBigint_round).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.castRoundedBigint_round).tmpl
+
+#guard Substrait.LiftSearch.parse (Substrait.DuckFn.castRoundedBigint Substrait.IntRound.floor)
+  ((Lean.Json.parse (Substrait.liftReference.castRoundedBigint_floor).json).toOption.getD Lean.Json.null) ==
+    some (Substrait.liftReference.castRoundedBigint_floor).tmpl
 
 #guard Substrait.LiftSearch.parse (Substrait.DuckFn.castRoundedBigint Substrait.IntRound.ceil)
   ((Lean.Json.parse (Substrait.liftReference.castRoundedBigint_ceil).json).toOption.getD Lean.Json.null) ==

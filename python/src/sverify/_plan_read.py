@@ -21,7 +21,12 @@ from typing import Any
 #: `Text.substrMax`: `substring`'s offsets lie in `[-SUBSTR_MAX, SUBSTR_MAX)`,
 #: its lengths below `SUBSTR_MAX` (#336).
 SUBSTR_MAX = 2**32
-#: `Text.repeatMax`: the longest string DataFusion's `repeat` writes, in bytes.
+#: `Text.repeatMax`: the longest string `repeat` writes, in bytes; past it the
+#: reference raises. It lies below every engine's own limit on a string (DuckDB
+#: raises past 2^32 - 1 bytes, `duckdb-exec-size-limits`; Polars panics past
+#: u32::MAX, `polars-exec-size-limits`; Spark holds a string in one JVM byte
+#: array, `spark-exec-size-limits`), so the writers' guard raises before an
+#: engine fails on its own (ruling 267).
 REPEAT_MAX = 2**31 - 1
 US_PER_DAY = 86_400_000_000
 
@@ -81,16 +86,35 @@ def function_names(plan: Any, err: Err = ValueError) -> dict[int, str]:
 # --- Types ------------------------------------------------------------------
 
 
+#: The types sverify carries and never reads: the list of `opaqueTypes` in
+#: `frontend/Sverify/Frontend/Parse.lean`. Lean's `typeKind` also makes a
+#: timestamp or time opaque at a precision other than 6; this list leaves that
+#: rule out, and the Ibis producer writes precision 6 only.
+OPAQUE_TYPES = ("binary", "fixedBinary", "map", "uuid", "userDefined")
+
+
+def holds_opaque(t: Any) -> bool:
+    """Does the Substrait type `t` hold an opaque type anywhere? A list or
+    struct that holds one is opaque as a whole."""
+    if isinstance(t, dict):
+        return any(k in OPAQUE_TYPES or holds_opaque(v) for k, v in t.items())
+    if isinstance(t, list):
+        return any(holds_opaque(x) for x in t)
+    return False
+
+
 def type_kind(t: Any) -> tuple[str, Any] | None:
     """A Substrait type as a kind and its payload, `None` for one Lean does
     not write:
 
     `int` (its key), `float` (its key), `str`, `bool`, `date`, `interval`,
     `time`, `instant` and `tod` (their precision, `None` if malformed), `decimal`
-    (precision and scale), `list` (the element type) and `struct` (the field
-    types)."""
+    (precision and scale), `list` (the element type), `struct` (the field
+    types) and `opaque` (an opaque column's type, D67: carried, never read)."""
     if not isinstance(t, dict):
         return None
+    if holds_opaque(t):
+        return "opaque", t
     if key := next((k for k in _INTS if k in t), None):
         return "int", key
     if key := next((k for k in ("fp32", "fp64") if k in t), None):

@@ -323,6 +323,16 @@ def test_a_left_key_is_a_key_of_the_join(how):
     )
 
 
+@pytest.mark.parametrize(("how", "tolerance"), [("left", None), ("left", TOL), ("inner", None)])
+def test_a_left_join_has_the_shape_that_keeps_every_left_row(how, tolerance):
+    """`asof_join(how="left")`'s plan has the shape `AsofSite.left_exactly_one`
+    is about: every result has one row per left row (#1992). An inner join
+    drops the left rows without a match, so it has not."""
+    j = sv.asof_join(acc_t, gyr_t, on="ts", by="device", tolerance=tolerance, how=how)
+    report = sv.verify(j, on_inferred="ignore")
+    assert [c["left_exact"] for c in report._asof_checks] == [how == "left"]
+
+
 @pytest.mark.parametrize("how", ["left", "inner"])
 def test_a_left_key_off_the_join_columns_survives(how):
     """The issue's shape: facts keyed on `order_id`, a dimension keyed on

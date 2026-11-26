@@ -181,23 +181,23 @@ jobs:
 
       # Test the installed wheel, not the source tree: `wheel_tests.sh`
       # copies the tests out so `sverify` can only come from the wheel (CI's
-      # `outside-repo` job runs the same script on every pull request).
+      # `outside-repo` job runs the same script from the source).
       #
-      # A pull request runs the fast set (`poe test`'s: no `slow` tests, a
-      # tenth of the Hypothesis examples): it checks the packaging, and CI's
-      # `test` jobs run the whole suite on the same code from source. A
-      # release, the nightly and the weekly run test the whole suite here,
-      # and so does a release's version-bump pull request (`release-*`), so
-      # a test the wheel fails shows up before the tag.
+      # A pull request skips it: the packaging check below builds the wheels,
+      # and CI's `test` jobs run the whole suite from source. A release, the
+      # nightly and the weekly run test the whole suite here, and so does a
+      # release's version-bump pull request (`release-*`), so a test the
+      # wheel fails shows up before the tag.
       - name: Test installed wheel
-        env:
-          FAST: ${{ github.event_name == 'pull_request' && !startsWith(github.head_ref, 'release-') && !startsWith(github.base_ref, 'release/') }}
+        # A pull request builds the wheels and checks the packages; its
+        # tests from the wheel run on a release's pull request, in a merge batch, on the tag
+        # and in the schedules (CI's `outside-repo` runs them from the source
+        # when the packaging, the tests or the data files change).
+        if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'release-') || startsWith(github.base_ref, 'release/') || startsWith(github.head_ref, 'batch/')
         run: |
-          fast=()
-          if [ "$FAST" = true ]; then fast=(--fast); fi
           bash python/scripts/wheel_tests.sh --wheel wheelhouse/*.whl \
             --engine-wheel dist-polars/*.whl --engine-wheel dist-spark/*.whl \
-            --engine-wheel dist-duckdb/*.whl ${fast[@]+"${fast[@]}"}
+            --engine-wheel dist-duckdb/*.whl
 
       # Without extras: no optional package is installed or imported, a refresh
       # names the extra that runs it, `sverify check` runs, and `import sverify` stays
@@ -363,6 +363,63 @@ jobs:
           dbt --no-use-colors deps --project-dir shop --profiles-dir shop
           dbt --no-use-colors compile --project-dir shop --profiles-dir shop
           sverify-dbt check shop --selectors
+          # dbt runs the project on DuckDB: the models the checker did not
+          # prove build, and the proved ones are tested (as the `dbt` job of
+          # `ci.yml` does from a checkout).
+          dbt --no-use-colors seed --project-dir shop --profiles-dir shop
+          dbt --no-use-colors build --project-dir shop --profiles-dir shop --exclude selector:sverify_proved
+          dbt --no-use-colors test --project-dir shop --profiles-dir shop --select selector:sverify_proved
+
+  # Each extra of an I/O format or a tool, installed alone in a fresh venv
+  # from the run's wheel with no engine, imports what it brings and makes one
+  # call that needs it (`check_packages.py`'s `EXTRAS`, #183), so a missing
+  # transitive dependency shows up. One job: uv installs each in seconds.
+  extras:
+    needs: [nightly, build]
+    if: ${{ !inputs.notebooks && needs.nightly.outputs.build == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.12"
+          enable-cache: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist-ubuntu-latest
+          path: wheelhouse
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: engine-*
+          path: dist-engines
+          merge-multiple: true
+      - name: Install and check each extra alone
+        run: |
+          wheel=$(ls "$PWD"/wheelhouse/*.whl)
+          script="$PWD/python/scripts/check_packages.py"
+          extras=$(python3 "$script" --list-extras)
+          test -n "$extras"
+          cd "$RUNNER_TEMP"
+          failed=()
+          for extra in $extras; do
+            echo "::group::sverify[$extra]"
+            rm -rf venv
+            uv venv -q --python 3.12 venv
+            if VIRTUAL_ENV="$PWD/venv" uv pip install -q --find-links "$GITHUB_WORKSPACE/dist-engines" \
+                "sverify[$extra] @ file://$wheel" \
+              && venv/bin/python "$script" "$extra"; then
+              :
+            else
+              failed+=("$extra")
+            fi
+            echo "::endgroup::"
+          done
+          if [ ${#failed[@]} -gt 0 ]; then
+            echo "::error::extras that do not work alone: ${failed[*]}"
+            exit 1
+          fi
 
   # The platform team's example against the built wheel (#749): the template's
   # `check` proves every pipeline and exports each node to Substrait, proving

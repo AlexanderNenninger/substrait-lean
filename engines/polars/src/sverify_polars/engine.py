@@ -36,8 +36,8 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
   the integer `AVG`, one zero, each sort key's NULL placement and stable
   ties. `SUM` and `AVG` of a group run as Polars's own aggregations, with
   those shims; Polars adds doubles in its own order (`sum_order`:
-  `SEQUENTIAL`, `ANY` or `COMPENSATED`), within the plan's bound of the
-  reference's correctly rounded sum (D25).
+  `SEQUENTIAL` or `ANY`, polars-sum-float-streaming), within the plan's bound
+  of the reference's correctly rounded sum (D25).
 * Runtime errors are the `Issue`s of `analysis/Sverify/Analysis/Safety.lean`, which a
   checked plan is proved free of. Each expression carries a per-row flag for
   each issue, masked by `CASE` as `Expr.issues` masks it (both sides of
@@ -63,7 +63,7 @@ import itertools
 import json
 import math
 import re
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal
@@ -80,10 +80,24 @@ try:
 except ImportError as e:
     raise ImportError("the Polars engine needs polars: pip install 'sverify[polars]'") from e
 
-from sverify_polars import shims
+from sverify_polars import lowering, shims
+
+
+def lowered(fn: str, *xs: pl.Expr, raise_: Callable[[str, pl.Expr], None] | None = None) -> pl.Expr:
+    """`fn` as the generated table writes it (`sverify_polars.lowering`):
+    the functions Polars computes its own way. `raise_` takes the rows where
+    its template raises."""
+    e = lowering.render(fn, xs, raise_)
+    if e is None:
+        raise AssertionError(f"the Polars lowering table has no entry for {fn}")
+    return e
+
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
 US = pl.Datetime("us")
+#: A timestamp in nanoseconds (D61): ordered and aggregated by `MIN` and `MAX`, never
+#: in arithmetic.
+NS = pl.Datetime("ns")
 INSTANT = pl.Datetime("us", "UTC")
 """An instant: a UTC-zoned timestamp (#1725)."""
 INTERVAL = pl.Duration("us")
@@ -162,6 +176,12 @@ class DomainError(RuntimeIssue):
     shift count outside 0–63, …): Substrait's `on_domain_error` = ERROR."""
 
     issue = "domain error"
+
+
+#: The issue a lowering template's `raise` stands for, by its message.
+RAISED: dict[str, type[RuntimeIssue]] = {
+    c.issue: c for c in (DomainError, DivisionByZero, Overflow)
+}
 
 
 class InfiniteResult(RuntimeIssue):
@@ -271,36 +291,17 @@ def interval_micros(d: dict) -> int:
 
 
 def null_type(t: dict) -> DType:
-    """The dtype of a typed NULL. The writer types unknown kinds as `i64`, so
-    those stay untyped (`pl.Null`) and take the type of what they meet."""
+    """The dtype of a typed NULL: `type_of`'s, but the writer types unknown
+    kinds as `i64`, so those stay untyped (`pl.Null`) and take the type of
+    what they meet."""
     match _plan_read.type_kind(t):
-        case "float", _:
-            return pl.Float64
-        case "str", _:
-            return pl.String
-        case "bool", _:
-            return pl.Boolean
-        case "time", p:
-            if p != 6:
-                raise Unsupported("only microsecond timestamps are supported")
-            return US
-        case "instant", p:
-            if p != 6:
-                raise Unsupported("only microsecond timestamps are supported")
-            return INSTANT
-        case "date", _:
-            return pl.Date
-        case "tod", _:
-            return pl.Time
         case "int", _:
             return pl.Null
-        case "decimal", (p, s):
-            return decimal_type(p, s)
         case "list", elem:
             return pl.List(materialize(null_type(elem or {"i64": {}})))
         case "struct", fields:
             return struct_type([materialize(null_type(f)) for f in fields])
-    raise Unsupported(f"unsupported NULL type {json.dumps(t)}")
+    return type_of(t)
 
 
 def struct_type(fields: list[DType]) -> DType:
@@ -366,7 +367,7 @@ def lit_expr(value: Any, dtype: DType) -> pl.Expr:
 INTEGRAL = (pl.Int64, US, INSTANT, INTERVAL)
 #: The types `<`, `GREATEST` and `LEAST` order, as the model does (`Value.ltB`): strings by
 #: code point (UTF-8 byte order) and booleans `FALSE < TRUE` among them.
-ORDERED = (*INTEGRAL, pl.Date, pl.Time, pl.Float64, pl.String, pl.Boolean)
+ORDERED = (*INTEGRAL, NS, pl.Date, pl.Time, pl.Float64, pl.String, pl.Boolean)
 
 
 @dataclass(frozen=True)
@@ -697,22 +698,6 @@ BITWISE = (
 )  # fmt: skip
 
 
-def shift_left(a: pl.Expr, k: pl.Expr) -> pl.Expr:
-    """`BitOp.shl` for `k` in 0–63: the bits shifted out are lost. Polars has
-    no shift (polars-int-shift); `a · 2^k` wraps at 64 bits (polars-int-arith),
-    which drops them, and `2^63` itself wraps to `-2^63`, the same factor
-    modulo `2^64`."""
-    return a * pl.lit(2, pl.Int64).pow(k.cast(pl.UInt32))
-
-
-def shift_right(a: pl.Expr, k: pl.Expr) -> pl.Expr:
-    """`BitOp.shr` for `k` in 0–63: the arithmetic shift, `a` divided by `2^k`
-    rounding down, which Polars's integer `//` does (polars-int-divide). At
-    `k = 63`, where `2^63` does not fit, the shift leaves the sign."""
-    sign = pl.when(a < 0).then(-1).otherwise(0).cast(pl.Int64)
-    return pl.when(k == 63).then(sign).otherwise(a // pl.lit(2, pl.Int64).pow(k.cast(pl.UInt32)))
-
-
 def like_regex(p: str, fold: bool = False) -> str:
     """`Text.like`'s pattern, or with `fold` `Text.ilike`'s, as a regular
     expression of the `regex` crate (polars-regex): `%` any characters, `_`
@@ -993,6 +978,14 @@ def _floors(f: dict) -> bool:
     )
 
 
+def _rounds_to_even(f: dict) -> bool:
+    """Does the call state `rounding` = `TIE_TO_EVEN` (`UnFn.froundEven`, D55)?"""
+    return any(
+        o.get("name") == "rounding" and (o.get("preference") or [None])[0] == "TIE_TO_EVEN"
+        for o in f.get("options", [])
+    )
+
+
 class Exprs:
     """Translates expressions over input columns of the given dtypes, or, with
     `param`, a lambda's body over its parameter of that dtype (#94)."""
@@ -1059,6 +1052,13 @@ class Exprs:
                 # Wrap-around and clamping run on DuckDB only so far (#241).
                 if o.get("name") == "overflow" and prefs[0] != "ERROR":
                     raise Unsupported(f"overflow = {prefs}")
+            if name == "round" and len(arg_js) in (1, 2) and _rounds_to_even(f):
+                # D55: `rounding: TIE_TO_EVEN` at zero digits is Polars's own `round(0)`.
+                if len(arg_js) == 2 and self.constant(arg_js[1], "ROUND digits") != 0:
+                    raise Unsupported(
+                        "ROUND to digits with TIE_TO_EVEN: the model has zero digits only"
+                    )
+                return self.round_even(self(arg_js[0]))
             if name in ("divide", "modulus") and len(arg_js) == 2 and _floors(f):
                 return self.floor_divide(name, self(arg_js[0]), self(arg_js[1]))
             if name == "sverify_raise" and len(arg_js) == 2:
@@ -1329,6 +1329,10 @@ class Exprs:
             if t == pl.Int64 or is_decimal(t):
                 return decimal_rescale(v, p, s, f"CAST to DECIMAL({p}, {s})")
             raise Unsupported(f"unsupported cast from {t} to DECIMAL({p}, {s})")
+        if kind == "str":
+            # `UnFn.dtext` (D72): the scale's digits, with a leading zero; Polars's own text
+            # (polars-cast-decimal-timestamp-text).
+            return Val(v.expr.cast(pl.String), pl.String, v.issues)
         if kind == "float" and "fp64" in target:
             # Correctly rounded, as `FloatCode.ofDecimal` (polars-decimal-casts).
             return Val(v.expr.cast(pl.Float64), pl.Float64, v.issues)
@@ -1534,13 +1538,15 @@ class Exprs:
                 return Val(first_code_point(e), pl.Int64, a.issues)
         if t == pl.Float64:
             # Exact on doubles; ROUND's halves go away from zero (`roundMag`).
-            # Values stay raw (D31): a zero result keeps its sign.
+            # Values stay raw (D31): a zero result keeps its sign. `ceil` and
+            # `round` are the generated table's: `0.0` where Polars's own give
+            # IEEE's `-0.0` (`round_zero_sign`).
             if name == "floor":
                 return Val(e.floor(), t, a.issues)
             if name == "ceil":
-                return Val(e.ceil(), t, a.issues)
+                return Val(lowered("Substrait.UnFn.fceil", e), t, a.issues)
             if name == "round":
-                return Val(shims.round_half_away(e), t, a.issues)
+                return Val(lowered("Substrait.UnFn.fround", e), t, a.issues)
             # `|x|`, which a split double's partial rows report (#428).
             if name == "abs":
                 # The reference's `if x < 0 then -x else x`: `abs(-0.0)` is `-0.0`, as it is
@@ -1596,12 +1602,16 @@ class Exprs:
             if name in ("bitwise_and", "bitwise_or", "bitwise_xor"):
                 out = {"bitwise_and": x & y, "bitwise_or": x | y, "bitwise_xor": x ^ y}[name]
                 return Val(out, pl.Int64, issues(a, b))
-            # Only a shift of an integer raises (`BinFn.issue`): `NULL >> -1` is NULL.
-            bad = x.is_not_null() & ((y < 0) | (y > 63))
-            n = pl.when(bad).then(0).otherwise(y)
-            shift = shift_right if name == "bitwise_shift_right" else shift_left
-            shifted = pl.when(x.is_null() | n.is_null()).then(None).otherwise(shift(x, n))
-            return self.domain(bad, shifted, pl.Int64, name, a, b)
+            # `<<` and `>>` are the generated table's: Polars has no shift
+            # (polars-int-shift). Only a shift of an integer raises
+            # (`BinFn.issue`): `NULL >> -1` is NULL.
+            errs: list[Issue] = []
+
+            def raised(message: str, rows: pl.Expr) -> None:
+                errs.append(issue(rows, RAISED[message], f"{name} outside its domain"))
+
+            out = lowered(f"bit:{name}", x, y, raise_=raised).cast(pl.Int64)
+            return Val(out, pl.Int64, (*issues(a, b), *errs))
         floats = ("add", "subtract", "multiply", "divide", "divide_ieee", "modulus", "power")
         if name in floats and pl.Float64 in (ta, tb):
             if unify(ta, tb, name) != pl.Float64:
@@ -1617,8 +1627,8 @@ class Exprs:
                     "% of doubles on Polars: Polars's % floors (polars-double-modulus), "
                     "where the reference's truncates as C's fmod; run it on DuckDB or Spark"
                 )
-            # Polars rewrites `0.0 - x` as `-x` and `x + 0.0` as `x` on the
-            # in-memory engine (polars-zero-sign): a sum or difference gets
+            # Polars rewrites `0.0 - x` as `-x` and `x + 0.0` as `x` on a morsel
+            # of two rows or more (polars-zero-sign-streaming): a sum or difference gets
             # IEEE's zero sign by a shim.
             ops = {"add": shims.ieee_zero_sum(x + y, x, y, False),
                    "subtract": shims.ieee_zero_sum(x - y, x, y, True), "multiply": x * y,
@@ -1675,14 +1685,16 @@ class Exprs:
                 raise Unsupported(f"{name} of {ta} and {tb}")
             if name == "power":
                 return ipow(a, b)
-            # Native `//` and `%` floor; the shims truncate. A zero divisor
-            # gives NULL in Polars and `MIN / -1` wraps: the guards raise.
+            # Native `//` and `%` floor; the generated table's templates
+            # truncate (`Polars.idivTemplate`, `Polars.imodTemplate`). A zero
+            # divisor gives NULL in Polars and `MIN / -1` wraps: the guards raise.
             x, y = a.expr.cast(pl.Int64), b.expr.cast(pl.Int64)
             by_zero = issue(shims.zero_divisor(x, y), DivisionByZero, f"{name} by zero")
             if name == "modulus":
-                return Val(shims.int_mod_trunc(x, y), pl.Int64, (*issues(a, b), by_zero))
+                return Val(lowered("imod", x, y).cast(pl.Int64), pl.Int64, (*issues(a, b), by_zero))
             wraps = issue(shims.div_overflows(x, y), Overflow, "division leaves 64 bits")
-            return Val(shims.int_div_trunc(x, y), pl.Int64, (*issues(a, b), wraps, by_zero))
+            q = lowered("idiv", x, y).cast(pl.Int64)
+            return Val(q, pl.Int64, (*issues(a, b), wraps, by_zero))
         strings = ("str_concat", "strpos", "starts_with", "ends_with", "like", "substring",
                    "btrim", "ltrim", "rtrim", "repeat", "levenshtein", "ilike")  # fmt: skip
         if name in strings:
@@ -1813,6 +1825,15 @@ class Exprs:
         return Val(a.expr.str.contains(regex), pl.Boolean, a.issues)
 
     @staticmethod
+    def round_even(a: Val) -> Val:
+        """`ROUND(x, 0)` with `rounding: TIE_TO_EVEN` (`UnFn.froundEven`, D55):
+        Polars's own `round(0)`, which rounds halves to even (polars-round).
+        NaN and `±∞` stay."""
+        if a.dtype != pl.Float64:
+            raise Unsupported(f"round of {a.dtype}")
+        return Val(a.expr.round(0), pl.Float64, a.issues)
+
+    @staticmethod
     def round_to(a: Val, digits: dict) -> Val:
         """`ROUND(x, d)`, as `FloatCode.roundTo` (DuckDB 2.0's, #335): with
         `m = 10^d`, `round(x · m) / m`, halves away from zero, `x` where that is
@@ -1933,6 +1954,8 @@ def type_of(t: dict) -> DType:
             return pl.String
         case "bool", _:
             return pl.Boolean
+        case "time", 9:
+            return NS
         case "time", _:
             return US
         case "instant", _:
@@ -2023,7 +2046,7 @@ class Measure:
         """The argument on the kept rows, NULL elsewhere (times as integers)."""
         a = (
             self.arg.expr.to_physical()
-            if self.arg.dtype in (US, INSTANT, pl.Date)
+            if self.arg.dtype in (US, NS, INSTANT, pl.Date)
             else self.arg.expr
         )
         return a if self.filter is None else pl.when(is_true(self.filter.expr)).then(a)
@@ -2098,7 +2121,7 @@ class Measure:
             # `pickFold`: equal values are the same value, so which of them
             # is kept does not show. Times aggregate as their integers.
             agg = v.min() if self.fn == "min" else v.max()
-            temporal = self.arg.dtype in (US, INSTANT, pl.Date)
+            temporal = self.arg.dtype in (US, NS, INSTANT, pl.Date)
             return NativeAgg({name: agg}, r.cast(self.arg.dtype) if temporal else r)
         if self.fn in ("bit_and", "bit_or", "bit_xor"):
             # `AggFn.bit`; NULL for no values, as Polars gives.
@@ -2120,7 +2143,7 @@ class Measure:
             )
         if self.fn in ("var_samp", "var_pop", "std_samp", "std_pop"):
             # `AggFn.var` (#54) with Polars's algorithm (`stat_algo =
-            # WELFORD_CHAN`, polars-var-std-streaming), within the plan's bound
+            # SCHUBERT_GERTZ`, polars-var-std-streaming), within the plan's bound
             # of the exact moments rounded once (D30); a sample of one is NULL
             # in both. An infinity makes
             # a deviation NaN (#257); finite values may overflow (#575).
@@ -2147,6 +2170,12 @@ class Measure:
                   f"{self.fn} of finite values: Polars's algorithm overflows to NaN")),
             )  # fmt: skip
         return None
+
+
+#: The aggregates whose algorithm the profile states for the streaming engine
+#: only (`sum_order`, `stat_algo`): refused beside a list in one grouping,
+#: which Polars runs on the in-memory engine.
+_STREAMED_ONLY = frozenset({"fsum", "avg", "var_samp", "var_pop", "std_samp", "std_pop"})
 
 
 @dataclass(frozen=True)
@@ -2436,7 +2465,10 @@ class Windows:
             odd = self.total((x.is_infinite() | x.is_nan()).fill_null(False).cast(pl.Int64), fr)
             self.issues.append(issue(some & (odd == 0) & s.is_infinite(), InfiniteAggregate,
                                      f"{f.agg} overflows to infinity"))  # fmt: skip
-            return pl.when(some).then(s if f.agg == "fsum" else s / n)
+            # Polars returns a one-row frame's `-0.0` as its sum, where the reference's
+            # correctly rounded sum of an exact zero is `0.0` (ruling 285, #2587): one
+            # zero, as the grouped `float_sum` (`Shim.one_zero`).
+            return pl.when(some).then(shims.one_zero(s if f.agg == "fsum" else s / n))
         if f.agg in ("fmin", "fmax"):
             # By the codes' order: NaN above every double, and one zero.
             nan = self.total(v.is_nan().fill_null(False).cast(pl.Int64), fr)
@@ -2555,7 +2587,10 @@ class Translator:
             if k in r:
                 raise Unsupported(f"ReadRel.{k} is not in Lean's written form")
         schema = r.get("baseSchema", {})
-        types = [type_of(t) for t in schema.get("struct", {}).get("types", [])]
+        raw = schema.get("struct", {}).get("types", [])
+        # An opaque column (D67) is read as the table has it: the plan carries it.
+        opaque = [_plan_read.holds_opaque(t) for t in raw]
+        types = [pl.Null if o else type_of(t) for t, o in zip(raw, opaque, strict=True)]
         if "namedTable" in r:
             name = ".".join(r["namedTable"]["names"])
             if name not in self.tables:
@@ -2578,6 +2613,7 @@ class Translator:
                 lf = lf.select(names)
             lf = positional(lf)
             have = list(lf.collect_schema().dtypes())
+            types = [h if o else w for h, w, o in zip(have, types, opaque, strict=True)]
             lf = lf.select(
                 [
                     conform(pl.col(col(i)), h, w, f"{name} column {i}").alias(col(i))
@@ -2876,6 +2912,15 @@ class Translator:
                 key = _float_key(v) if m.arg.dtype == pl.Float64 else v
                 v = key.unique(maintain_order=True)
             values.append(v)
+        if groups and values and (bad := [m.fn for m in ms if m.fn in _STREAMED_ONLY]):
+            # A list per group puts the whole grouping on the in-memory engine
+            # (`ALLOWED_FALLBACKS`), whose double sums are Kahan's
+            # (polars-sum-float) and whose variances its own (polars-var-std),
+            # which `sum_order` and `stat_algo` do not allow (#2411, #2507).
+            raise Unsupported(
+                f"{bad[0]} of doubles beside a list in one Polars grouping, which "
+                "Polars runs on the in-memory engine (polars-exec-streaming-fallback)"
+            )
         if groups and multiset:
             # A bag: the groups in any order, each key the class's canonical
             # value (`ordered`), with no row index and no `first()` per group.
@@ -2961,7 +3006,7 @@ class Translator:
         elif name == "avg" and t == pl.Int64 and _int_output(m):
             fn = "iavg"
         elif name in ("min", "max") and (
-            t in (pl.Int64, pl.String, pl.Boolean, US, INSTANT, pl.Date) or is_decimal(t)
+            t in (pl.Int64, pl.String, pl.Boolean, US, NS, INSTANT, pl.Date) or is_decimal(t)
         ):
             fn = name
         elif name in ("min", "max") and t == pl.Float64:

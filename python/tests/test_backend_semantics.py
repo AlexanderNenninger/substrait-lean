@@ -290,7 +290,7 @@ FAITHFUL = [
 def translated(con, sql: str) -> tuple[list[tuple], list[tuple]]:
     # The translators against each other: any plan will do, and the
     # reference's semantics reads the most (`%` of doubles, casts to integers).
-    plan = written_plan(substrait_json(con, sql, "reference"))
+    plan = written_plan(substrait_json(con, sql, "portable"))
     tabs = {n: TABLES[n] for n in read_tables(json.loads(plan))}
     return positional(polars_engine.run(plan, tabs)), positional(duckdb_engine.run(plan, tabs))
 
@@ -324,7 +324,7 @@ REMAINDERS = [
 
 @pytest.mark.parametrize("sql", REMAINDERS)
 def test_a_remainder_of_doubles_runs_on_duckdb_and_is_refused_on_polars(con, sql):
-    plan = written_plan(substrait_json(con, sql, "reference"))
+    plan = written_plan(substrait_json(con, sql, "portable"))
     tabs = {n: TABLES[n] for n in read_tables(json.loads(plan))}
     assert positional(duckdb_engine.run(plan, tabs))
     with pytest.raises(polars_engine.Unsupported, match="% of doubles"):
@@ -381,18 +381,16 @@ def test_polars_translator_keeps_duplicate_output_names(con):
 def proves(sql: str, ensures: str) -> bool:
     # The reference's casts truncate (#209 R9); DuckDB's round.
     j = ibis.table({"a": "int64"}, name="j")
-    r = sv.verify(sv.sql(sql, semantics="reference", j=j), ensures=[ensures])
+    r = sv.verify(sv.sql(sql, semantics="portable", j=j), ensures=[ensures])
     return r.verdict == sv.Verdict.PROVED and r.ensures[0].proved
 
 
-@pytest.mark.parametrize("value", ["CAST(2.5 AS DOUBLE)"])
-def test_constant_casts_are_refused_like_column_casts(value):
-    """F9, D54: DuckDB rounds a double constant cast to an integer, and the
-    reference truncates, so the lift refuses a constant as it does a column and
-    names the spellings with one meaning. A decimal rounds half away from zero
+@pytest.mark.parametrize(("value", "want"), [("2.5", 2), ("3.5", 4), ("-2.5", -2), ("2.6", 3)])
+def test_double_constant_casts_round_half_to_even(value, want):
+    """D55: DuckDB's cast of a double rounds half to even, and the lift states
+    it for a constant as for a column. A decimal rounds half away from zero
     (#322) and is lifted."""
-    with pytest.raises(ValueError, match="DuckDB's cast, which rounds"):
-        sv.verify(f"SELECT CAST({value} AS BIGINT) AS c FROM j", tables={"j": {"a": "int64"}})
+    assert proves(f"SELECT CAST(CAST({value} AS DOUBLE) AS BIGINT) AS c FROM j", f"c = {want}")
 
 
 @pytest.mark.parametrize(("value", "want"), [("2.7", 3), ("-2.5", -3), ("-2.4", -2)])

@@ -76,7 +76,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from sverify._plan_read import SUBSTR_MAX
-from sverify._unsupported import ISSUE_1725
+from sverify._unsupported import ISSUE_1725, SNOWFLAKE_OUT_OF_TREE
 from sverify.sql.core import Dec, Dialect, GuardIssue, Kind, Lst, Unsupported, _timestamp_text
 
 I64_MIN, I64_MAX = -(2**63), 2**63 - 1
@@ -98,6 +98,8 @@ _TYPES: dict[str, str] = {
 
 @dataclass(frozen=True)
 class SnowflakeDialect(Dialect):
+    not_yet = SNOWFLAKE_OUT_OF_TREE
+
     def type_name(self, kind: Kind) -> str:
         if isinstance(kind, Dec):
             return super().type_name(kind)
@@ -107,7 +109,12 @@ class SnowflakeDialect(Dialect):
             raise self.to_duckdb(
                 "a timestamp with a time zone is not yet supported on Snowflake", ISSUE_1725
             )
+        if kind == "timeNs":
+            raise self.to_duckdb("a timestamp in nanoseconds is not yet supported on Snowflake")
         return _TYPES[kind]
+
+    def decimal_to_str(self, a: str, p: int, s: int) -> str:
+        raise self.not_written("the text of a decimal")
 
     def result_kind(self, kind: Kind | None) -> None:
         if kind == "interval":

@@ -27,14 +27,14 @@ from typing import Any, Literal
 
 from sverify import _meta
 
-if getattr(_meta, "PLUGIN_API", None) != 4:
+if getattr(_meta, "PLUGIN_API", None) != 5:
     raise ImportError(
         f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
         f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
         "install both from the same release (`pip install -U sverify sverify-spark`)"
     )
 
-from sverify._unsupported import ISSUE_271, MIN_MOD_GUARD, RANGE_GUARD
+from sverify._unsupported import ISSUE_2540, MIN_MOD_GUARD, RANGE_GUARD
 from sverify.profiles import Finite, ProfilePlugin, Setting
 from sverify_spark.store import SparkStore
 
@@ -234,7 +234,7 @@ PLUGIN = ProfilePlugin(
         "sverify_raise": (
             "Spark's SQL of the date guards exhausts its JVM's heap (a date from columns "
             "is 38 KB of nested CASEs)",
-            ISSUE_271,
+            ISSUE_2540,
         )
     },
     guards=(RANGE_GUARD, MIN_MOD_GUARD),

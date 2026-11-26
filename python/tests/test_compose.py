@@ -6,7 +6,8 @@ from ibis import _
 
 import sverify as sv
 from _pipelines import bound_orders, spy_on
-from sverify.contracts import label, provenance
+from sverify.conditions import label
+from sverify.contracts import provenance
 from sverify.errors import CompositionError, PreconditionError
 from sverify_dev.examples import orders
 
@@ -77,11 +78,15 @@ def test_obligation_may_follow_from_more_than_the_ensures():
 
 
 def test_links_are_not_checked_on_data(monkeypatch):
-    checked = spy_on(monkeypatch, "sverify.contracts.violations", lambda t, cond, *a: label(cond))
+    checked = spy_on(
+        monkeypatch,
+        "sverify.contracts.violation_counts",
+        lambda t, conds, *a: [label(c) for c in conds],
+    )
     data = bound_orders([(1, "ada", 5), (2, "bob", 7)])
     result = doubled(paid(data))
     # Only the base table's precondition is checked on the data.
-    assert checked == ["(_.amount >= 0)", "(_.amount < 1000000000)"]
+    assert checked == [["(_.amount >= 0)", "(_.amount < 1000000000)"]]
     assert sorted(result.execute()["doubled"]) == [10, 14]
 
 

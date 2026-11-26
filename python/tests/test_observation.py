@@ -25,7 +25,7 @@ from sverify.observation import (
     _STRINGS,
     EXACT,
     PLAN_BOUND,
-    Observation,
+    Lenses,
     Within,
     string_key,
 )
@@ -35,7 +35,7 @@ T = ibis.table({"k": "int64", "x": "float64", "s": "string", "ts": "timestamp"},
 
 def test_default_is_multiset_exact() -> None:
     q = sv.equivalent()
-    assert q == Observation()
+    assert q == Lenses()
     assert q.ignored() == ["rows"]
     assert EXACT.refines(q) and not q.refines(EXACT)
 
@@ -89,7 +89,7 @@ def test_a_finite_value_is_never_close_to_an_infinity(big: float) -> None:
 
 
 def test_the_order_agrees_with_lean() -> None:
-    """`Observation.refines` orders each component's levels as `Obs.le`
+    """`Lenses.refines` orders each component's levels as `Obs.le`
     does (`--options`' `levels`), on every pair of levels both sides name."""
     out = subprocess.run(
         [str(checker_path()), "--options"], capture_output=True, text=True, check=True
@@ -104,7 +104,7 @@ def test_the_order_agrees_with_lean() -> None:
             for b in names:
                 fine: dict[str, Any] = {component: a}
                 coarse: dict[str, Any] = {component: b}
-                mine = Observation(**fine).refines(Observation(**coarse))
+                mine = Lenses(**fine).refines(Lenses(**coarse))
                 assert mine == ((a, b) in le), (component, a, b)
 
 
@@ -207,7 +207,7 @@ def test_report_names_what_a_condition_depends_on() -> None:
     }
     assert report.lenses == sv.equivalent(floats=sv.within(rel=1e-9), timestamps="s")
     assert report.verdict == sv.Verdict.UNPROVED
-    assert "depends on floats, which the observation ignores" in report.details()
+    assert "depends on floats, which the lenses ignore" in report.details()
     assert "lenses: equivalent(" in report.details()
     # `str(report)` lists a postcondition that is proved but depends on what the
     # observation ignores under "Not proved", with the same reason.
@@ -252,7 +252,7 @@ def test_without_an_observation_nothing_changes() -> None:
     observed = sv.verify(expr, requires=req, ensures=[sv.equivalent(), _.y >= 1], counterexamples=0)
     assert plain.verdict == sv.Verdict.PROVED and observed.verdict == sv.Verdict.PROVED
     assert plain.lenses == PLAN_BOUND
-    assert observed.lenses == Observation()
+    assert observed.lenses == Lenses()
     assert "observes" not in str(plain)
 
 
@@ -328,16 +328,49 @@ def test_the_docs_state_the_default_observation() -> None:
     assert rows == {name: str(getattr(PLAN_BOUND, name)) for name, _ in _COMPONENTS}
 
 
-def test_a_lens_on_element_order_keeps_a_condition_on_a_list_column_dependent():
-    """`ensures list_position(pair, a) = 1` changes between results equal up
-    to `elements="multiset"`, so a condition reading a list column depends on
-    the order of its elements; one reading a scalar does not (#2005)."""
-    from sverify.observation import PLAN_BOUND, dependencies
+def test_a_table_condition_depends_on_the_open_columns_it_reads() -> None:
+    """A table condition on a column the reference leaves open (a `FIRST` without an order) depends
+    on which row it picks; the checker reports it (`Report.tableIgnores`, #1071)."""
+    expr = T.group_by("k").aggregate(first_x=T.x.first(), n=T.k.count())
+    report = sv.verify(
+        expr,
+        requires={"t": [sv.max_rows(1000)]},
+        ensures=[sv.unique("first_x"), sv.unique("n")],
+        counterexamples=0,
+    )
+    picked, counted = report.ensures
+    assert picked.ignores == ("picks",)
+    assert counted.ignores == ()
 
-    cols = {"pair": ibis.dtype("array<int64>"), "a": ibis.dtype("int64")}
-    assert dependencies(PLAN_BOUND, object(), cols, ["pair", "a"]) == ["elements"]
-    assert dependencies(PLAN_BOUND, object(), cols, ["a"]) == []
-    assert dependencies(Observation(), object(), cols, ["pair"]) == []
+
+def test_a_table_condition_on_a_nanosecond_timestamp_depends_on_the_timestamps() -> None:
+    """A nanosecond timestamp falls under `timestamps` as a microsecond one does
+    (`ContractCheck.kindComponent`, #1071)."""
+    n = ibis.table({"k": "int64", "ts": "timestamp(9)"}, name="n")
+    report = sv.verify(
+        n.group_by("k").aggregate(last=n.ts.max()),
+        requires={"n": [sv.max_rows(1000)]},
+        ensures=[sv.equivalent(timestamps="s"), sv.unique("last")],
+        counterexamples=0,
+    )
+    (cond,) = report.ensures
+    assert cond.ignores == ("timestamps",)
+
+
+def test_a_proved_table_condition_keeps_the_order_of_the_lists_it_reads() -> None:
+    """`unique(k, xs)` is proved by the key `k`, but reads a list column whose element order the
+    default observation ignores: it depends on "elements" whether or not `xs` is also an open
+    `collect` (an open column applies only where a condition is unproved)."""
+    expr = T.group_by("k").aggregate(xs=T.x.collect())
+    report = sv.verify(
+        expr,
+        requires={"t": [sv.max_rows(1000)]},
+        ensures=[sv.unique("k", "xs")],
+        counterexamples=0,
+    )
+    (cond,) = report.ensures
+    assert cond.proved
+    assert cond.ignores == ("elements",)
 
 
 #: Scalars whose engines' `UPPER` or `LOWER` values differ in `strings="ascii"`'s key

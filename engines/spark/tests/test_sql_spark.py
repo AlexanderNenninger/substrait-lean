@@ -23,6 +23,8 @@ import sqlglot
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from _repo import needs_repo
+from sverify._fired import fired_check
 from sverify.engine import connect, put_table, run_plan, substrait_json, written_plan
 from sverify.sql import Unsupported, to_sql
 from sverify.testing import canonical
@@ -136,6 +138,7 @@ def _reads(node) -> list:
     return []
 
 
+@needs_repo  # the fixtures are the repository's `tests/fixtures`
 @pytest.mark.parametrize(
     "name", ["df_asof", "df_order_by", "df_order_by_limit", "df_window", "union_fetch"]
 )
@@ -366,8 +369,10 @@ def test_integers(spark):
         -3,
         -1,
     )
-    with pytest.raises(Exception, match="sverify: division by zero"):
+    with pytest.raises(Exception, match="sverify: division by zero") as fired:
         one(d.int_div(d.int_lit(1), d.int_lit(0)))
+    # A refresh holds the node for it (ruling 258, `sverify._fired`).
+    assert fired_check(fired.value) == "division by zero"
     assert one(d.int_pow_var(d.int_lit(3), d.int_lit(5))) == (243,)
     # SUM is the true total: a partial sum may leave 64 bits.
     values = "(VALUES (CAST(9223372036854775807 AS BIGINT)), (1), (-1)) AS v(x)"

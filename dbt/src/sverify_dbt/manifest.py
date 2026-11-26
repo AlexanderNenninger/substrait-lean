@@ -105,6 +105,19 @@ class Test:
         )
 
     @property
+    def columns(self) -> tuple[str, ...] | None:
+        """The columns a multi-column test names (`combination_of_columns`,
+        `column_list`): None where it names none, `()` where the argument is
+        no list of column names (`[null]`, a bare string), which nothing
+        reads as columns (#2414)."""
+        raw = self.kwargs.get("combination_of_columns") or self.kwargs.get("column_list")
+        if not raw:
+            return None
+        if isinstance(raw, list) and all(isinstance(c, str) and c for c in raw):
+            return tuple(raw)
+        return ()
+
+    @property
     def short(self) -> str:
         """`not_null(order_id)`, `accepted_values(status)`: the test in a
         report line."""
@@ -112,7 +125,8 @@ class Test:
         if self.kwargs.get("expression"):
             col = f"{self.column} " if self.column else ""
             return f"{what}({col}{self.kwargs['expression']})"
-        cols = self.kwargs.get("combination_of_columns") or ([self.column] if self.column else [])
+        named = self.columns if self.kwargs.get("combination_of_columns") else None
+        cols = named or ((self.column,) if self.column else ())
         return f"{what}({', '.join(cols)})" if cols else what
 
 
@@ -185,7 +199,7 @@ def load(project: str | Path, target_path: str | Path = "target") -> Project:
     if adapter != "duckdb":
         raise ProjectError(
             f"the project uses the {adapter} adapter; sverify-dbt reads DuckDB projects only "
-            "(the other engines wait on #271)"
+            "(other dialects' SQL: see #866)"
         )
     catalog = _catalog(target / "catalog.json")
     relations: dict[str, Relation] = {}

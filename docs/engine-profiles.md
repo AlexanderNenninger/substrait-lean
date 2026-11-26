@@ -74,7 +74,7 @@ runs proved sound against the reference (`Engine.duckdb_sound`,
 `Engine.polars_sound`, `Engine.spark_sound`).
 
 SQL strings go through SQLGlot and sverify's own lift: DuckDB's SQL
-with `sv.sql(query, semantics="duckdb" | "reference")` (`sverify.sql_lift`),
+with `sv.sql(query, semantics="duckdb" | "portable")` (`sverify.sql_lift`),
 whose two profiles are generated Lean modules
 (`engines/duckdb/Sverify/DuckDB/Lift/Duckdb` and `Reference`). The reference is
 Lean's reference profile, and DuckDB is the default oracle.
@@ -175,7 +175,7 @@ Lean's reference profile, and DuckDB is the default oracle.
 * The lift is generated too: the lowering search run backwards.
   `engines/duckdb/Sverify/DuckDB/SQL.lean` states what DuckDB's SQL functions mean
   (`DuckFn`, at one signature each) under `semantics="duckdb"` and
-  `"reference"`: `/` of integers divides as doubles, `%` of doubles is C's
+  `"portable"`: `/` of integers divides as doubles, `%` of doubles is C's
   `fmod`, `log` is base 10, and with DuckDB's semantics `±∞`, NaN where
   DuckDB gives them. It is trusted, like a profile, and tested against the
   engine (oracle A). `generate_lift` (`engines/duckdb/Sverify/DuckDB/LiftSearch.lean`)
@@ -271,7 +271,7 @@ the quantile's `method`. The others are shims with a cost:
 
 - truncating division and modulus of negative integers (`//` floors,
   int-divide, int-modulus), and the sign of a double modulus (double-modulus);
-- an empty `SUM` (0, [sum-float](../engines/polars/facts/polars-sum-float.json)),
+- an empty `SUM` (0, [sum-float-streaming](../engines/polars/facts/polars-sum-float-streaming.json)),
   `avg` of integers ([avg-int](../engines/polars/facts/polars-avg-int.json)),
   `CORR` of one pair ([corr](../engines/polars/facts/polars-corr.json)),
   `mode`'s list ([mode](../engines/polars/facts/polars-mode.json)),
@@ -308,8 +308,7 @@ shim of `engines/polars/src/sverify_polars/shims.py` once, as `Polars.<name>`,
 against a model of Polars's own functions taken from its facts (the trusted
 part, as `Profile.duckdb` is for DuckDB):
 
-- the value shims: `int_div_trunc` and `int_mod_trunc` give `Int.tdiv` and
-  `Int.tmod`, `sum_empty_null` NULL for no values, `avg_int_declared` the
+- the value shims: `sum_empty_null` NULL for no values, `avg_int_declared` the
   reference's truncated mean (which its clamp leaves), `round_half_away`
   `roundMag`, `one_zero` `canon` on the float codes, `strpos_chars`
   and `substring_wrap` `Text.strpos` and `Text.substrWrap`, `null_order` the
@@ -322,12 +321,17 @@ part, as `Profile.duckdb` is for DuckDB):
   precondition rules out. On Polars a double `SUM` is summed in Polars's own
   order (`sum_order`), so `agg_makes_infinite` flags the groups whose own sum
   overflows, which differ from the sequential sum's only at the edge;
-- the error side: `Polars.written_faithful` (Polars, with the value shims,
-  agrees with the reference wherever the reference reports no issue) and
-  `Rel.polars_sound` (a plan `verify` proves free of issues, up to the
-  assumed ones whose guards stay, runs on Polars as `Rel.eval`).
+- the error side: `Polars.impl` is Polars's functions, `Profile.polars`'s
+  values and Polars's own where the profile raises (a wrapped integer, `NULL`
+  for a zero divisor, NaN), and `Rel.polars_sound` (a plan `verify` proves
+  free of issues, up to the assumed ones whose guards stay, lowered by
+  Polars's table, runs on Polars as `Rel.eval`).
 
-The Polars rows of `--options` name these theorems as their evidence. The
+Integer `//` and `%`, and `round` and `ceil`, are no shims of their own: the
+translation writes them from the generated lowering table
+(`sverify_polars/lowering.py`), whose templates `Lowering.polars_exact` proves
+exact under `Profile.polars` (#271). The Polars rows of `--options` name these
+theorems as their evidence. The
 `clustered` row stays tested, and so do the rows these theorems do not cover.
 
 ### Polars as a profile
@@ -336,7 +340,7 @@ The Polars rows of `--options` name these theorems as their evidence. The
 is the profile `--contract` takes with `"profile": "polars"`. It is an
 evaluable `Profile`, as `Profile.duckdb` is, and it takes Polars's choice
 option by option. `verify(semantics="polars")` does not check under it yet:
-the report is the reference's, marked pending (`ProfilePendingWarning`, [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)),
+the report is the reference's, marked pending (`ProfilePendingWarning`, [#2545](https://github.com/AlexanderNenninger/substrait-lean/issues/2545)),
 and the plan runs on Polars by the translated route until then.
 
 | Option | `Profile.polars` | Polars 2.1.0 | Why |
@@ -346,6 +350,8 @@ and the plan runs on Polars by the translated route until then.
 | `overflow` (integers) | `ERROR` | `SILENT` | tightened: wrapping rarely helps a query, and a proved plan never wraps |
 | `on_division_by_zero` (integers) | `ERROR` | `NULL` | tightened, as the reference |
 | `nan_creation`, `on_domain_error` | `ERROR` | `NAN` | tightened, as the reference |
+| `decimal_rescale` (a double to a decimal) | `TIE_TO_EVEN` on the product `x · 10ˢ` (`Polars.ftodEvenT`) | the same ([decimal-casts](../engines/polars/facts/polars-decimal-casts.json)) | Polars's own value; the translation writes the reference's half away from zero (`double_to_decimal`), and the lowering refuses the cast (ruling 278) |
+| `decimal_rescale` (a decimal to a smaller scale) | `TIE_TO_EVEN` (`Polars.droundEvenT`) | the same ([decimal-casts](../engines/polars/facts/polars-decimal-casts.json)) | Polars's own value; the translation writes the reference's half away from zero (`decimal_round_half_away`), and so does the lowering, from Polars's truncation (`Polars.droundEntry`, ruling 278's addendum, [#2566](https://github.com/AlexanderNenninger/substrait-lean/issues/2566)) |
 | every other option | the reference's | the table above | the translation keeps its written arguments and shims there |
 
 A plan states the choice: under `semantics="polars"` the Ibis producer
@@ -402,18 +408,18 @@ from its [facts](../engines/spark/facts/). Option by option:
 | `nan_creation`, `on_domain_error` | `NAN`, NULL for a logarithm of `x ≤ 0` | the same ([math-domain](../engines/spark/facts/spark-math-domain.json)) | the reference raises there, so a proved plan never reaches them |
 | `avg_int_result` | the reference's | `FP64` ([avg-int](../engines/spark/facts/spark-avg-int.json)) | shim `int_avg_decimal` |
 | `null_order` | the reference's | first for an ascending key ([null-order](../engines/spark/facts/spark-null-order.json)) | shim `null_order`, a written argument |
+| `decimal_rescale` (a double to a decimal) | within one unit at the scale of the reference's (`Spark.doubleToDecimal`) | the double's shortest decimal text, half up ([double-to-decimal](../engines/spark/facts/spark-double-to-decimal.json)) | loose: no tie mode of the product; the writer writes the reference's (`decimal_cast`), and the lowering refuses the cast (ruling 278) |
 | every other option | the reference's | the table | native, or the writer's shims |
 
-Spark gives the reference's value wherever the reference reports no issue
-(`Profile.spark_okImpl_faithful`), so a plan the reference proves runs on
-Spark as it is (`Engine.spark_sound`). Until the checker reports under
+Spark runs the plan its generated lowering writes (`Lowering.spark`), so a
+plan the reference proves runs on Spark (`Engine.spark_sound`). Until the checker reports under
 Spark's profile ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)),
 a `"profile": "spark"` request gets the reference's report, labelled
 `"reference"`, with `"pending": "spark"`. `power(±1, ±∞)` is NaN on Spark
 (`pow_one_inf`, [D40](decisions.md#d40-power1--is-cs-pow)) and `floor` and `ceil` of NaN are `0` (`float_to_int`);
-the writer refuses double `power` and passes NaN through `floor` and `ceil`
-(`Profile.sparkWritten`). `atan2` reads `-0.0` as `0.0` (`zero_sign`), and
-the writer refuses double `atan2`. Once the checker reports under the profile, a plan proved
+the lowering refuses double `power` and passes NaN through `floor` and `ceil`
+(`Lowering.spark_refuses`, `Spark.ffloorEntry`). `atan2` reads `-0.0` as
+`0.0` (`zero_sign`), and the lowering refuses double `atan2`. Once the checker reports under the profile, a plan proved
 under it runs on Spark by `native`, and on DuckDB by `transfer` where
 DuckDB's choices are within Spark's at every option the proof depends on.
 What is proved
@@ -427,10 +433,11 @@ What is proved
 - `Shim.avg_trunc`, `Shim.null_order`, `Shim.one_zero`: the other shims give
   the reference's value, by the lemmas Polars's shims share
   ([Shims.lean](../engines/Sverify/Engines/Shims.lean)).
-- `Profile.sparkWritten_okImpl_faithful` and `Rel.spark_sound`: Spark under
-  ANSI, as the writer writes it (`Profile.sparkWritten`), gives `Rel.eval`'s
-  rows for a plan whose only issues are assumed ones, as `Rel.polars_sound`
-  does for Polars. Its own values on the error side (NaN, a `date_add`
+- `Rel.spark_sound` and `Rel.spark_sound_or_raises`: Spark under ANSI, as its
+  generated lowering writes the plan (`Lowering.spark`), gives `Rel.eval`'s
+  rows on a catalog of doubles: for a plan whose only issues are assumed ones
+  and that calls no IEEE division, as `Rel.polars_sound` does for Polars, and
+  for any plan, every guard kept, where Spark does not raise (ruling 277). Its own values on the error side (NaN, a `date_add`
   wrapped past 2³¹ days, SP-2) are where the reference raises. The NaN
   values are rows of `Profile.spark.table`; the wrap is `sparkBin`'s
   `date_add` arm, within the table through the uncharacterized `date_range`
@@ -521,7 +528,7 @@ Every field but `engine` is optional:
 | `title` | the engine's name as prose and generated tables write it (`DuckDB`) |
 | `run_tables` | runs a written plan over Arrow tables by name: `run_tables(plan_json, tables, *, guard_free=False, finite=True)`; `sverify.engines.run_sharded` runs its shards with it |
 | `guard_free_theorem` | the theorem that covers `run_tables(..., guard_free=True)`, the run without the checks a `guard_free` contract report discharged |
-| `sql` | `SqlFrontEnd(read, lift)`: the dialect's SQLGlot name and `lift(query, schemas, semantics)`, the plan of its SQL; `sverify.sql(dialect=read)` and `sverify check --dialect` read it. The dialect's own semantics is the engine's name, accepted where the plugin brings the checker's profile; the lift offers or refuses any other by name, and never reads a query as another dialect |
+| `sql` | `SQLFrontEnd(read, lift)`: the dialect's SQLGlot name and `lift(query, schemas, semantics)`, the plan of its SQL; `sverify.sql(dialect=read)` and `sverify check --dialect` read it. The dialect's own semantics is the engine's name, accepted where the plugin brings the checker's profile; the lift offers or refuses any other by name, and never reads a query as another dialect |
 | `fallbacks` | the nodes of a written plan the engine runs outside its chosen executor (Polars's in-memory nodes of a streaming plan), which a route records and `streaming="require"` refuses |
 
 Entries for one engine are merged field by field, so one package can add a
@@ -544,7 +551,14 @@ Each engine reaches the reference through a translation, a function from
 a plan to something the engine runs. Lean proves the shims a translation
 applies and that the shimmed plan refines the reference under the engine's
 profile (the theorems in [Engines](#engines)); the code below that writes the
-shimmed plan for the engine is trusted, and tested against `Rel.eval`:
+shimmed plan for the engine is trusted, and tested against `Rel.eval`.
+Each engine's scalar functions come from its generated lowering table, whose
+templates Lean proves against the engine's profile (`Lowering.duckdb_exact`,
+`Lowering.polars_exact`, and `Lowering.spark_exact_except`, every entry but
+IEEE division; #2422, #2520). What stays trusted is the code that writes a
+template (`sverify/sql/lowering.py`, `sverify_polars/lowering.py`) and the
+relational operators, whose own profiles are
+[#2539](https://github.com/AlexanderNenninger/substrait-lean/issues/2539):
 
 | engine | translation | where |
 |---|---|---|

@@ -3,14 +3,15 @@
   "date": "2026-11-04",
   "decided_by": "user",
   "scope": "engines",
-  "status": "unclear",
+  "status": "in-force",
   "summary": "Each engine row gets a run-to-run variation field next to its class's q (D20).",
   "issues": [
     444
   ],
   "prs": [
-    612
+    612,
+    636
   ],
   "source": "github:#612 body",
-  "note": "PR #612 closed unmerged; #444's closing comment lists run-to-run variation (#612, #613, D20) as done, so it likely landed through another PR."
+  "note": "Landed in #636 on 2026-11-04, which integrated #612's Lean stack after #612 closed unmerged (commit bd8b364c2, \"Run-to-run variation per engine row\"). The checker reports each choices row's variation as `rerun_observation`, and `docs/core-semantics.md` states it beside the class. No later ruling supersedes it: F42 (D48) amends D20 on the class level `Report.deterministic` reports, and leaves the per-row variation in place."
 }

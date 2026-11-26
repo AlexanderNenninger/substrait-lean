@@ -1,0 +1,16 @@
+{
+  "id": "F264",
+  "date": "2026-11-22",
+  "decided_by": "fable",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Refines F263. The refresh JSON is a fourth format that gets a bump. F1's reader for the previous format applies only where sverify reads its own format back (the report JSON and the sink record); the CLI JSON and the refresh JSON bump their version, update their schemas and test the new output against a stored format-1 document under `tests/formats`. The reason/why rule covers the Python API and the JSON sverify writes per run; a stored table's columns and record keys keep their names, so the quarantine record's `reason` and the `_reason` column stay.",
+  "issues": [
+    2345
+  ],
+  "amends": [
+    "F263"
+  ],
+  "source": "fable-ruling-264-2345-readers-and-reason.md",
+  "note": "A reader for a format sverify never reads would be code with no caller. The test for an output-only format checks that the new writer's output differs from the stored format-1 document only in the listed keys, and the changelog fragment names the moved keys for the jobs that read them. Also renamed: `SourceBatch.from_snapshot(reason=)` → `why=`, and the CLI JSON relaxation's `\"reason\"` → `\"why\"`, which rides on that format's bump. The quarantine names live in the user's own tables, where users query them with their own SQL, so renaming them would cost a fifth format with a reader and break those queries. Within F263's F2, `Route.suggested` keeps its name and its key `needs`, because it holds condition labels; `Issue.hint_needs` becomes `suggested_requires`."
+}

@@ -46,10 +46,19 @@ def _export() -> Mapping[str, Json]:
 
 
 @functools.cache
-def table() -> Mapping[str, Json]:
+def table(engine: str = SETTING) -> Mapping[str, Json]:
     """The templates by function (`"fdiv"`, `"fmath:sqrt"`, `"fit:silent:64"`,
-    `"bit:bitwise_shift_left"`)."""
-    return {e["fn"]: e["template"] for e in _export()[SETTING]}
+    `"bit:bitwise_shift_left"`): DuckDB's at its `SETTING`, `"polars"`'s
+    (`sverify_polars.lowering`) or `"spark"`'s."""
+    return {e["fn"]: e["template"] for e in _export()[engine]}
+
+
+@functools.cache
+def asks(engine: str) -> Mapping[tuple[str, str], str]:
+    """What an engine's rendering of a function asks for (ruling 282's C8): the
+    behaviour by function and option, from `--lowering-table`'s
+    `"<engine>_asks"` (`Polars.asks`); empty for an engine without one."""
+    return {(a["fn"], a["option"]): a["behaviour"] for a in _export().get(f"{engine}_asks", [])}
 
 
 def floor_table() -> Mapping[str, Json]:
@@ -71,6 +80,7 @@ _CALLS = {
     "bit:bitwise_xor": "xor",
     "ffloor": "FLOOR",
     "Substrait.UnFn.fround": "ROUND",
+    "Substrait.UnFn.froundEven": "ROUND_EVEN",
     "Substrait.UnFn.fceil": "CEIL",
 }
 
@@ -138,6 +148,10 @@ def render(
     int_lit: Callable[[int], str],
     guards: bool = True,
     consts: Sequence[float | int | None] = (),
+    *,
+    engine: str = SETTING,
+    call: Callable[[str, list[str]], str | None] | None = None,
+    date_lit: Callable[[int], str] | None = None,
 ) -> str | None:
     """`fn` of the arguments' SQL as its template writes it, or None where
     DuckDB's own function is the reference's (no template). `raise_` writes
@@ -148,8 +162,12 @@ def render(
     `Rel.duckdb_guardFree_sound` (`engines/duckdb/Sverify/DuckDB/Lowering.lean`).
     `consts` gives the value of each argument that is a literal, else None: an
     arm of a `CASE` whose condition is false for those values is left out, and
-    a true one ends the `CASE` (`reduce`)."""
-    tmpl = table().get(fn)
+    a true one ends the `CASE` (`reduce`).
+
+    `engine` picks the table (`table`). `call` writes a call the engine
+    spells its own way (Spark's `FLOOR` gives a `BIGINT`), or None for the
+    operators below; `date_lit` writes a date by its days since 1970-01-01."""
+    tmpl = table(engine).get(fn)
     if tmpl is None:
         return None
 
@@ -162,6 +180,8 @@ def render(
             return "TRUE" if t["bool"] else "FALSE"
         if "code" in t:
             return float_lit(decode_double(int(t["code"])))
+        if "date" in t and date_lit is not None:
+            return date_lit(int(t["date"]))
         if "int" in t:
             i = int(t["int"])
             # The wrap-arounds compute in 128 bits (`BinFn.dadd`, …).
@@ -182,6 +202,8 @@ def render(
         name, xs = t["fn"], [go(a) for a in t["args"]]
         if name == "raise":
             return raise_(t["message"], xs[0])
+        if call is not None and (own := call(name, xs)) is not None:
+            return own
         if name == "isNum":
             return f"({xs[0]} IS NOT NULL)"
         if name == "isNull":
@@ -204,10 +226,16 @@ def render(
             return f"({xs[0]} // {xs[1]})"
         if name.startswith("fmath:"):
             return f"{name.removeprefix('fmath:').upper()}({xs[0]})"
+        if name == "Substrait.UnFn.ftoi":
+            return f"CAST({xs[0]} AS BIGINT)"
+        if name == "Substrait.UnFn.ftoiOrNull":
+            return f"TRY_CAST({xs[0]} AS BIGINT)"
         if name in _BINARY:
             return f"({xs[0]} {_BINARY[name]} {xs[1]})"
         if name in _CALLS:
-            return f"{_CALLS[name]}({', '.join(xs)})"
+            # DuckDB's `round_even` takes its digits: zero (D55).
+            tail = ", 0" if name == "Substrait.UnFn.froundEven" else ""
+            return f"{_CALLS[name]}({', '.join(xs)}{tail})"
         raise ValueError(f"lowering table: no SQL for {name}")
 
     return go(tmpl)

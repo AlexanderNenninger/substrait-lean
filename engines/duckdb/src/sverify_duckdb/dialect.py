@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from typing import ClassVar
 
+from sverify._unsupported import DECIMAL_38_38
 from sverify.black_box import BlackBox
 from sverify.sql.core import (
     I64_MAX,
@@ -64,6 +65,8 @@ class DuckDBDialect(Dialect):
     decimals: bool = True
     # DuckDB keeps the zero it read last (duckdb-minmax-zero-sign), also in a key.
     canonical_zero_reps: ClassVar[frozenset[str]] = frozenset({"extreme", "keys"})
+    # NaN equals NaN and sorts above `+inf` (duckdb-nan-order).
+    nan_orders: ClassVar[bool] = True
     orders_text: bool = True
     # Measured on homelab (ruling 212 C6, #1608 item 7): 10M rows, 4 threads,
     # 3.5× on a table, 2.0× behind a join, 1.9× with many groups, and 0.98× where
@@ -102,12 +105,6 @@ class DuckDBDialect(Dialect):
     def is_nan(self, x: str) -> str:
         return f"isnan({x})"
 
-    def float_eq(self, a: str, b: str) -> str:
-        return f"({a} = {b})"
-
-    def float_lt(self, a: str, b: str) -> str:
-        return f"({a} < {b})"
-
     def raise_(self, message: str, dep: str, kind: Kind, issue: GuardIssue) -> str:
         text = f"concat({self.str_lit(f'sverify: {message}: ')}, CAST({dep} AS VARCHAR))"
         return self.cast(f"error({text})", kind)
@@ -125,15 +122,19 @@ class DuckDBDialect(Dialect):
         return f"list_reduce(list_transform(range({n}), lambda i: {a}), lambda x, y: x * y)"
 
     def float_to_int(self, x: str) -> str:
-        # The cast raises on NaN, ±inf and values outside 64 bits.
-        return f"CAST(trunc({x}) AS BIGINT)"
+        # DuckDB's cast rounds half to even (duckdb-R9): the generated, proved
+        # template truncates first (`Lowering.ftoi_agree`, ruling 284). The cast
+        # raises on NaN, ±inf and values outside 64 bits. The template's cast is
+        # the BIGINT: no wrap-around to cast back.
+        # Without the table's entry, the hand-written truncation: a bare cast would round.
+        low = self.lowered("Substrait.UnFn.ftoi", [x], "float")
+        return low if low is not None else f"CAST(trunc({x}) AS BIGINT)"
 
     def float_to_int_or_null(self, x: str) -> str:
-        # NULL where `float_to_int` raises: NaN (above every number in
-        # DuckDB), ±inf and outside [-2⁶³, 2⁶³), where no double lies within
-        # 2048 below -2⁶³. A range test, twice as fast as TRY_CAST.
-        lo, hi = "-9223372036854775808.0", "9223372036854775808.0"
-        return f"(CASE WHEN {x} >= {lo} AND {x} < {hi} THEN CAST(trunc({x}) AS BIGINT) END)"
+        # NULL where `float_to_int` raises: the template's `TRY_CAST` of the
+        # truncated value (`Lowering.ftoiOrNull_agree`).
+        low = self.lowered("Substrait.UnFn.ftoiOrNull", [x], "float")
+        return low if low is not None else f"TRY_CAST(trunc({x}) AS BIGINT)"
 
     def narrow_or_null(self, x: str, bits: int) -> str:
         lo, hi = self.int_lit(-(2 ** (bits - 1))), self.int_lit(2 ** (bits - 1) - 1)
@@ -163,6 +164,11 @@ class DuckDBDialect(Dialect):
         low = self.lowered("Substrait.UnFn.fround", [x], "float")
         return low if low is not None else super().float_round(x)
 
+    def float_round_even(self, x: str) -> str:
+        # `round_even(x, 0)`, with the same zero-sign template (`round_zero_sign`, D55).
+        low = self.lowered("Substrait.UnFn.froundEven", [x], "float")
+        return low if low is not None else super().float_round_even(x)
+
     def float_ceil(self, x: str) -> str:
         low = self.lowered("Substrait.UnFn.fceil", [x], "float")
         return low if low is not None else super().float_ceil(x)
@@ -179,6 +185,16 @@ class DuckDBDialect(Dialect):
             return f"CAST({x} AS HUGEINT)"
         whole = f"CAST(TRUNC({x}) AS HUGEINT) * {10**s}"
         return f"({whole} + CAST(({x} - TRUNC({x})) * {10**s} AS HUGEINT))"
+
+    def decimal_to_str(self, a: str, p: int, s: int) -> str:
+        """DuckDB prints a `DECIMAL(p, p)` without its integer part (`.500`): the text of the
+        decimal at one more digit of precision has it (D72, `UnFn.dwiden`, ruling 245). A
+        `DECIMAL(38, 38)` has no wider type."""
+        if p != s:
+            return super().decimal_to_str(a, p, s)
+        if p >= 38:
+            raise Unsupported(DECIMAL_38_38)
+        return self.cast(self.cast(a, Dec(p + 1, s)), "str")
 
     def decimal_div(self, a: str, b: str, sa: int, k: Dec) -> str:
         """As the base writes it, with the quotient `⌊(2·|u|·10ᵏ + |n|) / 2|n|⌋`

@@ -22,7 +22,7 @@ The contract travels in the plan's `advanced_extensions.optimization` as an
 module): the preconditions, declared and inferred, and the postconditions,
 each in the user's terms and as a Substrait plan, and a manifest. A consumer
 that does not know the message ignores it, as Substrait's docs allow for an
-optimization. `from_substrait` reads both back and proves the contract again
+optimization. `Report.from_substrait` reads both back and proves the contract again
 with the checker.
 """
 
@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from sverify import _meta
 from sverify._plan_read import function_names
 from sverify._unsupported import SverifyError
+from sverify.plan_json import field_ref
 
 if TYPE_CHECKING:
     from sverify.report import Report
@@ -249,7 +250,12 @@ def ty_of(j: Json) -> Ty:
 
 # -- the YAMLs' type expressions ---------------------------------------------
 
-_TOKEN = re.compile(r"\s*(\d+|[A-Za-z_!][A-Za-z_0-9!]*|&&|\|\||[<>=!]=|[-+*/(),?:<>!])")
+# The two-character operators first, so `!=` is no `!`. A name may hold `!`
+# (a user type's `u!name`), but neither start with it, so `!x` is a negation,
+# nor end with it, so `a!=b` is a comparison.
+_TOKEN = re.compile(
+    r"\s*(\d+|&&|\|\||[<>=!]=|[A-Za-z_][A-Za-z_0-9]*(?:![A-Za-z_0-9]+)*|[-+*/(),?:<>!])"
+)
 
 
 def _tokens(s: str) -> list[str]:
@@ -714,20 +720,53 @@ class _Typer:
         if kind == "set":
             outs = [self.rel(i) for i in b["inputs"]]
             if any(o != outs[0] for o in outs[1:]):
-                # Substrait asks every input of a set relation for one schema (#1904).
-                # A cast of the narrower decimals would give it, but the checker
-                # reads an aggregate's decimal column untyped and refuses the
-                # cast on the import, so the export would not read back.
-                raise ExportError(
-                    "the inputs of a set relation differ in their column types (for example "
-                    "decimals of two precisions), which Substrait does not allow (#1904); "
-                    f"{_TO_SQL}"
-                )
+                outs = self._one_set_type(b, outs)
             return outs[0]
         raise ExportError(
             f"the plan has a {kind} relation, which to_substrait does not write for "
             f"other consumers yet; {_TO_SQL}"
         )
+
+    def _one_set_type(self, b: Json, outs: list[list[Ty]]) -> list[list[Ty]]:
+        """Give every input of a set relation one schema, which Substrait asks
+        (#1904): an input whose decimal column is narrower than another's, at the
+        same scale, gets a projection casting it to the widest precision, which
+        changes no value. Other differences stay a refusal."""
+        n = len(outs[0])
+        if any(len(o) != n for o in outs):
+            raise ExportError(
+                "the inputs of a set relation differ in their column count",
+                hint=_MALFORMED,
+            )
+        target = []
+        for j in range(n):
+            cs = [o[j] for o in outs]
+            wide = max(cs, key=lambda t: t.params[0] if t.name == "decimal" else 0)
+            if any(
+                c != wide
+                and not (c.name == wide.name == "decimal" and c.params[1] == wide.params[1])
+                for c in cs
+            ):
+                raise ExportError(
+                    "the inputs of a set relation differ in their column types (for example "
+                    "a decimal and an integer), which Substrait does not allow (#1904); "
+                    f"{_TO_SQL}"
+                )
+            target.append(wide)
+        for k, o in enumerate(outs):
+            todo = [j for j in range(n) if o[j] != target[j]]
+            if not todo:
+                continue
+            exprs = [_cast(field_ref(j), target[j]) for j in todo]
+            mapping = [n + todo.index(j) if j in todo else j for j in range(n)]
+            b["inputs"][k] = {
+                "project": {
+                    "common": {"emit": {"outputMapping": mapping}},
+                    "input": b["inputs"][k],
+                    "expressions": exprs,
+                }
+            }
+        return [target for _ in outs]
 
     def _exprs(self, b: Json, cols: list[Ty]) -> list[Ty]:
         if "filter" in b:
@@ -1326,6 +1365,9 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
                 f"and the postconditions observe its {', '.join(missed)} ({report.lenses}); "
                 f"state {', '.join(missed)} in sv.equivalent(...)"
             )
+        # A cast of a double to a decimal: Substrait leaves open which value is
+        # rounded too, so the assumption and the refusal name it (ruling 278).
+        ftod = g == "cast.dec" and _substrait_shims.double_to_decimal(typer)
         if shims == "annotate":
             h.assumptions.append(
                 {
@@ -1333,7 +1375,8 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
                     "option": o,
                     **({"gap": gap} if gap else {}),
                     "assumes": uses,
-                    "text": f"the consumer gives {', '.join(uses)} at {where}",
+                    "text": f"the consumer gives {', '.join(uses)} at {where}"
+                    + (f", and {_substrait_shims.DOUBLE_TO_DECIMAL}" if ftod else ""),
                 }
             )
             continue
@@ -1346,6 +1389,11 @@ def _pin(report: Report, typer: _Typer, shims: Shims) -> Handling:
         problems.append(
             f"{where}: Substrait allows {', '.join(f.get('to') or ['any behaviour'])} where the "
             f"proof uses {', '.join(uses)}"
+            + (
+                "; a cast of a double to a decimal leaves open which value is rounded and how"
+                if ftod
+                else ""
+            )
             + (f" ({gap}, upstream/bugs/{gap}.json)" if gap else "")
             + (
                 "; no shim writes it for this plan: export with shims='annotate' to ship it "
@@ -1605,15 +1653,9 @@ def _refuse_unverified(report: Report) -> None:
             hint="export a report that sv.verify returned",
         )
     if not report._proved:
-        reasons = [f"not proved: {c.label}" for c in report.ensures if not c.portable]
-        reasons += [f"may fail: {i}" for i in report.errors]
-        if report._transfer:
-            reasons.append("the proof does not carry over to Substrait (see report.details())")
-        reasons += [f"needs {n}" for n in report._needs_lines()]
-        if report.floats_unmet:
-            reasons.append(f"no engine meets the observation's doubles: {report.floats_unmet}")
         raise ExportError(
-            "not verified: " + "; ".join(reasons), hint="fix what it names and verify again"
+            "not verified: " + "; ".join(report._unproved_reasons()),
+            hint="fix what it names and verify again",
         )
 
 
@@ -1634,14 +1676,14 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
     typer.run()
     if report.semantics == "substrait":
         handling = Handling()
-    elif report.semantics == "reference":
+    elif report.semantics == "portable":
         handling = _pin(report, typer, shims)
         # Shims add calls: type the plan again, for their URNs and types.
         _Typer(plan).run()
     else:
         raise ExportError(
             f"a plan verified with semantics={report.semantics!r} holds on that engine only; "
-            "verify it with semantics='reference' or 'substrait' to export it"
+            "verify it with semantics='portable' or 'substrait' to export it"
         )
     major, minor, patch = SUBSTRAIT_VERSION
     plan["version"] = {
@@ -1751,7 +1793,7 @@ def _export(report: Report, shims: Shims = "apply") -> tuple[Json, Any]:
 
 @dataclasses.dataclass(frozen=True)
 class Imported:
-    """A plan read back by `from_substrait`."""
+    """A plan read back by `Report.from_substrait`."""
 
     plan: Json
     """The plan, without the contract."""
@@ -1772,8 +1814,9 @@ _RENAMED = {
 
 
 def _manifest(m: Mapping[str, Any]) -> Json:
-    """The manifest in this version's format: a format 1 manifest's keys
-    renamed, `rows` an integer (a Struct holds every number as a double).
+    """The manifest in this version's format: an earlier format's keys
+    renamed and its `"reference"` semantics `"portable"`, `rows` an integer
+    (a Struct holds every number as a double).
 
     Raises:
         ValueError: The manifest's format is newer than this version reads.
@@ -1791,6 +1834,10 @@ def _manifest(m: Mapping[str, Any]) -> Json:
             {_RENAMED.get(k, k): v for k, v in u.items()} for u in out.get("up_to") or []
         ]
         out["format"] = FORMAT
+    if "semantics" in out:
+        from sverify.report_json import _portable
+
+        out["semantics"] = _portable(out["semantics"], fmt < FORMAT)
     if isinstance(out.get("rows"), float) and out["rows"].is_integer():
         out["rows"] = int(out["rows"])
     if isinstance(out.get("format"), float):
@@ -1838,31 +1885,6 @@ def read(data: str | bytes | Mapping[str, Any]) -> Imported:
     )
 
 
-def from_substrait(data: str | bytes | Mapping[str, Any]) -> Report:
-    """Read a plan `Report.to_substrait` exported, and prove its contract
-    again with the checker (#664).
-
-    The plan goes to the checker as it was exported, pinned options, shims
-    and all, with the preconditions and postconditions it carries; the
-    report says what the checker proves of it now. For an export of a
-    verified plan, `proved` is true again, with the same postconditions.
-
-    Args:
-        data: The export: protobuf JSON (a string or its dict) or bytes.
-
-    Returns:
-        A `Report` of the plan: its postconditions with their status, the
-        runtime errors the checker cannot rule out, the facts on each output
-        column and the options the proof depends on. Facts are in Lean's
-        notation, and nothing is known of the Ibis types.
-
-    Raises:
-        ValueError: The plan carries no sverify contract, or the checker
-            rejects the plan.
-    """
-    return recheck(data)
-
-
 def _floats_component(components: Mapping[str, Any]) -> Any:
     """The `floats` of a manifest's observation: `"exact"`, `"plan"` (also
     where the manifest has none), or a tolerance, written as its fields."""
@@ -1880,12 +1902,12 @@ def _floats_component(components: Mapping[str, Any]) -> Any:
         return "plan"
 
 
-def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
-    """`from_substrait`, under its internal name."""
+def _recheck(data: str | bytes | Mapping[str, Any]) -> Report:
+    """Prove a stored plan's contract again: `Report.from_substrait`."""
     from sverify._verdict import split_assumed, verdict
-    from sverify.conditions import CheckedCondition, PlannedCondition
+    from sverify.conditions import PlannedCondition, Postcondition
     from sverify.engine import run_checker
-    from sverify.observation import Observation
+    from sverify.observation import Lenses
     from sverify.report import Issue, column_facts
 
     imp = read(data)
@@ -1927,7 +1949,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
     for e in imp.ensures:
         if e.get("kind") == "row":
             r = next(rows)
-            checked.append(CheckedCondition(e["text"], r["proved"], r["value"]))
+            checked.append(Postcondition(e["text"], r["proved"], r["value"]))
         else:
             checked.append(_table_condition(e["entry"]).ensured(out, next_key))
     requires: dict[str, list[str]] = {}
@@ -1948,7 +1970,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
         k: v for k, v in (m.get("lenses_components") or {}).items() if k not in ("floats", "bound")
     }
     observation = dataclasses.replace(
-        Observation(floats=_floats_component(m.get("lenses_components") or {})), **components
+        Lenses(floats=_floats_component(m.get("lenses_components") or {})), **components
     )
     report = verdict(
         out,
@@ -1957,7 +1979,7 @@ def recheck(data: str | bytes | Mapping[str, Any]) -> Report:
             Issue(i["kind"], i["expr"], i["error"] or i["assumed"], assumed=i["assumed"])
             for i in out["issues"]
         ],
-        semantics=m.get("semantics", "reference"),
+        semantics=m.get("semantics", "portable"),
         requires=requires,
         ensures=checked,
         facts={
@@ -2117,9 +2139,7 @@ __all__ = [
     "Imported",
     "contract_json",
     "export",
-    "from_substrait",
     "read",
-    "recheck",
     "resolve",
 ]
 

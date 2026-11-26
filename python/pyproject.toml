@@ -1,6 +1,6 @@
 [project]
 name = "sverify"
-version = "0.9.0.dev0"
+version = "0.10.0.dev0"
 description = "Contracts and incremental views, proven in Lean, on DuckDB, Polars, Spark and Snowflake"
 readme = "README.md"
 # MPL-2.0 for sverify; the vendored `ibis_substrait` keeps its Apache-2.0.
@@ -16,7 +16,7 @@ dependencies = [
     # DuckDB's engine package (`engines/duckdb/`, #1189), released with sverify
     # at its version, without DuckDB itself: it writes DuckDB's SQL, which
     # `verify` needs. Running plans on DuckDB is the `duckdb` extra (#1288).
-    "sverify-duckdb==0.9.0.dev0",
+    "sverify-duckdb==0.10.0.dev0",
     "ibis-framework>=12.0.0",
     # Ibis imports both unconditionally (its Arrow formats, its SQL compilers);
     # only its DuckDB extra brought them.
@@ -39,16 +39,16 @@ dependencies = [
 # DuckDB is a package of its own (`engines/duckdb/`, #1189), released with
 # sverify at its version; `run` brings `duckdb`. Ibis reads and writes tables
 # through its DuckDB backend.
-duckdb = ["sverify-duckdb[run]==0.9.0.dev0", "ibis-framework[duckdb]>=12.0.0"]
+duckdb = ["sverify-duckdb[run]==0.10.0.dev0", "ibis-framework[duckdb]>=12.0.0"]
 # Polars is a package of its own (`engines/polars/`, #1189), released with
 # sverify at its version; `run` brings `polars` and `numpy`. A connection on
 # Polars holds Arrow tables and needs no DuckDB (#1764).
-polars = ["sverify-polars[run]==0.9.0.dev0"]
+polars = ["sverify-polars[run]==0.10.0.dev0"]
 # Spark is a package of its own (`engines/spark/`, #1189), released with
 # sverify at its version; `run` brings PySpark. Spark runs plans over a
 # connection's tables but does not hold them (it is not a local engine), so a
 # connection needs DuckDB or Polars: this extra brings DuckDB (#1764).
-spark = ["sverify-spark[run]==0.9.0.dev0", "sverify[duckdb]"]
+spark = ["sverify-spark[run]==0.10.0.dev0", "sverify[duckdb]"]
 delta = ["deltalake>=1.6.6"]
 # `sql-sqlite` opens a local catalog (`IcebergSink(catalog="sqlite:///...")`).
 iceberg = ["pyiceberg[pyarrow,sql-sqlite]>=0.12.0"]
@@ -82,6 +82,12 @@ sverify = "sverify.pytest_plugin"
 [project.entry-points."sverify.profiles"]
 snowflake = "sverify._builtin.snowflake:PLUGIN"
 substrait = "sverify._builtin.substrait:PLUGIN"
+
+# sverify's own proposers (`sverify.proposers`, #2247), registered as a package
+# from outside registers one.
+[project.entry-points."sverify.proposers"]
+infer = "sverify.proposers:INFER"
+search = "sverify.proposers:SEARCH"
 
 [project.urls]
 Homepage = "https://github.com/AlexanderNenninger/substrait-lean"
@@ -248,12 +254,14 @@ cwd = "${POE_ROOT}/.."
 # search path finds `Sverify.Engines.*` in `core/`'s build, the first one
 # with a `Sverify` directory (#1189).
 [tool.poe.tasks.regen-lowering]
-help = "Search for the DuckDB and Polars lowerings again and write them to engines/duckdb/Sverify/DuckDB/LoweringOn and engines/polars/Sverify/Polars/LoweringOn (a build only checks them); Lean capped at 8 GB, so run it on homelab (homelab-run)"
+help = "Search for the DuckDB, Polars and Spark lowerings again and write them to engines/duckdb/Sverify/DuckDB/LoweringOn, engines/polars/Sverify/Polars/LoweringOn and engines/spark/Sverify/Spark/LoweringOn (a build only checks them); Lean capped at 8 GB, so run it on homelab (homelab-run)"
 shell = """
 lake build Sverify.Engines.LoweringSearch Sverify.DuckDB.LoweringCache Sverify.DuckDB.LoweringLemmas \
   Sverify.DuckDB.LoweringSchemas Sverify.DuckDB.Boxes Sverify.Polars.LoweringSchemas \
+  Sverify.Spark.LoweringSchemas \
   && lake lean scripts/RegenLowering.lean -- -M 8192 \
-  && lake lean scripts/RegenLoweringPolars.lean -- -M 8192
+  && lake lean scripts/RegenLoweringPolars.lean -- -M 8192 \
+  && lake lean scripts/RegenLoweringSpark.lean -- -M 8192
 """
 cwd = "${POE_ROOT}/.."
 

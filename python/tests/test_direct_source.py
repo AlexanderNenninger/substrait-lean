@@ -54,7 +54,7 @@ class Direct:
             return SourceBatch.unchanged(since)
         gone = {} if self.deletes is None else {"deletes": self.deletes}
         return SourceBatch.from_changes(
-            since, end, inserts=self.make(since + 1, end), trusted="Δ generated", **gone
+            since, end, inserts=self.make(since + 1, end), assumes="Δ generated", **gone
         )
 
 
@@ -102,7 +102,7 @@ def test_a_snapshot_diff_counts_the_change_on_the_store(engine):
             end = self.n if until is None else until
             if end == since:
                 return SourceBatch.unchanged(since)
-            return SourceBatch.from_snapshot(since, end, self.make(1, end), reason="no feed")
+            return SourceBatch.from_snapshot(since, end, self.make(1, end), why="no feed")
 
     src = Snapshots()
     node = total(src)

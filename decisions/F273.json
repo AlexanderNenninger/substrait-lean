@@ -1,0 +1,16 @@
+{
+  "id": "F273",
+  "date": "2026-11-23",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "What follows from F272. (1) `try_cast`'s rerun evidence drops from proved to tested with #2438's fix, and a follow-up adds a `float_to_int` observation row on each tier-1 engine, citing a theorem that already covers its cast. (2) A decimal cast that reduces the scale (`dround`) reads `decimal_rescale`, as the doc's `cast.dec` row says, so the export applies ST-8's shim, annotates or refuses (#2504). (3) `st4` returns None when the plan has a double measure, such as `MIN` or `MAX`, whose group reads a double option that `st4` doesn't rewrite, so the export no longer reports it as shimmed (#2505). (4) #2439's requirements are restated: a string `min` or `max` refuses for the YAMLs' missing impl, not `list_null_order`.",
+  "issues": [
+    2438,
+    2439,
+    2504,
+    2505
+  ],
+  "source": "fable-ruling-273-2438-followups.md",
+  "note": "Follows F272; amends nothing. No D-number. A rewrite of `MIN` and `MAX` that puts NaN first is out of scope until a user needs it. The general rule \"a shim that rewrote nothing refuses\" was declined, because it would refuse `st8`'s true success for a plan that only adds decimals. For (2), each engine's `decimal_rescale` choice must be true of its written decimal cast, and a generated DuckDB entry that moves comes back to Fable. If an engine's observation row in (1) needs a new theorem, it comes back too. Order: #2438 and #2439 first, then (2) and (3), then (1)."
+}

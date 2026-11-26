@@ -20,13 +20,15 @@ and records every test of the project:
 
 beside `dbt`, the test's status in dbt's own run (`pass`, `fail`, `error`,
 `skipped`, `warn`). A test sverify-dbt proves that fails in dbt's run is
-`unsound`: a soundness bug, fixed first.
+`unsound`: a soundness bug, fixed first. An enforced contract's constraints
+are recorded too (`kind: constraint`), beside dbt's build of the model.
 
 `--write` rewrites the ledgers `dbt/replay/<source>.json`, keeping each
-entry's `issue`; `--check` exits 1 on an `unsound` entry, an outcome that
-changed or an entry waiting on a closed issue (asked of `gh`, skipped
-without it), and CI turns that into a warning (gates report and never
-block).
+entry's `issue`; `--check` exits 1 on an outcome that changed or an entry
+waiting on a closed issue (asked of `gh`, skipped without it), which CI
+turns into a warning. Either exits 2 on an `unsound` entry, read from the
+fresh run, never from a ledger, so re-recording cannot hide it: CI fails on
+it, since a wrong proof is a correctness bug.
 """
 
 from __future__ import annotations
@@ -65,7 +67,12 @@ class Source:
     kind: str = "package"
     """`package`: a hub package's integration project, cloned at `commit`.
     `suite`: the pytest classes of an installed test suite (`project` is its
-    import package), whose release `tag` must be the one installed."""
+    import package), whose release `tag` must be the one installed.
+    `repo-suite`: the pytest classes of a test suite that ships in no wheel,
+    cloned at `commit` (`project` is its directory, `folders` the ones read)."""
+    folders: tuple[str, ...] = ()
+    """For a `repo-suite`, the directories under `project` whose classes are
+    replayed: those whose projects carry tests or contracts."""
 
 
 SOURCES = {
@@ -88,6 +95,24 @@ SOURCES = {
             "Apache-2.0",
         ),
         Source(
+            "dbt-core",
+            "https://github.com/dbt-labs/dbt-core",
+            "v1.12.6",
+            "78d8367e143e753fe53c553af478708d23ccf5cc",
+            "tests/functional",
+            "Apache-2.0",
+            kind="repo-suite",
+            folders=(
+                "constraints",
+                "contracts",
+                "data_tests",
+                "incremental_schema_tests",
+                "primary_keys",
+                "schema_tests",
+                "sources",
+            ),
+        ),
+        Source(
             "dbt-tests-adapter",
             "https://github.com/dbt-labs/dbt-adapters",
             "1.20.0",
@@ -100,9 +125,8 @@ SOURCES = {
 }
 
 
-def extract(source: Source, dest: Path) -> Path:
-    """The source's repository at its commit, copied to `dest`, with a DuckDB
-    profile; the integration project's directory."""
+def _clone(source: Source) -> Path:
+    """The source's repository at its commit, cloned once into the cache."""
     clone = CACHE / f"{source.name}-{source.commit[:12]}"
     git = ["git", "-C", str(clone)]
     if not (clone / ".git").exists():
@@ -117,6 +141,13 @@ def extract(source: Source, dest: Path) -> Path:
     head = subprocess.run([*git, "rev-parse", "HEAD"], capture_output=True, text=True, check=True)
     if head.stdout.strip() != source.commit:
         raise SystemExit(f"{source.name}: {clone} is at {head.stdout.strip()}, not {source.commit}")
+    return clone
+
+
+def extract(source: Source, dest: Path) -> Path:
+    """The source's repository at its commit, copied to `dest`, with a DuckDB
+    profile; the integration project's directory."""
+    clone = _clone(source)
     shutil.copytree(clone, dest, ignore=shutil.ignore_patterns(".git"))
     project = dest / source.project
     name = re.search(
@@ -154,7 +185,7 @@ def _dbt(project: Path, *args: str, quiet: bool = False) -> None:
 def run(source: Source) -> dict[str, Any]:
     """Build the source's project with dbt, check it with sverify-dbt, and
     the record of each test."""
-    if source.kind == "suite":
+    if source.kind in ("suite", "repo-suite"):
         return _run_suite(source)
     with tempfile.TemporaryDirectory() as tmp:
         project = extract(source, Path(tmp) / source.name)
@@ -186,16 +217,27 @@ def _run_suite(source: Source) -> dict[str, Any]:
     from sverify_dbt import replay_suites
     from sverify_dbt.manifest import ProjectError
 
-    package = source.project
-    dist = source.name
-    installed = importlib.metadata.version(dist)
-    if installed != source.tag:
-        raise SystemExit(f"{dist} {installed} is installed, not {source.tag}")
-    root = Path(importlib.import_module(package).__path__[0])
-    cases, unextracted = replay_suites.projects(root, package)
+    if source.kind == "suite":
+        installed = importlib.metadata.version(source.name)
+        if installed != source.tag:
+            raise SystemExit(f"{source.name} {installed} is installed, not {source.tag}")
+        package = source.project
+        roots = [(Path(importlib.import_module(package).__path__[0]), package)]
+    else:
+        clone = _clone(source)
+        sys.path.insert(0, str(clone))  # `tests.functional...` imports from the clone
+        package = source.project.replace("/", ".")
+        roots = [(clone / source.project / f, f"{package}.{f}") for f in source.folders]
+    cases, unextracted = [], {}
+    for root, pkg in roots:
+        found, missed = replay_suites.projects(root, pkg)
+        cases += found
+        unextracted |= missed
     results: dict[str, Any] = {}
     with tempfile.TemporaryDirectory() as tmp:
         for case in cases:
+            if not case.has_tests:
+                continue  # nothing to check: no build, no `docs generate`
             project = Path(tmp) / re.sub(r"\W", "_", case.name)
             replay_suites.write(case, project)
             label = case.name.removeprefix(package + ".")
@@ -244,7 +286,8 @@ def _records(proj: Any, result: Any, statuses: dict[str, str]) -> dict[str, Any]
             rec.update(model=m.name, outcome="refused", construct=normalize(m.refused))
         elif uid in checked:
             t, m = checked[uid]
-            rec.update(model=m.name, outcome=t.status)
+            # The ledgers keep the words: `not_proved` is recorded as "not proved".
+            rec.update(model=m.name, outcome=t.status.replace("_", " "))
             if t.why:
                 rec["why"] = normalize(t.why)
         elif test.on in refused:
@@ -265,6 +308,26 @@ def _records(proj: Any, result: Any, statuses: dict[str, str]) -> dict[str, Any]
         if rec["outcome"] == "proved" and rec["dbt"] in ("fail", "warn"):
             rec["unsound"] = True
         out[uid.split(".", 2)[-1]] = rec
+    # An enforced contract's constraints, beside dbt's own build of the model,
+    # which enforces them: a model dbt fails is a contract its data breaks.
+    for m in result.models:
+        if not m.enforced:
+            continue
+        for c in m.constraints:
+            rec = {"test": c.label, "model": m.name, "kind": "constraint"}
+            if m.refused:
+                rec.update(outcome="refused", construct=normalize(m.refused))
+            else:
+                rec.update(outcome=c.status.replace("_", " "))
+                if c.why:
+                    rec["why"] = normalize(c.why)
+            rec["dbt"] = statuses.get(m.unique_id, "not run")
+            if rec["outcome"] == "proved" and rec["dbt"] in ("error", "fail"):
+                # dbt's build of a model enforces its contract: a build that
+                # fails is a contract its data breaks, which the proof says
+                # cannot happen.
+                rec["unsound"] = True
+            out[f"{m.unique_id.split('.', 2)[-1]}::{c.label}"] = rec
     return out
 
 
@@ -383,6 +446,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--check", action="store_true", help="compare with the ledgers")
     args = ap.parse_args(argv)
     found = []
+    unsound = []
     for name in args.sources:
         source = SOURCES[name]
         fresh = ledger(source, run(source))
@@ -390,6 +454,9 @@ def main(argv: list[str] | None = None) -> int:
         path = LEDGERS / f"{name}.json"
         stored = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
         found += [f"{name}: {c}" for c in changes(fresh, stored)]
+        unsound += [
+            f"{name}: {k}: {r['test']}" for k, r in fresh["results"].items() if r.get("unsound")
+        ]
         if args.write:
             LEDGERS.mkdir(parents=True, exist_ok=True)
             path.write_text(
@@ -402,6 +469,9 @@ def main(argv: list[str] | None = None) -> int:
                 for n in args.sources
             }
         )
+    if unsound:
+        print("unsound, a proof dbt's own run contradicts:", *unsound, sep="\n  ", file=sys.stderr)
+        return 2
     if args.check and found:
         print("\n".join(found), file=sys.stderr)
         return 1

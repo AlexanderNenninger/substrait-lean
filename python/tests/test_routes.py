@@ -5,6 +5,8 @@ from __future__ import annotations
 import ibis
 import pyarrow as pa
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 from ibis import _
 
 import sverify as sv
@@ -27,19 +29,19 @@ def test_native_and_reference(con) -> None:
     for engine in ("duckdb", "polars"):
         out = report.run(con, engine, route="auto")
         r = report.routes[engine]
-        assert r.kind == "translated" and r.profile == "reference", r
+        assert r.taken == "translated" and r.profile == "portable", r
         assert sorted(out.column("j").to_pylist()) == [-6, 3, 4]
     assert "route on polars: exact" in report.details()
     duck = sv.verify("SELECT k, i % 3 AS m FROM t", tables={"t": t}, semantics="duckdb")
-    assert routes.choose(duck, "duckdb").kind == "native"
+    assert routes.choose(duck, "duckdb").taken == "native"
 
 
 def test_explicit_route_is_taken_or_refused(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select("k", j=t.i + 1), requires={"t": [_.i.between(-100, 100)]})
-    assert routes.choose(report, "duckdb", "translated").kind == "translated"
+    assert routes.choose(report, "duckdb", "translated").taken == "translated"
     r = routes.choose(report, "duckdb", "native")
-    assert r.refused and 'not verified under semantics="duckdb"' in r.reason
+    assert r.refused and 'not verified under semantics="duckdb"' in r.why
     with pytest.raises(routes.RouteError, match="refused on duckdb"):
         report.run(con, "duckdb", route="native")
     with pytest.raises(ValueError, match="route must be"):
@@ -52,10 +54,10 @@ def test_explicit_route_refusal_names_its_exit(con) -> None:
         "SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")}, semantics="duckdb"
     )
     r = routes.choose(duck, "polars", "translated")
-    assert r.refused and "verify with semantics='reference' to run on polars" in r.reason
+    assert r.refused and "verify with semantics='portable' to run on polars" in r.why
     ref = sv.verify("SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")})
     r = routes.choose(ref, "duckdb", "native")
-    assert r.refused and 'route="auto" tries every route' in r.reason
+    assert r.refused and 'route="auto" tries every route' in r.why
 
 
 def test_run_chooses_a_route_by_default(con) -> None:
@@ -63,7 +65,7 @@ def test_run_chooses_a_route_by_default(con) -> None:
         "SELECT k, i % 3 AS m FROM t", tables={"t": con.table("t")}, semantics="duckdb"
     )
     duck.run(con, "duckdb")
-    assert duck.routes["duckdb"].kind == "native"
+    assert duck.routes["duckdb"].taken == "native"
 
 
 def test_transfer_check(con) -> None:
@@ -84,16 +86,16 @@ def test_transfer_check(con) -> None:
     } in r.failures
     assert (
         "int.mod's division_type: duckdb gives TRUNCATE, polars gives FLOOR (polars-int-modulus)"
-        in r.reason
+        in r.why
     )
     # #655: under "auto", the refusal leads with what to do. The checker
     # cannot prove under `Profile.polars` yet (#271), so there is no re-check.
     auto = routes.choose(duck, "polars")
-    assert auto.reason.startswith("verify with semantics='reference' to run on polars")
+    assert auto.why.startswith("verify with semantics='portable' to run on polars")
     # Where the check passes, the route is taken.
     assert duck._engines is not None
     duck._engines["polars"]["transfer"]["duckdb"] = {"ok": True, "failures": []}
-    assert routes.choose(duck, "polars", "transfer").kind == "transfer"
+    assert routes.choose(duck, "polars", "transfer").taken == "transfer"
 
 
 def test_transfer_without_a_verdict_is_refused_with_the_reason(con) -> None:
@@ -102,18 +104,18 @@ def test_transfer_without_a_verdict_is_refused_with_the_reason(con) -> None:
     )
     duck._engines = None
     r = routes.choose(duck, "polars", "transfer")
-    assert r.refused and "gave no transfer check" in r.reason
+    assert r.refused and "gave no transfer check" in r.why
     # `auto` has no re-check to go on to: the checker reports `polars` as
     # pending (#271), so it names the reference as the way.
     auto = routes.choose(duck, "polars")
-    assert auto.refused and auto.reason.startswith("verify with semantics='reference'"), auto
+    assert auto.refused and auto.why.startswith("verify with semantics='portable'"), auto
 
 
 def test_unproved_plan_is_refused(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select("k", j=t.i * t.i), on_inferred="off")
     assert report.verdict == sv.Verdict.UNPROVED
-    reason = routes.choose(report, "duckdb").reason
+    reason = routes.choose(report, "duckdb").why
     assert reason.startswith("not verified: may fail: overflow: i * i (see report.errors)")
     assert "unverified=True" in reason
 
@@ -128,7 +130,7 @@ def test_run_refuses_an_unproved_plan_unless_asked(con) -> None:
     with pytest.warns(routes.UnverifiedRunWarning, match="running on duckdb unverified"):
         out = report.run(con, unverified=True)
     assert out.schema.metadata[b"sverify.verified"] == b"false"
-    assert report.routes["duckdb"].kind == "unverified"
+    assert report.routes["duckdb"].taken == "unverified"
     assert "route on duckdb: unverified: not verified" in report.details()
 
 
@@ -138,10 +140,10 @@ def test_determinism_is_reported_and_required_on_request() -> None:
     report = sv.verify(expr)
     assert report.verdict == sv.Verdict.PROVED and not report.deterministic
     r = routes.choose(report, "duckdb")
-    assert r.kind == "translated" and not r.deterministic
+    assert r.taken == "translated" and not r.deterministic
     assert any("ties stay open" in w for w in r.warnings)
     strict = routes.choose(report, "duckdb", reproducible=sv.equivalent())
-    assert strict.refused and "rerun must give the same result" in strict.reason
+    assert strict.refused and "rerun must give the same result" in strict.why
 
 
 def test_sequence_needs_a_total_sort(con) -> None:
@@ -152,15 +154,16 @@ def test_sequence_needs_a_total_sort(con) -> None:
     req = {"t": [_.i.between(-100, 100)]}
     seq = sv.equivalent(rows="sequence")
     unsorted = sv.verify(t.select("k", "i"), requires=req, ensures=[seq])
-    assert "not sorted" in routes.choose(unsorted, "duckdb").reason
+    why = routes.choose(unsorted, "duckdb").why
+    assert "not sorted" in why and "order_by" in why and 'rows="multiset"' in why
     order = [ibis.asc("k", nulls_first=True), "i"]
     tied = sv.verify(t.select("k", "i").order_by(order), requires=req, ensures=[seq])
     assert not tied._sequence_determined
-    assert "not sorted on a key" in routes.choose(tied, "duckdb").reason
+    assert "not sorted on a key" in routes.choose(tied, "duckdb").why
     keyed = {"t": [*req["t"], sv.unique("k", "i")]}
     total = sv.verify(t.select("k", "i").order_by(order), requires=keyed, ensures=[seq])
     assert total._sequence_determined
-    assert routes.choose(total, "duckdb").kind == "translated"
+    assert routes.choose(total, "duckdb").taken == "translated"
 
 
 def test_engine_versions(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -259,12 +262,11 @@ def test_installed_versions_are_the_probed_ones() -> None:
         assert installed in prof.versions or installed == UNPROBED.get(engine), engine
 
 
-def _verdict(cls="exact", evidence="proved", observed=(), shims=(), problems=(), **kw) -> dict:
+def _verdict(cls="exact", evidence="proved", shims=(), problems=(), **kw) -> dict:
     """A checker verdict on Polars (`"engines"`, `SubstraitLean/Realize.lean`)."""
     return {
         "class": cls,
         "evidence": evidence,
-        "observed": list(observed),
         "shims": list(shims),
         "problems": list(problems),
         "theorems": [],
@@ -274,16 +276,6 @@ def _verdict(cls="exact", evidence="proved", observed=(), shims=(), problems=(),
         "version": "",
         "transfer": {},
         **kw,
-    }
-
-
-def _observed(option: str, observation: dict, shim: str | None = None) -> dict:
-    return {
-        "group": "",
-        "option": option,
-        "observation": observation,
-        "shim": shim,
-        "facts": [f"polars-{option}"],
     }
 
 
@@ -299,7 +291,11 @@ def test_the_route_carries_the_checker_s_evidence(con) -> None:
     report = sv.verify(t.select("k"))
     assert _on_polars(report, evidence="tested").evidence == "tested"
     r = _on_polars(report, theorems=["Polars.a", "Polars.b"], facts=["polars-a"])
-    assert (r.evidence, r.theorems, r.facts) == ("proved", ("Polars.a", "Polars.b"), ("polars-a",))
+    assert (r.evidence, r.theorems, r.engine_facts) == (
+        "proved",
+        ("Polars.a", "Polars.b"),
+        ("polars-a",),
+    )
     assert "evidence: polars exact, proved by Polars.a, Polars.b" in report.details()
     from sverify import report_json
 
@@ -308,7 +304,7 @@ def test_the_route_carries_the_checker_s_evidence(con) -> None:
     r = _on_polars(
         report, evidence="tested", facts=["polars-a", "polars-b"], version="2.1.1", issues=[1166]
     )
-    assert (r.version, r.issues) == ("2.1.1", (1166,))
+    assert (r.probed_version, r.issues) == ("2.1.1", (1166,))
     assert str(r).endswith("; evidence tested at 2.1.1 (facts polars-a, polars-b; #1166)")
     assert report_json.route(report_json.route_json(r)) == r
 
@@ -338,47 +334,72 @@ def test_the_class_and_the_refusals_are_the_checker_s(con) -> None:
     report = sv.verify(t.select("k"))
     shim = {"group": "", "option": "b", "shim": "CASE"}
     r = _on_polars(report, cls="shim", evidence="tested", shims=[shim], facts=["polars-b"])
-    assert (r.kind, r.cls, r.evidence, r.shims) == ("translated", "shim", "tested", ("b: CASE",))
+    assert (r.taken, r.cls, r.evidence, r.shims) == ("translated", "shim", "tested", ("b: CASE",))
     assert str(r).startswith("shim (") and str(r).endswith(
         "; evidence tested at 2.1.0 (facts polars-b)"
     )
     refused = {"code": "option_refused", "group": "", "option": "b", "facts": ["polars-b"]}
     r = _on_polars(report, cls="refused", problems=[refused])
-    assert r.refused and r.cls == "refused" and "b is refused on polars (polars-b)" in r.reason
+    assert r.refused and r.cls == "refused" and "b is refused on polars (polars-b)" in r.why
     report._engines = None
     r = routes.choose(report, "polars")
-    assert r.refused and "gave no verdict on polars" in r.reason
+    assert r.refused and "gave no verdict on polars" in r.why
 
 
-def test_q_refinement_against_the_postcondition(con) -> None:
-    """D18's check: an engine equal to the reference up to `canon` meets a
-    postcondition that observes zeros only if it says `zeros="canon"`, or
-    through the row's shim."""
+def test_the_observation_problems_are_worded(con) -> None:
+    """The checker decides whether an engine's observation meets the postcondition's
+    (`Realize.lean`, #1071); the route words its problems as data, with the way out."""
     t = con.table("t")
-    exact = sv.verify(t.select("k"), ensures=[sv.equivalent(floats="plan")])
-    canon = sv.verify(t.select("k"), ensures=[sv.equivalent(zeros="canon")])
-    zeros = [_observed("zero_sign", {"zeros": "canon"})]
-    r = _on_polars(exact, cls="observed", observed=zeros)
-    assert r.refused and "observes its zeros" in r.reason and "sv.equivalent" in r.reason
-    assert _on_polars(canon, cls="observed", observed=zeros).cls == "observed"
-    shimmed = [_observed("zero_sign", {"zeros": "canon"}, shim="canon")]
-    assert _on_polars(exact, cls="observed", observed=shimmed).cls == "shim"
-    # A tolerance: the engine's ε must be within the stated one.
-    tol = [_observed("sum_order", {"rows": "multiset", "floats": {"rel": 1e-12}})]
-    for report, ok in (
-        (sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-9))]), True),
-        (sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-15))]), False),
-        (exact, False),
-    ):
-        r = _on_polars(report, cls="observed", observed=tol)
-        assert (r.cls == "observed") is ok, r
+    report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats="plan")])
+    where = {"group": "", "option": "zero_sign", "facts": ["polars-zero_sign"]}
+    missed = {
+        "code": "observation_missed",
+        "components": ["zeros"],
+        "observed": {"zeros": "canon"},
+        **where,
+    }
+    r = _on_polars(report, cls="observed", problems=[missed])
+    assert r.refused and "observes its zeros" in r.why and "sv.equivalent" in r.why
+    bounds = [
+        {"kind": "abs", "value": 222.0, "proved": False},
+        {"kind": "rel", "value": 1e-10, "proved": False},
+    ]
+    tol = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-15, abs=1.0))])
+    not_met = {"code": "not_met", "column": "total", "bounds": bounds, **where}
+    r = _on_polars(tol, cls="observed", problems=[not_met])
+    assert r.refused and "total is within abs=222 (tested), rel=1e-10 (tested)" in r.why
+    held = {"code": "held", "column": "total", "condition": 0, "bounds": bounds, **where}
+    named = sv.verify(t.select("k"), ensures=[_.k > 0])
+    text = routes._problem("polars", held, named)
+    assert "reads total" in text and "sv.approx" in text
+    unbounded = {"code": "unbounded", "column": "total", "why": "a SUM", **where}
+    r = _on_polars(tol, cls="observed", problems=[unbounded])
+    assert r.refused and "total has no bound on its distance to the reference (a SUM)" in r.why
+
+
+def test_the_route_takes_the_realization_the_checker_gives(con) -> None:
+    """A verdict's `"realized"` is the class, evidence and observation the route takes (#1071)."""
+    t = con.table("t")
+    report = sv.verify(t.select("k"))
+    realized = {
+        "class": "observed",
+        "evidence": "tested",
+        "shims": [],
+        "problems": [],
+        "observation": {"floats": {"abs": 1e-6}},
+        "bound_proved": False,
+    }
+    report._engines = {"polars": _verdict(realized=realized)}
+    r = routes.choose(report, "polars")
+    assert (r.cls, r.evidence, r.bound_proved) == ("observed", "tested", False)
+    assert r.lenses is not None and r.lenses.floats == sv.within(abs=1e-6)
 
 
 def test_unsupported_functions_are_refused(con) -> None:
     t = con.table("t")
     report = sv.verify(t.select(h=t.k.cast("string").hexdigest("md5")))
     r = routes.choose(report, "polars")
-    assert r.refused and r.cls == "refused" and "see #271" in r.reason
+    assert r.refused and r.cls == "refused" and "see #2540" in r.why
 
 
 def test_inputs_are_checked_before_the_run(con) -> None:
@@ -392,70 +413,14 @@ def test_inputs_are_checked_before_the_run(con) -> None:
     report.run(con, "polars", check_requires=False)
 
 
-def _eps(why: str | None = None, **kinds: tuple[float, bool]) -> dict:
-    """A column's `ε` as the checker normalises it (`Realize.epsBounds`):
-    each kind's value and whether it is proved."""
-    bounds = {k: {"value": v, "proved": p} for k, (v, p) in kinds.items()}
-    return {"bounds": bounds, "unbounded": False, "why": why}
-
-
-def test_a_plan_dependent_float_bound(con) -> None:
-    """Polars's `sum_order`: `q` bounds the doubles per plan. The contract's
-    `ε` gives bounds that each hold on their own; a stated tolerance is met
-    by one no larger than its bound of the same kind (B1)."""
-    t = con.table("t")
-
-    def route(tolerance, epsilon):
-        report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=tolerance)])
-        report._epsilon = epsilon
-        plan = [_observed("sum_order", {"floats": {"bound": "plan"}})]
-        return _on_polars(report, cls="observed", observed=plan)
-
-    no_bound = {"bounds": {}, "unbounded": False, "why": None}
-    both = {"total": _eps(abs=(222.0, False), rel=(1e-10, False)), "k": no_bound}
-    assert route(sv.within(rel=1e-9), both).cls == "observed"
-    assert route(sv.within(abs=1e3), both).cls == "observed"
-    r = route(sv.within(rel=1e-15, abs=1.0), both)
-    assert r.refused and "total is within abs=222 (tested), rel=1e-10 (tested)" in r.reason
-    assert "no per-plan bound" in route(sv.within(rel=1e-9), None).reason
-    # A bound is proved only where Lean says so; otherwise the route rests
-    # on a test.
-    assert route(sv.within(rel=1e-9), both).evidence == "tested"
-    marked = {"total": _eps(abs=(222.0, True), rel=(1e-10, False))}
-    assert route(sv.within(rel=1e-9), marked).evidence == "tested"
-    assert route(sv.within(abs=1e3), marked).evidence == "proved"
-    assert route(sv.within(rel=1e-9), {"total": _eps(rel=(1e-10, True))}).evidence == "proved"
-
-
-def test_a_shim_does_not_lift_the_plans_bound(con) -> None:
-    """A row with a shim and a per-plan bound (DuckDB's VAR row, whose
-    `nan_through` handles NaN only) still refuses a tolerance its bound does
-    not meet: the census's `var-within-rel-cap`, `within(rel=1e-9)` against
-    abs = 1.78e-7."""
-    t = con.table("t")
-
-    def route(tolerance):
-        report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=tolerance)])
-        report._epsilon = {"v": _eps(abs=(1.77815e-07, True))}
-        plan = [_observed("stat_algo", {"floats": {"bound": "plan"}}, shim="nan_through")]
-        return _on_polars(report, cls="observed", observed=plan)
-
-    r = route(sv.within(rel=1e-9))
-    assert r.refused and "v is within abs=1.77815e-07" in r.reason
-    assert route(sv.within(abs=1e-6)).cls == "observed"
-
-
 def test_rows_that_may_flip_under_the_bound_are_refused(con) -> None:
     """#568's threshold rule, as the checker applies it: where a filter, key
     or sort on a double may keep other rows on the engine than on the
     reference, the route is refused."""
     t = con.table("t")
     report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(abs=1e3))])
-    report._epsilon = {"total": _eps(abs=(222.0, True))}
-    plan = [_observed("sum_order", {"floats": {"bound": "plan"}})]
-    assert _on_polars(report, cls="observed", observed=plan).cls == "observed"
-    r = _on_polars(report, cls="refused", observed=plan, problems=[{"code": "threshold"}])
-    assert r.refused and "may keep other rows on polars" in r.reason
+    r = _on_polars(report, cls="refused", problems=[{"code": "threshold"}])
+    assert r.refused and "may keep other rows or give other values on polars" in r.why
 
 
 def test_a_threshold_computed_from_the_data_names_exact_columns() -> None:
@@ -513,3 +478,166 @@ def test_a_sessions_own_version_decides() -> None:
 
     assert routes.session_version(Session()) == "4.3.1"
     assert routes.session_version("spark") is None
+
+
+@given(st.decimals(min_value=0, max_value=1000, allow_nan=False, allow_infinity=False, places=30))
+def test_a_printed_bound_rounds_up_to_the_least_double(d) -> None:
+    """`_up` gives the least double at or above the decimal the checker printed, so a
+    tolerance at or above it meets the bound exactly (ruling 274)."""
+    import math
+    from decimal import Decimal
+
+    text = str(d)
+    got = routes._up(routes.Printed(text))
+    assert Decimal(got) >= Decimal(text)
+    assert Decimal(math.nextafter(got, -math.inf)) < Decimal(text)
+
+
+@given(st.floats(min_value=0, max_value=1e300, allow_nan=False, allow_infinity=False))
+def test_a_double_printed_exactly_is_unchanged(x) -> None:
+    """A double printed as its exact value is its own least double above it. (`repr(x)` is
+    the shortest text that reads back as `x`, which may lie below `x`: it rounds up to
+    the next double then.)"""
+    import math
+    from decimal import Decimal
+
+    assert routes._up(routes.Printed(str(Decimal(x)))) == x
+    assert x <= routes._up(routes.Printed(repr(x))) <= math.nextafter(x, math.inf)
+
+
+def test_a_suggested_tolerance_meets_the_printed_bound(con) -> None:
+    """The tolerance a problem suggests is at or above the bound the checker printed,
+    also where the nearest double of that text lies below it (ruling 274)."""
+    import re
+    from decimal import Decimal
+
+    t = con.table("t")
+    report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats=sv.within(rel=1e-15))])
+    text = str(Decimal(2e-10) + Decimal("1e-30"))  # just above the double 2e-10
+    bound = {"kind": "rel", "value": routes.Printed(text), "proved": True}
+    p = {"code": "not_met", "column": "total", "group": "", "option": "o", "bounds": [bound]}
+    suggested = re.search(r"floats=sv\.within\(rel=([^)]*)\)", routes._problem("polars", p, report))
+    assert suggested and Decimal(float(suggested[1])) >= Decimal(text)
+
+
+def _unbounded_means():
+    """A mean of values in [0, 100] with no row cap (so no bound on its
+    distance to the reference) and the same with a cap."""
+    import ibis
+
+    t = ibis.table({"k": "int64", "x": "float64"}, name="t")
+    s = t.group_by("k").aggregate(avg=t.x.mean()).select("k", "avg")
+    base = [_.x >= 0, _.x <= 100, _.x.notnull(), _.k.notnull()]
+    return s, {"t": base}, {"t": [*base, sv.max_rows(1000)]}
+
+
+def test_a_postcondition_that_reads_an_unbounded_double_is_refused_as_for_a_bounded_one() -> None:
+    """#1045: `avg <= 100` is proved of the reference's exact mean, which an
+    engine's is only near. With a row cap the route refused it; without one,
+    where the checker has no bound at all, it ran. Both refuse now, naming
+    `sv.approx` as the exit, and the uncapped one also names the cap."""
+    s, uncapped, capped = _unbounded_means()
+    for requires, what in ((capped, "is within"), (uncapped, "has no bound on its distance")):
+        report = sv.verify(s, requires=requires, ensures=[_.avg <= 100], on_inferred="warn")
+        r = routes.choose(report, "duckdb")
+        assert r.refused and "reads avg" in r.why and what in r.why, r.why
+        assert "sv.approx((_.avg <= 100))" in r.why
+    assert (
+        "sv.max_rows(n)"
+        in routes.choose(
+            sv.verify(s, requires=uncapped, ensures=[_.avg <= 100], on_inferred="warn"), "duckdb"
+        ).why
+    )
+
+
+def test_what_the_engine_keeps_of_an_unbounded_double_still_runs() -> None:
+    """The sign of a sum of values of one sign holds of every engine's value
+    (`TreeSum.sign`): a postcondition that reads only that is not held, and
+    `sv.approx` states the claim that is."""
+    import ibis
+
+    t = ibis.table({"k": "int64", "x": "float64"}, name="t")
+    s = t.group_by("k").aggregate(total=t.x.sum()).select("k", "total")
+    requires = {"t": [_.x >= 0, _.x.notnull(), _.k.notnull()]}
+    sign = sv.verify(s, requires=requires, ensures=[_.total >= 0], on_inferred="warn")
+    assert not routes.choose(sign, "duckdb").refused
+    s2, uncapped, _capped = _unbounded_means()
+    stated = sv.verify(s2, requires=uncapped, ensures=[sv.approx(_.avg <= 100)], on_inferred="warn")
+    assert not routes.choose(stated, "duckdb").refused
+
+
+def test_an_unbounded_double_under_exact_doubles_is_a_problem_like_a_bound_above_zero(con) -> None:
+    """#2486: with no bound at all a plan is no better off than with one above zero, which
+    an exact observation does not meet. The message names the exits."""
+    t = con.table("t")
+    report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats="exact")])
+    unbounded = {"code": "unbounded", "column": "total", "why": "a SUM", "group": "", "option": "o"}
+    r = _on_polars(report, cls="observed", problems=[unbounded])
+    assert r.refused and "asks exact doubles" in r.why
+    assert 'floats="plan"' in r.why and "sv.max_rows(n)" in r.why and "unverified=True" in r.why
+
+
+def test_an_unbounded_mean_under_exact_doubles_is_refused_on_polars() -> None:
+    s, uncapped, capped = _unbounded_means()
+    for requires, what in ((uncapped, "has no bound on its distance"), (capped, "is within")):
+        report = sv.verify(s, requires=requires, ensures=[sv.equivalent(floats="exact")])
+        why = routes.choose(report, "polars").why
+        assert "avg" in why and what in why, why
+
+
+def test_the_checker_bounds_every_double_output_column() -> None:
+    """The realization meets a row that bounds doubles per plan against the plan's `ε`, so
+    `ε` must name every double output column (#2486): an empty one would meet nothing."""
+    s, uncapped, capped = _unbounded_means()
+    for requires in (uncapped, capped):
+        report = sv.verify(s, requires=requires)
+        doubles = {c for c, t in report.output.items() if t.is_floating()}
+        assert doubles and doubles <= set(report._epsilon or {})
+
+
+def _ranked(amount: str):
+    """Each customer's rank by the sum of its amounts, descending (the census's `rank-by-sum`)."""
+    t = ibis.table({"c": "int64", amount: "float64" if amount == "x" else "int64"}, name="t")
+    s = t.group_by("c").aggregate(total=t[amount].sum())
+    return s.mutate(rk=ibis.rank().over(order_by=ibis.desc(s.total)))
+
+
+def test_a_rank_over_a_double_sum_is_refused_where_the_sum_is_inexact() -> None:
+    """#2573: a rank orders near-equal sums, and an engine whose `sum_order` is not the
+    reference's can order two customers the other way round, so the window's sort key is a
+    threshold decision (rule #568). With integer amounts the sum is exact and nothing changes."""
+    inexact = sv.verify(_ranked("x"), requires={"t": [_.x.between(0, 100), sv.max_rows(1000)]})
+    for engine in ("polars", "spark"):
+        r = routes.choose(inexact, engine)
+        assert r.refused and "may keep other rows" in r.why, (engine, r.why)
+    exact = sv.verify(_ranked("n"), requires={"t": [_.n.between(0, 100), sv.max_rows(1000)]})
+    for engine in ("polars", "spark"):
+        assert not routes.choose(exact, engine).refused, engine
+
+
+def test_two_engines_rank_the_same_double_sums_differently() -> None:
+    """The counterexample behind it (#2573): customers who hold the same amounts in another row
+    order. Their sums differ in the last bits by engine, and so do their ranks."""
+    import random
+
+    duckdb = pytest.importorskip("duckdb")
+    pl = pytest.importorskip("polars")
+    random.seed(1)
+    rows = []
+    for p in range(60):
+        amounts = [round(random.uniform(0.01, 9.99), 2) for _ in range(40)]
+        shuffled = amounts[:]
+        random.shuffle(shuffled)
+        for customer, xs in ((f"a{p}", amounts), (f"b{p}", shuffled)):
+            rows += [(customer, x) for x in xs]
+    df = pl.DataFrame(rows, schema=["c", "x"], orient="row")
+    con = duckdb.connect()
+    con.register("t", df.to_arrow())
+    ranked = con.sql("select c, rank() over (order by sum(x) desc) from t group by c").fetchall()
+    on_duckdb = dict(ranked)
+    summed = df.group_by("c").agg(pl.col("x").sum().alias("total"))
+    ranked_on_polars = summed.with_columns(
+        pl.col("total").rank("min", descending=True).cast(pl.Int64).alias("rk")
+    )
+    on_polars = {r["c"]: r["rk"] for r in ranked_on_polars.iter_rows(named=True)}
+    assert sum(on_duckdb[c] != on_polars[c] for c in on_duckdb) > 0

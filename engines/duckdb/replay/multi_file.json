@@ -4,8 +4,10 @@
   "license": "test/sql \u00a9 Stichting DuckDB Foundation, MIT (LICENSE-duckdb)",
   "area": "multi_file",
   "summary": {"agree": 0, "disagree": 0, "refused": 0, "skipped": 0},
+  "agree_oracle_a_only": 0,
   "disagree_sides": {},
   "skipped_files": {"multi_file/multi_file_file_row_number.test": "require parquet", "multi_file/multi_file_open_options.test": "require parquet", "multi_file/multi_file_schema.test": "require json", "multi_file/multi_file_schema_filter_casts.test": "require parquet"},
+  "refreshed": {"multi_file/multi_file_schema.test": "2.0.1"},
   "results": [
 
   ]

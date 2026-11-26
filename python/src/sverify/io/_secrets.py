@@ -48,7 +48,10 @@ _SCHEME = re.compile(r"([a-z][a-z0-9\-]*):(.+)", re.S)
 
 class Backend(Protocol):
     """Where secrets live: `get(path)` returns the value at `path`, a string
-    or a mapping of fields. Register one with `Resolver(backends=...)`."""
+    or a mapping of fields. Register one with `Resolver(backends=...)` and
+    make it the `default`: a backend of your own reads bare names (`lake`
+    reads its path `lake`). A reference names a built-in scheme only, so
+    `Secret("mine:path")` is refused (#2430)."""
 
     def get(self, path: str) -> Value: ...
 
@@ -193,16 +196,28 @@ def _parse_fields(text: str) -> dict[str, str] | None:
         except ValueError:
             return None
         if isinstance(got, dict):
-            return {str(k): str(v) for k, v in got.items()}
+            return _text_fields(got)
         return None
     lines = [ln for ln in s.splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
     if lines and all("=" in ln for ln in lines):
         out = {}
         for ln in lines:
             k, _, v = ln.partition("=")
-            out[k.strip().removeprefix("export ").strip()] = v.strip().strip("'\"")
+            out[k.strip().removeprefix("export ").strip()] = _unquote(v.strip())
         return out
     return None
+
+
+def _unquote(v: str) -> str:
+    """A value without the one pair of matching quotes around it, if any."""
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
+        return v[1:-1]
+    return v
+
+
+def _text_fields(data: Mapping[Any, Any]) -> dict[str, str]:
+    """Fields as text: a string as it is, any other JSON value as its JSON."""
+    return {str(k): v if isinstance(v, str) else json.dumps(v) for k, v in data.items()}
 
 
 # -- backends ----------------------------------------------------------------
@@ -379,7 +394,7 @@ class Bao:
             data = self._request(f"{mount}/data/{rest}", self._token())["data"]["data"]
         else:
             data = self._request(f"{mount}/{rest}", self._token())["data"]
-        return {str(k): str(v) for k, v in data.items()}
+        return _text_fields(data)
 
 
 class AwsSecretsManager:
@@ -416,12 +431,17 @@ class AzureKeyVault:
         from azure.identity import DefaultAzureCredential  # pyrefly: ignore
         from azure.keyvault.secrets import SecretClient  # pyrefly: ignore
 
-        vault, _, name = path.partition("/")
+        if path.startswith("https://"):
+            url, _, name = path.rpartition("/")
+            if url == "https:/":  # a URL with no secret after it
+                name = ""
+        else:
+            vault, _, name = path.partition("/")
+            url = f"https://{vault}.vault.azure.net"
         if not name:
             raise Refused(
                 "a path is <vault>/<secret>; write it with the vault first, as `myvault/db`"
             )
-        url = vault if vault.startswith("https://") else f"https://{vault}.vault.azure.net"
         return SecretClient(url, DefaultAzureCredential()).get_secret(name).value or ""
 
 
@@ -497,7 +517,9 @@ class Resolver:
         default: The scheme that reads bare names not in `names`. Default
             "env".
         backends: Backends by scheme: options for a built-in one, or an
-            object with `get(path)`.
+            object with `get(path)`. An object under a scheme of its own
+            serves the bare names, as the `default`; references name the
+            built-in schemes only.
         cache_seconds: How long remote answers are kept. 0 keeps none.
     """
 
@@ -519,6 +541,8 @@ class Resolver:
         self._scopes: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
         for name, entry in (names or {}).items():
             if isinstance(entry, Mapping):
+                if "ref" not in entry:
+                    raise ValueError(f"names.{name}: a table names its reference as `ref`")
                 ref = entry["ref"]
                 self._scopes[name] = (
                     tuple(entry.get("reads", ())),
@@ -596,7 +620,7 @@ class Resolver:
         name = Secret(secret).ref
         ref = self.reference(name)
         parsed = _reference(ref)
-        if parsed is None:  # a scheme of a backend given in `backends`
+        if parsed is None:  # a bare name the `default` backend of your own reads
             scheme, _, rest = ref.partition(":")
             path, _, field = rest.partition("#")
             parsed = (scheme, path, field or None)
@@ -609,10 +633,20 @@ class Resolver:
                 hit = self._cache.get(key)
             if hit is not None and hit[0] > now:
                 return ref, hit[1], field
+        # Built apart from the read: a built-in backend's configuration error
+        # holds no value, so its message is passed on whole.
+        backend: Backend | None = None
+        config = ""
+        try:
+            backend = self._backend(scheme)
+        except ValueError as e:
+            config = str(e)
+        if backend is None:
+            raise _fail(name, config)
         problem: str | None = None
         got: Value = ""
         try:
-            got = self._backend(scheme).get(path)
+            got = backend.get(path)
         except ImportError:
             extra = _EXTRA.get(scheme)
             problem = "its backend is not installed" + (
@@ -635,24 +669,14 @@ class Resolver:
 
     def value(self, secret: Secret | str) -> str:
         """The value of a secret now (see `Secret.value`)."""
-        ref, got, field = self._lookup(secret)
-        if isinstance(got, str) and field is not None:
-            got = _parse_fields(got) or {}
-        if isinstance(got, Mapping):
-            if field is None:
-                if len(got) == 1:
-                    return next(iter(got.values()))
-                raise _fail(str(secret), f"it has fields {sorted(got)}; pick one with '#<field>'")
-            if field not in got:
-                raise _fail(str(secret), f"no field {field!r}; it has {sorted(got)}")
-            return got[field]
-        return got
+        _, got, field = self._lookup(secret)
+        return _pick(secret, got, field)
 
     def fields(self, secret: Secret | str) -> dict[str, str]:
         """The fields of a secret now (see `Secret.fields`)."""
-        ref, got, field = self._lookup(secret)
+        _, got, field = self._lookup(secret)
         if field is not None:
-            return {field: self.value(secret)}
+            return {field: _pick(secret, got, field)}
         if isinstance(got, str):
             parsed = _parse_fields(got)
             if parsed is None:
@@ -664,6 +688,21 @@ class Resolver:
         """Forget the remote answers kept."""
         with self._lock:
             self._cache.clear()
+
+
+def _pick(secret: Secret | str, got: Value, field: str | None) -> str:
+    """The value a backend's answer gives for `field`, or for no field."""
+    if isinstance(got, str) and field is not None:
+        got = _parse_fields(got) or {}
+    if isinstance(got, Mapping):
+        if field is None:
+            if len(got) == 1:
+                return next(iter(got.values()))
+            raise _fail(str(secret), f"it has fields {sorted(got)}; pick one with '#<field>'")
+        if field not in got:
+            raise _fail(str(secret), f"no field {field!r}; it has {sorted(got)}")
+        return got[field]
+    return got
 
 
 def _config_file() -> Path | None:

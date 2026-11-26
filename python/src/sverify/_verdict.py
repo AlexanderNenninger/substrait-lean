@@ -9,8 +9,8 @@ result is sorted, the discharged checks, all come from the answer. What the
 caller adds is the user's side: the conditions as written, the issues and
 facts in the user's terms, the schemas, the hints.
 
-`sverify.verify` (`contracts.py`) and `sverify.from_substrait`
-(`substrait_export.recheck`) build their reports here.
+`sverify.verify` (`contracts.py`) and `Report.from_substrait`
+(`substrait_export._recheck`) build their reports here.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def verdict(
     from sverify.report import Report, black_boxes_from_json, class_places, tie_places
     from sverify.routes import probed_version
 
-    semantics = context.get("semantics", "reference")
+    semantics = context.get("semantics", "portable")
     return Report(
         issues=list(issues),
         # D48: the report's `deterministic` is the class level; a checker
@@ -60,11 +60,13 @@ def verdict(
         _exact=out["deterministic"],
         _class_places=class_places(out),
         _windows_total=out.get("windows_total", out["deterministic"]),
+        _table_ignores=[(t["opened"], t["ignored"]) for t in out.get("table_ignores", [])],
         _tie_places=tie_places(out),
         _guard_free=out["guard_free"],
         _unchecked=out.get("unchecked"),
         _optimized=out.get("optimized"),
         _rewrites=out.get("rewrites", []),
+        _fk_joins=_fk_joins(out.get("fk_joins"), request.get("columns") or {}),
         _assumed_check=_assumed_check(out.get("assumed_check"), out["issues"]),
         _run_plan=out.get("run_plan"),
         _run_gate=out.get("run_gate"),
@@ -89,6 +91,20 @@ def verdict(
         engine_version=probed_version(semantics),
         **context,
     )
+
+
+def _fk_joins(
+    joins: Sequence[Mapping[str, Any]] | None, columns: Mapping[str, Sequence[str]]
+) -> list[tuple[str, str, str, str, bool]]:
+    """The checker's left joins on a foreign key as (table, column, referenced
+    table, column, declared), the columns by name."""
+    out = []
+    for j in joins or []:
+        t, s = j["table"], j["to_table"]
+        c, p = columns.get(t, ()), columns.get(s, ())
+        if j["column"] < len(c) and j["to_column"] < len(p):
+            out.append((t, c[j["column"]], s, p[j["to_column"]], bool(j["declared"])))
+    return out
 
 
 def split_assumed(report: Report) -> Report:

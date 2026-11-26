@@ -79,7 +79,7 @@ rows (3):
 ```
 
 What it accepts is the model's fragment (the operators are listed in
-[`core/Sverify/Core/Rel.lean`](../core/Sverify/Core/Rel.lean)): the coverage table under [What is supported](../README.md#ibis-coverage)
+[`core/Sverify/Core/Rel.lean`](../core/Sverify/Core/Rel.lean)): the coverage table under [What is supported](coverage.md)
 probes it from the Ibis side, and the catalogue's
 [`features.toml`](../catalogue/features.toml) records it per feature. Function
 calls are matched by name in `extensions`, and anything else is rejected.
@@ -217,7 +217,7 @@ engines, a read after every refresh and a refresh that deletes a row pay the
 merge over the whole state each time.
 `SVERIFY_STATE_LOCATION` names where the parts live: a directory, or a URI
 that the driver and every executor read and write
-([Environment variables](tasks.md#environment-variables)).
+([Environment variables](how-to-command-line.md#environment-variables)).
 
 A node on DuckDB has DuckDB write its Delta and Iceberg sinks
 (`sverify.io._engine`). DuckDB writes the Parquet files of the state or of

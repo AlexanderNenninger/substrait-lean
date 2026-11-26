@@ -274,6 +274,16 @@ structure Schemas where
   /-- The namespace of the schemas' own proofs: `<proofs>.<construct>_agree`
   and `<proofs>.<construct>_guards`, where a schema comes with one. -/
   proofs : Name := `Substrait.Lowering
+  /-- Hand-built entries, by constructor: an entry that is not exact, or that
+  is stated on doubles only (`UnEntry.exact`, `UnEntry.onDbl`, rulings 250
+  and 254), which the search, proving `Agree` on every value, cannot give.
+  The table takes the constant as the entry, with its own proofs. -/
+  entries : List (Name × Name) := []
+  /-- Entries derived from another construct's searched entry, by constructor:
+  `(f, g, h)` takes `g`'s entry for `f`, by `BinEntry.weaken` with `h`, a proof
+  that the reference's `g` agrees with its `f` or raises. Not exact. `g` comes
+  before `f` among the constructors. -/
+  derived : List (Name × Name × Name) := []
 
 partial def Tm.hasSelf : Tm → Bool
   | .field _ | .lit _ | .named .. | .expr .. => false
@@ -818,7 +828,7 @@ def lowerSearch (boxes : Boxes.Ambient) (tbl : Name) (pE : Lean.Expr) (p : Profi
         | some m => `(tactic| exact $(mkIdent m))
         | none => `(tactic| simp [Substrait.Expr.must])
       let some strict ← prove strictTy strictTac | return none
-      let entry ← mkAppM (if unary then ``UnEntry.mk else ``BinEntry.mk)
+      let entry ← mkAppM (if unary then ``UnEntry.ofAgree else ``BinEntry.ofAgree)
         #[tmpl, strict, mkAppN (Lean.mkConst agreeName) ps]
       let entryTy ← mkForallFVars ps (← inferType entry)
       addAndCompile <| .defnDecl {
@@ -863,7 +873,8 @@ def lowerSearch (boxes : Boxes.Ambient) (tbl : Name) (pE : Lean.Expr) (p : Profi
             else "set_option maxHeartbeats 800000 in\n") ++
           s!"theorem {agreeName} : {← ppSource agreeTy} := by\n  {proof}\n\n" ++
           s!"abbrev {tbl ++ k.short} : {← ppSource entryTy} :=\n" ++
-          s!"  ⟨{← ppSource tmpl}, by {strictSrc}, {agreeName}⟩\n\n"))
+          s!"  {if unary then "Substrait.UnEntry.ofAgree" else "Substrait.BinEntry.ofAgree"}\n" ++
+          s!"  ({← ppSource tmpl})\n  (by {strictSrc}) {agreeName}\n\n"))
       let shown := cand.show k.ctor.componentsRev.head!.toString
       return some (if written then s!"hand-written schema: {shown}" else shown)
     -- The cache's template first (`LoweringHint`), found among the candidates
@@ -938,7 +949,7 @@ def elabGenerateLowering : CommandElab := fun stx => do
   let ctors ← [(``UnFn, true), (``BinFn, false)].flatMapM fun (ind, unary) => do
     return (← getConstInfoInduct ind).ctors.map (·, unary)
   -- Each constructor: native, or its constructs, each with how it was lowered.
-  let (results, natives, pSrc) ← liftTermElabM do
+  let (results, natives, pSrc, noHand) ← liftTermElabM do
     let pE ← instantiateMVars (← elabTermEnsuringType pStx (Lean.mkConst ``Profile))
     let p ← evalProfile pE
     let boxes ← evalBoxes (← synthInstance (Lean.mkConst ``Boxes.Ambient))
@@ -974,11 +985,40 @@ def elabGenerateLowering : CommandElab := fun stx => do
           done := done.push (k, .error "refused", 0)
           continue
         let t0 ← IO.monoMsNow
+        -- An entry derived from an earlier one (`BinEntry.weaken`).
+        if let some (g, h) := schemas.derived.lookup c then
+          let base := tbl ++ g.componentsRev.head!
+          let ty ← withCurrHeartbeats do
+            let v ← Meta.mkAppM `Substrait.BinEntry.weaken #[Lean.mkConst base, ← Meta.mkAppOptM h #[none]]
+            let ty ← Meta.inferType v
+            addAndCompile <| .defnDecl {
+              name := tbl ++ k.short, levelParams := [], safety := .safe, hints := .abbrev
+              type := ty, value := v }
+            pure ty
+          if let some out := sink then
+            out.modify (·.push (areaOf k.ctor,
+              s!"abbrev {tbl ++ k.short} : {← ppSource ty} :=\n  Substrait.BinEntry.weaken {base} {h}\n\n"))
+          done := done.push (k, .ok s!"derived from {g.componentsRev.head!}: {h}", (← IO.monoMsNow) - t0)
+          continue
+        -- A hand-built entry: the table takes the constant as it is.
+        if let some e := schemas.entries.lookup c then
+          let ty ← withCurrHeartbeats do
+            let v ← Meta.mkAppOptM e #[none]
+            let ty ← Meta.inferType v
+            addAndCompile <| .defnDecl {
+              name := tbl ++ k.short, levelParams := [], safety := .safe, hints := .abbrev
+              type := ty, value := v }
+            pure ty
+          if let some out := sink then
+            out.modify (·.push (areaOf k.ctor,
+              s!"abbrev {tbl ++ k.short} : {← ppSource ty} :=\n  {e}\n\n"))
+          done := done.push (k, .ok s!"hand-built entry: {e}", (← IO.monoMsNow) - t0)
+          continue
         let t := tac
         let how ← withCurrHeartbeats (lowerSearch boxes tbl pE p schemas t (excluded.contains c) k (hintOf k) sink guards)
         done := done.push (k, how, (← IO.monoMsNow) - t0)
       results := results.push (c, some done)
-    return (results, natives, ← ppSource pE)
+    return (results, natives, ← ppSource pE, schemas.entries.isEmpty && schemas.derived.isEmpty)
   let entries (c : Name) : Array (Construct × Except String String × Nat) :=
     ((results.find? (·.1 == c)).bind (·.2)).getD #[]
   let missing := results.flatMap fun (c, r) => if refused.contains c then #[] else
@@ -1017,6 +1057,16 @@ def elabGenerateLowering : CommandElab := fun stx => do
        fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩))
   else if !missing.isEmpty then
     logError m!"no lowering found for {missing.toList}"
+  -- Every searched entry is exact on every value (`UnEntry.ofAgree`, rulings
+  -- 250 and 254), refused functions included; a table with hand-built entries
+  -- states its flags itself.
+  if noHand then
+    elabCommand (← `(theorem $(mkIdent (short ++ `allExact)) : ($(mkIdent tbl)).AllExact :=
+      ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
+       fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩))
+    elabCommand (← `(theorem $(mkIdent (short ++ `noneOnDbl)) : ($(mkIdent tbl)).NoneOnDbl :=
+      ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
+       fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩))
   let failedGuards ← guardFailures.get
   unless failedGuards.isEmpty do
     logError m!"guards not proved for {failedGuards.toList}"
@@ -1074,8 +1124,10 @@ def elabGenerateLowering : CommandElab := fun stx => do
             let pats := " ".intercalate (k.args.toList.map toString)
             let rhs := match how with | .error _ => "none" | .ok _ => s!"some {tbl ++ k.short}"
             s!"    | {c} {pats} => {rhs}")
-      let xs := " ".intercalate ((List.range nargs).map (s!"a{·}"))
-      let rhs := if es.any (·.2.1 matches .error _) || es.isEmpty then "none"
+      let refusedHere := es.any (·.2.1 matches .error _) || es.isEmpty
+      -- A refused constructor binds none of its arguments (`ftod _ => none`).
+      let xs := " ".intercalate ((List.range nargs).map (if refusedHere then fun _ => "_" else (s!"a{·}")))
+      let rhs := if refusedHere then "none"
         else s!"some ({tbl ++ c.componentsRev.head!} {xs})"
       return s!"    | {c} {xs} => {rhs}"
     return "\n".intercalate lines
@@ -1090,7 +1142,14 @@ def elabGenerateLowering : CommandElab := fun stx => do
     (if !refused.isEmpty then "" else
       s!"\ntheorem {tbl}.total : ({tbl}).Total :=\n" ++
       "  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),\n" ++
-      "   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩\n")
+      "   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩\n") ++
+    -- Every searched entry is exact on every value (rulings 250 and 254).
+    (if !noHand then "" else s!"\n/-- Every entry is exact (`Lowering.AllExact`). -/\ntheorem {tbl}.allExact : ({tbl}).AllExact :=\n" ++
+    "  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),\n" ++
+    "   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩\n" ++
+    s!"\n/-- No entry is stated on doubles only (`Lowering.NoneOnDbl`). -/\ntheorem {tbl}.noneOnDbl : ({tbl}).NoneOnDbl :=\n" ++
+    "  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),\n" ++
+    "   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩\n")
   IO.FS.writeFile s!"{dir}/Table.lean" table
   logInfo m!"wrote {dir}: Native, {areas}, Table"
   -- The guards (`proving_guards`), in a module of their own after the table,

@@ -359,6 +359,9 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
   case fround =>
     exact monoAbs_sound FloatCode.round_mono (fun v => by cases v <;> hf_tac) h
       (fun _ => FloatCode.canon_round (FloatCode.canon_idem _))
+  case froundEven =>
+    exact monoAbs_sound FloatCode.roundEven_mono (fun v => by cases v <;> hf_tac) h
+      (fun _ => FloatCode.canon_roundEven (FloatCode.canon_idem _))
   case ftoi => exact ftoiAbs_sound h
   case narrow n | narrowOrNull n => exact narrowAbs_sound (fun v => by cases v <;> hf_tac) h
   case ftoiOrNull =>
@@ -484,6 +487,16 @@ theorem UnFn.abs_sound (f : UnFn) {a : AVal} {v : Value} (h : a.Mem v) :
         show (AVal.nonNum .int a) = true
         exact AVal.nonNum_of_memNum ⟨b, hb, hi, hk⟩ (by intro h; cases h)
     all_goals simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonNum, AVal.nonInt]
+  case dtext | dtextFull =>
+    mem_cases h with i b hb hi
+    · simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonNumP, AVal.nonInt]
+    · by_cases hc : a.nonNumP isDec = true
+      · cases k <;> simp [UnFn.abs, UnFn.apply, NumKind.val, AVal.Mem, hb, hc]
+      · have hc' : a.nonNumP isDec = false := by simpa using hc
+        have hd := AVal.ok_of_memNum hb hk hc'
+        cases k <;> simp_all [UnFn.abs, UnFn.apply, NumKind.val, AVal.Mem, isDec]
+    all_goals simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonNumP, AVal.nonInt]
+  case dwiden => simpa [UnFn.abs, UnFn.apply] using h
   case strftime fmt =>
     mem_cases h with i b hb hi
     · simp_all [UnFn.abs, UnFn.apply, AVal.Mem, AVal.nonNum, AVal.nonInt]

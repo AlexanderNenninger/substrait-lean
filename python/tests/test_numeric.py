@@ -80,7 +80,7 @@ def test_rounding_semantics():
     # ROUND is half away from zero (DuckDB's round); the model has one zero.
     half_away = {f: math.copysign(math.floor(abs(f) + 0.5), f) + 0.0 for f in DOUBLES}
     expected = [(f, math.floor(f) + 0.0, math.ceil(f) + 0.0, half_away[f]) for f in DOUBLES]
-    plan = inline_tables(json.loads(substrait_json(con, sql, "reference")), {"r": rows})
+    plan = inline_tables(json.loads(substrait_json(con, sql, "portable")), {"r": rows})
     got = lean_values(json.dumps(plan))
     # Doubles come back printed, or as codes when tiny (±0.0).
     decoded = [
@@ -389,7 +389,7 @@ def test_try_cast_is_no_error_and_cast_is():
     con = connect()
     con.create("t", TC.schema(), [(1.5, 1)])
     plan = written_plan(to_substrait_json(try_casts(TC)))
-    with pytest.raises(Exception, match="see #271"):
+    with pytest.raises(Exception, match="see #2540"):
         run_plan(con, plan, "polars")
     with pytest.raises(Exception, match="TRY_CAST to DECIMAL"):
         written_plan(to_substrait_json(TC.select(d=TC.f.try_cast("decimal(10, 2)"))))

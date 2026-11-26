@@ -1,7 +1,7 @@
 import SubstraitLean.ShardCheck
 import SubstraitLean.EngineTables
 import Sverify.Core.MarginCheck
-import Sverify.Analysis.AsofSite
+import Sverify.Analysis.AsofExact
 import Sverify.Core.ExactBound
 
 /-!
@@ -40,7 +40,7 @@ give (`Measure.abs`, `floatBound`):
 `"proved"` marks a bound those theorems cover (`provedEps`): the engines'
 `sum_order` behaviours are among the proved ones, the plan has no
 single-precision column (Polars sums `Float32` in single precision,
-polars-sum-float), and the argument, its rows and its groups are the same on
+polars-sum-float-streaming), and the argument, its rows and its groups are the same on
 every engine (`colEps`). That an engine's algorithm is the one its
 behaviour names rests on its characterization (duckdb-sum-double,
 polars-sum-float, polars-sum-float-streaming).
@@ -145,21 +145,23 @@ def doubleMag (env : List AVal) (e : Expr) : Option Rat := do
   it under a stated lower bound `L` on both co-moments, which waits for
   preconditions on aggregates (#918). `[-1, 1]` holds regardless.
 
-Evaluated exactly (`ExactBound`), the square roots rounded up. -/
-def statEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Rat := do
+`COVAR_*`'s constants are `t` (`Stat.StatTol`, ruling 271), `VAR_*`'s the
+same for every algorithm. Evaluated exactly (`ExactBound`), the square roots
+rounded up. -/
+def statEps (t : Stat.StatTol) (env : List AVal) (m : Measure) (rows : Option Nat) :
+    Option Rat := do
   let n ← rows
   guard (n ≤ 2 ^ 32)
   let u := unitRound
   let nf : Rat := n
-  let dOf (sample : Bool) : Rat := ((if sample then max 1 (n - 1) else max 1 n : Nat) : Rat)
+  let dOf (sample : Bool) : Nat := if sample then max 1 (n - 1) else max 1 n
   match m.fn, m.arg with
   | .var sample sqrt, arg =>
     let x ← doubleMag env arg
     let d := dOf sample
     let q := nf * (x + tiny) * (x + tiny)
     let r := nf * (x + tiny) * x
-    let varTol := (160 * nf * u * r + 3970 * nf * nf * u * u * q
-      + 800 * nf * nf * u * tiny) / d
+    let varTol := Stat.varTol n d r q
     let v := nf * x * x / d
     let tv := varTol + u * v
     if sqrt then
@@ -174,9 +176,7 @@ def statEps (env : List AVal) (m : Measure) (rows : Option Nat) : Option Rat := 
     let r2 := nf * (byy + tiny) * bx
     let rs := nf * bx * byy
     let rq := nf * (bx + tiny) * (byy + tiny)
-    let covTol := (71 * nf * u * (r1 + r2) + 15 * nf * u * rs
-      + 3970 * nf * nf * u * u * rq + 800 * nf * nf * u * tiny) / d
-    return covTol + u * rs / d
+    return Stat.covTol t n d r1 r2 rs rq + u * rs / d
   | _, _ => none
 
 /-- Is `statEps` of `m` a theorem (`epsilon_var_cr`, `epsilon_stddev_cr`,
@@ -243,11 +243,10 @@ def provedOrders : List String := ["SEQUENTIAL", "ANY", "PAIRWISE", "SCALED_CONS
 def ordersProved (es : List EngineProfile) : Bool :=
   es.all fun e => (e.table.allows "agg.fsum" "sum_order" []).all (provedOrders.contains ·)
 
-/-- The `stat_algo` behaviours `core_var_chan`, `core_cov_chan` and
-`core_var_polars` cover: the reference's own, and Welford's update with a
-merge that meets `MergeSpec` (Chan's, or Schubert and Gertz's on two-pass
-blocks). -/
-def provedStatAlgos : List String := ["EXACT", "WELFORD_CHAN"]
+/-- The `stat_algo` behaviours `core_var_chan`, `core_cov_chan`,
+`core_var_polars`, `core_cov_polars` and `core_corr_polars` cover: the reference's own, Welford's
+update with Chan's merge, and two-pass blocks with Schubert and Gertz's merge. -/
+def provedStatAlgos : List String := ["EXACT", "WELFORD_CHAN", "SCHUBERT_GERTZ"]
 
 /-- The group whose `stat_algo` row a statistic reads, as the plan does
 (`AggFn.reads`): `agg.var` for `VAR_*` and `STDDEV_*`, `agg.stat` for
@@ -272,10 +271,18 @@ def statsProvedOn (group : String) (es : List EngineProfile) : List String :=
       | none => false
     if algos.all (provedStatAlgos.contains ·) && proved then some e.name else none
 
--- Every engine's `VAR_*` and `STDDEV_*` is proved; Polars's `COVAR_*` is not: its
--- `agg.stat` row rests on a fuzzed bound until #1808's remainder (ruling 220).
+/-- The constants of the loosest `stat_algo` the engines `es` allow for
+`group`: Schubert and Gertz's where one allows `SCHUBERT_GERTZ`, else Chan's. -/
+def statTolOn (group : String) (es : List EngineProfile) : Stat.StatTol :=
+  if es.any fun e => (e.table.allows group "stat_algo" []).contains "SCHUBERT_GERTZ" then .sg
+  else .chan
+
+-- Every engine's statistics are proved: Polars's `COVAR_*` and `CORR` at
+-- `StatTol.sg` (`core_cov_polars`, `core_corr_polars`, ruling 271, #1808).
 #guard statsProvedOn "agg.var" builtinEngines == ["duckdb", "polars", "spark"]
-#guard statsProvedOn "agg.stat" builtinEngines == ["duckdb", "spark"]
+#guard statsProvedOn "agg.stat" builtinEngines == ["duckdb", "polars", "spark"]
+#guard (statTolOn "agg.stat" builtinEngines).cov == 107
+#guard (statTolOn "agg.stat" (builtinEngines.filter (·.name != "polars"))).cov == 71
 
 /-- Why a `CORR` column has no bound, and what lifts it (D30). -/
 def corrWhy : String :=
@@ -479,7 +486,7 @@ def exprEps (es : List EngineProfile) (engine : String) (env : List AVal) (cols 
     let d := if s > 0 then min d1 (ea / s) else d1
     let u := unitRound
     return (d * (1 + u) + 2 * u * (sqrtUp ha + tiny), pa)
-  | .un .ffloor a | .un .fceil a | .un .fround a => do
+  | .un .ffloor a | .un .fceil a | .un .fround a | .un .froundEven a => do
     -- `rule_floor`, `rule_ceil`, `rule_round`: a step of one.
     let (ea, pa) ← exprEps es engine env cols a
     if ea == 0 then return (0, pa)
@@ -611,7 +618,7 @@ def colEps (es : List EngineProfile) (engine : String) (cat : Catalog) (A : Stri
         | .min | .max => return (ea, pa && pf)
         -- D30: an engine's statistic is within the plan's bound of the
         -- reference's exact moments rounded once.
-        | .var _ _ => if ea == 0 && pf then return (← statEps env m r.maxRows, false) else none
+        | .var _ _ => if ea == 0 && pf then return (← statEps .chan env m r.maxRows, false) else none
         | .cov _ | .corr => none
         | _ => if ea == 0 then some (0, false) else none
   | _ => none
@@ -699,8 +706,17 @@ def rowSites (es : List EngineProfile) (engine : String) (cat : Catalog) (A : St
   | .distinct r => rowSites es engine cat A F T r ++
       [((colEps es engine cat A F T r).any fun cs => cs.all exactP, (Rel.markDeps cat r).any id,
         "DISTINCT")]
-  | .fetch r _ _ | .emit r _ | .project r _ | .window r _ _ _ | .unnest r _ =>
+  | .fetch r _ _ | .emit r _ | .project r _ | .unnest r _ =>
     rowSites es engine cat A F T r
+  -- A window's partition and sort keys decide which rows its functions see and in what
+  -- order (#2573, ruling 283 E2): a rank over an inexact double depends on the order of
+  -- near-equal values.
+  | .window r part sort _ => rowSites es engine cat A F T r ++
+      [((colEps es engine cat A F T r).any fun cs =>
+        part.all (fun i => exactP (cs.getD i none)) && sort.all fun k => exactP (cs.getD k.col none),
+        part.any (fun i => (Rel.markDeps cat r).getD i true) ||
+          sort.any (fun k => (Rel.markDeps cat r).getD k.col true),
+        "a window's partition or sort key")]
   | .cross a b | .unionAll a b => rowSites es engine cat A F T a ++ rowSites es engine cat A F T b
   | .join a b _ on | .semi a b _ on =>
     rowSites es engine cat A F T a ++ rowSites es engine cat A F T b ++
@@ -726,8 +742,84 @@ def rowsExact (es : List EngineProfile) (engine : String) (cat : Catalog) (A : S
     (F : String → List Fact) (T : WindowKeys) (r : Rel) : Bool :=
   (rowSites es engine cat A F T r).all (·.1)
 
+/-- The subexpressions of an expression (a lambda's body aside: its column is not the row's). -/
+def subExprs : Expr → List Expr
+  | e@(.lit _) | e@(.field _) => [e]
+  | e@(.un _ a) => e :: subExprs a
+  | e@(.bin _ a b) => e :: (subExprs a ++ subExprs b)
+  | e@(.ifThen c t f) => e :: (subExprs c ++ subExprs t ++ subExprs f)
+  | e@(.hof _ l _) => e :: subExprs l
+
+/-! ### Functions that jump (ruling 275, #1849)
+
+A function that is discontinuous in a double maps a double within `ε > 0` of the
+reference's to a value that need not be near the reference's: `floor(x / 49.0)` is
+`0` on Polars, whose reciprocal quotient lands one ulp below `1`. Such a value
+decides an output as a filter decides rows, so the threshold rule (#568) holds for
+it wherever it sits: a projection, a `CASE`, a measure's argument or a window
+function's. A filter, join condition, grouping key and measure filter are
+`rowSites`' already. -/
+
+/-- Does `e` jump in its double argument: floor, ceil and the roundings of a double,
+and every function from a double to another kind (a comparison, a cast to an
+integer, a decimal or text) but `IS NULL`, which has the same outcome on every
+double of an ε-neighbourhood? Closed by default: a new function of a double to
+another kind counts until a lemma says otherwise. -/
+def jumps (cols : List Kind) : Expr → Bool
+  | .un .isNull _ => false
+  | .un .ffloor a | .un .fceil a | .un .fround a | .un .froundEven a | .un (.froundTo _) a =>
+    a.kind cols == .float
+  | e@(.un _ a) => a.kind cols == .float && e.kind cols != .float
+  | e@(.bin _ a b) => (a.kind cols == .float || b.kind cols == .float) && e.kind cols != .float
+  | _ => false
+
+/-- Does every function of `e` that jumps (`jumps`) read a double that is exact on
+`engine`, or one a precondition keeps away from the threshold (`rule_threshold`:
+`exprEps` gives it no error)? A lambda's body reads its list's elements: one that
+holds a function that jumps needs an exact list. -/
+def jumpsExact (es : List EngineProfile) (engine : String) (cols : List Kind) (env : List AVal)
+    (cs : List (Option (Rat × Bool))) (e : Expr) : Bool :=
+  (subExprs e).all fun x =>
+    let exact (y : Expr) := (exprEps es engine env cs y).any (·.1 == 0)
+    match x with
+    | .hof _ l body => exact l || !(subExprs body).any fun
+        | .un _ _ | .bin .lt _ _ | .bin .eq _ _ => true
+        | _ => false
+    | _ => !jumps cols x || exact x
+
+/-- Every expression that computes a value of the plan, with its input columns'
+kinds, description and errors on `engine`: projections, measures' arguments and
+window functions' aggregates. `none` for the errors where `colEps` gives none. -/
+def valueSites (es : List EngineProfile) (engine : String) (schemas : Write.Schemas) (cat : Catalog)
+    (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) :
+    Rel → List (List Expr × List Kind × List AVal × Option (List (Option (Rat × Bool))))
+  | .read _ | .values _ _ => []
+  | .filter r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ =>
+    valueSites es engine schemas cat A F T r
+  | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ =>
+    valueSites es engine schemas cat A F T a ++ valueSites es engine schemas cat A F T b
+  | .project r xs => site r xs :: valueSites es engine schemas cat A F T r
+  | .aggregate r _ ms => site r (ms.map (·.arg)) :: valueSites es engine schemas cat A F T r
+  | .window r _ _ fns =>
+    site r (fns.filterMap fun | .agg m _ _ => some m.arg | _ => none) ::
+      valueSites es engine schemas cat A F T r
+where
+  site (r : Rel) (xs : List Expr) :=
+    (xs, (Write.relKinds schemas cat r).map Write.WKind.toKind, r.aeval cat A F T,
+      colEps es engine cat A F T r)
+
+/-- Does every value of the plan that a function that jumps computes come out the
+same on `engine` as on the reference (`jumpsExact`)? A site whose columns have no
+errors here (`colEps` gives none) passes only without such a function. -/
+def valuesExact (es : List EngineProfile) (engine : String) (schemas : Write.Schemas) (cat : Catalog)
+    (A : String → List AVal) (F : String → List Fact) (T : WindowKeys) (r : Rel) : Bool :=
+  (valueSites es engine schemas cat A F T r).all fun (xs, kinds, env, cs) =>
+    xs.all fun x => match cs with
+      | some cs => jumpsExact es engine kinds env cs x
+      | none => !(subExprs x).any (jumps kinds)
+
 /-- Does the plan read or write a single-precision column? Polars sums
-`Float32` in single precision (polars-sum-float), which no bound here covers. -/
+`Float32` in single precision (polars-sum-float-streaming), which no bound here covers. -/
 def hasFp32 (tj : Json) : Bool := (tj.compress.splitOn "\"fp32\"").length > 1
 
 /-- What `"epsilon"` says of a double `SUM` of exact values with no row cap,
@@ -829,11 +921,14 @@ def epsilonByEngine (es : List EngineProfile) (input : Json) : Except String Jso
             ("proved", Json.mkObj [("abs", toJson false)])]))
 
 /-- `"rows_exact"` of a `--contract` request: per engine, whether the plan
-keeps the same rows and groups under each column's `ε` (`rowsExact`). Where
-it may not, a route needs a shim or a precondition on the threshold. -/
+keeps the same rows and groups under each column's `ε` (`rowsExact`), and
+computes the same values where a function jumps (`valuesExact`, ruling 275).
+Where it may not, a route needs a shim or a precondition on the threshold. -/
 def rowsExactByEngine (es : List EngineProfile) (input : Json) : Except String Json := do
-  let some ⟨_, _, cat, A, F, _, root, T⟩ ← inputs? input | return Json.mkObj []
-  return Json.mkObj <| es.map fun e => (e.name, toJson (rowsExact es e.name cat A F T root))
+  let some ⟨_, plan, cat, A, F, _, root, T⟩ ← inputs? input | return Json.mkObj []
+  let schemas := Write.planSchemas plan
+  return Json.mkObj <| es.map fun e => (e.name, toJson
+    (rowsExact es e.name cat A F T root && valuesExact es e.name schemas cat A F T root))
 
 /-- `"margin_checks"` of a `--contract` request (#929): the margin check of
 each threshold filter on a double `SUM` that no static bound decides, as a
@@ -927,8 +1022,9 @@ root, 0 for an input or a join's left side, 1 for the right; `json_path` the
 same in the written JSON, `Rel.jsonPath`), its shape
 (`AsofForm`), the keys as (left column, right column) pairs, `lon` and
 `ron` (the left columns are the join's left input's, the right ones the
-right input's own), whether it is a LEFT join and whether it has more
-conjuncts (a tolerance). `Report.run` evaluates the count on the engine
+right input's own), whether it is a LEFT join, whether it has more
+conjuncts (a tolerance) and whether it has the shape that keeps one row per
+left row (`left_exact`, `AsofSite.left_exactly_one`). `Report.run` evaluates the count on the engine
 before the plan and refuses the run above the cap `asof_join` states,
 whatever the rows come from. -/
 def asofChecksJson (input : Json) : Except String Json := do
@@ -940,7 +1036,7 @@ def asofChecksJson (input : Json) : Except String Json := do
       ("form", toJson s.form.name),
       ("keys", toJson (s.keys.map fun (l, r) => [l, r])), ("lon", toJson s.lon),
       ("ron", toJson s.ron), ("outer", toJson (s.type == .left)),
-      ("tolerance", toJson !s.rest.isEmpty)]
+      ("tolerance", toJson !s.rest.isEmpty), ("left_exact", toJson (s.leftExact cat))]
 
 /-- Where an output column comes from, as far as window aggregates of doubles
 go (#1032): a window's double `SUM` or `AVG` over its input `r`, a value that
@@ -1049,7 +1145,7 @@ it, and a tolerance that either bound meets is met.
 reads, on every engine, the same values in the same rows and groups as the
 reference (`colEps`), in a plan without single-precision columns, where
 every engine's `sum_order` is a proved order (`ordersProved`). -/
-def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
+def epsilonCore (es : List EngineProfile) (input : Json) : Except String Json := do
   let some ⟨tj, plan, cat, A, F, _, root, T⟩ ← inputs? input | return Json.mkObj []
   let wins := winSrcs es cat root
   let winNames := if plan.names.length == wins.length then plan.names
@@ -1116,7 +1212,7 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
         c.map fun m => (name, m)
     | none => []
   let statJson := stats.map fun (name, (m? : Option Measure)) =>
-    (name, match m?.bind (statEps env · r.maxRows) with
+    (name, match m?.bind (fun m => statEps (statTolOn (statGroup m) es) env m r.maxRows) with
     | some e =>
       -- Proved on the engines of `statsProvedOn`, tested on the others.
       let p := m?.any fun m => statProvedFn m && same m
@@ -1130,6 +1226,32 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
   let known := cols ++ statJson.filter fun (n, _) => !cols.any (·.1 == n)
   return Json.mkObj (known.filter (fun (n, _) => !winCols.any (·.1 == n)) ++ winCols ++
     marked.filter fun (n, _) => !known.any (·.1 == n) && !winCols.any (·.1 == n))
+
+/-- `epsilonCore`'s answer, with an entry for every double output column it leaves out
+(#2573, ruling 283 E1): the column's error as `colEps` gives it, the largest over the engines
+(zero where every engine computes it exactly: a maximum, a passed-through input), and no bound
+where an engine's `colEps` gives none. An unhandled shape means no bound, never exact. -/
+def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
+  let core ← epsilonCore es input
+  let some ⟨_, plan, cat, A, F, _, root, T⟩ ← inputs? input | return core
+  let kinds := (Write.relKinds (Write.planSchemas plan) cat plan.root).map Write.WKind.toKind
+  let names := if plan.names.length == kinds.length then plan.names
+    else (List.range kinds.length).map (s!"#{·}")
+  let present : List String := match core with
+    | .obj kvs => kvs.toList.map (·.1)
+    | _ => []
+  let perEngine := (es.map (·.name)).map fun engine => colEps es engine cat A F T root
+  let extra := ((names.zip kinds).zipIdx).filterMap fun ((name, k), i) =>
+    if k != .float || present.contains name then none
+    else
+      let bs := perEngine.map fun cs? => cs?.bind (·.getD i none)
+      if bs.all Option.isSome && !bs.isEmpty then
+        let e := bs.foldl (fun acc b => max acc (b.map (·.1) |>.getD 0)) 0
+        some (name, boundJson e none (bs.all fun b => b.any (·.2)))
+      else some (name, Json.mkObj [("abs", Json.null)])
+  match core with
+  | .obj kvs => return Json.mkObj (kvs.toList ++ extra)
+  | _ => return core
 
 /-! ## The dependency report of a contract
 
@@ -1146,6 +1268,8 @@ knows more, the columns' types and what the preconditions rule out, and its
   double side;
 * `min_mod_neg_one`, where every integer `%`'s dividend is bounded above
   `-2⁶³` by the preconditions;
+* `list_null_order`, where no call that reads it takes an argument that may be
+  a list (`listOrders`): its scope is a list argument (#2439);
 * a value-side or open option of an expression whose result reaches neither
   the output nor the rows kept (`liveReads`): a projected column nothing reads.
   An error-side option counts wherever it is met, since an engine may still
@@ -1165,20 +1289,38 @@ def aggNodes : Rel → List (Rel × List Expr × List Measure)
   | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ => aggNodes a ++ aggNodes b
   | .aggregate r gs ms => (r, gs, ms) :: aggNodes r
 
-/-- The subexpressions of an expression (a lambda's body aside: its column is not the row's). -/
-def subExprs : Expr → List Expr
-  | e@(.lit _) | e@(.field _) => [e]
-  | e@(.un _ a) => e :: subExprs a
-  | e@(.bin _ a b) => e :: (subExprs a ++ subExprs b)
-  | e@(.ifThen c t f) => e :: (subExprs c ++ subExprs t ++ subExprs f)
-  | e@(.hof _ l _) => e :: subExprs l
-
 /-- Does a comparison (`cmp`) compare doubles? -/
 def cmpDouble (cols : List Kind) : Expr → Bool
   | .un f a => (Functions.rowOf (.un f)).any (·.group == "cmp") && a.kind cols == .float
   | .bin f a b => (Functions.rowOf (.bin f)).any (·.group == "cmp") &&
       (a.kind cols == .float || b.kind cols == .float)
   | _ => false
+
+/-- May a value of this kind be a list: a list, a struct (whose fields may be),
+or a kind the analysis does not know. -/
+def mayListKind : Kind → Bool
+  | .list _ | .struct _ | .other => true
+  | _ => false
+
+/-- Does a call that reads `list_null_order` (`ctorReads`: `MIN`, `MAX`, `list_lt`, …)
+take an argument that may be a list? Its scalar calls are found in `exprs` (each with its
+input's kinds), and its measures, a window's among them, in `aggNodes`. Where none does,
+no call meets the option's scope (`optionScope`, #2439). -/
+def listOrders (schemas : Write.Schemas) (cat : Catalog) (exprs : List (Expr × List Kind))
+    (r : Rel) : Bool :=
+  exprs.any (fun (e, cols) => (subExprs e).any (onList cols)) ||
+    (aggNodes r).any fun (a, _, ms) => ms.any fun m =>
+      let cols := (Write.relKinds schemas cat a).map Write.WKind.toKind
+      (reads (.agg m.fn) && mayListKind (m.arg.kind cols)) ||
+        (m.arg :: m.filter.toList).any fun e => (subExprs e).any (onList cols)
+where
+  reads (c : Functions.Ctor) : Bool := (ctorReads c).any (·.2.1 == "list_null_order")
+  onList (cols : List Kind) : Expr → Bool
+    | .un f a => reads (.un f) && mayListKind (a.kind cols)
+    | .bin f a b => reads (.bin f) && (mayListKind (a.kind cols) || mayListKind (b.kind cols))
+    -- A lambda's body sees the elements, whose kinds `cols` does not give.
+    | .hof _ _ b => b.ctors.any reads
+    | _ => false
 
 /-- Does a grouping, `DISTINCT` or join compare doubles as keys? -/
 def doubleKeys (schemas : Write.Schemas) (cat : Catalog) : Rel → Bool
@@ -1284,6 +1426,8 @@ def dependsReads (input : Json) : Except String (Option (List Read)) := do
   let ctx := exprCtx (Write.planSchemas plan) cat A F T plan.root
   let cmp := ctx.any fun (e, cols, _) => (subExprs e).any (cmpDouble cols)
   let minMod := ctx.any fun (e, _, env) => (subExprs e).any (minModPossible env)
+  let lists := listOrders (Write.planSchemas plan) cat (ctx.map fun (e, cols, _) => (e, cols))
+    plan.root
   -- Error-side options count wherever they are met (an engine may evaluate a
   -- column nothing reads, and raise); the others where they reach the output.
   let live := liveReads cat plan.root (List.range (plan.root.arity cat))
@@ -1293,7 +1437,7 @@ def dependsReads (input : Json) : Except String (Option (List Read)) := do
     fun (g, o, _) =>
     !(g == "rel.keys" && !keys) && !(o == "empty_group_aggregates" && !empty) &&
       !(g == "cmp" && !cmp) &&
-      !(o == "min_mod_neg_one" && !minMod)
+      !(o == "min_mod_neg_one" && !minMod) && !(o == "list_null_order" && !lists)
   return some reads
 
 /-- `"depends"` of a `--contract` request. -/

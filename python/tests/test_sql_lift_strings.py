@@ -93,7 +93,7 @@ def test_oracles_a_and_c(query):
 
 @pytest.mark.parametrize("query", [q for q in QUERIES if isinstance(q, str)])
 def test_the_reference_lift_is_checked_too(query):
-    plan = json.dumps(lift(query, SCHEMAS, "reference").plan)
+    plan = json.dumps(lift(query, SCHEMAS, "portable").plan)
     code, out, err = run_checker((), plan)
     assert code == 0, err or out
 
@@ -119,6 +119,7 @@ def test_the_reference_lift_is_checked_too(query):
         ("SELECT regexp_replace(customer, 'a', 'b', 'i') FROM orders", "only 'g'"),
         ("SELECT lpad(customer, qty, 'x') FROM orders", "lpad needs a constant int"),
         ("SELECT rpad(customer, 3, '') FROM orders", "empty fill"),
+        ("SELECT lpad(customer, 1100000000, 'x') FROM orders", "more than 1048576"),
         ("SELECT split_part(customer, ',', qty) FROM orders", "constant int"),
         ("SELECT right(customer, qty * 1.5) FROM orders", "right by a"),
     ],
@@ -201,3 +202,14 @@ def test_simple_regex_is_leans(p):
     plan = json.dumps(lift("SELECT regexp_extract(s, 'a') AS e FROM t", {"t": SCHEMA_T}).plan)
     code, out, err = run_checker((), plan.replace('"a"', json.dumps(p)))
     assert (code == 0) == simple_regex(p), (p, err or out)
+
+
+def test_a_long_fill_under_the_bound_builds_only_n_characters():
+    """`lpad`'s fill constant is `p` repeated as often as `n` needs, not `n`
+    times (#2135): a 1,000-character fill to `PAD_MAX` characters writes a
+    constant of `PAD_MAX` characters, not of a billion."""
+    from sverify.sql_lift.strings import PAD_MAX
+
+    fill = "ab" * 500
+    plan = json.dumps(lift(f"SELECT lpad(customer, {PAD_MAX}, '{fill}') FROM orders", SCHEMAS).plan)
+    assert PAD_MAX <= len(plan) < 2 * PAD_MAX

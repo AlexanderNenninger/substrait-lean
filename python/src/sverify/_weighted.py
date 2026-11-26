@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import functools
 import threading
+import weakref
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
@@ -162,12 +163,32 @@ def split(z: pa.Table) -> tuple[pa.Table, pa.Table]:
 
 class ChangeLog[T]:
     """A table's changes by version, the last `keep` of them (all if None).
-    It holds every change after version `floor`."""
+    It holds every change after version `floor`.
+
+    A source's readers report the version each has durably committed
+    (`consumed`): written to its sink, or refreshed where it has none,
+    and the log drops the changes every reader has read: a source then keeps
+    the changes no reader has, not every change since it was built (#1329).
+    A reader older than the log, one it no longer counts, gets the whole
+    table to diff (`since` is None), so dropping a change costs time, never
+    a result."""
 
     def __init__(self, keep: int | None = None, floor: int = 0) -> None:
         self.keep = keep
         self.floor = floor
         self.entries: list[tuple[int, T]] = []
+        self.readers: weakref.WeakKeyDictionary[object, int] = weakref.WeakKeyDictionary()
+        """Each reader's committed version; a reader that is gone counts no more."""
+
+    def consumed(self, reader: object, version: int) -> None:
+        """`reader` has durably committed `version`: drop the changes every
+        reader has read. The change at the oldest reader's version stays: a
+        sink reads its cursor there (`at`) once that reader commits."""
+        self.readers[reader] = version
+        oldest = min(self.readers.values())
+        if oldest > self.floor:
+            self.entries = [(v, c) for v, c in self.entries if v >= oldest]
+            self.floor = oldest
 
     def add(self, version: int, change: T) -> None:
         self.entries.append((version, change))

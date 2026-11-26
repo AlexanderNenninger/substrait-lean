@@ -1,0 +1,79 @@
+# What a user of jaffle_shop would declare, so that the tests on
+# the staging models follow from them (measure.py --overlay). Copied into the
+# project's models/ at the pinned commit; dbt runs every test below, so a false
+# assumption shows up as a dbt failure in the record.
+version: 2
+
+# `dbt_utils.accepted_range` bounds the payments, a stopgap: a sum of doubles
+# is only known to have a value where its terms are known to be finite.
+packages:
+  - package: dbt-labs/dbt_utils
+    version: 1.3.0
+
+seeds:
+  - name: raw_customers
+    columns:
+      - name: id
+        tests: [unique, not_null]
+
+  - name: raw_orders
+    columns:
+      - name: id
+        tests: [unique, not_null]
+      - name: user_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('raw_customers')
+              field: id
+      - name: status
+        tests:
+          - accepted_values:
+              values: ['placed', 'shipped', 'completed', 'return_pending', 'returned']
+
+  - name: raw_payments
+    columns:
+      - name: id
+        tests: [unique, not_null]
+      - name: order_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('raw_orders')
+              field: id
+      - name: amount
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100000000
+      - name: payment_method
+        tests:
+          - accepted_values:
+              values: ['credit_card', 'coupon', 'bank_transfer', 'gift_card']
+
+# What sverify-dbt suggests for orders.not_null(customer_id): a model's
+# preconditions are the tests its direct inputs declare, so the test goes on
+# stg_orders, where the seed's not_null(user_id) proves it.
+models:
+  - name: stg_orders
+    columns:
+      - name: customer_id
+        tests: [not_null]
+      - name: order_id
+        tests:
+          # Every order has a payment, which dbt's own test confirms on the
+          # data: with it, `orders` left-joins the per-order payment sums and
+          # each amount column is as non-NULL as the sums are (#2512).
+          - relationships:
+              to: ref('stg_payments')
+              field: order_id
+
+  - name: stg_payments
+    columns:
+      - name: amount
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1000000

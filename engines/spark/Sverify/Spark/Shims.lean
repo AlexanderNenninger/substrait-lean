@@ -39,8 +39,8 @@ shim another engine writes the same way, `Shim.<name>` (`engines/Sverify/Engines
   reference raises (spark-int-arith, spark-int-divide); a zero divisor
   raises; `0 · ∞`, `∞ - ∞` and `sqrt(-1)` are NaN (spark-double-arith,
   spark-math-domain); `date_add` wraps past 2³¹ days (SP-2). None needs a
-  shim: `Profile.sparkWritten_okImpl_faithful`, hence `Rel.spark_sound`
-  (`Spark/Engine.lean`), as `Rel.polars_sound` is for Polars.
+  shim: the generated lowering raises there (`Lowering.spark`), hence
+  `Rel.spark_sound` (`Spark/Engine.lean`), as `Rel.polars_sound` is for Polars.
 -/
 
 namespace Substrait.Spark

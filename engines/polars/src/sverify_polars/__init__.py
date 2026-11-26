@@ -23,7 +23,7 @@ from typing import Any, Literal
 
 from sverify import _meta
 
-if getattr(_meta, "PLUGIN_API", None) != 4:
+if getattr(_meta, "PLUGIN_API", None) != 5:
     raise ImportError(
         f"{__name__.replace('_', '-')} {_version(__name__.replace('_', '-'))} "
         f"needs a sverify of its own build, found sverify {_meta.VERSION}: "
@@ -179,6 +179,7 @@ PLUGIN = ProfilePlugin(
         "int_div_trunc": "integer division rewritten to truncate",
         "int_mod_trunc": "integer remainder rewritten to truncate",
         "one_zero": "-0.0 written as 0.0",
+        "round: 0.0 for a negative value that rounds to zero": "rounding to zero written as 0.0",
         "avg_int_declared": "the mean of integers cast to its declared type",
         "round_half_away": "rounding rewritten to round half away from zero",
         "decimal_round_half_away": "decimal rounding rewritten to round half away from zero",

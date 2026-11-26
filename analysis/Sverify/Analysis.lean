@@ -1,5 +1,6 @@
 import Sverify.Analysis.AllowedAnalysis
 import Sverify.Analysis.AnalysisCongr
+import Sverify.Analysis.AsofExact
 import Sverify.Analysis.AsofSite
 import Sverify.Analysis.AssumedCheck
 import Sverify.Analysis.Choices
@@ -37,6 +38,8 @@ import Sverify.Analysis.Pruning
 import Sverify.Analysis.Quarantine
 import Sverify.Analysis.Refines
 import Sverify.Analysis.Refresh
+import Sverify.Analysis.LeftFk
+import Sverify.Analysis.RefreshSnapshot
 import Sverify.Analysis.Retention
 import Sverify.Analysis.Rows
 import Sverify.Analysis.Safety

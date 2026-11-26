@@ -9,7 +9,7 @@ import math
 import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from datetime import date, datetime, timedelta
 from fractions import Fraction
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -19,8 +19,8 @@ if TYPE_CHECKING:
 
 from sverify import _case_tables, _decimals, _functions, _plan_read, _support, black_box
 from sverify._functions import FixedKind
-from sverify._support import DUCKDB_ONLY, ISSUE_271
-from sverify._unsupported import ISSUE_1725
+from sverify._support import ISSUE_2540
+from sverify._unsupported import DECIMAL_38_38, ISSUE_1725
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify.black_box import BlackBox
 
@@ -44,7 +44,9 @@ class Lst:
 
 
 Kind = (
-    Literal["int", "float", "time", "instant", "date", "interval", "str", "bool", "tod"] | Dec | Lst
+    Literal["int", "float", "time", "timeNs", "instant", "date", "interval", "str", "bool", "tod"]
+    | Dec
+    | Lst
 )
 
 #: The constructors of `Substrait.Issue` (`core/Sverify/Core/Issue.lean`), which a
@@ -76,6 +78,8 @@ _RAISED: dict[str, GuardIssue] = {
     "domain error": "domain",
     "negative exponent": "negExponent",
     "integer overflow": "wraps",
+    # A date past the reference's calendar (`rangeIssue`, Spark's `date_add` template).
+    "overflow": "overflow",
 }
 
 
@@ -85,12 +89,14 @@ def raised_issue(message: str) -> GuardIssue:
 
 
 """What a value is in SQL. `time` is a microsecond TIMESTAMP without time
-zone, `tod` a microsecond TIME of day, `interval` a day/second interval of
-microseconds. `None` (unknown) is
-used for columns whose Substrait type the model does not know."""
+zone, `timeNs` a nanosecond one (D61), `tod` a microsecond TIME of day,
+`interval` a day/second interval of microseconds. `None` (unknown) is used for
+columns whose Substrait type the model does not know."""
 
 LeanKind = (
-    Literal["int", "float", "time", "instant", "date", "str", "bool", "tod", "other"] | Dec | Lst
+    Literal["int", "float", "time", "timeNs", "instant", "date", "str", "bool", "tod", "other"]
+    | Dec
+    | Lst
 )
 """`Parse.Kind`: what Lean's parser knows about a value. The parser decides
 between integer and double arithmetic by it, so this module tracks it too."""
@@ -161,6 +167,12 @@ class Dialect:
     writer prints the class's canonical value: `"extreme"` (`MIN`, `MAX`) and
     `"keys"` (group keys and `DISTINCT` rows)."""
 
+    nan_orders: ClassVar[bool] = False
+    """The engine compares and sorts doubles as `Value.le` does: NaN equal to
+    NaN and above `+∞` (an engine fact, e.g. `duckdb-nan-order`). Then `=`,
+    `<` and sort keys are the engine's own; else NaN is ranked apart
+    (`float_rank`)."""
+
     name: str
     guards: bool = True
     """Write the run-time checks of `analysis/Sverify/Analysis/Safety.lean`'s issues:
@@ -179,15 +191,20 @@ class Dialect:
     the model's exact one does not (ruling 200 A4(2)), so only the aggregates
     keep the check. `False` writes none."""
 
-    def to_duckdb(self, reason: str, issue: str = ISSUE_271, rewrite: str = "") -> Unsupported:
+    not_yet: ClassVar[str] = ISSUE_2540
+    """What this dialect's refusals of what its writer does not write yet
+    name: #2540, or the dialect's own."""
+
+    def to_duckdb(self, reason: str, issue: str | None = None, rewrite: str = "") -> Unsupported:
         """A refusal of this dialect for `reason`, where DuckDB's writer
         writes the construct: the exit is `rewrite` (a change to the plan),
         when there is one, or `engine="duckdb"`; `issue` tracks this
-        dialect's."""
+        dialect's (`not_yet` by default)."""
+        issue = issue or self.not_yet
         exit_ = f"{rewrite}, or run it" if rewrite else "run it"
         return Unsupported(f"{reason}: {exit_} with engine='duckdb' ({issue})")
 
-    def not_written(self, what: str, issue: str = ISSUE_271) -> Unsupported:
+    def not_written(self, what: str, issue: str | None = None) -> Unsupported:
         """The refusal of `what`, a construct this dialect's writer does not
         write yet (`to_duckdb`)."""
         return self.to_duckdb(f"the {self.name} writer does not write {what} yet", issue)
@@ -212,7 +229,7 @@ class Dialect:
     def fit_int(self, mode: str, bits: int, op: str, args: list[str]) -> str:
         """`overflow` = `mode` (`SILENT` or `SATURATE`) of `op` (`+`, `-`, `*`, or
         `-` negating one argument) at `bits` bits (`UnFn.fit`, #241)."""
-        raise self.not_written(f"overflow = {mode}", "see #271")
+        raise self.not_written(f"overflow = {mode}")
 
     def lowered(
         self, fn: str, args: list[str], kind: Kind, consts: Sequence[float | int | None] = ()
@@ -240,6 +257,7 @@ class Dialect:
             "int": "BIGINT",
             "float": "DOUBLE PRECISION",
             "time": "TIMESTAMP",
+            "timeNs": "TIMESTAMP_NS",
             "instant": "TIMESTAMP WITH TIME ZONE",
             "date": "DATE",
             "tod": "TIME",
@@ -456,6 +474,11 @@ class Dialect:
         """Decimal digits with a leading `-` for negatives (Lean's `toString`)."""
         return self.cast(a, "str")
 
+    def decimal_to_str(self, a: str, p: int, s: int) -> str:
+        """A `DECIMAL(p, s)`'s text (D72): `-` for a negative value, the integer part with at
+        least one digit, then `.` and exactly `s` digits (none for `s = 0`)."""
+        return self.cast(a, "str")
+
     def float_floor(self, x: str) -> str:
         """Exact; NaN/±inf stay."""
         return f"FLOOR({x})"
@@ -467,6 +490,11 @@ class Dialect:
     def float_round(self, x: str) -> str:
         """To an integer, halves away from zero; NaN/±inf stay."""
         return f"ROUND({x})"
+
+    def float_round_even(self, x: str) -> str:
+        """`UnFn.froundEven` (D55): to an integer, halves to the even one;
+        NaN/±inf stay. A dialect writes it once its engine's facts say how."""
+        raise self.not_written("ROUND with rounding TIE_TO_EVEN")
 
     def float_round_to(self, x: str, digits: int) -> str:
         """`ROUND(x, d)` as `FloatCode.roundTo` (DuckDB 2.0's, #335): with
@@ -508,12 +536,12 @@ class Dialect:
     def float_to_int_or_null(self, x: str) -> str:
         """`TRY_CAST(x AS BIGINT)` (`UnFn.ftoiOrNull`, #58): truncation toward
         zero, NULL for NaN, ±inf and values outside 64 bits."""
-        raise Unsupported(f"TRY_CAST is not yet supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"TRY_CAST is not yet supported on {self.name}")
 
     def narrow_or_null(self, x: str, bits: int) -> str:
         """`TRY_CAST(x AS INT)` to `bits` bits (`UnFn.narrowOrNull`, #58): `x`,
         or NULL where it does not fit."""
-        raise Unsupported(f"TRY_CAST is not yet supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"TRY_CAST is not yet supported on {self.name}")
 
     def is_nan(self, x: str) -> str:
         """TRUE for NaN, NULL for NULL."""
@@ -541,11 +569,15 @@ class Dialect:
 
     def float_eq(self, a: str, b: str) -> str:
         """Equality of doubles: NaN = NaN (IEEE has NaN <> NaN)."""
+        if self.nan_orders:
+            return f"({a} = {b})"
         ra, rb = self.float_rank(a), self.float_rank(b)
         return f"({ra} = {rb} AND ({ra} = 1 OR {a} = {b}))"
 
     def float_lt(self, a: str, b: str) -> str:
         """`<` of doubles: NaN is above everything else."""
+        if self.nan_orders:
+            return f"({a} < {b})"
         ra, rb = self.float_rank(a), self.float_rank(b)
         return f"({ra} < {rb} OR ({ra} = 0 AND {rb} = 0 AND {a} < {b}))"
 
@@ -605,15 +637,11 @@ class Dialect:
     def time_add(self, t: str, micros: int) -> str:
         """A time of day plus `0 ≤ micros` < a day, wrapping around midnight
         (`Time.timeOfDay` of the sum)."""
-        raise Unsupported(
-            f"a time of day plus an interval is not yet supported on {self.name}; " + DUCKDB_ONLY
-        )
+        raise self.to_duckdb(f"a time of day plus an interval is not yet supported on {self.name}")
 
     def time_trunc(self, unit: str, t: str) -> str:
         """`Time.trunc` of a time of day, to a unit of an hour or less."""
-        raise Unsupported(
-            f"truncating a time of day is not yet supported on {self.name}; " + DUCKDB_ONLY
-        )
+        raise self.to_duckdb(f"truncating a time of day is not yet supported on {self.name}")
 
     def time_of_day(self, ts: str) -> str:
         """`Time.timeOfDay`: the TIME of a timestamp."""
@@ -634,15 +662,11 @@ class Dialect:
 
     def date_time(self, d: str) -> str:
         """`UnFn.dateTime`: a DATE as the TIMESTAMP of its midnight (#807)."""
-        raise Unsupported(
-            f"a DATE as a TIMESTAMP is not yet supported on {self.name}; " + DUCKDB_ONLY
-        )
+        raise self.to_duckdb(f"a DATE as a TIMESTAMP is not yet supported on {self.name}")
 
     def epoch_us(self, ts: str) -> str:
         """`UnFn.epochUs`: a timestamp's microseconds since 1970-01-01 (#809)."""
-        raise Unsupported(
-            f"a timestamp's microseconds are not yet supported on {self.name}; " + DUCKDB_ONLY
-        )
+        raise self.to_duckdb(f"a timestamp's microseconds are not yet supported on {self.name}")
 
     def zero_pad(self, n: str, width: int) -> str:
         """The integer `n ≥ 0` in decimal, padded with zeros to `width` digits
@@ -767,27 +791,27 @@ class Dialect:
         """`source` joined with the elements of its list column `lst`, as
         `alias(e, i)`: element and 1-based position, no row for a NULL or
         empty list (`Rel.unnest`, #94)."""
-        raise Unsupported(f"unnest is not yet supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"unnest is not yet supported on {self.name}")
 
     def list_lit(self, items: list[str], kind: Lst) -> str:
         """A list literal of the SQL items, of kind `kind` (#94)."""
-        raise Unsupported(f"lists are not yet supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"lists are not yet supported on {self.name}")
 
     def list_element(self, x: str, offset: int) -> str:
         """`UnFn.listElement`: zero-based, from the end for a negative offset,
         NULL out of range (#94)."""
-        raise Unsupported(f"lists are not yet supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"lists are not yet supported on {self.name}")
 
     def cardinality(self, x: str) -> str:
         """`UnFn.cardinality`: the number of elements, NULL ones included."""
-        raise Unsupported(f"lists are not yet supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"lists are not yet supported on {self.name}")
 
     def list_fn(self, name: str, args: list[str]) -> str:
         """DuckDB's list functions (#810, #812): `list_prepend`,
         `list_concat`, `list_contains`, `list_position` (`BinFn` of the same
         names) and `flatten` (`UnFn.flatten`). New functions run on DuckDB
         only (#271)."""
-        raise Unsupported(f"{name} is not supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"{name} is not supported on {self.name}")
 
     def list_lt(self, a: str, b: str) -> str:
         """`Value.listLt3`: `a < b` of two lists, lexicographically; a proper
@@ -945,15 +969,13 @@ class Dialect:
         """`AggFn.pick` over the frame `w` (#811): the frame's first or last
         non-NULL value of `v` in the window's order, NULL without one
         (`FIRST_VALUE(v IGNORE NULLS)`). New on DuckDB only (#271)."""
-        raise Unsupported(f"{fn} over a window is not supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"{fn} over a window is not supported on {self.name}")
 
     def window_string_agg(self, v: str, sep: str, order: Sequence[str], w: str) -> str:
         """`AggFn.concat` over the frame `w` (#1915): the frame's non-NULL
         strings ordered by `order` (the window's sort keys), joined by `sep`; NULL without values.
         New on DuckDB only (#271)."""
-        raise Unsupported(
-            f"string_agg over a window is not supported on {self.name}; " + DUCKDB_ONLY
-        )
+        raise self.to_duckdb(f"string_agg over a window is not supported on {self.name}")
 
     def string_agg(self, v: str, sep: str, order: Sequence[str]) -> str:
         """`AggFn.concat` (#55): the strings of the column `v`, NULLs skipped,
@@ -995,7 +1017,7 @@ class Dialect:
     def float_extreme(self, fn: str, v: str, over: str) -> str:
         """`AggFn.min`/`max` (`fn` is `MIN` or `MAX`) of the doubles of `v`, over
         the window `over` or the group: by their codes, NaN above `+∞` (#371)."""
-        raise Unsupported(f"{fn} of doubles is not yet supported on {self.name}; " + DUCKDB_ONLY)
+        raise self.to_duckdb(f"{fn} of doubles is not yet supported on {self.name}")
 
     # Three-valued logic and comparisons (NULL-propagating)
 
@@ -1185,6 +1207,23 @@ def _timestamp_text(micros: int) -> str:
     return f"{ts.year:04d}-" + ts.strftime("%m-%d %H:%M:%S.%f")
 
 
+def _decimal_text(unscaled: int, scale: int) -> str:
+    """`decText` (D72): the digits of `unscaled / 10 ** scale`, `scale` of them after the
+    point, with a `-` for a negative value."""
+    sign = "-" if unscaled < 0 else ""
+    digits = str(abs(unscaled))
+    if scale == 0:
+        return sign + digits
+    digits = digits.rjust(scale + 1, "0")
+    return f"{sign}{digits[:-scale]}.{digits[-scale:]}"
+
+
+def _keeps_decimal_text(ty: dict, c: Const) -> bool:
+    """`Parse.keepsDecimalText`: a `DECIMAL(p, p)` cast to a string stays a call (its text
+    depends on the engine, D72), so a constant does not fold it."""
+    return "string" in ty and c.tag == "dec" and c.precision == c.scale
+
+
 def _date_text(days: int) -> str:
     try:
         return (date(1970, 1, 1) + timedelta(days=days)).isoformat()
@@ -1212,9 +1251,9 @@ class Field:
 
 # The operations of `Un` and `Bin`, by area: a new one goes into its area's.
 CoreUnOp = Literal[
-    "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundTo", "ftoi",
-    "narrow", "itos", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null", "narrow_or_null",
-    "black_box", "raise",
+    "not", "is_null", "neg", "itof", "fneg", "ffloor", "fceil", "fround", "froundEven", "froundTo",
+    "ftoi", "narrow", "itos", "dtext", "fmath", "dtrunc", "dtof", "fit", "ftoi_or_null",
+    "narrow_or_null", "black_box", "raise",
 ]  # fmt: skip
 CoreBinOp = Literal[
     "add", "sub", "mul", "eq", "lt", "and", "or", "fadd", "fsub", "fmul", "fdiv", "fdivIeee",
@@ -1715,8 +1754,9 @@ def _lean_lit_kind(v: Any) -> LeanKind:
 #: it (`register`).
 UN_KINDS: dict[str, FixedKind] = {
     "itof": "float", "fneg": "float", "ffloor": "float", "fceil": "float", "fround": "float",
-    "froundTo": "float", "ftoi": "int", "ftoi_or_null": "int", "narrow_or_null": "int",
-    "narrow": "int", "fit": "int", "itos": "str", **_functions.kinds("core", un=True),
+    "froundEven": "float", "froundTo": "float", "ftoi": "int", "ftoi_or_null": "int",
+    "narrow_or_null": "int", "narrow": "int", "fit": "int", "itos": "str", "dtext": "str",
+    **_functions.kinds("core", un=True),
 }  # fmt: skip
 BIN_KINDS: dict[str, FixedKind] = {
     "fadd": "float", "fsub": "float", "fmul": "float", "fdiv": "float", "fdivIeee": "float",
@@ -1967,7 +2007,7 @@ def _decided(c: Expr) -> Expr:
             a = _decided(a)
             return (
                 Lit(not a.value, "bool")
-                if isinstance(a, Lit) and a.kind == "bool"
+                if isinstance(a, Lit) and a.kind == "bool" and a.value is not None
                 else Un("not", a)
             )
     return c
@@ -2044,8 +2084,13 @@ def _type_kinds(ty: Any) -> tuple[LeanKind, Kind | None]:
         case ("int" | "float" | "date" | "str" | "bool") as k, _:
             return k, k
         # Times are microseconds; a coarser precision is not modelled.
-        case ("time" | "instant" | "tod") as k, int() as p if p >= 6:
+        case ("time" | "instant" | "tod") as k, 6:
             return k, k
+        # Nanosecond timestamps (D61): a kind of their own, which the plan
+        # carries, compares, orders and takes the MIN and MAX of, and never
+        # mixes with microseconds.
+        case "time", 9:
+            return "timeNs", "timeNs"
         case "decimal", (p, sc):
             d = Dec(p, sc)
             return d, d
@@ -2204,6 +2249,8 @@ def _cast_const(ty: dict, c: Const) -> Const:
                 return Const("str", "true" if c.value else "false")
             if c.tag == "int" and c.kind == "date":
                 return Const("str", _date_text(c.value))
+            if c.tag == "dec":
+                return Const("str", _decimal_text(c.value, c.scale))
             raise WriterUnsupported("casts of this value to strings are not supported")
         # An instant literal: the microseconds of a timestamp literal, read at UTC (D53).
         case "instant":
@@ -2342,6 +2389,8 @@ def _arrow_cast(c: Const, ty: str) -> Const | None:
     elif ty == "Utf8":
         target = "string"
     else:
+        return None
+    if _keeps_decimal_text({target: {}}, c):
         return None
     try:
         return _cast_const({target: {}}, c)
@@ -2574,7 +2623,9 @@ class _Parser:
             return _const_literal(lit)
         if (c := _field(j, "cast")) is not None:
             x = self.const(_req(c, "input"))
-            return None if x is None else _cast_const(_req(c, "type"), x)
+            if x is None or _keeps_decimal_text(_req(c, "type"), x):
+                return None
+            return _cast_const(_req(c, "type"), x)
         if (f := _field(j, "scalarFunction")) is not None:
             name = self.fns.get(_nat_d(f, "functionReference"))
             if name is None:
@@ -2751,9 +2802,8 @@ class _Parser:
                 # A double literal is its code in Lean, which `lean_expr_kind`
                 # calls an integer; its declared kind says double (`doubleJ`).
                 has_float = any(
-                    lean_expr_kind(e, cols.lean) == "float"
-                    or (isinstance(e, Lit) and e.kind == "float")
-                    for e in parsed
+                    lean_expr_kind(e, cols.lean) == "float" or _declared_double(self.fns, a)
+                    for a, e in zip(arg_js, parsed, strict=True)
                 )
                 float_call = name in floats and (out == "float" or has_float or name in DOUBLE_FNS)
                 if fmod_ext and not float_call:
@@ -2787,6 +2837,7 @@ class _Parser:
                         if lean_expr_kind(e, cols.lean) == "int"
                         and not keep_int(k)
                         and not isinstance(e, Lit)
+                        and not _declared_double(self.fns, arg_js[k])
                         else e
                         for k, e in enumerate(parsed)
                     ]
@@ -2804,6 +2855,18 @@ class _Parser:
                     if name in ("divide", "modulus") and len(parsed) == 2 and mode != "ERROR":
                         op: Literal["fdiv", "fmod"] = "fdiv" if name == "divide" else "fmod"
                         return _div_by_zero(mode, True, lambda a, b: Bin(op, a, b), *parsed)
+                    if (
+                        name == "round"
+                        and _option(v, "rounding", "TIE_AWAY_FROM_ZERO") == "TIE_TO_EVEN"
+                    ):
+                        # D55: half to even, at zero digits only (`Parse`'s `round` arm).
+                        match parsed:
+                            case [a] | [a, Lit(value=0, kind="int")]:
+                                return Un("froundEven", a)
+                        raise Unsupported(
+                            "round: rounding TIE_TO_EVEN is only modelled at zero digits; "
+                            "round to 0 digits and scale, or use TIE_AWAY_FROM_ZERO"
+                        )
                     return _float_call(name, parsed)
                 mode = _div_by_zero_mode(v)
                 if name in ("divide", "modulus") and len(parsed) == 2:
@@ -2882,6 +2945,8 @@ class _Parser:
                         return Un("narrow", t, digits=bits)
                     if target == "float":
                         return Un("dtof", e)
+                    if target == "str":
+                        return Un("dtext", e, digits=k.p, param=str(k.s))
                     raise WriterUnsupported(f"unsupported cast from DECIMAL to {target}")
                 if k == "time" and _interval_type(_req(v, "type")):
                     return e
@@ -3770,7 +3835,7 @@ class _Parser:
                     arg = Un("itof", arg)
             case (
                 ("min" | "max"),
-                ("int" | "float" | "str" | "bool" | "time" | "instant" | "date"),
+                ("int" | "float" | "str" | "bool" | "time" | "timeNs" | "instant" | "date"),
             ):
                 fn = name
             case (("min" | "max" | "sum" | "avg"), _):
@@ -4029,10 +4094,6 @@ def _coalesce(a: Expr, rest: list[Expr]) -> Expr:
     if not rest:
         return a
     return If(Un("not", Un("is_null", a)), a, _coalesce(rest[0], rest[1:]))
-
-
-def _pick(better: Callable[[Expr, Expr], Expr], a: Expr, b: Expr) -> Expr:
-    return If(Un("is_null", a), b, If(Un("is_null", b), a, If(better(a, b), b, a)))
 
 
 def _option(f: dict, name: str, default: str) -> str:
@@ -5234,6 +5295,44 @@ class _Writer:
         )
         return self.select(items, d.subquery(top, b))
 
+    def sorted_root(self, root: Rel, names: Sequence[str]) -> str | None:
+        """Under a multiset observation, a root that is a sort, or a top-N, under
+        column selections: the result sorted by the sort's own keys, where it
+        would otherwise number the rows and sort them by the number (#2186).
+        Ties are open (`rows="multiset"`), so the keys alone give an order
+        `Rel.Allowed` allows. `None` for any other root."""
+        cols = list(range(len(names)))
+        r = root
+        while isinstance(r, Emit) and id(r) not in self.native:
+            cols = [r.mapping[j] for j in cols]
+            r = r.input
+        if id(r) in self.native:
+            return None
+        d = self.d
+        match r:
+            case OrderBy(input=src, keys=sort) if sort:
+                a = self.alias()
+                n = arity(src)
+                if any(k.col >= n for k in sort):
+                    return None
+                inner = self.rel(src, False)
+            case Fetch(input=OrderBy(input=src, keys=sort) as o, offset=off, count=cnt) if (
+                sort and id(o) not in self.native
+            ):
+                n = arity(src)
+                if any(k.col >= n for k in sort):
+                    return None
+                inner = self.top_n(src, sort, off, cnt, n, False)
+                a = self.alias()
+            case _:
+                return None
+        items = [
+            f"{self.ref(a, self.c(j))} AS {d.quote(name)}"
+            for j, name in zip(cols, names, strict=True)
+        ]
+        keys = self.sort_keys(a, sort, kinds(src))
+        return self.select(items, d.subquery(inner, a), "ORDER BY " + ", ".join(keys))
+
     def sort_keys(self, a: str, sort: Sequence[SortKey], ks: list[Kind | None]) -> list[str]:
         """ORDER BY keys for `sortLe sort` over subquery `a`, ties broken by its
         ordinal (Lean's merge sort is stable) unless the caller promised none."""
@@ -5548,7 +5647,7 @@ class _Writer:
     def sort_exprs(self, x: str, kind: Kind | None) -> list[tuple[str, Kind | None]]:
         """Expressions (and their kinds) that sort like `Value.le` on a column,
         NULL exactly when the value is NULL."""
-        if kind != "float":
+        if kind != "float" or self.d.nan_orders:
             return [(x, kind)]
         return [(self.d.float_rank(x), "int"), (x, "float")]
 
@@ -5627,6 +5726,8 @@ class _Writer:
                 return d.decimal_to_int(go(a, kind(a)))
             case Un(op="dtof", arg=a):
                 return d.decimal_to_float(go(a, kind(a)))
+            case Un(op="dtext", arg=a, digits=p, param=s):
+                return d.decimal_to_str(go(a, kind(a)), p, int(s))
             case Un(op="not", arg=a):
                 return d.not3(go(a, "bool"))
             case Un(op="raise", arg=a, param=msg):
@@ -5646,6 +5747,8 @@ class _Writer:
             case Un(op="ffloor" | "fceil" | "fround" as op, arg=a):
                 f = {"ffloor": d.float_floor, "fceil": d.float_ceil, "fround": d.float_round}[op]
                 return f(self.float_operand(a, ref, cols))
+            case Un(op="froundEven", arg=a):
+                return d.float_round_even(self.float_operand(a, ref, cols))
             case Un(op="froundTo", arg=a, digits=digits):
                 return d.float_round_to(self.float_operand(a, ref, cols), digits)
             case Un(op="ftoi", arg=a):
@@ -5739,9 +5842,14 @@ class _Writer:
                 plain = _nan_ruled_out(op, a, b) and op not in ("fdiv", "fmod")
                 consts = [_float_lit(a), _float_lit(b)]
                 # A finite number divided by a constant of at least 1 in size, or
-                # multiplied by one of at most 1, has no larger magnitude: no overflow.
-                shrinks = (op in ("fdiv", "fdivIeee") and abs(consts[1] or 0.0) >= 1.0) or (
-                    op == "fmul" and any(c is not None and abs(c) <= 1.0 for c in consts)
+                # multiplied by one of at most 1, has no larger magnitude: no overflow
+                # (`BinFn.shrinks_fin`). Nor divided by an integer as a double: zero
+                # raises first, and any other is at least 1 in size
+                # (`Expr.mayInfBin_sound`, #1787).
+                shrinks = (
+                    (op in ("fdiv", "fdivIeee") and abs(consts[1] or 0.0) >= 1.0)
+                    or (op == "fmul" and any(c is not None and abs(c) <= 1.0 for c in consts))
+                    or (op == "fdiv" and isinstance(b, Un) and b.op == "itof")
                 )
                 if not plain and (low := d.lowered(op, [sa, sb], "float", consts)) is not None:
                     if op == "fmod" or shrinks:
@@ -6423,8 +6531,35 @@ def to_sql(
     w.native = p.native
     if unchecked is not None:
         w.unchecked = unchecked_slots(p.root, unchecked)
+    if not w.seq and (sorted_root := w.sorted_root(p.root, names)) is not None:
+        return sorted_root
     ordered = order_matters(p.root) if w.seq else chain_orders(p.root)
     a = w.alias()
     items = [f"{w.ref(a, w.c(i))} AS {dialect.quote(name)}" for i, name in enumerate(names)]
     rest = f"ORDER BY {w.asc(w.ordinal(a))}" if ordered else ""
     return w.select(items, dialect.subquery(w.rel(p.root, ordered), a), rest)
+
+
+def _decimal_text_38(node: Any) -> bool:
+    """Does the core term `node` cast a `DECIMAL(38, 38)` to a string?"""
+    if isinstance(node, Un) and node.op == "dtext" and node.digits == 38 and node.param == "38":
+        return True
+    if is_dataclass(node) and not isinstance(node, type):
+        return any(_decimal_text_38(getattr(node, f.name)) for f in fields(node))
+    if isinstance(node, (list, tuple)):
+        return any(_decimal_text_38(x) for x in node)
+    return False
+
+
+def check_decimal_text(plan: Any, engine: str, err: type[Exception] = ValueError) -> None:
+    """Raise `err` for a plan that casts a `DECIMAL(38, 38)` to a string on DuckDB: its writer
+    has no wider decimal to print it from (D72, ruling 245, E6). The route check calls this, so
+    `verify` reports it before anything runs. A plan the writer cannot read is not refused here."""
+    if engine.lower() != "duckdb" or not isinstance(plan, dict):
+        return
+    try:
+        root = parse_plan(plan).root
+    except Unsupported:
+        return
+    if _decimal_text_38(root):
+        raise err(DECIMAL_38_38)

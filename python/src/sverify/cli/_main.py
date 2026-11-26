@@ -17,15 +17,7 @@ from typing import Any, NoReturn
 
 from sverify.cli import _contract, _explain, _findings, _formats
 from sverify.cli._common import (  # noqa: F401  (re-exported)
-    BUDGET,
-    ERROR,
-    HELD,
-    NO_ROUTE,
-    NOT_PROVED,
-    OK,
-    QUARANTINED,
-    UNSUPPORTED,
-    USAGE,
+    ExitCode,
     UsageError,
     split_target,
 )
@@ -39,30 +31,13 @@ from sverify.cli._limits import (
 from sverify.cli._sql import load_sql
 from sverify.cli._suggest import place
 
-EXIT_CODES = """\
-exit codes:
-  0  proved; a refresh committed every row
-  1  not proved
-  2  usage error: a flag, a missing file, a node the file lacks
-  3  unsupported: a construct outside sverify's model
-  4  time or memory budget exceeded
-  5  a refresh committed with rows quarantined
-  6  error: the file raised, I/O, a crash
-  7  refused: no route takes the proved node to the engine
-  8  a refresh held a node"""
-STATUS = {
-    OK: "proved",
-    NOT_PROVED: "not_proved",
-    USAGE: "usage",
-    UNSUPPORTED: "unsupported",
-    BUDGET: "budget_exceeded",
-    QUARANTINED: "quarantined",
-    ERROR: "error",
-    NO_ROUTE: "refused",
-    HELD: "held",
-}
+EXIT_CODES = "exit codes, from the best to the worst:\n" + "\n".join(
+    f"  {c.value}  {c.meaning}" for c in ExitCode
+)
 #: The version of the JSON document every command prints (`schemas/cli.schema.json`).
-FORMAT = 1
+#: Format 1, before 1.0, named a write's `inserts` and `deletes` `inserted` and
+#: `deleted` (#2345).
+FORMAT = 2
 FORMATS = ("text", "json", "github", "sarif")
 
 
@@ -113,19 +88,19 @@ def _classify(e: BaseException) -> tuple[int, str]:
             VerificationError,
         )
     except Exception:  # noqa: BLE001 - the import failure is the error being classified (#1585)
-        return ERROR, "error"
+        return ExitCode.ERROR, "error"
 
     if isinstance(e, BudgetExceeded):
-        return BUDGET, "memory" if e.what == "memory" else "timeout"
+        return ExitCode.BUDGET, "memory" if e.what == "memory" else "timeout"
     if isinstance(e, MemoryLimitError):
-        return BUDGET, "memory"
+        return ExitCode.BUDGET, "memory"
     if isinstance(e, UsageError | FileNotFoundError):
-        return USAGE, "usage"
+        return ExitCode.USAGE, "usage"
     if isinstance(e, UnsupportedError):
-        return UNSUPPORTED, "unsupported"
+        return ExitCode.UNSUPPORTED, "unsupported"
     if isinstance(e, VerificationError | PreconditionError | PostconditionError | AuditError):
-        return NOT_PROVED, "not_proved"
-    return ERROR, "error"
+        return ExitCode.NOT_PROVED, "not_proved"
+    return ExitCode.ERROR, "error"
 
 
 class Check:
@@ -154,23 +129,23 @@ class Check:
             self.error = _error(
                 "usage", text + (f"; it has {', '.join(found)}" if found else ""), "UsageError"
             )
-            self.code = USAGE
+            self.code = ExitCode.USAGE
         elif not self.checked and not unchecked:
             text = f"{d.path} defines no contracted transform (@sverify.transform)"
             self.error = _error("usage", text, "UsageError")
-            self.code = USAGE
+            self.code = ExitCode.USAGE
         elif any(c.status == "unfinished" for c in self.checked):
-            self.code = BUDGET
+            self.code = ExitCode.BUDGET
         elif (
             unchecked
             or any(c.status == "not_proved" for c in self.checked)
             or (require_proved and any(c.status == "checked" for c in self.checked))
         ):
-            self.code = NOT_PROVED
+            self.code = ExitCode.NOT_PROVED
         else:
-            self.code = OK
-        if budget.exceeded and self.code != BUDGET:
-            self.code = BUDGET
+            self.code = ExitCode.PROVED
+        if budget.exceeded and self.code != ExitCode.BUDGET:
+            self.code = ExitCode.BUDGET
             self.error = self.error or _error(
                 "timeout",
                 f"time budget exceeded ({budget.seconds:g} s); "
@@ -211,7 +186,7 @@ class Check:
     def compare_sinks(self) -> None:
         """`--against-sink` (#769, ruling 189): each stored node's contract
         against its sink's last committed one. Reads the record, no data. A
-        sink that cannot be read is an error of its own (exit 6)."""
+        sink that cannot be read is an error of its own (exit 8)."""
         from sverify.io._common import drift
         from sverify.nodes import _Stored
 
@@ -225,14 +200,14 @@ class Check:
             except BudgetExceeded:
                 raise
             except Exception as e:  # noqa: BLE001 - never reported as unchanged
-                self.code, self.error = ERROR, _error("error", f"{var}'s sink: {e}")
+                self.code, self.error = ExitCode.ERROR, _error("error", f"{var}'s sink: {e}")
                 return
             self.drift[var] = None if got is None else got.to_dict()
             if got is None:
                 continue
             self._drift_findings += _findings.drift(var, got)
-            if any(got.weakened.values()) and self.code in (OK,):
-                self.code = NOT_PROVED
+            if any(got.weakened.values()) and self.code == ExitCode.PROVED:
+                self.code = ExitCode.NOT_PROVED
 
     def document(self) -> dict[str, Any]:
         return {
@@ -310,7 +285,7 @@ class Check:
                 f"`sverify explain <code>` says what a [code] means ({', '.join(codes)}){more}."
             )
         if not self.checked:  # a node's line has said it otherwise
-            lines.append(STATUS[self.code].replace("_", " "))
+            lines.append(ExitCode(self.code).status.replace("_", " "))
         return "\n".join(lines)
 
     def render(self, fmt: str, full: bool) -> str:
@@ -335,7 +310,7 @@ def _emit(args: argparse.Namespace, code: int, result: dict, text: Callable[[], 
             "sverify": _version(),
             "command": args.command,
             "exit": code,
-            "status": result.pop("status", STATUS[code]),
+            "status": result.pop("status", ExitCode(code).status),
             **result,
         }
         print(json.dumps(doc, indent=2, default=str))
@@ -439,7 +414,7 @@ def cmd_check(args: argparse.Namespace) -> int:
                 "transform": f.transform,
                 "requires": f.conditions,
                 "placed": f.placed,
-                "reason": f.reason,
+                "why": f.why,
             }
             for f in plan.fixes
         ],
@@ -464,8 +439,8 @@ def cmd_check(args: argparse.Namespace) -> int:
             lines.append("No preconditions to add: no proof in the file needs one.")
     for f in plan.fixes:
         lines += [f"{f.transform}: requires {p}: {', '.join(cs)}" for p, cs in f.conditions.items()]
-        if f.reason:
-            lines.append(f"  not placed: {f.reason}")
+        if f.why:
+            lines.append(f"  not placed: {f.why}")
     if plan.fixes:
         lines.append(NARROWS)
     if diff:
@@ -485,7 +460,7 @@ def _dbt(args: argparse.Namespace, path: Path) -> int:
     if exe is None:
         message = "a dbt project: install sverify-dbt to check it (pip install sverify-dbt)"
         result = {"file": str(path), "error": _error("usage", message, "UsageError")}
-        return _emit(args, USAGE, result, lambda: message)
+        return _emit(args, ExitCode.USAGE, result, lambda: message)
     project = path if path.is_dir() else path.parent
     flags = [] if args.format == "text" else ["--format", args.format]
     if args.timeout is not None:
@@ -496,7 +471,9 @@ def _dbt(args: argparse.Namespace, path: Path) -> int:
 
 
 def _outcome_code(outcome: str) -> int:
-    return {"quarantined": QUARANTINED, "held": HELD}.get(outcome, OK)
+    return {"quarantined": ExitCode.QUARANTINED, "held": ExitCode.HELD}.get(
+        outcome, ExitCode.PROVED
+    )
 
 
 def cmd_refresh(args: argparse.Namespace) -> int:
@@ -539,7 +516,9 @@ def cmd_refresh(args: argparse.Namespace) -> int:
         if isinstance(e, RouteError):
             # Not proved, or proved with no route to the engine (refused).
             unproved = any(c.status == "not_proved" for c in d.select(target))
-            code, kind = (NOT_PROVED, "not_proved") if unproved else (NO_ROUTE, "refused")
+            code, kind = (
+                (ExitCode.NOT_PROVED, "not_proved") if unproved else (ExitCode.REFUSED, "refused")
+            )
         result["error"] = _error(kind, e)
         result["items"] = [_item(c) for c in d.select(target)]
         message = f"{kind}: {e}  [{kind}]"
@@ -562,8 +541,8 @@ def cmd_refresh(args: argparse.Namespace) -> int:
                 else {
                     "mode": w.mode,
                     "version": w.version,
-                    "inserted": w.inserted,
-                    "deleted": w.deleted,
+                    "inserts": w.inserts,
+                    "deletes": w.deletes,
                 },
             }
         )
@@ -571,7 +550,7 @@ def cmd_refresh(args: argparse.Namespace) -> int:
     code = _outcome_code(outcome)
     result["outcome"] = outcome
     result["memory_limit"] = args.memory_limit
-    if code != OK:
+    if code != ExitCode.PROVED:
         result["status"] = outcome
     alert = done.alert(rows=args.examples)
     result["alert"] = alert
@@ -589,13 +568,13 @@ def cmd_explain(args: argparse.Namespace) -> int:
         raise UsageError(f"{args.code!r} is no code of sverify's; the codes are {known}")
     code = _explain.code_of(args.code)
     result = {"code": code, "level": _explain.level_of(code), "text": text}
-    return _emit(args, OK, result, lambda: f"[{code}] {text}")
+    return _emit(args, ExitCode.PROVED, result, lambda: f"[{code}] {text}")
 
 
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> NoReturn:
         self.print_usage(sys.stderr)
-        self.exit(USAGE, f"{self.prog}: error: {message}\n")
+        self.exit(ExitCode.USAGE, f"{self.prog}: error: {message}\n")
 
 
 def parser() -> argparse.ArgumentParser:
@@ -606,9 +585,6 @@ def parser() -> argparse.ArgumentParser:
         choices=FORMATS,
         default="text",
         help="text (the default), json, or for check: github (annotations), sarif",
-    )
-    common.add_argument(
-        "--json", dest="format", action="store_const", const="json", help="--format json"
     )
     common.add_argument(
         "--timeout",
@@ -719,11 +695,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     return its exit code: 0 proved (a refresh committed every row), 1 not
     proved, 2 usage error, 3 unsupported, 4 time or memory budget exceeded,
     5 a refresh quarantined rows, 6 error, 7 refused (no route to the
-    engine), 8 a refresh held a node."""
+    engine), 8 a refresh held a node (a condition failed or a run-time check
+    fired)."""
     try:
         args = parser().parse_args(argv)
     except SystemExit as e:
-        return e.code if isinstance(e.code, int) else USAGE
+        return e.code if isinstance(e.code, int) else ExitCode.USAGE
     try:
         memory_limit_from(args.memory_limit)
         return args.run(args)
@@ -733,5 +710,5 @@ def main(argv: Sequence[str] | None = None) -> int:
         code, kind = _classify(e)
         message = f"{kind}: {e}"
         if isinstance(e, ValueError) and "memory limit" in str(e):
-            code, kind = USAGE, "usage"
+            code, kind = ExitCode.USAGE, "usage"
         return _emit(args, code, {"error": _error(kind, e)}, lambda: message)

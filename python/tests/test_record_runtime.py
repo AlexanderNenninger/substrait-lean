@@ -38,7 +38,7 @@ def stored_by(v, **fields: Any) -> Stored:
     """What a sink that held `v`'s state under `fields` stored."""
     now = profiles.runtime(v.engine)
     base: dict[str, Any] = {f: now[f] for f in profiles.RUNTIME_FIELDS}
-    base["profile"] = v.profile
+    base["semantics"] = v.profile
     stored = Stored(
         "x@v1",
         "x",
@@ -91,7 +91,7 @@ def test_a_view_that_is_recomputed_and_diffed_resumes_on_another_engine() -> Non
 
 def test_a_record_without_the_fields_resumes_with_no_line() -> None:
     bare = dict.fromkeys(profiles.RUNTIME_FIELDS)
-    stored = under_duckdb(lambda t: positive(t), **bare, profile=None)
+    stored = under_duckdb(lambda t: positive(t), **bare, semantics=None)
     v = view("polars", lambda t: positive(t), resume=stored)
     assert v.resumed == "resumed from x@v1"
     assert v.record_changes == {}
@@ -106,16 +106,16 @@ def test_another_release_alone_is_in_the_structured_result_only() -> None:
 
 def test_the_same_plan_under_two_profiles_is_recomputed_and_names_both() -> None:
     stored = under_duckdb(lambda t: positive(t))
-    assert stored.profile == "reference"
+    assert stored.semantics == "portable"
     v = view("duckdb", lambda t: positive_as_duckdb(t), resume=stored)
     assert v.profile == "duckdb"
     assert v.resumed is not None and v.resumed.startswith("computed:")
-    assert "reference profile" in v.resumed and "duckdb profile" in v.resumed
+    assert "semantics='portable'" in v.resumed and "semantics='duckdb'" in v.resumed
 
 
 def test_the_profile_is_a_component_of_the_digest_unless_it_is_the_reference() -> None:
     plan = view("duckdb", lambda t: positive(t)).plan
-    assert plan_digest(plan, profile="reference") == plan_digest(plan)
+    assert plan_digest(plan, profile="portable") == plan_digest(plan)
     assert plan_digest(plan, profile="duckdb") != plan_digest(plan)
     assert plan_digest(plan, profile="duckdb") != plan_digest(plan, profile="polars")
 
@@ -147,13 +147,13 @@ def test_a_contract_with_the_fields_is_in_the_schema_and_an_old_one_still_reads(
         not_null=[],
         checks={},
         unique=[],
-        **dict[str, Any](profiles.runtime("duckdb"), profile="reference"),
+        **dict[str, Any](profiles.runtime("duckdb"), semantics="portable"),
     )
     record = json.loads(c.to_json())
     jsonschema.validate(record, schema)
     assert record["engine"] == "duckdb" and record["sverify"] == sv.__version__
-    old = {k: v for k, v in record.items() if k not in {*profiles.RUNTIME_FIELDS, "profile"}}
+    old = {k: v for k, v in record.items() if k not in {*profiles.RUNTIME_FIELDS, "semantics"}}
     jsonschema.validate(old, schema)
     read = Contract.from_json(json.dumps(old))
-    assert read.engine is None and read.profile is None
+    assert read.engine is None and read.semantics is None
     assert incremental.plan_digest(v.plan) == read.plan

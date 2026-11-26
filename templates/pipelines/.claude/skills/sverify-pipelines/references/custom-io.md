@@ -107,7 +107,7 @@ What such sources can and cannot promise:
   dates, decimals, bytes and tuples are tagged).
 * A source without `restore` has its sinks record a digest of its contents.
   After a restart, a first read with the recorded digest resumes there and
-  writes nothing (#889). Otherwise, as for a `restore` that returns None
+  writes nothing. Otherwise, as for a `restore` that returns None
   (the cursor's rows are gone), it is read in full again: its versions
   continue above the ones the job's sinks recorded, so the stored nodes
   reading it are recomputed and written once, never skipped by mistake.
@@ -136,8 +136,9 @@ sink, so that holds across restarts too; without it, sverify remembers for
 the life of the process. If two processes may refresh the same sink, make
 `write` fail for the second one to commit: raise
 `sverify.errors.ConcurrentWriteError` when the sink no longer holds what
-`contract()` returned. Its next refresh writes the whole table, or skips
-the state the other process committed.
+`contract()` returned. If the sink then holds the state this refresh was
+writing, the refresh reports it as already committed; otherwise the error
+reaches the caller, and the next refresh writes the whole table.
 
 ```python
 import json
@@ -189,27 +190,27 @@ sverify stores no credentials: a pipeline names them, and sverify reads the
 values when a table is opened. Reports, contract records, exports, logs and
 errors show names only. Never write a secret's value into a pipeline.
 
-* **The default chain first** (S3, GCS, Azure): with no options, delta-rs
+* The default chain first (S3, GCS, Azure): with no options, delta-rs
   reads environment variables (`AWS_REGION`, `AWS_ACCESS_KEY_ID`, ...),
   `~/.aws` profiles, instance or pod roles, or a CI job's OIDC login.
-* **A secret by name**: `sverify.io.Secret("env:NAME")`, `"file:/path"`,
+* A secret by name: `sverify.io.Secret("env:NAME")`, `"file:/path"`,
   `"bao:kv/path#field"` (OpenBao; `vault:` for Vault), `"aws-sm:id"`,
   `"gcp-sm:projects/p/secrets/s"`, `"azure-kv:vault/name"`,
   `"keychain:service/account"`, or a bare name that
   `[tool.sverify.secrets.names]` in `pyproject.toml` maps (else the
   environment variable: `flight-token` reads `FLIGHT_TOKEN`).
-* **Delta**: `storage_options=Storage(credentials="lake")` (the secret's
+* Delta: `storage_options=Storage(credentials="lake")` (the secret's
   fields are the options), a mapping whose values are `Secret`s, or a
   `Storage` holding a function that returns fresh options. `writes=` and
   `reads=` declare the prefixes the credential may touch; `sverify check`
   warns about a sink outside them.
-* **Flight**: `FlightSource(..., secret="flight-token")`.
-* **Iceberg** (REST, Glue, ...): the pyiceberg catalog holds them:
+* Flight: `FlightSource(..., credentials="flight-token")`.
+* Iceberg (REST, Glue, ...): the pyiceberg catalog holds them:
   `load_catalog("lake", **Storage({"token": Secret("bao:kv/rest#token")}).options())`,
   `~/.pyiceberg.yaml` or `PYICEBERG_*` variables.
-* **Files** (`from_files`): the filesystem `path`'s URI names, with its
+* Files (`from_files`): the filesystem `path`'s URI names, with its
   default chain, or `filesystem=` a `pyarrow.fs.FileSystem`.
-* **Your own source or sink**: pass `credentials="name"` to `from_query`,
+* Your own source or sink: pass `credentials="name"` to `from_query`,
   `from_frame`, `from_files` or `sink_from`, and read the value inside the
   function with `Secret("name").value()`. `node.credentials()` lists each
   table's credential by name, for reading or writing.

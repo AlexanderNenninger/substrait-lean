@@ -5,8 +5,7 @@ description: >
   write their plans as DuckDB, Snowflake or Spark SQL with the same
   semantics. Use when a user wants the same result on several engines, moves
   a job between engines or to a warehouse, gets
-  `sverify.engines.UnsupportedError` and wants to know why, needs
-  `deterministic=True`, or aligns two time series with `asof_join`.
+  `sverify.engines.UnsupportedError` and wants to know why, or aligns two time series with `asof_join`.
 ---
 
 # sverify engines: one plan, the same answer everywhere
@@ -73,44 +72,29 @@ any plan in sverify's internal form, and is outside the 1.x promise.
 
 ## Why a plan is refused
 
-`to_sql` and the engines raise `UnsupportedError` (with the reason) instead of
-answering differently from the model:
+`to_sql` and the engines raise `UnsupportedError`, with the reason, wherever
+their answer would differ from the model's:
 
 ```python
-from sverify.engines import UnsupportedError
-
-
 @sv.transform()
 def numbered(orders):
     w = ibis.window(group_by="id", order_by="amount")
     return orders.mutate(rn=ibis.row_number().over(w))
 
 
-try:
-    numbered(orders).to_sql("snowflake")
-except UnsupportedError as e:
-    print(str(e).split(",")[0])
-# Snowflake tables have no row order
-
-
-@sv.transform(requires={"orders": [sv.unique("id")]})
-def numbered_by_id(orders):
-    w = ibis.window(group_by="id", order_by="amount")
-    return orders.mutate(rn=ibis.row_number().over(w))
-
-
-print(numbered_by_id(orders).to_sql("snowflake")[:6])  # no ties: the report is deterministic
+print(numbered(orders).to_sql("snowflake")[:6])  # ties are open: the report is not deterministic
 # SELECT
 ```
 
-* **Snowflake and Spark tables have no row order**, so sorts, `LIMIT` and
-  windows are refused unless the report is `deterministic` (a key on the
-  partition and order columns rules out ties), and so is `SUM` or `AVG` of
-  doubles (the rounding depends on the order of additions). `node.to_sql` and
-  `report.to_sql` read it from the report; `sverify.engines.plan.to_sql` takes
-  `deterministic=True`, which you pass only when a report says so.
-* **Snowflake has no interval type**: interval-valued expressions are refused.
-* **Warehouse setup the SQL assumes:** Snowflake time columns are
+* Snowflake and Spark tables have no row order. Under the default
+  lenses (`rows="multiset"`) the SQL leaves ties and the rows of a
+  `LIMIT` open, as the reference does, and writes no ordinal: a plan's last
+  sort orders its result, and the report's `deterministic` says whether a
+  rerun can return other rows. Lenses with `rows="sequence"` ask for
+  the model's list order, which these engines refuse. `SUM` or `AVG` of
+  doubles is Spark's own, within the plan's bound of the reference's sum.
+* Snowflake has no interval type: interval-valued expressions are refused.
+* The warehouse setup the SQL assumes: Snowflake time columns are
   `TIMESTAMP_NTZ`, strings have no collation, names are quoted lower case;
   Spark sessions use `sverify_spark.dialect.SPARK_CONF` (ANSI mode, a pinned time
   zone, NTZ timestamps) and the `UTF8_BINARY` collation.
@@ -120,7 +104,10 @@ print(numbered_by_id(orders).to_sql("snowflake")[:6])  # no ties: the report is 
 `sv.asof_join(left, right, on="ts", by="device", tolerance=...)` matches each
 left row with the latest right row at or before it, at most `tolerance`
 earlier, built from a range join and `ROW_NUMBER` that Lean checks like any
-plan. Without a key on `(by, on)` on the right side, two right rows may tie
+plan. The join compares each left row with every right row of its `by` group, so its cost is
+quadratic: a run refuses more than `max_pairs` (default 10⁸) of those pairs, counted on the
+engine before the run whatever the tables are (Arrow, files or an engine's own), and names its
+exits (more `by` columns, fewer rows, a larger cap). Without a key on `(by, on)` on the right side, two right rows may tie
 for "latest": the guarantees hold for either pick, and the result is not
 deterministic. With keys on both sides it is:
 
@@ -138,7 +125,7 @@ gyr = ibis.table({"device": "!int64", "ts": "!timestamp", "gx": "float64"}, name
         "acc": [sv.unique("device", "ts"), _.ts >= datetime(2000, 1, 1)],
         "gyr": [sv.unique("device", "ts")],
     },
-    ensures=[sv.unique("device", "ts"), _.ts_right.isnull() | (_.ts_right <= _.ts)],
+    ensures=[_.ts_right.isnull() | (_.ts_right <= _.ts)],
 )
 def aligned(acc, gyr):
     return sv.asof_join(acc, gyr, on="ts", by="device", tolerance=ibis.interval(milliseconds=10))

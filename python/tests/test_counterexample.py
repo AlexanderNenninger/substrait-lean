@@ -9,9 +9,9 @@ import pytest
 from ibis import _
 
 import sverify as sv
-from sverify.contracts import violations
 from sverify.counterexample import Counterexample
 from sverify.errors import VerificationError
+from sverify.report import violations
 from sverify_dev.examples import customers, orders
 
 

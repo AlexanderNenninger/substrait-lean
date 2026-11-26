@@ -247,6 +247,8 @@ end Substrait.Examples
 #print axioms Substrait.Rel.eval_allowed
 #print axioms Substrait.Rel.allowed_perm_eval
 #print axioms Substrait.Rel.refines_of_perm
+#print axioms Substrait.Rel.optimize_refines
+#print axioms Substrait.Rel.AllowedP_mono
 #print axioms Substrait.Rel.guardFree_allowed
 #print axioms Substrait.Rel.duckdb_shim_allowed
 #print axioms Substrait.Rel.eval_orderAllowed
@@ -378,6 +380,9 @@ end Substrait.Examples
 #print axioms Substrait.Lowering.lowerRelWith_sound
 #print axioms Substrait.Rel.duckdb_guardFree_sound
 #print axioms Substrait.Lowering.lower_correct
+#print axioms Substrait.Lowering.lower_agreeOrRaises
+#print axioms Substrait.Lowering.lowerRel_sound_dbl
+#print axioms Substrait.Lowering.lowerRel?_sound_dbl
 #print axioms Substrait.Lowering.duckdb_exact
 #print axioms Substrait.liftDuckDB.total
 #print axioms Substrait.liftReference.total
@@ -446,6 +451,7 @@ end Substrait.Examples
 #print axioms Substrait.Engine.duckdb_sound
 #print axioms Substrait.Rel.polars_sound
 #print axioms Substrait.Rel.spark_sound
+#print axioms Substrait.Rel.spark_sound_or_raises
 #print axioms Substrait.Engine.polars_sound
 #print axioms Substrait.Engine.spark_sound
 #print axioms Substrait.Engine.contract_sound
@@ -466,3 +472,14 @@ end Substrait.Examples
 #print axioms Substrait.Zone.add_sat
 #print axioms Substrait.Zone.empty?_sound
 #print axioms Substrait.Rel.marks_measure_finite
+#print axioms Substrait.Expr.mayInfBin_sound
+#print axioms Substrait.FloatCode.fdiv_ofInt_fin
+#print axioms Substrait.FloatCode.fdiv_fin_of_one_le
+#print axioms Substrait.FloatCode.fmul_fin_of_le_one
+#print axioms Substrait.FloatCode.fadd_fin_of_zero
+#print axioms Substrait.FloatCode.fsub_fin_of_zero
+#print axioms Substrait.BinFn.shrinks_fin
+#print axioms Substrait.decQuotFinite_sound
+#print axioms Substrait.FloatCode.ofDecimal_zero
+#print axioms Substrait.Expr.mayIssues_sound
+#print axioms Substrait.Text.Find.findFrom_eq_fast

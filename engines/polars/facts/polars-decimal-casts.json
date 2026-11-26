@@ -17,6 +17,14 @@
       "types": [
         "decimal"
       ]
+    },
+    {
+      "group": "cast.dec",
+      "option": "decimal_rescale",
+      "types": [
+        "decimal",
+        "fp64"
+      ]
     }
   ],
   "constructs": [
@@ -30,11 +38,11 @@
     ]
   },
   "description": [
-    "A decimal cast to a smaller scale rounds half to even (1.050 at scale 1 is 1.0, 1.150 is 1.2). A double cast to `Decimal(p, s)` is `x · 10ˢ` in doubles, rounded half to even (0.625 is 0.62, 0.125 is 0.12, -0.375 is -0.38), with the double `10ˢ` exact only up to `s = 22`; NaN and ±∞ raise.",
+    "A decimal cast to a smaller scale rounds half to even (1.050 at scale 1 is 1.0, 1.150 is 1.2). A double cast to `Decimal(p, s)` is `x · 10ˢ` in doubles, rounded half to even (0.625 is 0.62, 0.125 is 0.12, -0.375 is -0.38; at scale 0, 2.5 is 2, -2.5 is -2, 3.5 is 4, and ±(2⁵¹ + 0.5) is ±2251799813685248), as its decimal rescale rounds the same values, with the double `10ˢ` exact only up to `s = 22`; NaN and ±∞ raise. The value rounded is the double product, not the double's decimal text: 1.005 (product 100.49999999999999) is 1.00, 0.285 is 0.28, 8.345 is 8.35 and -2.675 (product -267.5, a tie) is -2.68.",
     "A decimal cast to `Float64` is correctly rounded: one division where the unscaled value and `10ˢ` are exact doubles, else the decimal's text through Rust's float parser. A decimal cast to an integer truncates toward zero, and raises outside the integer's range (strict) or is NULL (`strict=False`).",
     "A cast to a smaller precision raises where the value does not fit (strict) or is NULL. `to_physical` gives the unscaled value as an `Int128` (1.25 at scale 2 is 125), and `Int128` arithmetic wraps silently (2¹²⁶ · 2 is -2¹²⁷)."
   ],
-  "reference": "`decimal_rescale: TIE_AWAY_FROM_ZERO` (`roundDiv10`, `UnFn.dround`); a double to a decimal is `x · 10ˢ` rounded once to a double, then half away from zero (`FloatCode.toDecimal?`); a decimal to a double is correctly rounded (`FloatCode.ofDecimal`); to an integer truncates (`UnFn.dtrunc`). The translation shims the halves (`decimal_round_half_away`, `round_half_away` on the double product) and refuses a double cast to more than 22 decimal places.",
+  "reference": "`decimal_rescale: TIE_AWAY_FROM_ZERO` (`roundDiv10`, `UnFn.dround`); a double to a decimal is `x · 10ˢ` rounded once to a double, then half away from zero (`FloatCode.toDecimal?`); a decimal to a double is correctly rounded (`FloatCode.ofDecimal`); to an integer truncates (`UnFn.dtrunc`). The translation shims the halves (`decimal_round_half_away`, `round_half_away` on the double product) and refuses a double cast to more than 22 decimal places. `Profile.polars` states Polars's own cast, the product rounded half to even (`Polars.ftodEvenT`, ruling 278), and the lowering refuses `UnFn.ftod` on Polars; the translation's `double_to_decimal` writes the reference's.",
   "status": "shimmed",
   "evidence": "probe",
   "provenance": [
@@ -129,6 +137,22 @@
         }
       ],
       "notes": "Read at tag py-2.1.0 (commit 7f902bd3)."
+    },
+    {
+      "checked_at": "2026-11-23",
+      "method": "probe",
+      "checked_by": "session Types and casts (ruling 278, #2523), engines/duckdb/probes/double_to_decimal.py and double_to_decimal_near_ties.py",
+      "evidence": [
+        {
+          "file": "engines/duckdb/probes/double_to_decimal.py",
+          "note": "Exact ties under the streaming engine: 0.125, -0.125 and 0.375 to Decimal(3, 2) are 0.12, -0.12 and 0.38; 2.5, -2.5 and 3.5 to Decimal(2, 0) are 2, -2 and 4; ±(2⁵¹ + 0.5) to Decimal(17, 0) is ±2251799813685248. The same values as decimals, rescaled to the same scale, round the same way."
+        },
+        {
+          "file": "engines/duckdb/probes/double_to_decimal_near_ties.py",
+          "note": "Near-ties: -2.675 and 2.675 to Decimal(4, 2) are -2.68 and 2.68 (the product is the tie 267.5); 1.005 and 0.285 to Decimal(3, 2) are 1.00 and 0.28; 8.345 to Decimal(4, 2) is 8.35: the double product is rounded."
+        }
+      ],
+      "notes": "Polars 2.1.0 (Python), macOS arm64, collect(engine='streaming')."
     }
   ],
   "issues": [

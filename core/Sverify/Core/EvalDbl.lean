@@ -1,4 +1,4 @@
-import Sverify.Core.Rel
+import Sverify.Core.Profile
 import Sverify.Core.FloatDbl
 
 /-!
@@ -105,12 +105,13 @@ theorem UnFn.apply_dbl (f : UnFn) {v : Value} (h : v.dbl = true) :
     | exact Boxes.dblOut.1 _ _
     | (simp only [Value.dbl_float] at h ⊢
        first
-         | exact FloatCode.dbl_negI h
-         | exact FloatCode.dbl_floor h
-         | exact FloatCode.dbl_ceil h
-         | exact FloatCode.dbl_round h
-         | exact FloatCode.dbl_roundTo _ h
-         | exact FloatCode.dbl_ofInt _)
+         | with_reducible exact FloatCode.dbl_negI h
+         | with_reducible exact FloatCode.dbl_floor h
+         | with_reducible exact FloatCode.dbl_ceil h
+         | with_reducible exact FloatCode.dbl_round h
+         | with_reducible exact FloatCode.dbl_roundEven h
+         | with_reducible exact FloatCode.dbl_roundTo _ h
+         | with_reducible exact FloatCode.dbl_ofInt _)
     | (simp only [Value.dbl_struct, Value.dbl_list] at h
        first
          | exact Value.dbl_getD h _
@@ -393,12 +394,11 @@ theorem WinFn.valueIn_dbl (f : WinFn) (hf : f.litDbl = true)
 def Rel.litDbl : Rel → Bool
   | .read _ => true
   | .values _ rows => rows.all (·.all Value.dbl)
-  | .filter r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _
-  | .semi r _ _ _ => r.litDbl
+  | .filter r _ | .emit r _ | .fetch r _ _ | .orderBy r _ | .distinct r | .unnest r _ => r.litDbl
   | .project r es => r.litDbl && es.all Expr.litDbl
   | .window r _ _ fns => r.litDbl && fns.all WinFn.litDbl
   | .aggregate r gs ms => r.litDbl && gs.all Expr.litDbl && ms.all (·.arg.litDbl)
-  | .cross a b | .unionAll a b | .join a b _ _ => a.litDbl && b.litDbl
+  | .cross a b | .unionAll a b | .join a b _ _ | .semi a b _ _ => a.litDbl && b.litDbl
 
 /-- Every double in the catalog's tables is a double's code. -/
 def Catalog.Dbl (cat : Catalog) : Prop := ∀ t, ∀ row ∈ (cat t).rows, ∀ v ∈ row, v.dbl = true
@@ -416,7 +416,9 @@ theorem Rel.eval_dbl {cat : Catalog} (hcat : cat.Dbl) :
     simp only [Rel.litDbl, List.all_eq_true] at h
     intro row hrow v hv; exact h row hrow v hv
   | .filter r _, h => fun row hrow => Rel.eval_dbl hcat r h row (List.mem_filter.mp hrow).1
-  | .semi r _ _ _, h => fun row hrow => Rel.eval_dbl hcat r h row (List.mem_filter.mp hrow).1
+  | .semi r _ _ _, h => by
+    simp only [Rel.litDbl, Bool.and_eq_true] at h
+    exact fun row hrow => Rel.eval_dbl hcat r h.1 row (List.mem_filter.mp hrow).1
   | .project r es, h => by
     simp only [Rel.litDbl, Bool.and_eq_true, List.all_eq_true] at h
     intro row hrow
@@ -543,5 +545,36 @@ theorem Rel.eval_dbl {cat : Catalog} (hcat : cat.Dbl) :
     rcases List.mem_or_eq_of_mem_set hv with hv | rfl
     · exact hxd v hv
     · exact hld v hw
+
+/-- A row of doubles. -/
+abbrev Row.Dbl (row : Row) : Prop := ∀ v ∈ row, v.dbl = true
+
+/-- **Every row a plan's expressions are evaluated on is a row of doubles**,
+on a catalog of doubles, with doubles for the plan's constants: what a
+lowering stated on doubles needs (`Rel.evalI_mapExprs_rows`, ruling 254). -/
+theorem Rel.exprRows_dbl {cat : Catalog} (hcat : cat.Dbl) :
+    ∀ r : Rel, r.litDbl = true → r.ExprRows Row.Dbl cat
+  | .read _, _ | .values _ _, _ => trivial
+  | .filter r _, h => ⟨exprRows_dbl hcat r h, Rel.eval_dbl hcat r h⟩
+  | .project r _, h => by
+    simp only [Rel.litDbl, Bool.and_eq_true] at h
+    exact ⟨exprRows_dbl hcat r h.1, Rel.eval_dbl hcat r h.1⟩
+  | .aggregate r _ _, h => by
+    simp only [Rel.litDbl, Bool.and_eq_true] at h
+    exact ⟨exprRows_dbl hcat r h.1.1, Rel.eval_dbl hcat r h.1.1⟩
+  | .emit r _, h | .orderBy r _, h | .distinct r, h | .unnest r _, h | .fetch r _ _, h =>
+    exprRows_dbl hcat r h
+  | .window r _ _ _, h => by
+    simp only [Rel.litDbl, Bool.and_eq_true] at h
+    exact exprRows_dbl hcat r h.1
+  | .cross a b, h | .unionAll a b, h => by
+    simp only [Rel.litDbl, Bool.and_eq_true] at h
+    exact ⟨exprRows_dbl hcat a h.1, exprRows_dbl hcat b h.2⟩
+  | .join a b _ _, h | .semi a b _ _, h => by
+    simp only [Rel.litDbl, Bool.and_eq_true] at h
+    refine ⟨exprRows_dbl hcat a h.1, exprRows_dbl hcat b h.2, fun x hx y hy v hv => ?_⟩
+    rcases List.mem_append.mp hv with hv | hv
+    · exact Rel.eval_dbl hcat a h.1 x hx v hv
+    · exact Rel.eval_dbl hcat b h.2 y hy v hv
 
 end Substrait

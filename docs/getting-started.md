@@ -56,7 +56,7 @@ small native binary, so you need no Lean toolchain; they exist for Linux
 
 Correlated scalar subqueries are not in the model. An `ibis.param` is
 checked with its value bound (`sv.verify(expr, params={threshold: 50})`),
-and an unbound one is refused. [The Ibis coverage table](../README.md#ibis-coverage)
+and an unbound one is refused. [The Ibis coverage table](coverage.md)
 lists what gets through.
 
 ## 1. A contract, proved and run
@@ -100,7 +100,7 @@ print(unit_prices.report)
 #   orders: no two rows share id
 ```
 
-[How to](tasks.md#contracts) has the rest of the report and what
+[How to](how-to-contracts.md#contracts) has the rest of the report and what
 happens when a postcondition doesn't follow.
 
 ## 2. SQL through `sv.verify`
@@ -197,7 +197,7 @@ still needs the precondition. Guarding the division itself,
 `route="auto"` chooses how the proof reaches the engine and refuses the plan
 where none applies. The route names the plan's class on that engine:
 `exact` (every result the engine gives, the reference allows), `observed`
-(equal under an observation the postcondition states, a float tolerance
+(equal under lenses the postcondition states, a float tolerance
 included), `shim` (after shims proved against the model of the engine's
 functions) or `refused`
 ([how a route is chosen](verifying.md),
@@ -208,14 +208,14 @@ con.put("orders", pa.table({"id": [1, 2, 3], "qty": [4, 5, 2], "total": [100, 25
 print(declared.run(con, "polars", route="auto").to_pylist())
 # [{'id': 1, 'unit': 25}, {'id': 2, 'unit': 50}, {'id': 3, 'unit': 15}]
 print(declared.routes["polars"])
-# shim (integer division rewritten to truncate); evidence proved by Rel.polars_sound, Polars.int_div_trunc on polars's model ...
+# shim (integer division rewritten to truncate); evidence proved by Rel.polars_sound, Lowering.polars_exact on polars's model ...
 ```
 
 SQL's `//` truncates under the reference and Polars's integer division floors,
 so the translation writes a shim, proved in Lean
 (`engines/polars/Sverify/Polars/Shims.lean`). Ibis's `//` is `FloorDivide` and floors under
 every semantics, and its `%` truncates under the reference
-([the table](tasks.md#integer-division-in-ibis-and-sql)).
+([the table](how-to-engines-and-sql.md#integer-division-in-ibis-and-sql)).
 The [realizability table](realizability.md) lists every option's class on
 each engine.
 
@@ -224,7 +224,7 @@ each engine.
 DuckDB and Polars add doubles in different orders, so a mean's last bits may
 differ. The checker proves how far: a bound on each double the plan computes
 ([float bounds](float-bounds.md)). With
-no observation in `ensures`, a run accepts doubles within that bound, the
+no lenses in `ensures`, a run accepts doubles within that bound, the
 same as `sv.equivalent(floats="plan")`, and the report prints the bound.
 
 ```python
@@ -266,7 +266,7 @@ that give them on its `lenses:` line: for this mean, none.
 Three helpers state what a postcondition observes:
 
 * `sv.equivalent(rows=..., floats=..., ...)` in `ensures` names the
-  observation. Rows are a multiset unless it says `rows="sequence"`;
+  lenses. Rows are a multiset unless it says `rows="sequence"`;
   doubles are the same bits unless it gives a tolerance or `floats="plan"`;
   every component left out is exact. Without it, `ensures` observes rows as
   a multiset and doubles within the plan's bound.
@@ -283,7 +283,7 @@ Three helpers state what a postcondition observes:
 
 A sink commits each epoch once, so a rerun must give the same result. The
 sink says what "the same" means (`reproducible=`,
-[two observations per output](tasks.md#reproducible-sinks)), and a refresh is
+[two lenses per output](how-to-production.md#reproducible-sinks)), and a refresh is
 refused where the engine's run-to-run variation does not refine it. Polars's
 streaming `SUM` of doubles may add in another order each run, so a sink that
 asks for exact bits, `reproducible=sv.equivalent()`, is refused there, and
@@ -348,7 +348,7 @@ try:
     filtered.run(con, "polars", route="auto")
 except RouteError as e:
     print(e)
-# refused on polars: verify with semantics='reference' to run on polars...
+# refused on polars: verify with semantics='portable' to run on polars...
 
 divided = sv.verify(
     t.select(t.id, unit=t.total // t.qty),
@@ -364,7 +364,7 @@ try:
     divided.run(con, "polars", route="auto")
 except RouteError as e:
     print(e)
-# refused on polars: verify with semantics='reference' to run on polars...
+# refused on polars: verify with semantics='portable' to run on polars...
 ```
 
 The transfer check fails on the comparison's zero and the division's options. A
@@ -426,12 +426,12 @@ parity = sv.verify(
     s.select(s.x, odd=s.x % 2), requires=notnull, ensures=[_.odd >= 0], semantics="polars"
 )
 print(parity.semantics)
-# reference
+# portable
 print(parity.verdict)
 # proved
 print(parity.run(con, "polars", route="auto").column("odd").to_pylist())
 # [1, 0, 1, 0]
-print(parity.routes["polars"].kind)
+print(parity.routes["polars"].taken)
 # translated
 ```
 
@@ -488,7 +488,7 @@ except ExportError as e:
 `"apply"`, the default, rewrites the plan so that every conforming consumer
 gives the reference's result; `"annotate"` leaves the plan as written and
 ships the choice as an assumption; `"refuse"` refuses. The
-[How to](tasks.md#exporting-to-substrait) lists what the export carries.
+[How to](how-to-export.md#exporting-to-substrait) lists what the export carries.
 
 ## Three complete jobs
 
@@ -520,7 +520,7 @@ The most common, and what sverify does about each:
 | Integer overflow | Polars wraps silently; DuckDB raises; Snowflake's NUMBER(38) doesn't overflow | an error at the declared width, reported as `may fail` unless a precondition rules it out; at the probed versions DuckDB and Spark raise there ([DuckDB](../engines/duckdb/facts/duckdb-R15-int-arith.json), [Spark](../engines/spark/facts/spark-int-arith.json)) and Sverify guards Polars ([Polars](../engines/polars/facts/polars-int-arith.json)). A `SUM` that may overflow is assumed to fit (inferred) and checked on the data before the run |
 | NaN | in SQL engines NaN equals itself and is above every number (`NaN > 30` is TRUE); in Python and pandas it compares False | one NaN, as SQL engines have it, on every engine; contracts see it (`~_.v.isnan()` is refused unless proved) |
 | `NOT IN` with a NULL | standard SQL returns no rows | refused; write an anti join |
-| Guards that don't guard | DuckDB and Polars evaluate both operands of `AND` and `OR`, so `WHERE n <> 0 AND x / n > 1` can still fail; DuckDB evaluates a `CASE`'s constant conditions while it plans the query | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection ([Guards](tasks.md#guards)); a constant that raises makes the whole plan raise |
+| Guards that don't guard | DuckDB and Polars evaluate both operands of `AND` and `OR`, so `WHERE n <> 0 AND x / n > 1` can still fail; DuckDB evaluates a `CASE`'s constant conditions while it plans the query | the runtime-error analysis only counts guards that hold: a `CASE` branch, `NULLIF`, a filter below a projection ([Guards](how-to-guards.md#guards)); a constant that raises makes the whole plan raise |
 | NULL ordering | PostgreSQL and Snowflake put NULLs last ascending and first descending, DuckDB last both ways, Spark first ascending, a Polars sort first | every `ORDER BY` says where NULLs go |
 
 Front ends change meaning too: the catalogue found Ibis rewriting TPC-H Q11's

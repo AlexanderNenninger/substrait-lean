@@ -111,17 +111,6 @@ abbrev Substrait.duckdbOn.froundTo : (d : Int) →
   Substrait.UnEntry.native (Substrait.UnFn.froundTo d)
     (Substrait.Lowering.un_agree_of_eq (Substrait.duckdbOn.froundTo_native d))
 
-theorem Substrait.duckdbOn.ftoi_native : ∀ (x : Substrait.Value),
-  Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-      Substrait.UnFn.ftoi x =
-    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.ftoi x := by
-  native_tac
-
-abbrev Substrait.duckdbOn.ftoi : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-  Substrait.UnFn.ftoi :=
-  Substrait.UnEntry.native Substrait.UnFn.ftoi
-  (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.ftoi_native)
-
 theorem Substrait.duckdbOn.narrow_native : ∀ (bits : Nat) (x : Substrait.Value),
   Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
       (Substrait.UnFn.narrow bits) x =
@@ -134,17 +123,6 @@ abbrev Substrait.duckdbOn.narrow : (bits : Nat) →
   fun bits =>
   Substrait.UnEntry.native (Substrait.UnFn.narrow bits)
     (Substrait.Lowering.un_agree_of_eq (Substrait.duckdbOn.narrow_native bits))
-
-theorem Substrait.duckdbOn.ftoiOrNull_native : ∀ (x : Substrait.Value),
-  Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-      Substrait.UnFn.ftoiOrNull x =
-    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.ftoiOrNull x := by
-  native_tac
-
-abbrev Substrait.duckdbOn.ftoiOrNull : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
-  Substrait.UnFn.ftoiOrNull :=
-  Substrait.UnEntry.native Substrait.UnFn.ftoiOrNull
-  (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.ftoiOrNull_native)
 
 theorem Substrait.duckdbOn.narrowOrNull_native : ∀ (bits : Nat) (x : Substrait.Value),
   Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
@@ -182,6 +160,28 @@ abbrev Substrait.duckdbOn.itos : Substrait.UnEntry (Substrait.Profile.duckdb (Su
   Substrait.UnFn.itos :=
   Substrait.UnEntry.native Substrait.UnFn.itos
   (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.itos_native)
+
+theorem Substrait.duckdbOn.dtext_native : ∀ (x : Substrait.Value),
+  Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+      Substrait.UnFn.dtext x =
+    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.dtext x := by
+  native_tac
+
+abbrev Substrait.duckdbOn.dtext : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  Substrait.UnFn.dtext :=
+  Substrait.UnEntry.native Substrait.UnFn.dtext
+  (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.dtext_native)
+
+theorem Substrait.duckdbOn.dwiden_native : ∀ (x : Substrait.Value),
+  Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+      Substrait.UnFn.dwiden x =
+    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.dwiden x := by
+  native_tac
+
+abbrev Substrait.duckdbOn.dwiden : Substrait.UnEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  Substrait.UnFn.dwiden :=
+  Substrait.UnEntry.native Substrait.UnFn.dwiden
+  (Substrait.Lowering.un_agree_of_eq Substrait.duckdbOn.dwiden_native)
 
 theorem Substrait.duckdbOn.widen_native : ∀ (x : Substrait.Value),
   Substrait.Profile.un (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))

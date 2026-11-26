@@ -35,7 +35,7 @@ Emitting is off unless a refresh gets `lineage=` (or the command line
   `requires` holds the postconditions of its `sverify_contract` facet that
   sverify proves again from the exported plan (`sv.Report.from_substrait`); every
   other claim, and every other tool's `dataQualityAssertions`, is checked
-  evidence (`evidence`), never proof.
+  evidence (`assertions`), never proof.
 
 `SPEC_VERSION` is the OpenLineage spec the events follow (the spec of the
 pinned `openlineage-python`, `CLIENT_VERSION`), which the tests validate
@@ -46,8 +46,10 @@ need nothing.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
+import re
 import sys
 import urllib.parse
 import urllib.request
@@ -66,8 +68,8 @@ from sverify.io._secrets import Secret
 if TYPE_CHECKING:
     import ibis
 
-    from sverify.contracts import Condition, Report
     from sverify.nodes import Node, StageRefresh
+    from sverify.report import Condition, Report
 
 __all__ = [
     "Assertion",
@@ -85,8 +87,9 @@ SPEC_VERSION = "2-0-2"
 #: tests run against.
 CLIENT_VERSION = "1.55.0"
 #: The version of the `sverify_contract` facet's format. Format 2 (1.0)
-#: names `equivalence` `lenses` (`Report.lenses`).
-FACET_FORMAT = 2
+#: names `equivalence` `lenses` (`Report.lenses`), and format 3 a route's
+#: `kind` `taken`, as the report JSON does (#2345).
+FACET_FORMAT = 3
 #: The `_schemaURL` of the `sverify_contract` facet: its JSON schema's `$id`
 #: (`sverify/schemas/openlineage-contract-facet.schema.json`).
 FACET_SCHEMA_URL = (
@@ -342,7 +345,7 @@ def contract_facet(
     refresh `entry`; None for a node without one. With `plan`, it carries
     the verified plan exported to Substrait, so a downstream job can prove
     the contract again."""
-    from sverify.contracts import MaxRows, Unique
+    from sverify.conditions import MaxRows, Unique
     from sverify.incremental import plan_digest
     from sverify.io._common import condition_sql
     from sverify.report import proved_not_null
@@ -396,7 +399,7 @@ def _with_refresh(facet: Mapping[str, Any], entry: StageRefresh) -> dict[str, An
     out = dict(facet)
     if entry.route is not None:
         r = entry.route
-        out["route"] = {"engine": r.engine, "kind": r.kind, "class": r.cls}
+        out["route"] = {"engine": r.engine, "taken": r.taken, "class": r.cls}
     out["outcome"] = entry.outcome
     out["quarantined"] = entry.quarantined
     if entry.held is not None:
@@ -704,7 +707,7 @@ class _Runs:
             d = {"namespace": out[0], "name": out[1], "facets": facets}
             if w is not None and w.mode != "skipped":
                 d["outputFacets"] = {
-                    "outputStatistics": _facet("outputStatistics", rowCount=w.inserted)
+                    "outputStatistics": _facet("outputStatistics", rowCount=w.inserts)
                 }
             outputs.append(d)
         if entry.held is not None:
@@ -790,7 +793,7 @@ class Upstream:
         producer: The job of the last run that wrote it (`namespace/name`),
             its run id and the `producer` URI.
         contract: Its `sverify_contract` facet, if a sverify job wrote it.
-        evidence: Checks other jobs ran on it (`dataQualityAssertions`), and
+        assertions: Checks other jobs ran on it (`dataQualityAssertions`), and
             the claims of a `sverify_contract` facet that sverify did not
             prove again: checked evidence, never proof.
     """
@@ -801,7 +804,7 @@ class Upstream:
     version: str | None = None
     producer: dict[str, str] = field(default_factory=dict)
     contract: dict[str, Any] | None = None
-    evidence: list[Assertion] = field(default_factory=list)
+    assertions: list[Assertion] = field(default_factory=list)
     _requires: list[Condition] | None = field(default=None, repr=False)
     _report: Report | None = field(default=None, repr=False)
     _why: str | None = field(default=None, repr=False)
@@ -824,7 +827,7 @@ class Upstream:
         return self._report is not None and self._report._proved
 
     @property
-    def why_unverified(self) -> str | None:
+    def why(self) -> str | None:
         """Why the facet's contract counts as evidence only, or None if it
         is verified (or there is no facet)."""
         self._verify()
@@ -851,7 +854,8 @@ class Upstream:
             self._why = "the facet carries no plan to prove again"
             self._claims(c)
             return
-        from sverify.contracts import Report, max_rows, unique
+        from sverify.conditions import max_rows, unique
+        from sverify.report import Report
 
         try:
             report = Report.from_substrait(export)
@@ -883,7 +887,7 @@ class Upstream:
         job = self.producer.get("job", "")
         prod = self.producer.get("producer", "")
         for e in c.get("ensures", []):
-            self.evidence.append(
+            self.assertions.append(
                 Assertion(
                     f"sverify_contract: {e.get('label')} ({e.get('status')})",
                     e.get("status") in ("proved", "checked"),
@@ -893,34 +897,82 @@ class Upstream:
                 )
             )
         for col in c.get("not_null", []):
-            self.evidence.append(
+            self.assertions.append(
                 Assertion("sverify_contract: not_null (proved)", True, col, prod, job)
             )
 
 
-_SPARK_TYPES = {
-    "long": "int64",
-    "integer": "int32",
-    "int": "int32",
-    "short": "int16",
-    "byte": "int8",
-    "string": "string",
-    "double": "float64",
-    "float": "float32",
-    "boolean": "boolean",
-    "date": "date",
-    "timestamp": "timestamp('UTC')",
-    "timestamp_ntz": "timestamp",
-    "binary": "binary",
-}
+#: The Spark type names DuckDB reads otherwise. DuckDB's parse reads Spark's
+#: other names (`long`, `int`, `short`, `byte`, `float`, `string`, ...) as Spark
+#: means them (`test_a_schema_facets_type_names`).
+_SPARK_TYPES = {"timestamp": "timestamp('UTC')", "timestamp_ntz": "timestamp"}
 
 
 def _ibis_type(t: Any) -> Any:
+    """A `schema` facet's type name as an Ibis type: Spark's names first, then
+    DuckDB's, then Ibis's, also inside Spark's `array<…>`, `map<…>` and
+    `struct<…>` (#2448); a name none of them reads is `unknown`."""
+    import ibis.expr.datatypes as dt
+
+    return _parse_type(t.strip()) if isinstance(t, str) else dt.unknown
+
+
+_NESTED = re.compile(r"(array|map|struct)\s*<(.*)>", re.IGNORECASE | re.DOTALL)
+
+
+@functools.lru_cache(maxsize=1024)
+def _parse_type(t: str) -> Any:
+    """`_ibis_type` of a string; the names facets repeat are read once (a bounded
+    cache, for a reader of many foreign facets)."""
+    import ibis.expr.datatypes as dt
+
+    if m := _NESTED.fullmatch(t):
+        try:
+            return _nested(m[1].lower(), _split(m[2], ","))
+        except ValueError:
+            return dt.unknown  # DuckDB's parse would read Spark's names as its own
+    return _scalar(t)
+
+
+def _nested(kind: str, parts: list[str]) -> Any:
+    """Spark's `array<t>`, `map<k,v>` or `struct<name:t,…>`; a `ValueError`
+    where a part is malformed or names no type."""
+    import ibis.expr.datatypes as dt
+
+    def read(part: str) -> Any:
+        got = _parse_type(part.strip())
+        if got.is_unknown():
+            raise ValueError(part)
+        return got
+
+    if kind == "array" and len(parts) == 1:
+        return dt.Array(value_type=read(parts[0]))
+    if kind == "map" and len(parts) == 2:
+        return dt.Map(key_type=read(parts[0]), value_type=read(parts[1]))
+    if kind == "struct" and all(parts):
+        fields = [_split(p, ":") for p in parts]
+        if all(len(f) >= 2 and f[0].strip() for f in fields):
+            return dt.Struct.from_tuples(
+                (f[0].strip().strip("`"), read(":".join(f[1:]))) for f in fields
+            )
+    raise ValueError(kind)
+
+
+def _split(text: str, sep: str) -> list[str]:
+    """`text` split at each `sep` outside `<…>` and `(…)`."""
+    parts, depth, start = [], 0, 0
+    for i, c in enumerate(text):
+        depth += (c in "<(") - (c in ">)")
+        if c == sep and depth == 0:
+            parts.append(text[start:i])
+            start = i + 1
+    return [*parts, text[start:]]
+
+
+def _scalar(t: str) -> Any:
     import ibis.expr.datatypes as dt
     from ibis.backends.sql.datatypes import DuckDBType
 
-    if not isinstance(t, str):
-        return dt.unknown
     if t.lower() in _SPARK_TYPES:
         return dt.dtype(_SPARK_TYPES[t.lower()])
     try:
@@ -972,7 +1024,7 @@ class Events:
                     for facet in (facets, d.get("inputFacets") or {}):
                         dq = facet.get("dataQualityAssertions") or {}
                         for a in dq.get("assertions") or []:
-                            up.evidence.append(
+                            up.assertions.append(
                                 Assertion(
                                     str(a.get("assertion")),
                                     bool(a.get("success")),
@@ -1011,9 +1063,16 @@ def read(source: str | Path | Iterable[Mapping[str, Any]]) -> Events:
     """
     if isinstance(source, str | Path):
         text = Path(source).read_text(encoding="utf-8")
-        stripped = text.lstrip()
-        if stripped.startswith("["):
-            return Events(json.loads(text))
+        if text.lstrip().startswith(("[", "{")):
+            # One JSON document: a list, or one event over any number of lines.
+            try:
+                whole = json.loads(text)
+            except ValueError:
+                whole = None  # JSON lines, read below
+            if isinstance(whole, list):
+                return Events(whole)
+            if isinstance(whole, dict):
+                return Events([whole])
         events = []
         for line in text.splitlines():
             if line.strip():
@@ -1078,7 +1137,7 @@ def marquez(
             "producer": str(facets.get(_FACET, {}).get("_producer", "")),
         }
     for a in (facets.get("dataQualityAssertions") or {}).get("assertions") or []:
-        up.evidence.append(
+        up.assertions.append(
             Assertion(
                 str(a.get("assertion")),
                 bool(a.get("success")),

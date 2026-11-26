@@ -106,6 +106,29 @@ theorem engineVal_mem {a : AVal} {t : Nat} {sign : Bool} {r v : Int} (hr : a.Mem
       obtain ⟨hlo, hhi⟩ := hs rfl b hb
       exact Bound.mem_meet (widen_mem hm hv) (signHull_mem hlo hhi)
 
+/-- The values an engine may give for an output column with no bound on its
+distance to the reference's (`ε` unbounded): where `sign`, of the sign Lean
+gave `a`, else any double. -/
+def signVal (sign : Bool) (a : AVal) : AVal :=
+  { a with int := a.int.map fun b => if sign then signHull b else Bound.top }
+
+/-- **An engine value that keeps the sign is in `signVal`** (a sum of values
+of one sign keeps it in every order but Kahan's, `FloatBounds.StdModel.TreeSum.sign`;
+a variance is clamped at `0`). -/
+theorem signVal_mem {a : AVal} {sign : Bool} {r v : Int} (hr : a.Mem (.float r))
+    (hs : sign = true → ∀ b, a.int = some b →
+      (∀ l, b.lo = some l → 0 ≤ l → 0 ≤ FloatCode.canon v) ∧
+        (∀ h, b.hi = some h → h ≤ 0 → FloatCode.canon v ≤ 0)) :
+    (signVal sign a).Mem (.float v) := by
+  obtain ⟨b, hb, hm, hk⟩ := hr
+  refine ⟨if sign then signHull b else Bound.top, ?_, ?_, hk⟩
+  · simp [signVal, hb]
+  · cases sign with
+    | false => exact Bound.mem_top _
+    | true =>
+      obtain ⟨hlo, hhi⟩ := hs rfl b hb
+      exact signHull_mem hlo hhi
+
 /-- `t` units of `2⁻¹⁰⁷⁴` at least the reported `ε ≥ 0`, read exactly from
 its JSON number: `⌈ε · 2¹⁰⁷⁴⌉`. -/
 def scaledOf (n : Lean.JsonNumber) : Nat :=
@@ -123,8 +146,9 @@ def signKeptOn (es : List EngineProfile) : List String :=
   es.filterMap fun e =>
     if (e.table.allows "agg.fsum" "sum_order" []).all (signKept.contains ·) then some e.name else none
 
--- Polars's in-memory `sum` is Kahan's (polars-sum-float).
-#guard signKeptOn builtinEngines == ["duckdb", "spark"]
+-- Every built-in engine's sums are trees (Polars's streaming sums,
+-- polars-sum-float-streaming; Kahan's is the in-memory engine's, #2411).
+#guard signKeptOn builtinEngines == ["duckdb", "polars", "spark"]
 
 variable [Boxes.Ambient]
 /-- `"robust"` of a `--contract` request: per postcondition, in the order of
@@ -132,9 +156,10 @@ variable [Boxes.Ambient]
 over the values every engine may give (`engineVal`), and the engines where
 that is a theorem (`signKeptOn`; tested on the others): each double column `Report.epsilon` bounds widened by
 its `"abs"`, and a sum's, average's or variance's kept to its sign (not a
-covariance's). Columns without a finite bound keep their abstract value: a
-postcondition reads only their sign (`signBound`, which
-`TreeSum.sign` keeps on every engine). -/
+covariance's). A column with no bound on its distance (`"abs": null`) keeps
+its sign alone (`signVal`; `TreeSum.sign` keeps it on every engine): a
+postcondition that reads more of it (`avg <= 100`) is not robust. A column
+with no entry is exact and keeps its abstract value. -/
 def robust (es : List EngineProfile) (input : Json) : Except String Json := do
   let R ← ContractCheck.parse input
   let some plan := R.transform | return Json.arr #[]
@@ -153,10 +178,15 @@ def robust (es : List EngineProfile) (input : Json) : Except String Json := do
         | _ => none
     | none => []
   let E := (names.zip env).map fun (n, a) =>
-    match ((eps.getObjVal? n).toOption.bind (·.getObjVal? "abs" |>.toOption)).bind
-        (fun j => j.getNum?.toOption) with
-    | some f => if f.mantissa < 0 then { a with int := a.int.map fun _ => Bound.top }
-      else engineVal (scaledOf f) (!covs.contains n) a
+    match (eps.getObjVal? n).toOption.bind (·.getObjVal? "abs" |>.toOption) with
+    -- No bound on the distance (`"abs": null`): a postcondition reads only the
+    -- sign, which the engines' sums keep (`signVal_mem`).
+    | some Json.null => signVal (!covs.contains n) a
+    | some j => match j.getNum?.toOption with
+      | some f => if f.mantissa < 0 then { a with int := a.int.map fun _ => Bound.top }
+        else engineVal (scaledOf f) (!covs.contains n) a
+      -- Not a number: nothing is known of the distance.
+      | none => { a with int := a.int.map fun _ => Bound.top }
     | none => a
   -- Each postcondition's columns as expressions over the transformation's
   -- output (`Post.plan`).

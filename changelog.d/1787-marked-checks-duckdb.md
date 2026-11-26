@@ -1,3 +1,0 @@
-### A verified run on DuckDB leaves out checks the proof rules out
-
-Where the contract's preconditions rule out an expression's errors, a verified run on DuckDB now writes that expression without its checks, the check that a double operation does not overflow to `±∞` included (#1787). The run checks the preconditions on its tables first, and only a run whose preconditions were checked, on a route through the reference, does this. Lean proves the expressions meet no issue there (`Expr.issues_nil_of_safe`, `Rel.duckdb_marks`). As on Polars, this rests on the data not changing between the input check and the run. `to_sql` keeps every check unless given a report's `unchecked`.

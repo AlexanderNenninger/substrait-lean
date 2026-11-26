@@ -21,7 +21,7 @@ from _pipelines import (
     spy_on,
 )
 from sverify import nodes
-from sverify.contracts import label, violations
+from sverify.conditions import label
 from sverify.engines import ENGINES
 from sverify.engines.plan import delta_plans
 from sverify.errors import (
@@ -31,6 +31,7 @@ from sverify.errors import (
     VerificationError,
 )
 from sverify.io import Changes, DeltaSink, DeltaSource, StaticSource, sink_from
+from sverify.report import violations
 
 SETTINGS = settings(max_examples=20, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 
@@ -494,10 +495,10 @@ def test_batches_are_checked_without_reading_the_tables(monkeypatch):
     src = static_orders([(1, "ada", 5), (2, "bob", 7)])
     node = doubled(paid(src))
     node.refresh()
-    checked = spy_on(monkeypatch, "sverify.contracts.violations", lambda t, *a: t.get_name())
+    checked = spy_on(monkeypatch, "sverify.contracts.violation_counts", lambda t, *a: t.get_name())
     src.apply(Changes(inserts=[(3, "cy", 1)]))
     node.refresh()
-    # One check per precondition on the inserted rows, none on the tables.
+    # The preconditions are checked on the inserted rows, none on the tables.
     assert set(checked) == {"orders$inserts"}
 
 

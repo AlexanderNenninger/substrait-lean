@@ -559,9 +559,6 @@ argument is in its domain: some double. -/
 def FMath.safeB (f : FMath) (ob : Option Bound) : Bool :=
   ob.all fun b => f.lo?.all b.allGe && f.hi?.all b.allLe
 
-/-- An integer in `[lo, hi]`. -/
-def AVal.intIn (null : Bool) (b : Bound) : AVal := { null := null, int := some b, nk := some .int }
-
 /-! ### Lists and structs (#925) -/
 
 /-- Field `i` of a struct in `a`: in its description, `NULL` where the
@@ -602,6 +599,7 @@ def UnFn.abs : UnFn → AVal → AVal
   | .ffloor, a => monoAbs .float .float FloatCode.floor a
   | .fceil, a => monoAbs .float .float FloatCode.ceil a
   | .fround, a => monoAbs .float .float FloatCode.round a
+  | .froundEven, a => monoAbs .float .float FloatCode.roundEven a
   | .ftoi, a => ftoiAbs a
   | .narrow n, a => narrowAbs n a
   -- `ftoi`'s value, or NULL where the cast fails (#58).
@@ -617,6 +615,8 @@ def UnFn.abs : UnFn → AVal → AVal
   | .dtof s, a => convAbs intOrDec (FloatCode.decConv s) a
   | .ftod s, a => ftodAbs s a
   | .itos, a => { null := a.nonNum .int, str := a.int.isSome }
+  | .dtext, a | .dtextFull, a => { null := a.nonNumP isDec, str := a.int.isSome }
+  | .dwiden, a => a
   | .widen, a => a
   | .atUtc _, a => a
   | .upper, a | .lower, a | .reverse, a | .replace _ _, a | .regexExtract _ _, a
@@ -1138,6 +1138,7 @@ macro "canon_tac" : tactic => `(tactic| first
   | exact (FloatCode.canon_floor_canon _).symm
   | exact (FloatCode.canon_ceil_canon _).symm
   | exact (FloatCode.canon_round_canon _).symm
+  | exact (FloatCode.canon_roundEven_canon _).symm
   | exact (FloatCode.canon_negI_canon _).symm
   | exact (FloatCode.fadd_canon _ _).symm
   | exact (FloatCode.fsub_canon _ _).symm

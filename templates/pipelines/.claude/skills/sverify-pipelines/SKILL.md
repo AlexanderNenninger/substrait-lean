@@ -3,7 +3,7 @@ name: sverify-pipelines
 description: >
   Build incrementally maintained, contract-carrying data jobs over Delta Lake
   or Iceberg tables with sverify. Use when a user wants to keep a query
-  result up to date from a table's change feed instead of recomputing it,
+  result up to date from a table's change feed with no recomputation,
   replace a watermark ("rows newer than…") job, store results in a Delta or
   Iceberg table exactly once, chain jobs through stored tables, resume a
   restarted job, prove preconditions from table metadata, read from an API
@@ -22,7 +22,7 @@ recompute; other aggregates recompute only the groups a batch touches,
 windows on one `PARTITION BY` the touched partitions (inputs without ties),
 and bounded `RANGE` frames the touched frames; others (left joins, `LIMIT`)
 are recomputed and diffed. `node.status()` says which
-([guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#nodes-composing-storing-refreshing)).
+([guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-nodes.md#nodes-composing-storing-refreshing)).
 Needs the `delta` or `iceberg` extra.
 
 A node whose contract is not proved refuses the refresh
@@ -118,7 +118,7 @@ assert stored.to_arrow().to_pylist() == [{"id": 3, "doubled": 100}]
 ## Restart a job, and refresh several outputs together
 
 A restarted job builds the same nodes again; the first refresh resumes each
-stored node from its sink's table instead of recomputing it, if the plan and
+stored node from its sink's table with no recomputation, if the plan and
 source versions match what the sink recorded:
 
 ```python

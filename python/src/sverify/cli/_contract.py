@@ -1,13 +1,11 @@
-"""`sverify contract export <file>:<node> --format odcs` (#791): a node's
-contract in a standard format, on standard output or in a file."""
+"""`sverify contract export <file>:<node>` (#791): a node's contract as ODCS,
+on standard output or in a file."""
 
 from __future__ import annotations
 
 import argparse
 import sys
 from pathlib import Path
-
-FORMATS = ("odcs",)
 
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
@@ -23,7 +21,6 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
         "checked on the data, or declared.",
     )
     e.add_argument("target", help="file.py:<node>")
-    e.add_argument("--format", dest="contract_format", choices=FORMATS, default="odcs")
     e.add_argument("--output", "-o", default=None, help="the file to write (default: stdout)")
     e.add_argument("--id", default=None, help="the contract's id (default: from the node's name)")
     e.add_argument("--version", dest="contract_version", default="1.0.0")
@@ -32,7 +29,7 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
 
 def cmd_export(args: argparse.Namespace) -> int:
     from sverify import odcs
-    from sverify.cli._common import OK, UsageError, split_target
+    from sverify.cli._common import ExitCode, UsageError, split_target
     from sverify.cli._discover import Discovery, load
 
     path, target = split_target(args.target)
@@ -56,4 +53,4 @@ def cmd_export(args: argparse.Namespace) -> int:
         Path(out).write_text(
             odcs.dumps(doc, "json" if out.endswith(".json") else "yaml"), encoding="utf-8"
         )
-    return OK
+    return ExitCode.PROVED

@@ -2,6 +2,7 @@
 
 import functools
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -187,6 +188,43 @@ def test_groups_and_options() -> None:
             assert (_facts().facts_dir(engine) / f"{fact}.json").exists()
 
 
+@needs_repo
+def test_core_semantics_groups_are_lean() -> None:
+    """`docs/core-semantics.md`'s table of function groups is `Functions.groups`,
+    row for row: each group of a function area has a row, and its Options column
+    names exactly the group's options (#2438: `cast.num` named `float_to_int`
+    where Lean read nothing). A cell that starts with "none" names none; its
+    note may mention an option out of reach. The relations' rows are read by
+    `Rel.reads`, outside the function groups, and are left out. `cast.dec` named
+    `decimal_rescale` where `dround` and `ftod` read nothing (rulings 273 and 278)."""
+    doc = (ROOT / "docs" / "core-semantics.md").read_text(encoding="utf-8")
+    lean = lean_options()
+    options = {o["id"] for o in lean["options"]}
+    rows = re.findall(r"^\| ([a-z]+) \| `([a-z0-9._]+)` \| .* \| (.*) \|$", doc, re.M)
+    doc_groups = {g for area, g, _ in rows if area != "relations"}
+    assert doc_groups == set(lean["groups"])
+    for area, group, cell in rows:
+        if area == "relations":
+            continue
+        named = [] if cell.startswith("none") else re.findall(r"`([a-z0-9_]+)`", cell)
+        assert {o for o in named if o in options} == set(lean["groups"][group]), group
+
+
+@needs_repo
+@pytest.mark.parametrize(
+    ("engine", "status"), [("duckdb", "native"), ("polars", "refused"), ("spark", "refused")]
+)
+def test_each_profile_states_its_own_double_to_decimal(engine: str, status: str) -> None:
+    """A double cast to a decimal reads `decimal_rescale` (ruling 278): DuckDB's
+    profile takes the reference's cast, so its generated lowering writes the
+    native one; Polars's rounds the product half to even and Spark's rounds within
+    one unit, so their lowerings refuse it rather than write the native cast."""
+    name = {"duckdb": "DuckDB", "polars": "Polars", "spark": "Spark"}[engine]
+    table = ROOT / "engines" / engine / "Sverify" / name / "LoweringOn" / "Table.lean"
+    rows = re.findall(r'\("UnFn\.ftod", "([a-z]+)"', table.read_text(encoding="utf-8"))
+    assert rows == [status]
+
+
 @pytest.mark.parametrize("profile", sorted(fns.CHOICES))
 def test_choices(profile: str) -> None:
     """Each profile chooses, for every group and option, behaviours the core allows."""
@@ -208,7 +246,8 @@ def test_lift_profiles_agree(group: str) -> None:
         for option in fns.GROUPS[group]:
             if option not in fixed:
                 continue
-            c = fns.choice(name, group, option)
+            # The portable lift's choices are the reference profile's rows.
+            c = fns.choice("reference" if name == "portable" else name, group, option)
             assert (fixed[option],) == (c.default or c.behaviours), (name, option)
 
 

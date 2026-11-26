@@ -1,0 +1,16 @@
+{
+  "id": "F274",
+  "date": "2026-11-23",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "`routes._bounds`, the one place Python turns a column's printed ε into a double, gives the least double at or above the printed decimal instead of the nearest. A suggested tolerance then always meets its own bound under the checker's exact comparison, and rounding up is sound wherever the value is read, since each is an upper bound on an error.",
+  "issues": [
+    1071
+  ],
+  "prs": [
+    2484
+  ],
+  "source": "fable-ruling-274-2484-bound-round-up.md",
+  "note": "Completes F265's exact comparison on the Python side; amends nothing, no D-number. Found when a test changed from PROVED to UNPROVED in #2484: the nearest double fell about 9.3e-27 below the printed ε. Conditions: R1, one helper (`Decimal(text)`, then `nextafter` up when the float falls below it), used only in `_bounds`. R2, if the checker's JSON carries ε as a number, it is parsed from its text (`parse_float=Decimal`), and Realize.lean's output doesn't change. R3, `_smallest`'s one-digit rounding stays. R4, a Hypothesis property: the result is at or above the text, it is the least such double, and every finite double's repr gives itself back. R5, Improvement lines count the places that turn ε into a double and the tests whose verdict depends on it. Corrected by Fable after #2484 found R4's third property false: `up(repr(x)) == x` fails where the repr lies above the double's exact value. #2484 tests `up(str(Decimal(x))) == x` and `x <= up(repr(x)) <= nextafter(x, inf)` instead (`test_routes.py`); the helper is `routes._up`."
+}

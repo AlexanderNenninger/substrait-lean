@@ -57,7 +57,7 @@ def con() -> sv.engine.Connection:
     return c
 
 
-def run_both(report: sv.Report, con, q: sv.observation.Observation | None = None) -> dict:
+def run_both(report: sv.Report, con, q: sv.observation.Lenses | None = None) -> dict:
     """The plan's result on each engine, by the route `auto` picks; the
     results agree up to `q` (the report's observation by default)."""
     out = {e: report.run(con, e, route="auto") for e in ENGINES}
@@ -93,9 +93,9 @@ def test_a1_integer_arithmetic_with_negative_operands(con) -> None:
     assert sorted(out["duckdb"].column("mod").to_pylist()) == sorted(
         int(math.fmod(i, j)) for i, j in zip(DIVIDENDS, DIVISORS, strict=True)
     )
-    assert route_of(report, "duckdb").kind == "translated"
+    assert route_of(report, "duckdb").taken == "translated"
     assert route_of(report, "duckdb").cls == "exact"
-    assert route_of(report, "polars").kind == "translated"
+    assert route_of(report, "polars").taken == "translated"
     assert route_of(report, "polars").cls == "shim"
 
 
@@ -109,7 +109,7 @@ def test_a2_sum_of_a_bounded_int32(con) -> None:
     assert report.verdict == sv.Verdict.PROVED and not report.assumed and not report.issues
     run_both(report, con)
     for e in ENGINES:
-        assert route_of(report, e).kind == "translated"
+        assert route_of(report, e).taken == "translated"
         assert route_of(report, e).cls == "exact"
 
 
@@ -168,7 +168,7 @@ def test_a4_double_product_that_may_reach_infinity(con) -> None:
     for e in ("duckdb", "spark"):
         assert route_of(report, e).cls == "exact"
     # Polars is observed for any double product, proved outright or not: its
-    # route reads `-0.0` as `0.0` (facts polars-zero-sign, polars-zero-add).
+    # route reads `-0.0` as `0.0` (facts polars-zero-sign-streaming, polars-zero-add).
     proved = sv.verify(
         u.select(z=u.x * u.y),
         requires={"u": [_.x.between(-1e150, 1e150), _.y.between(-1e150, 1e150)]},
@@ -206,11 +206,14 @@ def test_a5_avg_of_int32_and_rounding_ties(con) -> None:
     assert sorted(run_both(rounded, ties)["polars"].column("r").to_pylist()) == [-2, 1, 3]
     assert sorted(run_both(mean, ties)["polars"].column("a").to_pylist()) == [1.5, 3.0]
     # DuckDB's `round(-0.4)` is `-0.0` (`round_zero_sign`): the default
-    # observation reads one zero, so DuckDB runs it as written; an
-    # observation that reads the signs gets the written plan's proved
-    # template, which gives the reference's `0.0`. Polars shims the
-    # rounding mode either way.
-    assert route_of(rounded, "duckdb").cls == "observed"
+    # observation reads one zero. `round()` of a double gives an integer, a
+    # cast that DuckDB's writer always writes as `CAST(trunc(x) AS BIGINT)`,
+    # the shim of `cast.num`'s `float_to_int` (duckdb-R9, ruling 273), so the
+    # route names it. An observation that reads the signs gets the written
+    # plan's proved template, which gives the reference's `0.0`. Polars shims
+    # the rounding mode either way.
+    assert route_of(rounded, "duckdb").cls == "shim"
+    assert route_of(rounded, "duckdb").shims == ("cast.num's float_to_int: trunc before the cast",)
     assert route_of(rounded, "polars").cls == "shim"
     signed = sv.verify(
         tt.select("k", r=tt.x.round()),
@@ -259,7 +262,7 @@ def test_b1_float_aggregates_within_a_tolerance(con) -> None:
         ensures=[sv.equivalent()],
     )
     refused = routes.choose(tight, "polars")
-    assert refused.refused and ("floats" in refused.reason or "doubles" in refused.reason)
+    assert refused.refused and ("floats" in refused.why or "doubles" in refused.why)
 
 
 def _non_negative(con) -> sv.engine.Connection:
@@ -283,7 +286,7 @@ def test_b2_group_by_a_double_key_with_zeros_and_nan(con) -> None:
     exact = sv.verify(expr, ensures=[sv.equivalent(floats="plan")])
     assert exact.verdict == sv.Verdict.PROVED, str(exact)
     strict = routes.choose(exact, "polars")
-    assert (strict.refused and "zeros" in strict.reason) or strict.cls == "shim", strict
+    assert (strict.refused and "zeros" in strict.why) or strict.cls == "shim", strict
     canon = sv.verify(expr, ensures=[sv.equivalent(zeros="canon")])
     out = run_both(canon, z)
     assert sorted(out["polars"].column("n").to_pylist()) == [1, 2, 2]
@@ -339,7 +342,7 @@ def test_c3_limit_over_ties_is_reported_and_refused_where_required(con) -> None:
     report = sv.verify(t.order_by("k").limit(2))
     assert report.verdict == sv.Verdict.PROVED and not report.deterministic
     r = routes.choose(report, "polars")
-    assert r.kind == "translated" and not r.deterministic and r.warnings
+    assert r.taken == "translated" and not r.deterministic and r.warnings
     with pytest.raises(RouteError, match="rerun must give the same result"):
         report.run(con, "polars", route="auto", reproducible=sv.equivalent())
 
@@ -376,7 +379,7 @@ def test_d1_open_picks_and_element_order(con) -> None:
     assert report.verdict == sv.Verdict.PROVED, str(report)
     run_both(report, con, sv.equivalent(elements="multiset"))
     for e in ENGINES:
-        assert route_of(report, e).kind == "translated"
+        assert route_of(report, e).taken == "translated"
         assert route_of(report, e).cls in ("exact", "observed")
     reads = sv.verify(expr, requires=req, ensures=[q, _.f == _.mx, _.l[0] <= _.mx])
     assert {c.label: c.ignores for c in reads.ensures} == {
@@ -434,10 +437,10 @@ def test_f1_a_polars_request_runs_translated_on_polars(con) -> None:
     plan reaches Polars by the translation, which computes the stated `FLOOR`."""
     with pytest.warns(ProfilePendingWarning):
         report = _floor_report(con)
-    assert report.verdict == sv.Verdict.PROVED and report.semantics == "reference", str(report)
+    assert report.verdict == sv.Verdict.PROVED and report.semantics == "portable", str(report)
     out = report.run(con, "polars", route="auto")
     r = report.routes["polars"]
-    assert (r.kind, r.profile) == ("translated", "reference")
+    assert (r.taken, r.profile) == ("translated", "portable")
     pairs = list(zip(DIVIDENDS, DIVISORS, strict=True))
     assert sorted(out.column("m").to_pylist()) == sorted(i % j for i, j in pairs)
     assert sorted(out.column("q").to_pylist()) == sorted(i // j for i, j in pairs)
@@ -447,7 +450,7 @@ def test_f1b_the_same_report_runs_translated_on_duckdb(con) -> None:
     """The report is the reference's, so DuckDB takes it by the translation too."""
     report = _floor_report(con)
     r = routes.choose(report, "duckdb")
-    assert r.kind == "translated", r
+    assert r.taken == "translated", r
     out = report.run(con, "duckdb", route="auto")
     pairs = list(zip(DIVIDENDS, DIVISORS, strict=True))
     assert sorted(out.column("m").to_pylist()) == sorted(i % j for i, j in pairs)
@@ -477,7 +480,7 @@ def test_f1e_recheck_is_unavailable_for_polars_until_271(con) -> None:
     ok, why = routes.recheck(report, "polars")
     assert not ok and 'semantics="polars"' in why
     out = report.run(con, "polars")
-    assert report.routes["polars"].kind == "translated"
+    assert report.routes["polars"].taken == "translated"
     assert sorted(out.column("m").to_pylist()) == sorted(
         int(math.fmod(i, j)) for i, j in zip(DIVIDENDS, DIVISORS, strict=True)
     )
@@ -496,9 +499,9 @@ def test_f2_duckdb_plan_is_refused_on_polars_until_271(con) -> None:
         semantics="duckdb",
     )
     assert report.verdict == sv.Verdict.PROVED, str(report)
-    assert routes.choose(report, "duckdb").kind == "native"
+    assert routes.choose(report, "duckdb").taken == "native"
     r = routes.choose(report, "polars")
-    assert r.refused and "semantics='reference'" in r.reason, r
+    assert r.refused and "semantics='portable'" in r.why, r
     assert math.inf in report.run(big, "duckdb").column("z").to_pylist()
 
 
@@ -518,10 +521,10 @@ def test_f3_duckdb_null_order_stated_transfers(con) -> None:
         semantics="duckdb",
     )
     assert report.verdict == sv.Verdict.PROVED, str(report)
-    assert routes.choose(report, "duckdb").kind == "native"
+    assert routes.choose(report, "duckdb").taken == "native"
     taken = routes.choose(report, "polars", route="transfer")
-    assert not taken.refused, taken.reason
-    assert routes.choose(report, "polars").kind == "transfer"
+    assert not taken.refused, taken.why
+    assert routes.choose(report, "polars").taken == "transfer"
     out = report.run(con, "polars", route="auto")
     assert out.column("k").to_pylist()[-2:] == [None, None]
 
@@ -536,9 +539,9 @@ def test_g1_md5_runs_on_duckdb_and_is_refused_on_polars(con) -> None:
     assert report.verdict == sv.Verdict.PROVED
     out = report.run(con, "duckdb", route="auto")
     assert out.column("h").to_pylist()[0] == "900150983cd24fb0d6963f7d28e17f72"
-    assert report.routes["duckdb"].kind == "translated"
+    assert report.routes["duckdb"].taken == "translated"
     r = routes.choose(report, "polars")
-    assert r.refused and r.cls == "refused" and "#271" in r.reason
+    assert r.refused and r.cls == "refused" and "#2540" in r.why
     with pytest.raises(RouteError, match=r"hexdigest\('md5'\) \(SQL md5\) runs on duckdb only"):
         report.run(con, "polars", route="auto")
 
@@ -551,7 +554,7 @@ def test_h1_engine_versions(con, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(routes, "installed_version", lambda e: "2.1.9" if e == "polars" else None)
     with pytest.warns(routes.EngineVersionWarning, match="polars 2.1.9"):
         r = routes.choose(report, "polars")
-    assert r.kind == "translated" and r.unprobed_version == "2.1.9" and r.warnings == ()
+    assert r.taken == "translated" and r.unprobed_version == "2.1.9" and r.warnings == ()
     assert "this run is on 2.1.9, unprobed" in str(r)
     assert report_json.route(report_json.route_json(r)) == r
     monkeypatch.setattr(routes, "installed_version", lambda e: "2.2.0" if e == "polars" else None)
@@ -561,5 +564,5 @@ def test_h1_engine_versions(con, monkeypatch: pytest.MonkeyPatch) -> None:
         report.run(con, "polars", route="auto")
     with pytest.warns(routes.UnverifiedRunWarning, match="polars 2.2.0 is outside the range"):
         report.run(con, "polars", unverified=True)
-    assert report.routes["polars"].kind == "unverified"
-    assert routes.choose(report, "duckdb").kind == "translated"
+    assert report.routes["polars"].taken == "unverified"
+    assert routes.choose(report, "duckdb").taken == "translated"

@@ -20,7 +20,8 @@ namespace Substrait
 /-- The options at which `Profile.duckdb_withinOk` uses DuckDB's table. -/
 def Profile.duckdbExtras : List (Functions.Ctor × String) :=
   FMath.all.map (fun g => (.un (.fmath g), "on_domain_error")) ++
-    [(.un .fround, "round_zero_sign"), (.un .fceil, "round_zero_sign"),
+    [(.un .fround, "round_zero_sign"), (.un .froundEven, "round_zero_sign"),
+     (.un .fceil, "round_zero_sign"), (.un .ftoi, "float_to_int"), (.un .ftoiOrNull, "float_to_int"),
      (.bin .fadd, "nan_creation"), (.bin .fsub, "nan_creation"), (.bin .fmul, "nan_creation"),
      (.bin .fdiv, "on_division_by_zero"), (.bin .fdiv, "nan_creation"),
      (.bin .fmod, "nan_creation"), (.bin .fpow, "on_domain_error"),
@@ -36,8 +37,8 @@ variable [Boxes.Ambient]
 /-- **DuckDB's functions are within its table**, with IEEE operations on:
 each value `duckBin` and `duckUn` change is in the scope of an option the
 table allows another behaviour (D34): a domain error's NaN, a zero divisor's
-`±∞` or NaN or NULL, a created NaN, a shift out of range. With
-`ieee_floating_point_ops` off, `(-∞) ^ y` has no row (#900). -/
+`±∞` or NaN or NULL, a created NaN, a shift out of range, a cast's
+rounding. With `ieee_floating_point_ops` off, `(-∞) ^ y` has no row (#900). -/
 theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
     (Profile.duckdb s).WithinOk (Profile.duckdb.table s) := by
   obtain ⟨e, i⟩ := s
@@ -59,12 +60,16 @@ theorem Profile.duckdb_withinOk {s : DuckDBSettings} (hs : s.ieeeOps = true) :
             simp [optionScope, Functions.Ctor.issue, UnFn.issueAll, UnFn.issue, domainIssue, hc.2]
           · cases hd
         -- IEEE's `-0.0` where the reference's result is a zero (`round_zero_sign`).
-        case fround | fceil =>
+        case fround | froundEven | fceil =>
           split at hd
           · rename_i hc
             refine callExtra_of_at (o := "round_zero_sign") (extraAt_of_all (Profile.duckdb_extras _) (by decide)) ?_
             simp [optionScope, Functions.Ctor.result, UnFn.apply, Value.hasZero, FloatCode.isZeroCode, hc.2]
           · cases hd
+        -- The cast rounds half to even (`float_to_int`, duckdb-R9).
+        case ftoi | ftoiOrNull =>
+          exact callExtra_of_at (o := "float_to_int") (extraAt_of_all (Profile.duckdb_extras _) (by decide))
+            (by simp [optionScope])
     | _ => exact .inl (raiseIf_ok h)
   · -- Each deviation, with the option whose scope it is in.
     have hfl : ∀ {a b : Int}, f.onFloats = true →
@@ -240,4 +245,21 @@ theorem Engine.duckdb_contract_example :
     (unfold Expr.RaisesOn; decide +kernel)
 
 end Example
+
+-- Every function the generated lowering writes natively reads the reference's
+-- behaviour from the table at each of its options (`nativeOffReference`, ruling
+-- 278's addendum), but at the pending functions and options listed. Ruling 282 (F282)
+-- accepts the list: it only shrinks (the guard fails on a new entry and on a fixed
+-- one), and a pending function stays on the hand-written translation path until
+-- its entry is resolved. The check reads options per function (C1) and skips those
+-- the observation row absorbs (C2, C3); what is left is ruling 284's C6, a
+-- compensation in the writer's rendering, outside the proof.
+#guard letI := Boxes.Ambient.none
+  nativeOffIs (Profile.duckdb.table {}) Profile.duckdb.obs Lowering.duckdb.nativeUn Lowering.duckdb.nativeBin
+    [-- C6 (ruling 284, F284): DuckDB's `CAST` of a decimal rounds half away from zero
+     -- (duckdb-R9); the writer renders `dtrunc` as `CAST(TRUNC(x) AS BIGINT)`, a
+     -- compensation in its text outside the proof. Its template is ruling 284's (d).
+     -- `ftoi` and `ftoiOrNull` truncate first in the lowering (`Lowering.ftoi_agree`).
+     (.un (.dtrunc 0), "float_to_int")]
+
 end Substrait

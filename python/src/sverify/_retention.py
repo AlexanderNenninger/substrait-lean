@@ -49,8 +49,9 @@ from sverify._weighted import (  # noqa: F401  (`after`, `buckets`, `through` ar
     rows_of,
     through,
 )
-from sverify.contracts import ArrivesWithin, Condition, label, show_duration
+from sverify.conditions import ArrivesWithin, label, show_duration
 from sverify.plan_json import INSTANT_NOTE, is_utc
+from sverify.report import Condition
 
 # `date_trunc` to these units is a bucket from 1970-01-01 (`Retention.trunc_eq_bucket`).
 _UNITS = {
@@ -363,10 +364,10 @@ def show_time(v: Any) -> str:
 
 @dataclass
 class RetentionReport:
-    """What retention did to one view in a refresh: `str()` gives one line."""
+    """What retention did to one node in a refresh: `str()` gives one line."""
 
-    view: str
-    """The view's name."""
+    node: str
+    """The node's name."""
     column: str
     """Its bucket column."""
     open: int
@@ -382,14 +383,14 @@ class RetentionReport:
     waiting: str | None = None
     """Why final buckets were kept this time (a sink has not written them)."""
     off: str | None = None
-    """Why the view keeps every bucket, if it does."""
+    """Why the node keeps every bucket, if it does."""
 
     def __str__(self) -> str:
         if self.off is not None:
-            return f"retention {self.view}: off ({self.off})"
+            return f"retention {self.node}: off ({self.off})"
         wm = "none yet" if self.watermark is None else show_time(self.watermark)
         line = (
-            f"retention {self.view}.{self.column}: {self.open} bucket(s) open "
+            f"retention {self.node}.{self.column}: {self.open} bucket(s) open "
             f"(bound {self.bound}), {self.retired} retired, {self.rows} state row(s); "
             f"watermark {wm}"
         )

@@ -20,11 +20,11 @@ keeps NaN rows. Ask for `~_.v.isnan()` if a NaN must not get through.
 
 A column's strings are tracked while they are few (up to 64), from
 constants, `IN` lists, `=` and `<>` filters, `CASE`, `COALESCE` and
-`UNION ALL`, which proves dbt's `accepted_values` (#708).
+`UNION ALL`, which proves dbt's `accepted_values`.
 
 Not tracked: what is inside a string (`LIKE`, lengths), relations beyond
 "column plus constant", counts across rows
-([guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/guide.md#contracts)).
+([guide](https://github.com/AlexanderNenninger/substrait-lean/blob/main/docs/how-to-contracts.md#contracts)).
 
 ## SQL transformations
 

@@ -92,9 +92,18 @@ runs `static` only and its `qa` fails; retargeting it to main starts the full
 run (`.github/workflows/retarget.yml`). The header of
 `.github/workflows/ci.yml` has the details.
 
-A pull request that changes `python/` also runs `outside-repo`: the fast set
-from a copy of the tests outside the repository, as the release's wheel test
-runs them (`python/scripts/wheel_tests.sh`). A test that reads repository
+A few jobs read fewer files on a pull request and run in full in a merge
+batch (`batch/*`), on main and on release branches. `outside-repo` runs the
+fast set from a copy of the tests outside the repository, as the release's
+wheel test runs them (`python/scripts/wheel_tests.sh`), when the packaging,
+the tests or a data file of the package change. The Ibis and validator
+replays (`evidence`) and the dbt packages' replay step run when the
+package's code (not its I/O, CLI, skills or schemas), an engine package's
+code, the lock files, their own ledgers or a Lean input change. The Wheels
+workflow runs its wheel tests on release branches, tags, merge batches and
+its schedule. Docs builds on a pull request only when its docs, README,
+site config or packaging change, not for code: a docstring that breaks the
+API reference shows on main. The header of `ci.yml` has the paths. A test that reads repository
 files (docs, the catalogue, facts, Lean sources) carries `needs_repo`
 (`tests/_repo.py`); a test dependency the package doesn't bring goes into
 that script's list, or the test uses `pytest.importorskip`. Run it locally
@@ -199,7 +208,7 @@ at most 8 (the user's services share the box), checked inside the lock.
 takes 2, a light task `--slots 1`); `homelab-run` has the same options. `capacity homelab` lists the holders and waiters.
 
 - **Three slots.** A `/tmp/substrait-lean-*` directory means a run is going.
-  Long jobs that aren't QA (a replay, fuzzing, TLC) go through `homelab-run`
+  Long jobs that aren't QA (a replay, fuzzing) go through `homelab-run`
   and take a slot too. The chaos run (the `chaos-run` skill) takes none.
 - **Cap workers** with `PYTEST_XDIST_AUTO_NUM_WORKERS=2`, the script's
   default, and run under `nice -n 10`.
@@ -343,8 +352,8 @@ Don't commit regenerated tables on a feature branch. They are rewritten on
 (`.github/workflows/generated.yml`), so committing them only causes merge
 conflicts with other PRs:
 
-- `README.md`'s coverage table (`<!-- coverage:start -->` … `<!-- coverage:end -->`),
-  from `sverify_dev.coverage --write-readme`;
+- `docs/coverage.md`'s coverage table (`<!-- coverage:start -->` … `<!-- coverage:end -->`),
+  from `sverify_dev.coverage --write`;
 - `catalogue/INDEX.md` and `catalogue/FINDINGS.md`'s stats tables, from
   `sverify_dev.catalogue --write-tables`;
 - `docs/realizability.md`, from `sverify_dev.realizability --write`;

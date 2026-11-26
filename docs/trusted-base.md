@@ -56,7 +56,7 @@ the project's one axiom (the trusted table below).
 | `liftDuckDB.total` | The lift of DuckDB's SQL covers every generated entry | `DuckDB/Lift/Duckdb.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.duckdb_sound` | A proved contract holds on the model of DuckDB (default settings), given `NoRaiseSide`, which an empty `Rel.mayIssues` discharges (`Engine.duckdb_noRaise_of_mayIssues`). The model differs from the reference only in its scalar functions: its relational behaviour is the reference's, and that the engine runs it is the assumption `Engine.Runs` ([below](#the-trusted-parts-in-detail)) | `DuckDB/Engine.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.polars_sound` | … on the model of Polars, given `GuardFreeSide`, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`) (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
-| `Engine.spark_sound` | … on the model of Spark, given `GuardFreeSide`, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`) (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
+| `Engine.spark_sound` | … on the model of Spark, given `SparkSide`: a catalog of doubles, a plan whose constants are doubles (the checker's check), and either `GuardFreeSide` for a plan without IEEE division, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`), or `NoRaiseSide`, every guard kept (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.contract_sound_runs` | … on an engine's run, given the engine runs its model (`Engine.Runs`) | `Sound.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.contract_sound_runs_near` | … on an engine's run with open float rows, given `Rel.FloatOpenSafeP` over its table, which `Rel.floatOpenSafeP_aggregate` discharges for a root aggregate's double `SUM` and `AVG`, and `Rel.floatOpenSafeP_of_noDouble` for a closed plan without doubles; other shapes are #929's | `Sound.lean` | propext, Classical.choice, Quot.sound |
 | `Rel.transfer_of_noDouble` | A result a table allows for a plan without doubles, the reference allows, where the table with the reference's choices at the options only doubles read (`floatOnlyOptions`) transfers (`transferB`) | `NoDouble.lean` | propext, Classical.choice, Quot.sound |
@@ -99,16 +99,19 @@ place, and what retires it.
 | structure | `DoubleStats.Correct` | `analysis/Sverify/Analysis/Pruning.lean` | What a file's double statistics mean: the minimum and maximum bound the canonical codes, as writers compare IEEE numbers: `-0.0` counts as `0.0` | |
 | opaque | `intToDouble` | `core/Sverify/Core/Float.lean` | A conversion given with the property the proofs use; the proofs see only the property | |
 | opaque | `decToDouble`, `doubleToDecimal` | `core/Sverify/Core/Conversions.lean` | The same, for decimals and doubles | |
+| opaque | `Spark.doubleToDecimal` | `engines/spark/Sverify/Spark/Profile.lean` | Spark's native cast of a double to a decimal, an engine fact ([spark-double-to-decimal](../engines/spark/facts/spark-double-to-decimal.json)); the proofs see only its `defined` and `near` fields, which the reference's cast inhabits, so it adds no axiom | |
 | opaque, `implemented_by`, unsafe def | `evalSemantics`, `evalDuckAgg`, `evalDuckFn`, `evalHints`, `evalSemanticsImpl`, `evalDuckAggImpl`, `evalDuckFnImpl`, `evalHintsImpl` | `engines/duckdb/Sverify/DuckDB/LiftSearch.lean` | The lift generator's evaluation of Lean terms while it elaborates; what it writes is a theorem the kernel checks (with `check_generated`) | |
 | opaque, `implemented_by`, unsafe def | `evalProfile`, `evalBoxes`, `evalUnFn`, `evalBinFn`, `evalHints`, `evalSchemas`, `evalProfileImpl`, `evalBoxesImpl`, `evalUnFnImpl`, `evalBinFnImpl`, `evalHintsImpl`, `evalSchemasImpl` | `engines/Sverify/Engines/LoweringSearch.lean` | The lowering generator's, the same | |
 | opaque, `implemented_by`, unsafe def | `evalEngines`, `evalEnginesUnsafe` | `SubstraitLean/Obligations.lean` | The engine profiles' evaluation while the obligations elaborate | |
 | sorry | `checkGenerated` | `engines/Sverify/Engines/Generated.lean` | With `check_generated` off (a plain `lake build`, every editable install), the generated entries' proofs are `sorryAx`; CI, the wheels and `poe prove` check them. `substrait-check --build` says which build it is (`generated proofs checked` or `unchecked`); the report records it as `checker.generated_proofs`, and `str(report)` says "proved by a checker whose generated proofs are unchecked" for the second | |
 | compiled checker | `partial def` on the evaluation path, IO, `Lean.Json` | `SubstraitLean/`, `SubstraitCheck.lean`, `Main.lean` | The compiled code runs what the definitions state; a `partial def` is opaque to proofs | |
-| CLI glue | `parse`, `schemaEnv`, `Report.json`, `runOn`, `serve`, `underProfile` | `SubstraitLean/ContractCheck.lean`, `SubstraitCheck.lean` | Reading the request and writing the answer; `underProfile` marks a request under an engine's profile pending (the reference's report, labelled `reference`) | Engine profiles of their own ([tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/271)) |
+| CLI glue | `parse`, `schemaEnv`, `Report.json`, `runOn`, `serve`, `underProfile` | `SubstraitLean/ContractCheck.lean`, `SubstraitCheck.lean` | Reading the request and writing the answer; `underProfile` marks a request under an engine's profile pending (the reference's report, labelled `reference`) | Engine profiles of their own ([tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/2545)) |
 | CLI glue | `"class_basis": "computed"`, `"sorted_basis": "computed"` | `SubstraitLean/Realize.lean` | The class and the sort per engine are computed from the rows; no theorem connects them to the engine's refinement | A theorem that does |
 | ε path | `"epsilon"`, `"rows_exact"`, `"margin_checks"` | `SubstraitLean/Epsilon.lean`, `core/Sverify/Core/MarginCheck.lean` | The [float bounds](float-bounds.md) and the threshold rule feed the per-engine verdict and the run-time checks; `check_proved_sound` covers the analysis without them | A second lemma that covers them |
 | Python glue | `verdict`, `_proof_cache`, `SVERIFY_CHECKER`, `Report.from_json` | `python/src/sverify/` | The one report of an answer; a cached answer for the same request and checker binary; a checker named by the environment or a plugin; a report read back from a file | |
-| Python glue | `Observation.reads_members`, `routes.reproducibility` | `python/src/sverify/observation.py`, `python/src/sverify/routes.py` | The step from an observation to a level of determinism (D48): an observation that reads one zero and one NaN (`zeros="canon"`, `floats="plan"` or a tolerance) is met by `Report.deterministic`, the class level (`check_class_determined_sound`, and `check_class_determined_determined` for `Rel.DeterminedUpTo` at `Obs.classes`); one that reads the members asks for the exact level (`check_deterministic_sound`, `check_deterministic_determined`). The bridge from `Row.canon` to `Relation.Equiv` is proved (`Relation.Equiv_classes_of_canon_perm`); what stays trusted is that the kinds the Python side passes read every column that may hold a double as a double (`Relation.DoublesKinded`) | `Rel.kinds_sound` (`core/Sverify/Core/Kinds.lean`) gives a result's kinds; the lemma that they meet `DoublesKinded`, and `data.HasKinds` beside `DataMeets`, are P1c (#1285) |
+| Python glue | `Report.verdict`, `Report._proved`, `Report._verified`, `Report._unproved_reasons` | `python/src/sverify/report.py` | The one place that decides proved from the report's fields: every postcondition `portable` (or `checked`, for `_verified`), and no `errors`, `_transfer`, `needs` or `floats_unmet`. `python/tests/test_trusted_base.py` fails where another module reads `portable` | |
+| Python glue | `routes.verified`, `routes.not_verified`, `cli/_discover.py`, `substrait_export._refuse_unverified`; sverify-dbt's per-test status (`dbt/src/sverify_dbt/check.py`) | `python/src/sverify/`, `dbt/src/sverify_dbt/` | The reads after the decision: a run, a discovered transform's status and an export call `Report`'s functions. A dbt test is proved when its own condition is `portable` and it needs no source test, whether or not the model may raise, since dbt runs the model | |
+| Python glue | `Lenses.reads_members`, `routes.reproducibility` | `python/src/sverify/observation.py`, `python/src/sverify/routes.py` | The step from an observation to a level of determinism (D48): an observation that reads one zero and one NaN (`zeros="canon"`, `floats="plan"` or a tolerance) is met by `Report.deterministic`, the class level (`check_class_determined_sound`, and `check_class_determined_determined` for `Rel.DeterminedUpTo` at `Obs.classes`); one that reads the members asks for the exact level (`check_deterministic_sound`, `check_deterministic_determined`). The bridge from `Row.canon` to `Relation.Equiv` is proved (`Relation.Equiv_classes_of_canon_perm`); what stays trusted is that the kinds the Python side passes read every column that may hold a double as a double (`Relation.DoublesKinded`) | `Rel.kinds_sound` (`core/Sverify/Core/Kinds.lean`) gives a result's kinds; the lemma that they meet `DoublesKinded`, and `data.HasKinds` beside `DataMeets`, are P1c (#1285) |
 | Python glue | `Report.check_inputs`, `Report._unchecked_requires` | `python/src/sverify/report.py` | On Polars (and Spark) a guard-free plan runs without its per-row guards, and on DuckDB the expressions the checker marked run without theirs, the check against `±∞` included (`Rel.duckdb_marks`, ruling 223); both rest on `check_inputs` deciding the theorem's `hpre` on the data the run reads: each `requires` is checked on the run's engine, a report read back with `Report.from_substrait` carries its preconditions as plans (`PlannedCondition`), and a run refuses a report with a precondition it holds no check for | A theorem that ties the checks to `hpre` |
 | frontends | The Ibis producer, the SQLGlot lift, the request builder | `python/src/sverify/ibis_substrait/`, `python/src/sverify/sql_lift/`, `python/src/sverify/contracts.py` | That the plan is the one the user meant | |
 | engine facts | `docs`, `source`, `probe`, `fuzz`, `proof` | `engines/<engine>/facts/` | What an engine computes, by provenance: its documentation, its source, a probe, a fuzzer, a proof (`engine-fact` skill) | Each fact's evidence |
@@ -123,22 +126,28 @@ Sverify's words claim no more than these theorems give
 
 - The engine models are the reference's relational evaluator with each
   engine's scalar functions. A proof on an engine is a proof on that model:
-  DuckDB's lowering and the shims are proved against it, and the Polars and
-  Spark translations are tested. Engine profiles that evaluate their own
-  relational behaviour are [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271).
+  DuckDB's, Polars's and Spark's lowerings are generated and proved against
+  it (`Lowering.duckdb_exact`, `Lowering.polars_exact`, and Spark's every entry
+  but IEEE division, `Lowering.spark_exact_except`), and the
+  translations' relational operators and remaining shims are tested. Engine
+  profiles that evaluate their own relational operators (joins, sorts, an
+  empty `SUM`, `NULL` order), with no shared `Rel.eval`, are
+  [#2539](https://github.com/AlexanderNenninger/substrait-lean/issues/2539).
 - The report's `ε` (`SubstraitLean/Epsilon.lean`, `robust`, `rows_exact`,
   `margin_checks`) has no theorem that it bounds an engine's doubles. The
-  bounds hold over the reals in `float-bounds/`; the link from them to the
-  core's codes is [#1196](https://github.com/AlexanderNenninger/substrait-lean/issues/1196), and `contract_sound_runs` for double
-  aggregates beyond a root `SUM` or `AVG` is [#929](https://github.com/AlexanderNenninger/substrait-lean/issues/929).
-- Under `semantics="reference"`, the default for SQL, the lift from SQL is
+  bounds hold over the reals in `float-bounds/`, which `StdModel` links to the
+  core's codes (#1196). The missing theorem is `epsilon_sound`: each column's
+  `ε` is at most the bound the theorems prove for it. It and
+  `contract_sound_runs` for double aggregates beyond a root `SUM` or `AVG` are
+  [#929](https://github.com/AlexanderNenninger/substrait-lean/issues/929).
+- Under `semantics="portable"`, the default for SQL, the lift from SQL is
   tested Python. The generated `liftReference` entries are unused, and no
   theorem states that the reference's reading is DuckDB's value wherever the
   reference gives one (`DuckFn.reference_refines_duckdb`,
   [#2008](https://github.com/AlexanderNenninger/substrait-lean/issues/2008)).
 - Dropping the `floats` component under `floats="plan"` (`floatsOk`) rests on
   `routes.observed` refusing a route for a double postcondition that is not
-  robust, which is Python. `Observation.difference` has no proof that it
+  robust, which is Python. `Lenses.difference` has no proof that it
   matches `Value.Equiv`; its pairwise comparison with a tolerance gives false
   alarms only.
 - `references` is checked on the data with SQL `=`, and `ForeignKeys.Hold`
@@ -157,6 +166,41 @@ Sverify's words claim no more than these theorems give
   `UnFn.apply_dkind_precision`).
 - DuckDB's implicit coercions are its facts and the lift's tests.
 - `Report.output` is Ibis's schema, and integer widths live in the parser.
+- A generated lift or lowering entry proves that its template agrees with
+  the engine's model (`DuckFn.eval .duckdb f`, the profiles), written from the
+  same facts. A wrong fact gives a proof of a wrong entry. What ties an entry
+  to the engine is the fact's evidence and the replays; a check that every
+  entry has a probe for each branch of its template is [#2527](https://github.com/AlexanderNenninger/substrait-lean/issues/2527).
+- The frontends (the Ibis producer, `sql_lift/`, the request builder) are
+  trusted to give the plan the user meant, and nothing validates their plan
+  at verify time. A translation validation that runs the source on DuckDB and
+  the plan through the checker's evaluator, or `substrait-validator` on the
+  input, is [#2528](https://github.com/AlexanderNenninger/substrait-lean/issues/2528).
+- The parser is trusted for meaning. What is proved is its round trip with
+  the writer, `parse (write r) = r` (`Write.roundtrips`). Reading a plan, it
+  rewrites: a comparison is swapped to `<` (`tests/fixtures/filter_project.expected`),
+  `not_equal` becomes `NOT (=)` (`df_float_timestamp.expected`), a boolean
+  `CASE` evaluates its branches eagerly (`case_eager.expected`), decimals of
+  two scales meet at the larger one (`python/tests/test_decimal.py`'s
+  comparisons across scales), and defaults such as `common.direct` are
+  dropped. So `write (parse j)` matched `j` on none of the 22 fixtures the
+  parser reads, of the 23 then (2026-11-23), even after names were resolved, and a
+  syntactic round trip on input says nothing about meaning (ruling 280). The
+  bridge is semantic, running `j` and `parse j` side by side or validating
+  `j`: [#2528](https://github.com/AlexanderNenninger/substrait-lean/issues/2528).
+- `Engine.contract_sound` and `Engine.contract_sound_runs` take 15 and 13
+  hypotheses, some of them the checker's own Booleans (`robustB`, `narrow sh`).
+  `Statements.lean` states them over named predicates, and no `example`
+  instantiates every hypothesis of each theorem: [#2530](https://github.com/AlexanderNenninger/substrait-lean/issues/2530).
+- The plans that maintain an incremental view (below, the Python glue) are
+  built in Python and not derived or checked by the checker, so
+  `touched_sound` holds of the plans its statement names, and nothing checks
+  that Python built those: [#2531](https://github.com/AlexanderNenninger/substrait-lean/issues/2531).
+- A black box's laws hold of the model by the clamp (`Scalar.call` keeps the
+  sample where a law breaks), and of DuckDB by tests
+  (`python/tests/test_black_box.py`); the checker refuses the rows where the
+  clamp applies. A theorem that the clamp never fires on accepted rows is
+  [#2532](https://github.com/AlexanderNenninger/substrait-lean/issues/2532).
 
 ## The trusted parts in detail
 
@@ -203,7 +247,10 @@ Sverify's words claim no more than these theorems give
   own constructor of `Value` ([a value has its kind](decisions.md#d29-a-value-has-its-kind)).
 - The code that writes a checked plan for an engine: the SQL printers
   (`Pretty.lean`, `python/src/sverify/sql/`), a shimmed plan's `isNum` as
-  `IS NOT NULL` included, and the Polars translator. Golden, round-trip and
+  `IS NOT NULL` included, and the Polars translator. The interpreters of the
+  generated lowering tables are among them: `sverify/sql/lowering.py` writes a
+  DuckDB template as SQL, and `sverify_polars/lowering.py` a Polars template
+  as a `pl.Expr` (#271). Golden, round-trip and
   differential tests cover them
   ([the translations](engine-profiles.md#the-translations-today)).
 - The CLI's glue, `Main.lean`, `SubstraitCheck.lean`, `ContractCheck.lean` and `ShardCheck.lean`:
@@ -216,7 +263,7 @@ Sverify's words claim no more than these theorems give
   `--serve` loop and `runOn` that call `check` and print its report, and
   `underProfile`, which marks a request under an engine's profile pending
   and returns the reference's report (an engine's own report waits for
-  [#271](https://github.com/AlexanderNenninger/substrait-lean/issues/271)). On the Python side, the glue of
+  [#2545](https://github.com/AlexanderNenninger/substrait-lean/issues/2545)). On the Python side, the glue of
   incremental views (change tables, consolidation, merge, and the finish that
   turns the state back into the view's rows). The checker parses and writes
   each maintenance plan (`init`, `contrib`, `merge`, `regroup`, the finish and
@@ -295,7 +342,7 @@ Sverify's words claim no more than these theorems give
   feed; it is proved when the change is computed from two snapshots.
 - An engine's run of a proved plan. `Engine.contract_sound` proves the
   contract on the rows the engine's model computes for the translated plan
-  (`r'.eval cat E.impl`), under the engine's side condition (`Engine.NoRaiseSide` for DuckDB, `Engine.GuardFreeSide` for Polars and Spark, none for the reference). The chain from there to the engine's actual
+  (`r'.eval cat E.impl`), under the engine's side condition (`Engine.NoRaiseSide` for DuckDB, `Engine.GuardFreeSide` for Polars, `Engine.SparkSide` for Spark, none for the reference). The chain from there to the engine's actual
   result, in order:
   1. the Lean theorem, `Engine.contract_sound` with the engine's
      `Engine.Sound` (`Sound.lean`); `Engine.polars_sound` and
@@ -341,7 +388,11 @@ Sverify's words claim no more than these theorems give
      `list_null_order` and `avg_int_result`).
 
   An engine that raises commits nothing: a runtime obligation of the sink,
-  beside `Engine.Runs`. Raising only where the reference may is a separate claim
+  beside `Engine.Runs`, tested for the Delta, Iceberg and custom sinks, on an
+  engine error and on a check that fires
+  (`python/tests/test_raise_commits_nothing.py`). The Spark session sverify
+  starts is read back against `SPARK_CONF` before it runs anything
+  (`sverify_spark.engine.check_pinned`). Raising only where the reference may is a separate claim
   (`Rel.duckdb_refines`' second part), outside this chain.
 
   Beside `Engine.Runs`, the margin check of a threshold filter on a double `SUM` or
@@ -351,7 +402,7 @@ Sverify's words claim no more than these theorems give
   (`margin_sum`, `margin_avg`). The check's arithmetic and constants are
   proved in codes (`margin_row`, `check_sum`, `check_avg`); `float-bounds`'
   `StdModel.margin_check` is the same argument over the reals. `Report.run` makes the snapshot a condition of the run
-  (`Report.check_margins`): every input the check reads is an Arrow table, a
+  (`Report._check_margins`): every input the check reads is an Arrow table, a
   table DuckDB holds (`Resident`), or a Delta or Iceberg table pinned to one
   version (`Scan`, `name@vN`). An input of another kind, which may change
   between the two reads, warns, and refuses the run under the deterministic
@@ -367,11 +418,13 @@ Sverify's words claim no more than these theorems give
   clauses are proved from the shape under the core's rounding
   (`FloatBridge.FloatSums.sumBound`, `float-bounds/FloatBridge/Sums.lean`; the
   canonical one by `FloatSums.canonV`, since IEEE addition treats the two zeros
-  alike but for the sign of a zero result). For Kahan's sum (`COMPENSATED`)
-  and a constant run's product (`SCALED_CONSTANT`) both are justified by
-  `float-bounds`' `Rnd.kahan_near` and `TreeSum.const` over the reals; those
-  algorithms written on the core's codes,
-  [tracked](https://github.com/AlexanderNenninger/substrait-lean/issues/1196), retire the rest.
+  alike but for the sign of a zero result). Kahan's sum (`COMPENSATED`)
+  and a constant run's product (`SCALED_CONSTANT`) are written on the core's
+  codes (`kahanSum`, `FloatSumsK`, `core/Sverify/Core/SumBound.lean`), and
+  each meets `SumOrder` for values that are doubles' codes
+  (`FloatBridge.KahanSums.sumOrder`, `FloatBridge.FloatSumsK.sumOrder`,
+  `float-bounds/FloatBridge/Orders.lean`, #1196, ruling 268). What stays
+  trusted is that the engine runs the algorithm its fact names, in some order.
 - Black boxes are DuckDB's functions: each black box means the function
   DuckDB computes under its name, and keeps its row's laws, tested by
   `python/tests/test_black_box.py` (DuckDB on the SQL against DuckDB on the
