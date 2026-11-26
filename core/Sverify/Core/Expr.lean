@@ -1191,7 +1191,8 @@ theorem Expr.eval_append {I : Impl} {e : Expr} {n : Nat} {row : Row} (extra : Ro
     congr 1; funext x
     exact ihb (row := x :: row) he.2 (by simp [hlen])
 
-/-- The columns `e` reads; a lambda's body reads none of the row's. -/
+/-- The columns `e` reads. A lambda's body reads its parameter as field 0 and the row's columns
+from 1, so its row columns are the body's fields past 0, shifted down by one. -/
 def Expr.cols : Expr → List Nat
   | .lit _ => []
   | .field i => [i]
