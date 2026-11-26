@@ -110,6 +110,9 @@ def _modulus(x: Exprs, op: Any) -> Json:
     if _floors() and exact(op).is_integer():
         # The engine's `%` takes the divisor's sign (Polars's, `Profile.polars`).
         return floor_call("modulus", [x(op.left, exact(op)), x(op.right, exact(op))])
+    if _floors() and exact(op).is_decimal():
+        # So does its `%` of decimals (polars-decimal-modulus, D62).
+        return floor_call("modulus", [x.operand(op.left), x.operand(op.right)])
     return _arith("modulus")(x, op)
 
 

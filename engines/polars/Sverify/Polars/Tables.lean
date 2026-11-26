@@ -91,6 +91,9 @@ def Profile.polars.table : ProfileTable where
     -- round a product, a quotient and a rescale half to even
     -- (polars-decimal-arith, polars-decimal-casts).
     (some "dec.arith", "overflow", .oneOf ["ERROR"]),
+    -- Decimal `%` floors, and raises by zero (polars-decimal-modulus).
+    (some "dec.mod", "division_type", .oneOf ["FLOOR"]),
+    (some "dec.mod", "on_division_by_zero", .oneOf ["ERROR"]),
     (none, "decimal_rescale", .oneOf ["TIE_TO_EVEN"]),
     -- `pl.concat_str` without `ignore_nulls` is NULL where an input is
     -- (polars-concat), the form the translation writes for `str_concat` (ruling 282).
@@ -111,6 +114,9 @@ def Profile.polars.obs : ObsTable := [
   (none, "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Lowering.polars_exact"),
   (some "int.div", "division_type", (ObsRow.shimmed "int_div_trunc" ["polars-int-divide"]).proved "Lowering.polars_exact"),
   (some "int.mod", "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-int-modulus"]).proved "Lowering.polars_exact"),
+  -- Decimal `%`: Polars's floored `%` made truncating (`Polars.dmodTemplate`, D62).
+  (some "dec.mod", "division_type", (ObsRow.shimmed "int_mod_trunc" ["polars-decimal-modulus"]).proved "Lowering.polars_exact"),
+  (some "dec.mod", "on_division_by_zero", (ObsRow.native ["polars-decimal-modulus"]).proved "Rel.polars_sound"),
   (none, "min_mod_neg_one", (ObsRow.native ["polars-int-modulus"]).proved "Rel.polars_sound"),
   -- `rounding`, `pow_one_inf`, `negative_start` and `case_sensitivity`: Polars's
   -- choice is the reference's (`Profile.polars` states no case), so the generated

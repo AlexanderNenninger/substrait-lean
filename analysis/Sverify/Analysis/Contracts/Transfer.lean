@@ -934,6 +934,7 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .dsub, a, b => arith decNK Bound.sub a b
   | .dmul, a, b => arith decNK Bound.mul a b
   | .ddiv, a, b => divAbs decNK ddivBound a b
+  | .dmod, a, b => divAbs decNK modBound a b
   | .dateAdd, a, b => arith dateAddNK Bound.add a b
   | .fadd, a, b => arith floatsOnly (faddBound false) a b
   | .fsub, a, b => arith floatsOnly (faddBound true) a b

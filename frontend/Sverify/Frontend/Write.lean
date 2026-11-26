@@ -426,6 +426,14 @@ def callTyped (anchor : Nat) (args : List Json) (ty : Json) : Json :=
     ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray),
     ("outputType", ty)])]
 
+/-- `callTyped` with one option, `opt` = `pref`. -/
+def callTypedOpt (anchor : Nat) (args : List Json) (ty : Json) (opt pref : String) : Json :=
+  obj [("scalarFunction", obj [
+    ("functionReference", toJson anchor),
+    ("arguments", Json.arr (args.map fun a => obj [("value", a)]).toArray),
+    ("options", Json.arr #[obj [("name", toJson opt), ("preference", Json.arr #[toJson pref])]]),
+    ("outputType", ty)])]
+
 def castTo (ty input : Json) : Json :=
   obj [("cast", obj [("type", ty), ("input", input),
     ("failureBehavior", "FAILURE_BEHAVIOR_THROW_EXCEPTION")])]
@@ -525,6 +533,33 @@ def writeExpr (cols : List WKind) (ctx : WKind) : Expr → Json
     else callTyped (fn "multiply") [wa, writeLit .int (.int n)] (decType p s)
   | .un (.decimal p s) (.bin .dmul a b) =>
     callTyped (fn "multiply") [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b] (decType p s)
+  -- `a % b` (D62): its operands without their `upscale`, as for `+` and `-`.
+  | .un (.decimal p s) (.bin .dmod (.bin .dmul x (.lit (.int n))) b) =>
+    let wa := upscaled n (writeExpr cols (wkind cols x) x)
+    callTyped (fn "modulus") [wa, writeExpr cols (wkind cols b) b] (decType p s)
+  | .un (.decimal p s) (.bin .dmod a (.bin .dmul x (.lit (.int n)))) =>
+    let wb := upscaled n (writeExpr cols (wkind cols x) x)
+    callTyped (fn "modulus") [writeExpr cols (wkind cols a) a, wb] (decType p s)
+  | .un (.decimal p s) (.bin .dmod a b) =>
+    callTyped (fn "modulus") [writeExpr cols (wkind cols a) a, writeExpr cols (wkind cols b) b] (decType p s)
+  -- `a % b` with `division_type` = `FLOOR` (`Expr.floorDModOf`): the call with the option.
+  | .un (.decimal p s) (.ifThen (.bin .lt (.bin .dmod a b) (.lit (.int 0))) t e) =>
+    -- Each operand without its `upscale`, as for `+` and `-`.
+    let da := writeExpr cols (wkind cols a) a
+    let db := writeExpr cols (wkind cols b) b
+    if Expr.ifThen (.bin .lt (.bin .dmod a b) (.lit (.int 0))) t e == Expr.floorDModOf a b then
+      let wa := match a with
+        | .bin .dmul a' (.lit (.int n)) => upscaled n (writeExpr cols (wkind cols a') a')
+        | _ => da
+      let wb := match b with
+        | .bin .dmul b' (.lit (.int n)) => upscaled n (writeExpr cols (wkind cols b') b')
+        | _ => db
+      callTypedOpt (fn "modulus") [wa, wb] (decType p s) "division_type" "FLOOR"
+    else
+      -- Never parsed: the `CASE` as it stands.
+      castTo (decType p s) (caseChain
+        (call (BinFn.anchor .lt) [call (BinFn.anchor .dmod) [da, db], writeLit .int (.int 0)])
+        (writeExpr cols (wkind cols t) t) (writeExpr cols (wkind cols e) e))
   | .un (.decimal p s) (.un (.dround _) a) | .un (.decimal p s) (.un (.ftod _) a) =>
     castTo (decType p s) (writeExpr cols (wkind cols a) a)
   | .un (.decimal p s) a => castTo (decType p s) (writeExpr cols (wkind cols a) a)
@@ -850,7 +885,8 @@ def _root_.Substrait.Expr.decimalOps : Expr → Bool
       | _ => false) ||
       a.decimalOps
   | .bin f a b =>
-    (match f with | .dadd | .dsub | .dmul | .ddiv => true | _ => false) || a.decimalOps || b.decimalOps
+    (match f with | .dadd | .dsub | .dmul | .ddiv | .dmod => true | _ => false) || a.decimalOps ||
+      b.decimalOps
   | .ifThen c t e => c.decimalOps || t.decimalOps || e.decimalOps
   | .hof _ l b => l.decimalOps || b.decimalOps
 

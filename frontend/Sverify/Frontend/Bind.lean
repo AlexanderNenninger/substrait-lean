@@ -154,7 +154,7 @@ def UnFn.pinsArg : UnFn → Bool
 
 /-- Decimal arithmetic, which the writer reads together with its context. -/
 def Expr.pinnedArg : Expr → Bool
-  | .bin .dadd _ _ | .bin .dsub _ _ | .bin .dmul _ _ | .bin .ddiv _ _ => true
+  | .bin .dadd _ _ | .bin .dsub _ _ | .bin .dmul _ _ | .bin .ddiv _ _ | .bin .dmod _ _ => true
   | _ => false
 
 mutual
