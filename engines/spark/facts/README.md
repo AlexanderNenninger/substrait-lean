@@ -204,6 +204,7 @@ Spark's own SQL gives the reference result.
 | sort key | `null_order` | as the key states | `NULLS FIRST` ascending, `NULLS LAST` descending by default; both honoured | [null-order](spark-null-order.json) |
 | sort, `fetch` | `tie_order` | any order | ties in partition order, varying between runs | [sort-stability](spark-sort-stability.json) |
 | sort key | `clustered` | equal keys adjacent | `CLUSTER BY` | [clustered](spark-clustered.json) |
+| `lt`, sorts, `greatest`, `least` (strings, booleans) | | code point order; `false < true` | native (UTF-8 bytes, `UTF8_BINARY`) | [string-order](spark-string-order.json) |
 | `aggregate` keys, joins | NULL keys | one group; `=` skips NULL | native; `<=>`, `IS NOT DISTINCT FROM` | [null-keys](spark-null-keys.json) |
 | `and`, `or`, `not`, `bool_and`, `bool_or` | | Kleene; aggregates skip NULLs | native | [kleene](spark-kleene.json) |
 | `first`, `last`, `mode`, `arg_min`, `arg_max` | `tie_pick` | any row | arrival order; `mode` any of a tie | [first-last](spark-first-last.json) |
@@ -319,6 +320,7 @@ link cases of Spark's tests, and the other 11 say why none fits.
 | [set-operations](spark-set-operations.json) | no-finding | probe | 7 cases | — |
 | [sort-stability](spark-sort-stability.json) | no-finding | probe | none: the suite sorts unordered output and runs each query once | — |
 | [string-plain](spark-string-plain.json) | no-finding | probe | 5 cases | — |
+| [string-order](spark-string-order.json) | no-finding | probe | none | — |
 | [strpos](spark-strpos.json) | no-finding | probe | 14 cases | — |
 | [substring-range](spark-substring-range.json) | open | fuzz | 2 cases | 794 of 794 |
 | [substring](spark-substring.json) | open | fuzz | 4 cases | 1200 of 1200 |
