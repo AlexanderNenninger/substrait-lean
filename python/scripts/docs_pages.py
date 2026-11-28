@@ -597,6 +597,7 @@ DOC_SECTIONS: dict[str, list[tuple[str, str, str]]] = {
     "semantics": [
         ("docs/reference-semantics.md", "Reference semantics", "What a plan means, row by row"),
         ("docs/stability.md", "Stability in 1.x", "The formats, proofs, API and engines 1.x keeps"),
+        ("docs/upgrading.md", "Upgrading", "A migration note for each breaking change"),
     ],
     "design": [
         (
