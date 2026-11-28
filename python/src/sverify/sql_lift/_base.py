@@ -6,12 +6,14 @@ fills with `register`."""
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import copy
 import dataclasses
 import datetime as dt_
 import functools
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, MutableSet, Sequence
 from decimal import Decimal, localcontext
 from typing import Any, cast
 
@@ -53,11 +55,10 @@ from sverify.plan_json import (
 from sverify.plan_json import decimal_dtype as _decimal
 from sverify.plan_json import same_type as _same
 
-__all__ = ["DUCKDB", "PORTABLE", "PROFILES", "Lifted", "Profile", "lift", "parse"]
+__all__ = ["DUCKDB", "DUCKDB_SQL", "PORTABLE", "Lifted", "Profile", "Surface", "lift", "parse"]
 
-DIALECT = "duckdb"
-
-#: DuckDB's functions SQLGlot parses as `Anonymous`, which the lift reads.
+#: DuckDB's functions SQLGlot parses as `Anonymous`, which the lift reads
+#: (`DUCKDB_SQL.known`; the areas add theirs).
 _KNOWN = {"date_part", "datepart", "prefix", "suffix"}
 
 
@@ -70,25 +71,13 @@ CONSTANT_FIX = "use a literal, or write each case with CASE WHEN"
 
 @dataclasses.dataclass(frozen=True)
 class Profile:
-    """What DuckDB SQL means, as data the lift reads (#231: "keep it
+    """What a dialect's functions do, as data the lift reads (#231: "keep it
     simple"). The Lean side is `Profile.reference` (`core/Sverify/Core/Profile.lean`)
-    and `Profile.duckdb` (`engines/duckdb/Sverify/DuckDB/Profile.lean`).
-
-    The first group of fields is how the SQL text reads, which is DuckDB's
-    in both profiles; the second is what the functions do.
+    and `Profile.duckdb` (`engines/duckdb/Sverify/DuckDB/Profile.lean`). How the
+    text reads is the dialect's `Surface`, the same under each of its profiles.
 
     Attributes:
         name: `"duckdb"` or `"portable"`, as `sv.sql`'s `semantics`.
-        divide: SQL `/` on integers and decimals: `"double"`, both operands
-            cast to `fp64` and divided (DuckDB's `/` without
-            `integer_division`, F1).
-        int_divide: SQL `//`: `"truncate"`, Substrait's integer `divide`
-            (F1).
-        null_ordering: Where NULLs sort when a key doesn't say:
-            `"nulls_are_last"`, in both directions (F2; SQLGlot's
-            `NULL_ORDERING` for DuckDB, checked when parsing).
-        avg_integer: The output type of `avg` of integers: `"fp64"` (#209
-            R6, the plan's declared type).
         overflow: Integer `+ - *`, negation, `//` and `sum` that leave the
             declared width: `"ERROR"` (DuckDB, and #185's reference default).
         on_division_by_zero: `//` and `%` by zero: `"ERROR"` (DuckDB with
@@ -109,10 +98,6 @@ class Profile:
     """
 
     name: str
-    divide: str = "double"
-    int_divide: str = "truncate"
-    null_ordering: str = "nulls_are_last"
-    avg_integer: str = "fp64"
     overflow: str = "ERROR"
     on_division_by_zero: str = "ERROR"
     min_mod_neg_one: str = "ZERO"
@@ -130,11 +115,90 @@ DUCKDB = Profile(
     corr_degenerate="NAN",
 )
 PORTABLE = Profile("portable")
-PROFILES = {p.name: p for p in (DUCKDB, PORTABLE)}
 
-#: The lift table's name of each profile's semantics: Lean's `Semantics.reference`
-#: is the portable profile (`engines/duckdb/Sverify/DuckDB/SQL.lean`).
-_TABLE_NAME = {"duckdb": "duckdb", "portable": "reference"}
+
+@dataclasses.dataclass(frozen=True, eq=False)
+class Surface:
+    """A SQL dialect as the lift reads its text (#866): what is the same under
+    each of its profiles. A dialect's front end passes its surface to `lift`,
+    and the lift reads every dialect fact from it, never a dialect's name.
+
+    Attributes:
+        read: SQLGlot's name of the dialect, which parses, tokenizes and
+            qualifies the text and writes it back in messages.
+        title: The dialect's name in messages: `"DuckDB"`.
+        native: The profile of the dialect's own semantics, what its engine
+            computes; the other is `PORTABLE`, the reference.
+        null_ordering: Where NULLs sort when a key doesn't say, as SQLGlot's
+            `NULL_ORDERING` names it (DuckDB: `"nulls_are_last"`, in both
+            directions, F2), checked against SQLGlot's dialect on every lift.
+        types: Ibis's type mapper of the dialect, which writes the inputs'
+            column types for `qualify`.
+        catalog: The catalog of a table name that has none.
+        db: The schema of a table name that has none.
+        checks: Run on the text and its tokens before parsing: each refuses
+            (`Unsupported`) a construct SQLGlot's tree cannot tell from another.
+        rewrites: Run on the parsed tree before the areas' `PARSE_REWRITES`.
+        known: The functions SQLGlot parses as `Anonymous` that the lift
+            reads; the areas add theirs when they are imported.
+    """
+
+    read: str
+    title: str
+    native: Profile
+    null_ordering: str
+    types: Any
+    catalog: str
+    db: str
+    checks: tuple[Callable[[str, Sequence[Any]], None], ...] = ()
+    rewrites: tuple[Callable[[sge.Expr], sge.Expr], ...] = ()
+    known: MutableSet[str] = dataclasses.field(default_factory=set)
+
+    @property
+    def profiles(self) -> dict[str, Profile]:
+        """The profiles by `semantics` name: the dialect's own and the reference."""
+        return {self.native.name: self.native, PORTABLE.name: PORTABLE}
+
+    def profile(self, semantics: str) -> Profile:
+        """The profile `semantics` names.
+
+        Raises:
+            ValueError: It names none of the dialect's.
+        """
+        found = self.profiles.get(semantics)
+        if found is None:
+            raise ValueError(
+                f"semantics must be one of {', '.join(self.profiles)}, not {semantics!r}"
+            )
+        return found
+
+
+def table_semantics(profile: Profile) -> str:
+    """The lift table's name of `profile`'s semantics: Lean's `Semantics.reference`
+    is the portable profile (`engines/duckdb/Sverify/DuckDB/SQL.lean`)."""
+    return "reference" if profile is PORTABLE else profile.name
+
+
+_SURFACE: contextvars.ContextVar[Surface | None] = contextvars.ContextVar(
+    "sverify_sql_surface", default=None
+)
+
+
+def _current() -> Surface:
+    """The surface of the lift running (`reading`), else DuckDB's: the helpers
+    that read the text (`_shown`, `_normalized`, `full_name`) read it from
+    here, as `plan_json`'s builders read the plan being compiled."""
+    return _SURFACE.get() or DUCKDB_SQL
+
+
+@contextlib.contextmanager
+def reading(s: Surface) -> Iterator[Surface]:
+    """Lift with `s` as the surface the text is read with, inside the block."""
+    token = _SURFACE.set(s)
+    try:
+        yield s
+    finally:
+        _SURFACE.reset(token)
 
 
 # --------------------------------------------------------------------------
@@ -153,16 +217,17 @@ class LiftTable:
 
     Attributes:
         functions: The templates' function anchors: the functions' names.
-        scalars: By semantics (`"duckdb"`, `"portable"`), then by construct
-            (`"DOUBLE / DOUBLE"`): the entry, with its `args` and `result`
-            types and its `template` or why it is `refused`.
-        aggregates: DuckDB's semantics' aggregates, by construct
+        scalars: By the table's semantics (`"duckdb"`, `"reference"`:
+            `table_semantics`), then by construct (`"DOUBLE / DOUBLE"`): the
+            entry, with its `args` and `result` types and its `template` or
+            why it is `refused`.
+        aggregates: By the table's semantics, then by construct
             (`"avg(BIGINT)"`): its `measures` and the `finish` over them.
     """
 
     functions: Mapping[int, str]
     scalars: Mapping[str, Mapping[str, Json]]
-    aggregates: Mapping[str, Json]
+    aggregates: Mapping[str, Mapping[str, Json]]
 
 
 _LIFT_TABLE: list[LiftTable] = []
@@ -212,18 +277,18 @@ def lift_table() -> LiftTable:
             [str(checker_path()), "--lift-table"], capture_output=True, text=True, check=True
         ).stdout
         raw = json.loads(out)
+        scalars: dict[str, dict[str, Json]] = {}
+        for e in raw["lift"]:
+            scalars.setdefault(e["semantics"], {})[e["construct"]] = e
+        aggregates: dict[str, dict[str, Json]] = {}
+        for e in raw["aggregates"]:
+            if e["aggregate"] is not None:
+                aggregates.setdefault(e["semantics"], {})[e["construct"]] = e["aggregate"]
         _LIFT_TABLE.append(
             LiftTable(
                 {f["anchor"]: f["name"].split(":")[0] for f in raw["functions"]},
-                {
-                    p: {e["construct"]: e for e in raw["lift"] if e["semantics"] == _TABLE_NAME[p]}
-                    for p in PROFILES
-                },
-                {
-                    e["construct"]: e["aggregate"]
-                    for e in raw["aggregates"]
-                    if e["semantics"] == "duckdb" and e["aggregate"] is not None
-                },
+                scalars,
+                aggregates,
             )
         )
     return _LIFT_TABLE[0]
@@ -261,7 +326,7 @@ def _generated(lf: _Lift, construct: str, args: Sequence[E]) -> E:
     gives DuckDB's value wherever it gives a value (D54,
     `liftReference_refines_duckdb`, #2008). Raises `Unsupported` where the
     table refuses it."""
-    semantics = lf.profile.name
+    semantics = table_semantics(lf.profile)
     entry = lift_table().scalars[semantics][construct]
     if "refused" in entry:
         raise SqlUnsupported(
@@ -368,7 +433,7 @@ def _generated_agg(lf: _Lift, name: str, a: E) -> Measures | None:
     doubles), and its `sum` and `avg` of a double (a sum with no domain error
     and the extremes, #341), as the generated table lifts them, or None with
     the reference's semantics, whose rules are written by hand."""
-    if lf.profile is not DUCKDB:
+    if lf.profile is not lf.surface.native:
         return None
     if name == "avg" and a.type.is_integer():
         key, arg = "avg(BIGINT)", dt.int64
@@ -377,7 +442,7 @@ def _generated_agg(lf: _Lift, name: str, a: E) -> Measures | None:
     else:
         return None
     table = lift_table()
-    agg = table.aggregates[key]
+    agg = table.aggregates[table_semantics(lf.profile)][key]
     x = lf.to(a, arg).json
     parts = []
     for m in agg["measures"]:
@@ -405,22 +470,31 @@ def _generated_agg(lf: _Lift, name: str, a: E) -> Measures | None:
 
 
 @functools.lru_cache(maxsize=1024)
-def _sql_type(dtype: Any) -> str:
-    """The DuckDB SQL type SQLGlot resolves an Ibis type's columns with,
-    once per type (it was a tenth of each lift's time)."""
-    return DuckDBType.from_ibis(dtype).sql(DIALECT)
+def _sql_type(s: Surface, dtype: Any) -> str:
+    """The SQL type SQLGlot resolves an Ibis type's columns with in the
+    dialect of `s`, once per type (it was a tenth of each lift's time)."""
+    return s.types.from_ibis(dtype).sql(s.read)
 
 
-def expand_table_shorthand(query: str) -> str:
-    """`query` with DuckDB's `TABLE t` (`SELECT * FROM t`) written out where a
+def _tokens(query: str) -> list[Any] | None:
+    """The tokens of `query` in the dialect being read, or None where the
+    tokenizer refuses it (the parser then reports it)."""
+    try:
+        return sg.Dialect.get_or_raise(_current().read).tokenize(query)
+    except sg.errors.TokenError:
+        return None
+
+
+def expand_table_shorthand(query: str, tokens: Sequence[Any] | None = None) -> str:
+    """`query` with `TABLE t` (`SELECT * FROM t`) written out where a
     query may stand: at the start, after `(`, or as an operand of `UNION`,
     `EXCEPT` or `INTERSECT`. SQLGlot does not parse the shorthand
-    (upstream/bugs/SG-6.json); DuckDB's tests use it to compare results."""
+    (upstream/bugs/SG-6.json); DuckDB's tests use it to compare results.
+    `tokens` are the query's, where the caller has them."""
     from sqlglot.tokens import TokenType
 
-    try:
-        tokens = sg.Dialect.get_or_raise(DIALECT).tokenize(query)
-    except sg.errors.TokenError:
+    tokens = _tokens(query) if tokens is None else tokens
+    if tokens is None:
         return query
     starts = {TokenType.L_PAREN, TokenType.UNION, TokenType.EXCEPT, TokenType.INTERSECT,
               TokenType.ALL, TokenType.DISTINCT}  # fmt: skip
@@ -458,29 +532,32 @@ _UNREAD_AGGREGATES = {
 
 
 def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperation:
-    """`query` parsed as DuckDB SQL, at SQLGlot's strict error level, with
-    every name resolved (`qualify`) against the tables `schemas` (Ibis
-    schemas by table name). SQLGlot's typing is not run: the lift types every
-    expression by the profile.
+    """`query` parsed in the dialect being read (`reading`), at SQLGlot's
+    strict error level, with every name resolved (`qualify`) against the
+    tables `schemas` (Ibis schemas by table name). SQLGlot's typing is not
+    run: the lift types every expression by the profile.
 
     Raises:
         Unsupported: SQLGlot cannot parse the query, or a name in it is not
             a column or table of the inputs.
     """
-    _check_numbers(query)
-    _check_intervals(query)
-    _check_regex_operators(query)
-    _check_date_bin(query)
-    query = expand_table_shorthand(query)
+    s = _current()
+    # Tokenized once, for every check and the shorthand (it was four times).
+    tokens = _tokens(query)
+    if tokens is not None:
+        for check in s.checks:
+            check(query, tokens)
+    query = expand_table_shorthand(query, tokens)
     try:
-        tree = sg.parse_one(query, read=DIALECT, error_level=ErrorLevel.RAISE)
+        tree = sg.parse_one(query, read=s.read, error_level=ErrorLevel.RAISE)
     except sg.errors.ParseError as e:
         raise Unsupported(
-            f"cannot parse the SQL as DuckDB's: {str(e).splitlines()[0]}; check that DuckDB "
-            "runs it, or write the step in Ibis",
+            f"cannot parse the SQL as {s.title}'s: {str(e).splitlines()[0]}; check that "
+            f"{s.title} runs it, or write the step in Ibis",
             construct="SQL SYNTAX",
         ) from e
-    tree = tree.transform(_builtin_schema, copy=False)
+    for rewrite in s.rewrites:
+        tree = rewrite(tree)
     for rewrite in PARSE_REWRITES:
         tree = rewrite(tree)
     for node in tree.find_all(*_NONDETERMINISTIC):
@@ -506,10 +583,10 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
                 construct=f"function {f.name.lower()}",
                 sql=_shown(f),
             )
-        if f.name.lower() not in _KNOWN:
+        if f.name.lower() not in s.known:
             raise SqlUnsupported(
-                f"unknown function {f.name}(): DuckDB SQL here has no such function",
-                hint="check the name against DuckDB's functions, or write the step in Ibis",
+                f"unknown function {f.name}(): {s.title} SQL here has no such function",
+                hint=f"check the name against {s.title}'s functions, or write the step in Ibis",
                 construct=f"function {f.name.lower()}",
                 sql=_shown(f),
             )
@@ -518,13 +595,14 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     _check_using_stars(tree)
     _check_export_state(tree)
     catalog: dict[str, object] = {
-        name: {col: _sql_type(t) for col, t in schema.items()} for name, schema in schemas.items()
+        name: {col: _sql_type(s, t) for col, t in schema.items()}
+        for name, schema in schemas.items()
     }
     try:
         tree = qualify(
             tree,
             schema=catalog,
-            dialect=DIALECT,
+            dialect=s.read,
             validate_qualify_columns=True,
             quote_identifiers=False,
         )
@@ -546,27 +624,34 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     return tree
 
 
-def _builtin_schema(n: sge.Expr) -> sge.Expr:
+def _builtin_schemas(tree: sge.Expr) -> sge.Expr:
     """A call qualified by its built-in schema (`main.lower(x)`,
     `system.main.lower(x)`) read as the bare function (#328). DuckDB reads
     no other qualifier of a built-in function (`pg_catalog.lower(x)` and
     `memory.main.lower(x)` are binder errors), so neither does the lift.
     SQLGlot reads `lower(x)` as `Lower` but the qualified call as an
     anonymous one, so the call is parsed again without its qualifier."""
-    if isinstance(n, sge.Dot) and isinstance(n.expression, sge.Anonymous):
-        path = [n.this] if not isinstance(n.this, sge.Dot) else [n.this.this, n.this.expression]
-        names = [p.name.lower() if isinstance(p, sge.Identifier) else None for p in path]
-        if names in (["main"], ["system", "main"]):
-            return sg.parse_one(n.expression.sql(DIALECT), read=DIALECT)
-    return n
+
+    def bare(n: sge.Expr) -> sge.Expr:
+        if isinstance(n, sge.Dot) and isinstance(n.expression, sge.Anonymous):
+            path = [n.this] if not isinstance(n.this, sge.Dot) else [n.this.this, n.this.expression]
+            names = [p.name.lower() if isinstance(p, sge.Identifier) else None for p in path]
+            if names in (["main"], ["system", "main"]):
+                read = _current().read
+                return sg.parse_one(n.expression.sql(read), read=read)
+        return n
+
+    return tree.transform(bare, copy=False)
 
 
 def full_name(table: sge.Table | str) -> tuple[str, str, str]:
-    """A table's (catalog, schema, name) as DuckDB resolves it: the defaults
-    are `memory` and `main`, and the names are normalized."""
+    """A table's (catalog, schema, name) as the dialect being read resolves
+    it: the defaults are its `catalog` and `db` (DuckDB's `memory` and
+    `main`), and the names are normalized."""
+    s = _current()
     if isinstance(table, str):
-        table = sge.to_table(table, dialect=DIALECT)
-    parts = (table.catalog or "memory", table.db or "main", table.name)
+        table = sge.to_table(table, dialect=s.read)
+    parts = (table.catalog or s.catalog, table.db or s.db, table.name)
     c, d, n = (_normalized(p) for p in parts)
     return c, d, n
 
@@ -582,8 +667,8 @@ def _resolve_tables(tree: Any, schemas: Mapping[str, Any]) -> None:
         full = full_name(key)
         if full in by_full:
             raise Unsupported(
-                f"the inputs {by_full[full]!r} and {key!r} are the same table in DuckDB "
-                f"({'.'.join(full)}); declare it once",
+                f"the inputs {by_full[full]!r} and {key!r} are the same table in "
+                f"{_current().title} ({'.'.join(full)}); declare it once",
                 construct="FROM",
             )
         by_full[full] = key
@@ -595,7 +680,7 @@ def _resolve_tables(tree: Any, schemas: Mapping[str, Any]) -> None:
             raise SqlUnsupported(
                 f"FROM {_shown(node)}: only the inputs' tables can be read",
                 hint="add the table to the tables, under its qualified name "
-                f"(for example '{node.sql(DIALECT)}'), as DuckDB resolves it",
+                f"(for example '{node.sql(_current().read)}'), as {_current().title} resolves it",
                 construct="FROM",
             )
         if key is None or (not qualified and key == node.name):
@@ -955,15 +1040,22 @@ def _nondeterministic(node: sge.Expression) -> str:
     return f"{_shown(node)} gives another value on every run, so no proof covers its result"
 
 
+def _sql(node: sge.Expression) -> str:
+    """`node` written in the dialect being read, for a message."""
+    return node.sql(_current().read)
+
+
 def _shown(node: sge.Expression) -> str:
-    text = node.sql(DIALECT)
+    text = _sql(node)
     return text if len(text) <= 60 else text[:57] + "..."
 
 
 class _Lift:
-    """Lifts one query with one profile, inside one `compiling` block."""
+    """Lifts one query with one profile of one surface, inside one `compiling`
+    and one `reading` block."""
 
-    def __init__(self, profile: Profile, schemas: Mapping[str, Any]):
+    def __init__(self, s: Surface, profile: Profile, schemas: Mapping[str, Any]):
+        self.surface = s
         self.profile = profile
         # The inputs by their normalized names, as `qualify` writes them.
         self.schemas = {_normalized(n): (n, s) for n, s in schemas.items()}
@@ -1946,7 +2038,7 @@ class _Lift:
                 # and Lean divides the exact sum by the count in doubles.
                 out = dt.float64
         invocation = "AGGREGATION_INVOCATION_DISTINCT" if distinct else "AGGREGATION_INVOCATION_ALL"
-        if name == "corr" and self.profile.corr_degenerate != DUCKDB.corr_degenerate:
+        if name == "corr" and self.profile.corr_degenerate != self.surface.native.corr_degenerate:
             self.differences.append(difference("corr_degenerate", _category(node), _shown(node)))
         if name in ("sum", "avg") and args and (gen := _generated_agg(self, name, args[0])):
             # DISTINCT and FILTER apply to each measure alike.
@@ -2917,7 +3009,7 @@ _QUOTED = re.compile(r"'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"|--[^\n]*|/\*.*?\*/", r
 _NUMBER = re.compile(r"(?<![\w$.])\d[\w.]*")
 
 
-def _check_numbers(query: str) -> None:
+def _check_numbers(query: str, tokens: Sequence[Any]) -> None:
     """Refuse a number with an underscore that is not between two digits
     (`1__2`, `1._5`). DuckDB reads such an underscore as the start of an
     alias (`1__2` is 1 named `__2`); SQLGlot reads every underscore as a digit
@@ -2931,17 +3023,13 @@ def _check_numbers(query: str) -> None:
             )
 
 
-def _check_regex_operators(query: str) -> None:
+def _check_regex_operators(query: str, tokens: Sequence[Any]) -> None:
     """Refuse `s ~ p` and `s !~ p`: DuckDB's `~` matches anywhere in `s`
     (`regexp_matches`), but SQLGlot reads it as `regexp_full_match`, so the
     tree cannot tell them apart (upstream/bugs/SG-10.json). A `~` before an
     operand is the bitwise not."""
     from sqlglot.tokens import TokenType
 
-    try:
-        tokens = sg.Dialect.get_or_raise(DIALECT).tokenize(query)
-    except sg.errors.TokenError:
-        return  # the parser reports it
     operand = {TokenType.STRING, TokenType.NUMBER, TokenType.VAR, TokenType.IDENTIFIER,
                TokenType.R_PAREN, TokenType.R_BRACKET, TokenType.NULL, TokenType.TRUE,
                TokenType.FALSE}  # fmt: skip
@@ -2959,15 +3047,11 @@ def _check_regex_operators(query: str) -> None:
             )
 
 
-def _check_date_bin(query: str) -> None:
+def _check_date_bin(query: str, tokens: Sequence[Any]) -> None:
     """Refuse `date_bin(...)`: DuckDB 2.0.0 has no such function, but SQLGlot reads it as the
     node of `time_bucket`, so the tree cannot tell them apart."""
     from sqlglot.tokens import TokenType
 
-    try:
-        tokens = sg.Dialect.get_or_raise(DIALECT).tokenize(query)
-    except sg.errors.TokenError:
-        return  # the parser reports it
     for tok, after in zip(tokens, tokens[1:], strict=False):
         if (
             tok.token_type == TokenType.VAR
@@ -2980,16 +3064,12 @@ def _check_date_bin(query: str) -> None:
             )
 
 
-def _check_intervals(query: str) -> None:
+def _check_intervals(query: str, tokens: Sequence[Any]) -> None:
     """Refuse `INTERVAL '… ago'`, which negates the interval in DuckDB.
     SQLGlot drops the `ago` of a single unit (`'1 day ago'` reads as
     `INTERVAL '1' DAY`), so the tree cannot tell (#626, upstream/bugs/SG-8.json)."""
     from sqlglot.tokens import TokenType
 
-    try:
-        tokens = sg.Dialect.get_or_raise(DIALECT).tokenize(query)
-    except sg.errors.TokenError:
-        return  # the parser reports it
     for before, tok in zip(tokens, tokens[1:], strict=False):
         if (
             before.token_type == TokenType.INTERVAL
@@ -3046,27 +3126,35 @@ def _count(node: sge.Expression, what: str) -> int:
 
 
 def _normalized(name: str) -> str:
-    """A table or column name as `qualify` normalizes it: DuckDB's names are
-    case-insensitive."""
-    return normalize_identifiers(sge.to_identifier(name), dialect=DIALECT).name
+    """A table or column name as `qualify` normalizes it in the dialect being
+    read: DuckDB's names are case-insensitive."""
+    return normalize_identifiers(sge.to_identifier(name), dialect=_current().read).name
 
 
 # --------------------------------------------------------------------------
 # Entry point
 
 
-def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> Lifted:
-    """The plan of the DuckDB SQL `query` over input tables of the Ibis
-    schemas `schemas` (by table name), read as named tables, with the
-    `semantics` profile ("duckdb" or "portable").
+def lift(
+    query: str,
+    schemas: Mapping[str, Any],
+    semantics: str = "duckdb",
+    *,
+    surface: Surface | None = None,
+) -> Lifted:
+    """The plan of the SQL `query` over input tables of the Ibis schemas
+    `schemas` (by table name), read as named tables, in the dialect of
+    `surface` (DuckDB's, `DUCKDB_SQL`, by default) with its `semantics`
+    profile (DuckDB's: "duckdb" or "portable").
 
     Raises:
         Unsupported: The query is outside the subset, saying what; also a
             query nested deeper than Python's recursion limit.
-        ValueError: `semantics` is not a profile.
+        ValueError: `semantics` is not a profile of the surface.
     """
     try:
-        return _lift(query, schemas, semantics)
+        with reading(surface or DUCKDB_SQL) as s:
+            return _lift(query, schemas, s.profile(semantics))
     except RecursionError:
         raise Unsupported(
             "the query is nested too deeply to lift; split it into CTEs",
@@ -3074,19 +3162,17 @@ def lift(query: str, schemas: Mapping[str, Any], semantics: str = "duckdb") -> L
         ) from None
 
 
-def _lift(query: str, schemas: Mapping[str, Any], semantics: str) -> Lifted:
-    profile = PROFILES.get(semantics)
-    if profile is None:
-        raise ValueError(f"semantics must be one of {', '.join(PROFILES)}, not {semantics!r}")
-    if profile.null_ordering != sg.Dialect.get_or_raise(DIALECT).NULL_ORDERING:
+def _lift(query: str, schemas: Mapping[str, Any], profile: Profile) -> Lifted:
+    s = _current()
+    if s.null_ordering != sg.Dialect.get_or_raise(s.read).NULL_ORDERING:
         raise Unsupported(
-            "SQLGlot's DuckDB dialect no longer sorts NULLs as DuckDB does; install the "
-            "SQLGlot release sverify's requirements name",
+            f"SQLGlot's {s.title} dialect no longer sorts NULLs as {s.title} does; install "
+            "the SQLGlot release sverify's requirements name",
             construct="NULL ORDERING",
         )
     tree = parse(query, schemas)
     with compiling() as compiler:
-        lifter = _Lift(profile, schemas)
+        lifter = _Lift(s, profile, schemas)
         rel, cols = lifter.query(tree)
         out = plan(compiler, rel, [c.name for c in cols])
     names = [c.name for c in cols]
@@ -3112,3 +3198,18 @@ def _lift(query: str, schemas: Mapping[str, Any], semantics: str) -> Lifted:
         {c.name: (dt.int32 if c.type.is_null() else c.type.copy(nullable=True)) for c in cols}
     )
     return Lifted(out, schema, tuple(dict.fromkeys(lifter.differences)))
+
+
+#: DuckDB's SQL as the lift reads it: its own semantics is `DUCKDB`.
+DUCKDB_SQL = Surface(
+    "duckdb",
+    "DuckDB",
+    DUCKDB,
+    null_ordering="nulls_are_last",
+    types=DuckDBType,
+    catalog="memory",
+    db="main",
+    checks=(_check_numbers, _check_intervals, _check_regex_operators, _check_date_bin),
+    rewrites=(_builtin_schemas,),
+    known=_KNOWN,
+)

@@ -14,7 +14,8 @@
     "spark.sql.timestampType": "TIMESTAMP_NTZ"
   },
   "description": [
-    "Under ANSI mode a cast to a narrower integer that does not fit raises `CAST_OVERFLOW`."
+    "Under ANSI mode a cast to a narrower integer that does not fit raises `CAST_OVERFLOW`.",
+    "Under ANSI the query raises; which row the error names is unspecified, and it varies between runs and between the folded and the generated code paths (F287 T1a, 2026-11-28: six runs of the probe suite on homelab, Spark 4.3.0, Java 21.0.13.1)."
   ],
   "reference": "`UnFn.narrow` raises where the value does not fit (`badCast`): Spark under ANSI raises natively.",
   "status": "no-finding",
