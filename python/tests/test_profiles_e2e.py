@@ -542,7 +542,7 @@ def test_g1_md5_runs_on_duckdb_and_is_refused_on_polars(con) -> None:
     assert report.routes["duckdb"].taken == "translated"
     r = routes.choose(report, "polars")
     assert r.refused and r.cls == "refused" and "#2540" in r.why
-    with pytest.raises(RouteError, match=r"hexdigest\('md5'\) \(SQL md5\) runs on duckdb only"):
+    with pytest.raises(RouteError, match=r"hexdigest\('md5'\) \(SQL md5\)"):
         report.run(con, "polars", route="auto")
 
 

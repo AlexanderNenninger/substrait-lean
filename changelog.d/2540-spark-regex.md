@@ -1,0 +1,3 @@
+### Spark runs `regexp_extract`, `regexp_replace`, `md5` and `sha256`
+
+Spark runs `regexp_extract` and `regexp_replace` (Ibis `re_extract`, `re_replace`) with a constant pattern, as RE2 reads it: `.`, `$` and `\s` are written so Java matches as RE2 does, and a first-match replace works although Spark's replaces every match. Spark refuses the two shapes where Java and RE2 differ on an empty match: a repeated group that can match `''` around a capture, and a global replace whose pattern can match `''`. `hexdigest('md5')` and `'sha256'` run as `md5` and `sha2(…, 256)` ([spark-regex](engines/spark/facts/spark-regex.json), [spark-digests](engines/spark/facts/spark-digests.json), [#2540](https://github.com/AlexanderNenninger/substrait-lean/issues/2540)).
