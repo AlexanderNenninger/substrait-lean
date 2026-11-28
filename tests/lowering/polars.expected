@@ -96,7 +96,7 @@ BinFn.bit .shl	hand-written schema: shl: error outside 0-63, else the low 63-k b
 BinFn.bit .shr	hand-written schema: shr: error outside 0-63, else (#0 & -1) // 2^#1 floored
 BinFn.dadd	native
 BinFn.dsub	native
-BinFn.dmul	native
+BinFn.dmul	hand-built entry: Substrait.Polars.dmulEntry
 BinFn.ddiv	native
 BinFn.dmod	hand-written schema: a % b of decimals truncated: Polars's % by -b where the signs differ
 BinFn.pair	native
