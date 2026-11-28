@@ -2,7 +2,8 @@ name: Lean budget
 
 # Measures the Lean build budget (docs/build-performance.md, "The budget"):
 # a cold build of every module through the timing sysroot, on GitHub's
-# runners and on the AWS pool, whose CPUs differ by up to 2.5 times. Each job
+# runners and, when the repository variable `HETZNER_RUNNERS` is `on`, on the
+# Hetzner hosts where CI's `lean` job may run, whose CPUs differ. Each job
 # uploads a `lean-budget-<n>` artifact, and `write-budget` over all of them
 # writes scripts/lean-budget.json from each module's slowest run:
 #
@@ -31,8 +32,8 @@ jobs:
       fail-fast: false
       matrix:
         # Each draws its CPU from its pool's types.
-        runner: [github, aws, aws]
-    runs-on: ${{ matrix.runner == 'github' && 'ubuntu-latest' || fromJSON('["self-hosted", "linux", "x64", "aws"]') }}
+        runner: ${{ fromJSON(vars.HETZNER_RUNNERS == 'on' && '["github", "github", "hetzner"]' || '["github", "github", "github"]') }}
+    runs-on: ${{ matrix.runner == 'github' && 'ubuntu-latest' || fromJSON('["self-hosted", "linux", "x64", "hetzner"]') }}
     timeout-minutes: 120
     steps:
       - run: |

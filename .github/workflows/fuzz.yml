@@ -1,10 +1,9 @@
 name: Fuzz
 
 # The nightly fuzz run (#747, `sverify_dev.fuzz_nightly`): the fuzzers in
-# batches on their own AWS spot pool (label `aws-fuzz`, at most 4 runners,
-# 3 batches at once),
-# which PR CI never uses. Each matrix job is one batch of `SECONDS` with its
-# own seed, so a spot reclaim loses one batch. `report` folds the batches
+# batches on GitHub's runners, 3 batches at once, which leaves the other job
+# slots to pull request CI. Each matrix job is one batch of `SECONDS` with its
+# own seed, so a lost runner loses one batch. `report` folds the batches
 # into the ledger (the `fuzz-ledger` artifact, carried from night to night)
 # and writes the night's findings to its summary for triage: first those
 # without an explanation in python/tools/sverify_dev/fuzz_explained.json (an
@@ -45,7 +44,7 @@ jobs:
       vars.FUZZ_PAUSED != 'true' && (github.event_name != 'pull_request'
       || (github.event.pull_request.head.repo.full_name == github.repository
       && !startsWith(github.head_ref, 'batch/')))
-    runs-on: [self-hosted, linux, x64, aws-fuzz]
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,11 +55,11 @@ jobs:
   fuzz:
     needs: checker
     name: fuzz (${{ matrix.suite }})
-    runs-on: [self-hosted, linux, x64, aws-fuzz]
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
-      # Under the pool's 4: a finished job's runner counts until it is gone.
+      # Leaves GitHub's other job slots to pull request CI.
       max-parallel: 3
       matrix:
         suite:
@@ -133,7 +132,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           # The newest earlier night with a ledger: a night that lost a batch to
-          # a spot reclaim is a failed run, and its ledger still counts.
+          # a lost runner is a failed run, and its ledger still counts.
           for run in $(gh run list -R "$REPO" -w fuzz.yml -b main -s completed -L 10 \
                          --json databaseId -q ".[] | select(.databaseId != $GITHUB_RUN_ID) | .databaseId"); do
             if gh run download "$run" -R "$REPO" -n fuzz-ledger -D prev 2>/dev/null; then
