@@ -11,7 +11,7 @@ rules it applies are in three reference files:
 
 - [reference/voice.md](reference/voice.md): voice, headings, formatting and
   notebooks. This is the one copy of the voice rules; CLAUDE.md's Voice
-  section is their summary.
+  section points here.
 - [reference/words.md](reference/words.md): words and patterns to remove.
 - [reference/document-types.md](reference/document-types.md): README,
   tutorial, how-to, reference and explanation (Diátaxis), and what each
