@@ -114,6 +114,10 @@ class SQLFrontEnd:
     It reads the semantics its dialect has and refuses any other by name
     (`Unsupported`, or `ValueError` for a name it does not know), never by
     reading the query as another dialect."""
+    assumes: str = ""
+    """The engine version and settings the reading assumes, as a report
+    names them after the front-end (`Spark 4.3.0, spark.sql.ansi.enabled=true,
+    …`): what the SQL means where they differ from the engine's defaults."""
 
 
 @dataclass(frozen=True)
@@ -338,10 +342,11 @@ def front_end_label(dialect: str) -> str:
     module = getattr(front.lift, "__module__", "") or ""
     top = module.partition(".")[0]
     dist = next(iter(_distributions().get(top, [])), top)
+    assumes = f", reading {front.assumes}" if front.assumes else ""
     try:
-        return f"{dist} {version(dist)} ({dialect})"
+        return f"{dist} {version(dist)} ({dialect}){assumes}"
     except PackageNotFoundError:
-        return f"{dist} ({dialect})"
+        return f"{dist} ({dialect}){assumes}"
 
 
 def find(engine: Any) -> ProfilePlugin | None:

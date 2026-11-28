@@ -151,7 +151,7 @@ def read_tables(query: str) -> set[tuple[str, str, str]]:
             return set()
 
 
-def full_name_duckdb(table: str) -> tuple[str, str, str]:
+def full_name_duckdb(table: sge.Table | str) -> tuple[str, str, str]:
     """A table name's (catalog, schema, name) as DuckDB resolves it."""
     with reading(DUCKDB_SQL):
         return full_name(table)

@@ -145,6 +145,24 @@ class Surface:
         rewrites: Run on the parsed tree before the areas' `PARSE_REWRITES`.
         known: The functions SQLGlot parses as `Anonymous` that the lift
             reads; the areas add theirs when they are imported.
+        rules: The constructs the dialect reads, by SQLGlot node class, each
+            with the engine fact that shows what the engine computes for it
+            (ruling 288, H1); any other node of the query is refused, naming
+            #866. None reads every construct the lift has a rule for
+            (DuckDB's, whose evidence is oracle A).
+        syntax: The node classes that carry no meaning of their own (names,
+            aliases, parentheses, the clauses that hold the others), read
+            beside `rules`.
+        values: Whether the dialect's lift reads a value of an Ibis type: an
+            input column, a literal or any value computed from them; None
+            reads every type.
+        coerces: Whether the dialect converts a value of the first Ibis type
+            to the second where the text does not say so (C4: each such
+            coercion rests on a fact); None converts as the lift's rules do.
+        case_sensitive: Whether the engine resolves names by their exact
+            case (Spark's profile sets `spark.sql.caseSensitive`). SQLGlot
+            resolves them case-insensitively, so a name that matches an
+            input or an alias only in another case is refused (C2).
     """
 
     read: str
@@ -158,6 +176,11 @@ class Surface:
     checks: tuple[Callable[[str, Sequence[Any]], None], ...] = ()
     rewrites: tuple[Callable[[sge.Expr], sge.Expr], ...] = ()
     known: MutableSet[str] = dataclasses.field(default_factory=set)
+    rules: Mapping[str, str] | None = None
+    syntax: frozenset[str] = frozenset()
+    values: Callable[[Any], bool] | None = None
+    coerces: Callable[[Any, Any], bool] | None = None
+    case_sensitive: bool = False
 
     @property
     def profiles(self) -> dict[str, Profile]:
@@ -579,6 +602,8 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
             f"{s.title} runs it, or write the step in Ibis",
             construct="SQL SYNTAX",
         ) from e
+    if s.rules is not None:
+        _check_rules(s, tree)
     for rewrite in s.rewrites:
         tree = rewrite(tree)
     for rewrite in PARSE_REWRITES:
@@ -613,6 +638,8 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
                 construct=f"function {f.name.lower()}",
                 sql=_shown(f),
             )
+    if s.case_sensitive:
+        _check_case(s, tree, schemas)
     _resolve_tables(tree, schemas)
     _check_aliases(tree, schemas)
     _check_using_stars(tree)
@@ -645,6 +672,52 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     if not isinstance(tree, sge.Select | sge.SetOperation):
         raise Unsupported(_ONLY_SELECT.format(type(tree).__name__), construct=_keywords(tree))
     return tree
+
+
+def _check_rules(s: Surface, tree: sge.Expr) -> None:
+    """Refuse a construct the dialect has no fact for (`Surface.rules`)."""
+    assert s.rules is not None
+    for node in tree.walk():
+        name = type(node).__name__
+        if name not in s.rules and name not in s.syntax:
+            raise SqlUnsupported(
+                f"{_shown(node)} is not read in {s.title} SQL yet: no {s.title} fact "
+                "states what it computes",
+                issue=866,
+                construct=_category(node),
+                sql=_shown(node),
+            )
+
+
+def _check_case(s: Surface, tree: sge.Expr, schemas: Mapping[str, Any]) -> None:
+    """Refuse inputs whose names differ only in case, and a name that matches
+    an input's table or column, a CTE or an alias only in another case: the
+    engine resolves names by their exact case (`Surface.case_sensitive`),
+    SQLGlot without it."""
+    inputs = set(schemas) | {c for schema in schemas.values() for c in schema}
+    seen: dict[str, str] = {}
+    for name in sorted(inputs):
+        if (other := seen.setdefault(name.lower(), name)) != name:
+            raise Unsupported(
+                f"the inputs' names {other} and {name} differ only in case, which SQLGlot "
+                f"does not tell apart and {s.title} does here: rename one",
+                construct="NAME RESOLUTION",
+            )
+    defined = inputs | {a.alias for a in tree.find_all(sge.Alias) if a.alias}
+    for a in tree.find_all(sge.TableAlias):
+        defined |= {a.name, *(c.name for c in a.columns)}
+    folded = {n.lower(): n for n in defined if n}
+    for node in tree.find_all(sge.Column, sge.Table):
+        table = node.text("table") if isinstance(node, sge.Column) else ""
+        for name in (node.name, table):
+            if name and name not in defined and name.lower() in folded:
+                raise SqlUnsupported(
+                    f"{name} matches {folded[name.lower()]} only in another case, and "
+                    f"{s.title} resolves names by their case here (C2)",
+                    hint=f"write the name as {folded[name.lower()]}",
+                    construct="NAME RESOLUTION",
+                    sql=_shown(node),
+                )
 
 
 def full_name(table: sge.Table | str) -> tuple[str, str, str]:
@@ -1043,12 +1116,12 @@ def _nondeterministic(node: sge.Expression) -> str:
     return f"{_shown(node)} gives another value on every run, so no proof covers its result"
 
 
-def _sql(node: sge.Expression) -> str:
+def _sql(node: sge.Expr) -> str:
     """`node` written in the dialect being read, for a message."""
     return node.sql(_current().read)
 
 
-def _shown(node: sge.Expression) -> str:
+def _shown(node: sge.Expr) -> str:
     text = _sql(node)
     return text if len(text) <= 60 else text[:57] + "..."
 
@@ -2411,11 +2484,23 @@ class _Lift:
                 construct=_category(node),
             )
         try:
-            return rule(self, node, lambda n: self.expr(n, scope, bound), scope)
+            return self.read(rule(self, node, lambda n: self.expr(n, scope, bound), scope), node)
         except Unsupported as e:
             if e.sql is None:  # the innermost node being read is the fragment (#700)
                 e.sql = _shown(node)
             raise
+
+    def read(self, e: E, node: sge.Expression) -> E:
+        """`e`, the value of `node`, where the dialect reads a value of its
+        type (`Surface.values`)."""
+        if self.surface.values is not None and not self.surface.values(e.type):
+            raise SqlUnsupported(
+                f"{_shown(node)} is a {e.type}, a type {self.surface.title} SQL is not read "
+                "with yet",
+                issue=866,
+                construct=_category(node),
+            )
+        return e
 
     def column(self, node: sge.Column, scope: list[Column]) -> E:
         table, name = node.table, node.name
@@ -2441,6 +2526,14 @@ class _Lift:
         `CAST(100 AS INTEGER)` is an INTEGER next to a TINYINT."""
         if _same(e.type, t):
             return dataclasses.replace(e, literal=False) if e.literal else e
+        coerces = self.surface.coerces
+        if coerces is not None and not e.type.is_null() and not coerces(e.type, t):
+            raise SqlUnsupported(
+                f"{self.surface.title} SQL converts a {e.type} to a {t} here, which is not "
+                "read yet: write the CAST",
+                issue=866,
+                construct="IMPLICIT CAST",
+            )
         if e.constant:
             v = e.value
             if v is not None:
