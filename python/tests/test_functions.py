@@ -14,7 +14,7 @@ from _repo import needs_repo
 from sverify import _functions as fns
 from sverify._engines import DIALECTS as SQL_DIALECTS
 from sverify.engine import checker_path
-from sverify.sql_lift import PROFILES
+from sverify.sql_lift import DUCKDB_SQL
 
 
 def _facts():
@@ -241,7 +241,7 @@ def test_choices(profile: str) -> None:
 def test_lift_profiles_agree(group: str) -> None:
     """The options the lift writes are its profile's choice: DuckDB's one
     behaviour, the reference's default."""
-    for name, p in PROFILES.items():
+    for name, p in DUCKDB_SQL.profiles.items():
         fixed = {"on_domain_error": p.domain_error, "on_log_zero": p.log_zero}
         for option in fns.GROUPS[group]:
             if option not in fixed:
