@@ -163,8 +163,8 @@ Over the 137 queries that verify (some only as DOUBLE):
 | snowflake: refused: snowflake does not compute decimals as the reference does yet (#27) | 31 |
 | polars: refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see | 3 |
 | snowflake: refused: first() (SQL first) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet;  | 3 |
-| polars: refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckd | 2 |
-| snowflake: refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckd | 2 |
+| polars: refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb and spark only: run it with eng | 2 |
+| snowflake: refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb and spark only: run it with eng | 2 |
 | snowflake: refused: MAX of doubles is not yet supported on snowflake: run it with engine='duckdb' (Snowflake is out of tr | 2 |
 | snowflake: refused: Snowflake's LN is not documented to be C's libm, which the Lean model uses; rewrite this step | 2 |
 | polars: refused: median() or quantile() (SQL median, quantile_cont) runs on duckdb only: run it with engine='duckdb' ( | 2 |
