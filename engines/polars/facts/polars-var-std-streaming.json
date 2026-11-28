@@ -99,7 +99,8 @@
     "The docs are silent on the algorithm, the variation between runs, the clamp to 0 and NULL for a weight at most `ddof`: a docs gap.",
     "No upstream test pins the streaming order, the clamp or that NULL; they may change between versions.",
     "Probed (`sverify_dev.probe_statistics`): of {4, 7, 13, 16} shifted by 0, 1e6, 1e8, 1e9 and 1e12, `var(ddof=1)` is 30 and `var(ddof=0)` 22.5 at every shift, ungrouped and grouped, where the textbook formula gives 29.33 at 1e8 and 0 at 1e9. Values whose textbook variance in doubles is negative give 0.0. A NaN or ±inf gives NaN.",
-    "One quirk (PL-14): a frame of one row whose value is NULL, grouped by one plain input column, gives `var(ddof=0)` and `std(ddof=0)` 0.0 on the streaming engine, where no values should be null; in memory, with a computed or second key, with two such rows, or beside another group it is null. Sverify groups by computed keys, so its plans give null."
+    "One quirk (PL-14): a frame of one row whose value is NULL, grouped by one plain input column, gives `var(ddof=0)` and `std(ddof=0)` 0.0 on the streaming engine, where no values should be null; in memory, with a computed or second key, with two such rows, or beside another group it is null. Sverify groups by computed keys, so its plans give null.",
+    "Degenerate inputs, ungrouped: `corr` with a side of equal values gives NaN, 0 or a number by thread count and morsel size, and `var` of equal values 0 or a residue near 1e-34; grouped `corr` there is NaN (polars-corr-degenerate-ungrouped). A sample of one value is NULL in every setting."
   ],
   "reference": "Substrait's `variance` and `std_dev` with `distribution`; the reference states the generic properties (non-negative, NULL for a weight at most `ddof`) and leaves the algorithm to the engine profile.",
   "status": "open",

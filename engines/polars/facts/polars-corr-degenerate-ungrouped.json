@@ -1,0 +1,81 @@
+{
+  "id": "polars-corr-degenerate-ungrouped",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`corr` with a side of equal values: NaN grouped; ungrouped, a kind that depends on the thread count and morsel size",
+  "verdict": "grouped `stat_degenerate: NAN`; ungrouped NaN, 0 or a number of either sign, by POLARS_MAX_THREADS and POLARS_IDEAL_MORSEL_SIZE, so by machine; `cov` of no pairs or one pair matches the reference",
+  "area": "aggregates",
+  "options": [
+    "stat_degenerate"
+  ],
+  "rows": [
+    {
+      "group": "agg.stat",
+      "option": "stat_degenerate",
+      "types": [
+        "fp64"
+      ]
+    }
+  ],
+  "constructs": [
+    "corr",
+    "cov"
+  ],
+  "settings": {
+    "engine": "streaming",
+    "POLARS_MAX_THREADS": [
+      "the host's core count (12, default)",
+      "1",
+      "4"
+    ],
+    "POLARS_IDEAL_MORSEL_SIZE": [
+      "100000 (default)",
+      "64",
+      "1000"
+    ]
+  },
+  "description": [
+    "Grouped (`group_by(...).agg(pl.corr(y, x))`), a group whose `x` values are all equal gives NaN in every setting and every run: the option's `NAN` value. A group of one row gives NaN too.",
+    "Ungrouped (`select(pl.corr(y, x))`), the same input gives NaN, an exact 0, or a number of either sign, and which one depends on `POLARS_MAX_THREADS` and `POLARS_IDEAL_MORSEL_SIZE`. The default thread count is the host's core count, so two runs of one plan on two hosts can give different kinds. Within one setting on one host, the kind and the sign held over 50 runs, but the number moved: up to 41 distinct values in 50 runs, spread up to 0.36 (|corr| up to about 0.32), and 1 to 3 ulps at 100 000 rows and more. `corr(x, x)` of equal values is NaN or a number in the same way. Two rows give NaN in every setting.",
+    "The ungrouped streaming `corr` merges per-morsel and per-pipeline states (as `var` does, polars-var-std-streaming): with every `x` equal, the merged co-moment of `x` is a rounding residue, positive or zero, whose size follows the block and merge order, so the quotient is NaN (0/0), 0 or that residue's ratio.",
+    "`cov(x, y)` at its degenerate inputs is the same in every setting and run, grouped and ungrouped: no pairs (an empty frame, or `x` NULL in every row) gives NULL for `ddof=1` and `ddof=0`; one pair gives NULL for `ddof=1` and 0 for `ddof=0`.",
+    "`var` and `std` of equal values are 0 grouped, and 0 or about 1e-34 (for 0.1) ungrouped, by setting: `stat_algo`'s variation within the plan's absolute bound, not a degenerate case (polars-var-std-streaming). A sample of one value is NULL in every setting.",
+    "CORR(y, x) with x = 0.1 in every row, ungrouped, by row count n and setting (morsel size / thread count; default threads = 12 on the probe host): NaN, 0, + or - for the sign of a number, ×k for k distinct values in 50 runs of that setting.",
+    "n: default/default | default/1 | default/4 | 64/default | 64/1 | 64/4 | 1000/default | 1000/1 | 1000/4",
+    "2: NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN | NaN",
+    "63: +×29 | 0 | +×8 | +×32 | 0 | +×5 | +×32 | 0 | +×5",
+    "64: +×29 | NaN | NaN | +×27 | NaN | NaN | +×36 | NaN | NaN",
+    "65: +×33 | NaN | +×6 | +×27 | NaN | +×6 | +×28 | NaN | +×5",
+    "127: -×30 | 0 | +×6 | -×29 | 0 | +×5 | -×28 | 0 | +×4",
+    "128: -×30 | 0 | NaN | -×36 | NaN | NaN | -×32 | 0 | NaN",
+    "129: NaN | + | +×6 | NaN | NaN | +×4 | NaN | + | +×6",
+    "1000: +×34 | 0 | - | NaN | 0 | 0 | +×30 | 0 | -",
+    "100000: +×2 | + | + | NaN | + | NaN | +×3 | 0 | 0",
+    "300001: +×2 | + | - | NaN | + | NaN | -×3 | - | -×6"
+  ],
+  "reference": "`CORR` is NULL for fewer than two pairs or a side whose values are all equal (`Sxx = 0` or `Syy = 0`), `stat_degenerate` `NULL` (D30); `COVAR_SAMP` is NULL for fewer than two pairs and `COVAR_POP` 0 for one pair. The reference picks NULL; Polars's table leaves `stat_degenerate` uncharacterised.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-28",
+      "method": "probe",
+      "checked_by": "session agitated-napier-aa917f (#2628, ruling 291), on homelab (Linux x86-64, 12 cores)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/stat_degenerate_streaming.py"
+        },
+        {
+          "file": "engines/polars/probes/covar_degenerate_streaming.py"
+        }
+      ],
+      "notes": [
+        "Polars 2.1.0 (Python 3.12), `collect(engine='streaming')`. Each case ran 50 times in a fresh process per setting: equal values 0.1, 1/3 and 1e8+0.3; 1, 2, 63, 64, 65, 127, 128, 129, 1000, 100 000 and 300 001 rows; ungrouped and grouped by `i % G` for G = 1, 4 and 1000; morsel size default, 64 and 1000 times thread count default, 1 and 4. That is 5,508 cells for `var`, `std` and `corr`, of which 98 varied within a setting and none changed kind within a setting, and 774 cells for `cov`, none varying.",
+        "The ungrouped table in the description is for x = 0.1; 1/3 and 1e8+0.3 behave alike. The full results are in the coordinator's notes (2628-stat-degenerate-probe.md) and are reproduced by the scripts."
+      ]
+    }
+  ],
+  "issues": [
+    2628
+  ]
+}

@@ -641,3 +641,23 @@ def test_two_engines_rank_the_same_double_sums_differently() -> None:
     )
     on_polars = {r["c"]: r["rk"] for r in ranked_on_polars.iter_rows(named=True)}
     assert sum(on_duckdb[c] != on_polars[c] for c in on_duckdb) > 0
+
+
+@pytest.mark.parametrize("grouped", [False, True], ids=["ungrouped", "grouped"])
+@pytest.mark.parametrize("bounded", [False, True], ids=["unbounded", "bounded"])
+def test_polars_never_routes_corr_without_the_variance_precondition(grouped, bounded) -> None:
+    """#2628, ruling 291 Q2. Where one side's values are all equal, the reference's `CORR` is
+    NULL (D30), Polars's grouped `corr` is NaN, and its ungrouped one has no fixed kind: NaN,
+    0 or a number, by thread count and morsel size (polars-corr-degenerate-ungrouped). A plan
+    with `CORR` reaches Polars only under D30's checked lower bound on both variances, which
+    rules those inputs out, and contracts can't state it yet. So the route is refused,
+    bounded inputs or not, and on DuckDB, whose SQL writes the degenerate case as NULL, it
+    is taken."""
+    t = ibis.table({"k": "int64", "x": "float64", "y": "float64"}, name="t")
+    source = t.group_by("k") if grouped else t
+    requires = [_.x.between(-1000.0, 1000.0), _.y.between(-1000.0, 1000.0)] if bounded else []
+    report = sv.verify(source.aggregate(c=t.x.corr(t.y)), requires=requires, on_inferred="ignore")
+    route = report.route("polars")
+    assert route.refused and route.cls == "refused", route.why
+    if bounded:
+        assert report.route("duckdb").taken is not None
