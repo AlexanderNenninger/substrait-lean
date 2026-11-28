@@ -57,18 +57,14 @@ def test_a_column_divisor_keeps_its_guard(spark):
         run_plan(con, plan, spark, tie_free=False)
 
 
-def test_a_date_from_columns_is_small():
+def test_a_date_from_columns_is_small(monkeypatch):
     """The lift's calendar check of `ibis.date(2024, m, 1)`: 175 KB of Spark
     SQL before, 43 KB now."""
+    from sverify import _support
+
     con = connect()
     put_table(con, "t", ROWS)
     plan = _plan(con, T.select(x=ibis.date(2024, T.a.clip(1, 12), 1)))
-    from sverify import _support
-
-    run = _support._runs
-    _support._runs = lambda *a: True  # Spark still refuses the date guard itself.
-    try:
-        sql = to_sql(json.loads(plan), SPARK)
-    finally:
-        _support._runs = run
-    assert len(sql) < 50_000
+    # Spark still refuses the date guard itself.
+    monkeypatch.setattr(_support, "_runs", lambda name, engine, field: True)
+    assert len(to_sql(json.loads(plan), SPARK)) < 50_000
