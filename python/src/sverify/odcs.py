@@ -1048,3 +1048,11 @@ def _dedupe(conds: Sequence[Any]) -> list[Any]:
             seen.add(lab)
             out.append(c)
     return out
+
+
+if not TYPE_CHECKING:  # a type checker keeps flagging names the module lacks
+
+    def __getattr__(name: str) -> object:
+        from sverify._renamed import missing
+
+        raise missing(__name__, name)

@@ -62,13 +62,18 @@ def AggFn.reads (f : AggFn) : List Read :=
 
 def Measure.ctors (m : Measure) : List Ctor := m.arg.ctors ++ (m.filter.map Expr.ctors).getD []
 
-def Measure.reads (m : Measure) : List Read :=
-  m.arg.reads ++ (m.filter.map Expr.reads).getD [] ++ m.fn.reads
-
-/-- An `ORDER BY`'s options: each key's NULL placement, and clustering where a key asks for it. -/
+/-- An `ORDER BY`'s options: each key's NULL placement, and clustering where a key asks for it.
+A window's sort and a measure's read the same (`NullsSortedP`). -/
 def sortReads (keys : List SortKey) : List Read :=
   keys.map (fun k => ("rel.sort", "null_order", k.nullPrefs)) ++
     if keys.any (·.clustered) then [("rel.sort", "clustered", [])] else []
+
+/-- A measure's sort's options, where its function sorts its rows (`STRING_AGG`, `FIRST`, …). -/
+def Measure.sortReads (m : Measure) : List Read := if m.fn.sorts then _root_.Substrait.sortReads m.sort else []
+
+/-- A measure's options: its calls', its function's and its sort's. -/
+def Measure.reads (m : Measure) : List Read :=
+  m.arg.reads ++ (m.filter.map Expr.reads).getD [] ++ (m.fn.reads ++ m.sortReads)
 
 /-- Rows compared as keys (grouping, `DISTINCT`, a join's equality): NaN and the zeros. -/
 def keyReads : List Read := [("rel.keys", "nan_equality", []), ("rel.keys", "zero_sign", [])]
@@ -438,10 +443,18 @@ theorem AggFn.AllowedP.monoOn {f : AggFn} (h : ∀ p ∈ f.reads, t.LeAt u p) {v
       exact .inl ⟨o, ⟨ho, optionApplies_of_scope hsc⟩, rfl⟩
     exact ⟨r, hr, os, hos, o, ho, hi, ⟨b, ProfileTable.LeAt.mem (h _ hp) hi hb, hn⟩, hsc⟩
 
+omit [Boxes.Ambient] in
+theorem NullsSortedP.monoOn {keys : List SortKey} (h : ∀ p ∈ sortReads keys, t.LeAt u p)
+    {out : Relation} : NullsSortedP t keys out → NullsSortedP u keys out := fun ⟨nfs, hn, hs⟩ =>
+  ⟨nfs, Forall2.imp_mem (fun k hk _ hn => ProfileTable.LeAt.mem (h ("rel.sort", "null_order", k.nullPrefs)
+      (List.mem_append_left _ (List.mem_map.mpr ⟨k, hk, rfl⟩))) (by simp [aggInterpreted]) hn) hn, hs⟩
+
 theorem Measure.AllowedP.monoOn {I : Impl} {m : Measure} (h : ∀ p ∈ m.reads, t.LeAt u p)
     {rows : Relation} {v : Value} : m.AllowedP t I rows v → m.AllowedP u I rows v :=
-  fun ⟨s, hs, hsort, hf⟩ => ⟨s, hs, hsort, AggFn.AllowedP.monoOn
-    (fun p hp => h p (List.mem_append_right _ hp)) hf⟩
+  fun ⟨s, hs, hsort, hf⟩ => ⟨s, hs,
+    fun hm => NullsSortedP.monoOn (fun p hp => h p (List.mem_append_right _ (List.mem_append_right _
+      (by simp only [Measure.sortReads, hm, ↓reduceIte]; exact hp)))) (hsort hm),
+    AggFn.AllowedP.monoOn (fun p hp => h p (List.mem_append_right _ (List.mem_append_left _ hp))) hf⟩
 
 theorem aggAllowedP.monoOn {I : Impl} {gs : List Expr} {ms : List Measure}
     (h : ∀ p ∈ ms.flatMap Measure.reads, t.LeAt u p) {rows out : Relation} :
@@ -503,7 +516,9 @@ theorem Rel.AllowedI.monoOn {I : Impl} {cat : Catalog} :
   | .unnest r _, h, _, ⟨i, hi, ho⟩ =>
     ⟨i, Rel.AllowedI.monoOn (r := r) (fun p hp => h p (by simp only [Rel.reads]; exact hp)) hi, ho⟩
   | .window r _ _ _, h, _, ⟨i, hi, s, hs, hsort, o, hp, ho⟩ =>
-    ⟨i, Rel.AllowedI.monoOn (fun p hp => h p (List.mem_append_left _ hp)) hi, s, hs, hsort, o, hp,
+    ⟨i, Rel.AllowedI.monoOn (fun p hp => h p (List.mem_append_left _ hp)) hi, s, hs,
+      NullsSortedP.monoOn (fun p hp => h p (List.mem_append_right _
+        (List.mem_append_left _ (List.mem_append_right _ hp)))) hsort, o, hp,
       windowRowsP.monoOn (fun p hp => h p (List.mem_append_right _
         (List.mem_append_left _ (List.mem_append_left _ hp)))) ho⟩
   | .orderBy r _, h, _, ⟨i, hi, hp, hs⟩ =>
@@ -566,6 +581,32 @@ theorem ProfileTable.leAt_of_leAtB {t u : ProfileTable} {p : Read}
     (h : t.leAtB u p = true) : t.LeAt u p := fun b hb => by
   simp only [leAtB, List.all_eq_true, List.any_eq_true] at h
   exact h b hb
+
+/-! ## Where a table says more than `AllowedI` reads (ruling 289 N2) -/
+
+/-- The relational options a plan can read, by group: a sort's, a join's
+(its keys' among them) and a window sum's. -/
+def relationalReads : List (String × String) :=
+  (sortReads [{ col := 0, clustered := true }] ++ joinReads).map (fun p => (p.1, p.2.1)) ++
+    [("win.agg", "window_sum_algo")]
+
+/-- Does `t`'s `window_sum_algo` say more than `AllowedI` reads? A frame's sum
+takes `sum_order`'s choice (`WinFn.AllowedP`), and `SLIDING` any value
+(`SlidingSum`); `TREE` and `RUNNING_ADD` are sums in some order, which
+`sum_order` covers only where it allows `ANY` (`FloatSums`). -/
+def ProfileTable.windowSumsOpen (t : ProfileTable) : Bool :=
+  !((t.allows "win.agg" "window_sum_algo" []).all (fun b => b == "RECOMPUTE" || b == "SLIDING") ||
+    (t.allows "agg.fsum" "sum_order" []).contains "ANY")
+
+/-- **The relational options at which `t` allows a behaviour `Rel.AllowedI`
+does not model**: those off `relInterpreted` where `t` is not within the
+reference, and `window_sum_algo` where `windowSumsOpen`. Where this is empty,
+`AllowedI t` reads every relational choice of `t` it meets. Each engine entry
+states its list (`EngineEntry.modelled`). -/
+def ProfileTable.unmodelled (t : ProfileTable) : List (String × String) :=
+  (relationalReads.filter fun (g, o) =>
+    !relInterpreted.contains (g, o) && !t.leAtB Profile.reference.table (g, o, [])) ++
+  if t.windowSumsOpen then [("win.agg", "window_sum_algo")] else []
 
 /-- The transfer check for `r`, from the profile `t` to `u`. -/
 def transferB (r : Rel) (t u : ProfileTable) : Bool := r.reads.all (u.leAtB t ·)

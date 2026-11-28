@@ -134,10 +134,9 @@ def test_the_plan_bound_level() -> None:
     bounds = {"abs": {"value": 1e-10, "proved": False}, "rel": {"value": 1e-13, "proved": False}}
     m = {"bounds": bounds, "unbounded": False, "why": None}
     k = {"bounds": {}, "unbounded": False, "why": None}
-    resolved = routes._resolve(plan, {"m": m, "k": k})
-    assert resolved.floats == sv.within(abs=1e-10, rel=1e-13)
+    assert routes.plan_bound({"m": m, "k": k}) == sv.within(abs=1e-10, rel=1e-13)
     unbounded = {"m": {"bounds": {}, "unbounded": True, "why": None}}
-    assert routes._resolve(plan, unbounded).floats == "plan"
+    assert routes.plan_bound(unbounded) is None
 
 
 # -- inferred preconditions ---------------------------------------------------

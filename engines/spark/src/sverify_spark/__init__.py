@@ -240,5 +240,7 @@ PLUGIN = ProfilePlugin(
     guards=(RANGE_GUARD, MIN_MOD_GUARD),
     # `collect()` of an unordered list (the dialect refuses an ordered one).
     functions=frozenset({"array_agg"}),
+    # The variance over a frame: Spark's own `VAR_*` and `STDDEV_*` (spark-var-stddev).
+    window_functions=frozenset({"variance", "std_dev"}),
     shim_text={"null_order": "NULLs sorted as the reference sorts them"},
 )

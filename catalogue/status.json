@@ -251,8 +251,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/iss",
-   "snowflake": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
+   "polars": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb and spark only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrai",
+   "snowflake": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb and spark only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   }
  },
  "fin-max-drawdown": {
@@ -876,8 +876,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/iss",
-   "snowflake": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
+   "polars": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb and spark only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrai",
+   "snowflake": "refused: std() over a window (SQL stddev_samp, stddev_pop OVER) runs on duckdb and spark only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   }
  },
  "pa-histogram": {

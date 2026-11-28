@@ -238,6 +238,14 @@ class Sink:
     """The view's serial and the contract of a write that raised: its commit
     may have landed before the error (reading the version back, say)."""
 
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        if "_keeps_retired" in vars(cls):  # 0.8's spelling, read by a property 0.9.0 removed
+            raise TypeError(
+                f"{cls.__name__} sets _keeps_retired, which sverify no longer reads: "
+                "set the class attribute keeps_retired = True"
+            )
+
     def __init__(
         self,
         name: str,
