@@ -337,6 +337,18 @@ Sverify's words claim no more than these theorems give
   (`engines/<engine>/facts/`, [how they are judged](../characterization/README.md)).
   DuckDB's own tests are replayed and fuzzed against the model; the profiles
   are tested on the engines and trusted.
+- Where a profile keeps the reference's value though the engine computes
+  another ("true where reached", ruling 290). The lowering never reaches those
+  inputs, which a lemma proves, and a `#guard` fails if an entry calls the
+  engine's function without it:
+
+  | Function | Inputs | The engine's behaviour | Fact | Unreached by |
+  |---|---|---|---|---|
+  | Spark's `CAST(x AS BIGINT)` (`ftoi`) | the double 2⁶³ (`Spark.ftoiExcepted`) | 2⁶³ − 1, where the reference raises | spark-cast-double-to-int | `Spark.ftoi_native_not_excepted` |
+  | Spark's `TRY_CAST(x AS BIGINT)` (`ftoiOrNull`) | the double 2⁶³ | 2⁶³ − 1, where the reference gives NULL | spark-cast-double-to-int | `Spark.ftoi_native_not_excepted` |
+
+  Polars's `%` of doubles, its Int128 product and its `str.find` join the
+  table in the next change to each (#2641).
 - The table formats' change feeds (`ChangeFeed`, `TableFormat.lean`), a
   hypothesis of `Rel.cdf_sound` wherever Sverify reads a Delta change data
   feed; it is proved when the change is computed from two snapshots.

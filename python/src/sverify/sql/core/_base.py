@@ -80,6 +80,8 @@ _RAISED: dict[str, GuardIssue] = {
     "integer overflow": "wraps",
     # A date past the reference's calendar (`rangeIssue`, Spark's `date_add` template).
     "overflow": "overflow",
+    # A double cast to BIGINT at 2⁶³ or above (Spark's `ftoi` template, ruling 290).
+    "CAST to BIGINT out of range": "badCast",
 }
 
 

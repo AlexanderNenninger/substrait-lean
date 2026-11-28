@@ -46,7 +46,8 @@ def sparkSchemas : Schemas where
         "date_add: error past the reference's dates")
     | _ => none
   proofs := `Substrait.Spark
-  entries := [(``UnFn.ffloor, ``Spark.ffloorEntry), (``UnFn.fceil, ``Spark.fceilEntry)]
+  entries := [(``UnFn.ffloor, ``Spark.ffloorEntry), (``UnFn.fceil, ``Spark.fceilEntry),
+    (``UnFn.ftoi, ``Spark.ftoiEntry), (``UnFn.ftoiOrNull, ``Spark.ftoiOrNullEntry)]
   derived := [(``BinFn.fdivIeee, ``BinFn.fdiv, ``Spark.ref_fdiv_fdivIeee)]
 
 end Substrait.LoweringSearch

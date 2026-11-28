@@ -73,6 +73,29 @@ theorem Rel.spark_lowered_sound {cat : Catalog} (hcat : cat.Dbl) {r r' : Rel} (h
     r'.eval cat Profile.spark.impl = r.eval cat :=
   Lowering.lowerRel?_sound_dbl hcat hc hr h
 
+/-! ## True where reached (ruling 290)
+
+`Profile.spark` keeps the reference's casts of a double to `BIGINT` at `2⁶³`, where Spark
+saturates (`Spark.ftoiExcepted`, spark-cast-double-to-int). The table's entries for them
+are the guarded templates (`Spark.ftoiEntry`, `Spark.ftoiOrNullEntry`), whose native cast
+is reached only below `2⁶³` (`Spark.ftoi_native_not_excepted`), and no other entry calls
+them: a regeneration that drops `excluding [UnFn.ftoi, UnFn.ftoiOrNull]`
+(`scripts/RegenLoweringSpark.lean`) fails here (P4). -/
+
+/-- The functions `Profile.spark` states as the reference's where Spark differs, with
+their fact and the entry that keeps them unreached (P2, P3). -/
+def Spark.trueWhereReached : List (Functions.Ctor × String × Expr) :=
+  [(.un .ftoi, "spark-cast-double-to-int", Spark.ftoiTemplate),
+   (.un .ftoiOrNull, "spark-cast-double-to-int", Spark.ftoiOrNullTemplate)]
+
+#guard letI := Boxes.Ambient.none
+  (Lowering.spark.un .ftoi).any (·.tmpl == Spark.ftoiTemplate) &&
+    (Lowering.spark.un .ftoiOrNull).any (·.tmpl == Spark.ftoiOrNullTemplate) &&
+    Spark.trueWhereReached.all fun (c, _, t) =>
+      (LoweringExport.unFns.all fun f => (Lowering.spark.un f).all fun e =>
+        e.tmpl == t || !e.tmpl.ctors.contains c) &&
+      LoweringExport.binFns.all fun f => (Lowering.spark.bin f).all fun e => !e.tmpl.ctors.contains c
+
 /-! ## Tests (rulings 248 G6, 249 H5)
 
 The entries evaluated under `Profile.spark` beside the reference's outcome. -/
@@ -94,6 +117,17 @@ def Spark.checkOutcome (exact : Bool) : Outcome → Outcome → Bool
     let v := Value.float (FloatCode.ofFloat x)
     Spark.checkOutcome true (Spark.ffloorEntry.tmpl.evalP Profile.spark [v]) (Profile.reference.un .ffloor v) &&
     Spark.checkOutcome true (Spark.fceilEntry.tmpl.evalP Profile.spark [v]) (Profile.reference.un .fceil v)
+
+-- The casts to `BIGINT` at the 64-bit edges (spark-cast-double-to-int's probe): `2⁶³`, the
+-- doubles beside it and beside `-2⁶³`, NaN, `±∞`, `-0.0`: exact.
+#guard letI := Boxes.Ambient.none
+  [9223372036854775808.0, 9223372036854777856.0, 9223372036854774784.0, -9223372036854775808.0,
+    -9223372036854777856.0, -9223372036854774784.0, 0.0 / 0.0, 1.0 / 0.0, -1.0 / 0.0, -0.0, -1.5,
+    2.5].all fun (x : Float) =>
+    let v := Value.float (FloatCode.ofFloat x)
+    Spark.checkOutcome true (Spark.ftoiEntry.tmpl.evalP Profile.spark [v]) (Profile.reference.un .ftoi v) &&
+    Spark.checkOutcome true (Spark.ftoiOrNullEntry.tmpl.evalP Profile.spark [v])
+      (Profile.reference.un .ftoiOrNull v)
 
 -- IEEE division: a zero divisor of either sign raises, for a finite, infinite or
 -- NaN dividend; a divisor that is not zero gives the reference's value, NaN and

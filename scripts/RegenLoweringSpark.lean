@@ -22,7 +22,9 @@ generate_lowering sparkOn : Profile.spark
     Spark.ref_bin_nondouble_l, Spark.ref_bin_nondouble_r,
     BinFn.apply_eq_nondouble_l, BinFn.apply_eq_nondouble_r, BinFn.apply_lt_nondouble_l,
     BinFn.apply_lt_nondouble_r, Value.isNum_float_nondouble]
-  excluding []
+  -- Spark's casts of a double to `BIGINT` saturate at `2⁶³` (spark-cast-double-to-int):
+  -- hand-built entries guard it, and no other template calls them (ruling 290).
+  excluding [UnFn.ftoi, UnFn.ftoiOrNull]
   hand_written LoweringSearch.sparkSchemas
   writing "engines/spark/Sverify/Spark/LoweringOn"
   refusing [BinFn.fpow, BinFn.fatan2, UnFn.ftod]

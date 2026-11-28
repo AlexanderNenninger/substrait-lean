@@ -283,10 +283,11 @@ class SparkDialect(Dialect):
         )
 
     def float_to_int(self, x: str) -> str:
-        # The cast raises on NaN and ±inf but saturates at 2⁶³: check first.
-        lo, hi = self.float_lit(-(2.0**63)), self.float_lit(2.0**63)
-        fail = self.raise_("CAST to BIGINT out of range", x, "int", "badCast")
-        return f"(CASE WHEN {x} >= {lo} AND {x} < {hi} THEN CAST({x} AS BIGINT) ELSE {fail} END)"
+        # The cast saturates at 2⁶³ (spark-cast-double-to-int): the generated, proved
+        # template raises there before the cast (`Spark.ftoiEntry`, ruling 290).
+        low = self.lowered("Substrait.UnFn.ftoi", [x], "float")
+        assert low is not None, "Spark's lowering table has no entry for ftoi"
+        return low
 
     def is_nan(self, x: str) -> str:
         return f"isnan({x})"

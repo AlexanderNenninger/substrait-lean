@@ -489,6 +489,129 @@ theorem bit_shr_agree (x y : Value) :
     (shrTemplate.evalP Profile.spark [x, y]).Agree (Profile.reference.bin (.bit .shr) x y) :=
   shift_agree (.inr rfl) x y
 
+/-! ## Casts of a double to `BIGINT` (ruling 290, #2630)
+
+Spark's `CAST` and `TRY_CAST` saturate the double `2⁶³` (spark-cast-double-to-int),
+which `Profile.spark` does not state (`Spark.ftoiExcepted`): the templates raise, or give
+NULL, at `2⁶³` and above before the native cast, so it is called only below `2⁶³`, where
+it is the reference's. The soundness does not rest on Spark evaluating only the `CASE`
+branch a row takes: the native branch's value is discarded where the guard holds, and it
+raises only where the reference raises (S4). -/
+
+/-- `#0` is a double of `2⁶³` or more, or NaN (canonical codes order NaN above `+∞`). -/
+def ftoiGuard : Expr :=
+  .bin .and (.un (.isNum .float) (.field 0))
+    (.un .not (.bin .lt (.field 0) (.lit (.float Spark.code2_63))))
+
+/-- `CASE WHEN ftoiGuard THEN error ELSE CAST(#0 AS BIGINT) END`. -/
+def ftoiTemplate : Expr :=
+  .ifThen ftoiGuard (.un (.raise "CAST to BIGINT out of range") (.field 0)) (.un .ftoi (.field 0))
+
+/-- `CASE WHEN ftoiGuard THEN NULL ELSE TRY_CAST(#0 AS BIGINT) END`. -/
+def ftoiOrNullTemplate : Expr :=
+  .ifThen ftoiGuard (.lit .null) (.un .ftoiOrNull (.field 0))
+
+omit [Boxes.Ambient] in
+theorem ftoiTemplate_must : 0 ∈ ftoiTemplate.must := by simp [Expr.must, ftoiTemplate, ftoiGuard]
+omit [Boxes.Ambient] in
+theorem ftoiOrNullTemplate_must : 0 ∈ ftoiOrNullTemplate.must := by
+  simp [Expr.must, ftoiOrNullTemplate, ftoiGuard]
+
+omit [Boxes.Ambient] in
+theorem canon_code2_63 : FloatCode.canon Spark.code2_63 = Spark.code2_63 := by
+  have hb := FloatCode.big_lt_maxMag
+  apply fp64.canon_eq_self
+  have hZ := fp64.negZero_eq; have hY := fp64.negNan_eq
+  have e : (FloatCode.maxMag : Int) = fp64.maxMag := rfl
+  constructor <;> (unfold Spark.code2_63 FloatCode.castHi; omega)
+
+omit [Boxes.Ambient] in
+theorem toInt?_code2_63 : FloatCode.toInt? Spark.code2_63 = some (2 ^ 63) := by
+  have hb := FloatCode.big_lt_maxMag
+  have hK := FloatCode.K_pos
+  have hm : FloatCode.mag Spark.code2_63 = 2 ^ 63 * FloatCode.K := by
+    unfold FloatCode.mag Spark.code2_63 FloatCode.castHi; omega
+  unfold FloatCode.toInt?
+  rw [hm]
+  simp only [show ¬ FloatCode.maxMag < 2 ^ 63 * FloatCode.K from by omega, ite_false,
+    show ¬ Spark.code2_63 < 0 from by unfold Spark.code2_63 FloatCode.castHi; omega,
+    Nat.mul_div_cancel _ hK]
+  rfl
+
+omit [Boxes.Ambient] in
+/-- At `2⁶³` and above, the reference's truncation leaves 64 bits, or has no integer. -/
+theorem toInt?_above {c : Int} (h : ¬ FloatCode.canon c < Spark.code2_63) :
+    ∀ i, FloatCode.toInt? (FloatCode.canon c) = some i → 2 ^ 63 ≤ i := fun i hi =>
+  FloatCode.toInt?_mono (by omega) toInt?_code2_63 hi
+
+theorem spark_ftoi (v : Value) : Profile.spark.un .ftoi v = Profile.reference.un .ftoi v :=
+  spark_un_ref (fun x => by cases x <;> rfl) v
+theorem spark_ftoiOrNull (v : Value) :
+    Profile.spark.un .ftoiOrNull v = Profile.reference.un .ftoiOrNull v :=
+  spark_un_ref (fun x => by cases x <;> rfl) v
+
+omit [Boxes.Ambient] in
+theorem and3_true_bool (b : Bool) : and3 (.bool true) (.bool b) = .bool b := by cases b <;> rfl
+
+theorem ftoiGuard_eval (v : Value) : ftoiGuard.evalP Profile.spark [v] = .ok (match v with
+    | .float c => .bool (!decide (FloatCode.canon c < Spark.code2_63))
+    | _ => .bool false) := by
+  simp only [ftoiGuard, Expr.evalP, List.getD_cons_zero, Outcome.ok_bind, spark_isNum, spark_lt,
+    spark_and, spark_not]
+  cases v <;> simp [Value.isNum, BinFn.apply, canon_code2_63, and3_true_bool] <;> rfl
+
+/-- **P1 (ruling 290): the native cast is reached only where Spark's is the reference's.**
+Where `ftoiGuard` does not hold, the argument is not `Spark.ftoiExcepted`. -/
+theorem ftoi_native_not_excepted {v : Value}
+    (h : (ftoiGuard.evalP Profile.spark [v]) = .ok (.bool false)) : Spark.ftoiExcepted v = false := by
+  rw [ftoiGuard_eval] at h
+  cases v <;> simp_all [Spark.ftoiExcepted]
+  omega
+
+theorem ftoi_agree (v : Value) :
+    (ftoiTemplate.evalP Profile.spark [v]).Agree (Profile.reference.un .ftoi v) := by
+  simp only [ftoiTemplate, Expr.evalP, List.getD_cons_zero, ftoiGuard_eval, Outcome.ok_bind,
+    spark_ftoi, spark_raise]
+  cases v
+  case float c =>
+    by_cases hc : FloatCode.canon c < Spark.code2_63
+    · simp [hc, Value.isTrue, Outcome.agree_refl]
+    · simp only [hc, decide_false, Bool.not_false, Value.isTrue, ite_true]
+      simp only [Profile.reference, UnFn.issue, raiseIf]
+      cases ht : FloatCode.toInt? (FloatCode.canon c) with
+      | none => simp [Outcome.Agree, Issue.isError]
+      | some i =>
+        have := toInt?_above hc i ht
+        have hm : ¬ i ≤ FloatCode.maxI64 := by unfold FloatCode.maxI64; omega
+        have hn : inI64 i = false := by simp [inI64, between, hm]
+        simp [hn, Outcome.Agree, Issue.isError]
+  all_goals simp [Value.isTrue, Outcome.agree_refl]
+
+theorem ftoiOrNull_agree (v : Value) :
+    (ftoiOrNullTemplate.evalP Profile.spark [v]).Agree (Profile.reference.un .ftoiOrNull v) := by
+  simp only [ftoiOrNullTemplate, Expr.evalP, ftoiGuard_eval, Outcome.ok_bind, List.getD_cons_zero,
+    spark_ftoiOrNull]
+  cases v
+  case float c =>
+    by_cases hc : FloatCode.canon c < Spark.code2_63
+    · simp [hc, Value.isTrue, Outcome.agree_refl]
+    · simp only [hc, decide_false, Bool.not_false, Value.isTrue, ite_true]
+      simp only [Profile.reference, UnFn.issue, raiseIf, UnFn.apply]
+      cases ht : FloatCode.toInt? (FloatCode.canon c) with
+      | none => simp [Outcome.Agree]
+      | some i =>
+        have := toInt?_above hc i ht
+        have hn : fitsBits 64 i = false := by simp [fitsBits, between]; omega
+        simp [hn, Outcome.Agree]
+  all_goals simp [Value.isTrue, Outcome.agree_refl]
+
+/-- **Spark's `CAST(x AS BIGINT)`**, hand-built: `ftoiTemplate`, exact. -/
+def ftoiEntry : UnEntry Profile.spark .ftoi := .ofAgree ftoiTemplate ftoiTemplate_must ftoi_agree
+
+/-- **Spark's `TRY_CAST(x AS BIGINT)`**, hand-built: `ftoiOrNullTemplate`, exact. -/
+def ftoiOrNullEntry : UnEntry Profile.spark .ftoiOrNull :=
+  .ofAgree ftoiOrNullTemplate ftoiOrNullTemplate_must ftoiOrNull_agree
+
 end Spark
 
 end Substrait

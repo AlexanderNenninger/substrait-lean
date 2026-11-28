@@ -154,9 +154,24 @@ def sparkUn : UnFn → Value → Option Outcome
     | none => .error .badCast)
   | _, _ => none
 
+/-- The code of the double `2⁶³`, just above `FloatCode.castHi`. -/
+def Spark.code2_63 : Int := FloatCode.castHi + 1
+
+/-- **Where `Profile.spark` keeps the reference's value though Spark computes another**
+(ruling 290's P2, "true where reached"): the double `2⁶³`, which Spark's `CAST` and
+`TRY_CAST` to `BIGINT` saturate to `2⁶³ - 1` under ANSI (spark-cast-double-to-int), where
+the reference's `ftoi` raises and its `ftoiOrNull` gives NULL. The lowering never calls
+the native cast there (`Spark.ftoi_native_not_excepted`, `Spark.ftoiEntry`). Every other
+double casts as the reference does (the fact's probe of the 64-bit edges). -/
+def Spark.ftoiExcepted : Value → Bool
+  | .float c => FloatCode.canon c == Spark.code2_63
+  | _ => false
+
 variable [Boxes.Ambient]
 /-- **Spark's profile**: what Spark 4.3.0 computes under ANSI, as a diff
-against the reference (`sparkBin`, `sparkUn`). -/
+against the reference (`sparkBin`, `sparkUn`). It keeps the reference's casts of a
+double to `BIGINT` at `2⁶³`, where Spark saturates, which the lowering never reaches
+(`Spark.ftoiExcepted`, ruling 290). -/
 def Profile.spark : Profile where
   un f v := (sparkUn f v).getD (Profile.reference.un f v)
   bin f v w := (sparkBin f v w).getD (Profile.reference.bin f v w)
