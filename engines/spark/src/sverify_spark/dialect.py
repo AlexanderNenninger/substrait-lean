@@ -185,7 +185,10 @@ def java_regex(p: str) -> str:
             elif e == "S" and not in_class:
                 out.append(f"[^{_SPACE}]")
             elif e == "S":
-                raise Unsupported(f"\\S inside a class on Spark: {p!r}")
+                raise Unsupported(
+                    f"\\S inside a character class on Spark ({p!r}): write it as an "
+                    f"alternative outside the class, (?:[…]|\\S), or {DUCKDB_ONLY}"
+                )
             else:
                 out.append("\\" + e)
             continue

@@ -347,10 +347,9 @@ FUNCTIONS: tuple[Fn, ...] = (
     _str("regexp_extract", 206, "str.ascii", 1, "str", "regex_extract", call=False),
     _str("regexp_replace", 207, "str.ascii", 1, "str", "regex_replace", call=False),
     # Lowercase hex of the UTF-8 bytes (#50; spark-digests).
-    _str("md5", 208, "str.opaque", 1, "str", expr=True,
-         sql={"duckdb": "md5({0})", "spark": "md5({0})"}, lift=("MD5",)),
+    _str("md5", 208, "str.opaque", 1, "str", expr=True, sql={"": "md5({0})"}, lift=("MD5",)),
     _str("sha256", 209, "str.opaque", 1, "str", expr=True,
-         sql={"duckdb": "sha256({0})", "spark": "sha2({0}, 256)"}),
+         sql={"": "sha256({0})", "spark": "sha2({0}, 256)"}),
 )  # fmt: skip
 
 #: The reference's operations on doubles whose result tells `-0.0` from
