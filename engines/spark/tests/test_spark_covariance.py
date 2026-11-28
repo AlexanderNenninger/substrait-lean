@@ -35,13 +35,12 @@ def both(spark, table: pa.Table, expr) -> tuple[list[tuple], list[tuple]]:
     con = connect()
     put_table(con, "t", table)
     plan = written_plan(plan_json(con, expr))
-    return tuple(
-        sorted(
-            (tuple(r.values()) for r in run_plan(con, plan, e, tie_free=False).to_pylist()),
-            key=lambda r: r[0],
-        )
-        for e in ("duckdb", spark)
-    )
+
+    def rows(engine) -> list[tuple]:
+        out = run_plan(con, plan, engine, tie_free=False).to_pylist()
+        return sorted((tuple(r.values()) for r in out), key=lambda r: r[0])
+
+    return rows("duckdb"), rows(spark)
 
 
 def close(a, b) -> bool:
