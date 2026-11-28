@@ -125,3 +125,55 @@ def test_a_double_to_bigint_truncates(monkeypatch, table):
         assert got == [(w,) for w in want], write.__name__
     nan = "CAST('NaN' AS DOUBLE)"
     assert con.execute(f"SELECT {D.float_to_int_or_null(nan)}").fetchone() == (None,)
+
+
+def _verified_sql(p: int, s: int, xs: list[str]) -> tuple[str, "duckdb.DuckDBPyConnection"]:
+    """`CAST(x AS BIGINT)` of a `DECIMAL(p, s)` column, verified, and its DuckDB SQL."""
+    import decimal
+
+    import pyarrow as pa
+
+    import sverify as sv
+
+    con = sv.connect()
+    con.put("t", pa.table({"x": pa.array([decimal.Decimal(x) for x in xs], pa.decimal128(p, s))}))
+    t = con.table("t")
+    report = sv.verify(t.select(r=t.x.cast("int64")))
+    sql = report.to_sql("duckdb")
+    duck = duckdb.connect()
+    duck.register("t", con._arrow["t"])
+    return sql, duck
+
+
+def test_a_decimal_to_bigint_is_the_entry_at_every_scale():
+    """Ruling 284 as amended (X4, Y3): DuckDB's decimal cast to an integer is
+    `CAST(trunc(x) AS HUGEINT)` (`Lowering.dtruncEntry`), then a BIGINT: a width-only
+    cast for at most 18 integer digits, and `narrow`'s own range check above that.
+    The result is a BIGINT either way, and `0.99…9` at DECIMAL(38,38) gives 0."""
+    sql, _ = _verified_sql(10, 2, ["1.50"])
+    assert "CAST(CAST(trunc(" in sql and "AS HUGEINT) AS BIGINT)" in sql, sql
+    assert "TRUNC(" not in sql, sql
+    assert D.decimal_to_int("x") == "CAST(CAST(trunc(x) AS HUGEINT) AS BIGINT)"
+    con = duckdb.connect()
+    for p, s, x, want in [(10, 2, "-2.50", -2), (10, 2, "2.99", 2), (38, 38, "0." + "9" * 38, 0),
+                          (38, 38, "-0." + "9" * 38, 0), (20, 1, "-0.5", 0)]:  # fmt: skip
+        lit = f"CAST('{x}' AS DECIMAL({p},{s}))"
+        got, ty = con.execute(
+            f"SELECT {D.decimal_to_int(lit)}, typeof({D.decimal_to_int(lit)})"
+        ).fetchone()
+        assert (got, ty) == (want, "BIGINT"), (p, s, x)
+
+
+def test_a_decimal_to_bigint_past_18_digits_is_narrow_checked():
+    """X2, X4: past 18 integer digits the plan has `narrow 64`, which checks the
+    128-bit value and raises with its own issue (`badCast`); ±(2⁶³ − 1).9 give the
+    reference's value, the next integer up raises."""
+    edge = str(2**63 - 1) + ".9"
+    sql, duck = _verified_sql(25, 1, [edge, "-" + edge])
+    assert "AS HUGEINT)" in sql and "NOT BETWEEN" in sql, sql
+    out = duck.execute(sql).fetchall()
+    assert sorted(r[0] for r in out) == [-(2**63 - 1), 2**63 - 1]
+    assert duck.execute(f"SELECT typeof(r) FROM ({sql})").fetchone()[0] == "BIGINT"
+    sql_up, duck_up = _verified_sql(25, 1, [str(2**63) + ".0"])
+    with pytest.raises(duckdb.Error, match="64-bit integer out of range"):
+        duck_up.execute(sql_up).fetchall()

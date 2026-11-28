@@ -51,7 +51,11 @@ variable [Boxes.Ambient]
 /-- The DuckDB table, exported. `"on"` names the setting of
 `error_on_division_by_zero` it is for (`sverify.sql.lowering.SETTING`). -/
 def Lowering.duckdbTableJson : Lean.Json :=
-  Lean.Json.mkObj [("on", LoweringExport.tableJson duckdbOn), ("floor", LoweringExport.floorJson)]
+  Lean.Json.mkObj [("on", LoweringExport.tableJson duckdbOn), ("floor", LoweringExport.floorJson),
+    -- A decimal cast to an integer: one template at every scale (`Lowering.dtruncEntry`),
+    -- its `x − x % 10ᵏ` rendered `trunc(x)` (duckdb-decimal-trunc, ruling 284 as amended).
+    ("dtrunc", Lean.Json.mkObj [("template", LoweringExport.exprJson (Lowering.dtruncTemplate 0)),
+      ("renders", Lean.Json.str "trunc")])]
 
 /-- The generated lowering to DuckDB under its default settings. -/
 def Lowering.duckdb : Lowering (Profile.duckdb {}) := duckdbOn
@@ -103,5 +107,12 @@ theorem Rel.duckdb_guardFree_sound {cat : Catalog} (hcat : cat.WF) {A : String �
   Lowering.lowerRelWith_mayIssues_sound Lowering.duckdb_total Lowering.duckdb_allExact
     Lowering.duckdb_noneOnDbl Lowering.duckdb_guardsFor_none hcat hA hF
     hT hwf hsmall hs (by simpa using hm) h
+
+-- The table's decimal casts to an integer are `Lowering.dtruncEntry`'s template at each
+-- scale, the one the export renders (ruling 290's P4): a regeneration that drops
+-- `excluding [.., UnFn.dtrunc]` (`scripts/RegenLowering.lean`) fails here.
+#guard letI := Boxes.Ambient.none
+  [0, 1, 2, 18, 19, 37, 38].all fun k =>
+    (Lowering.duckdb.un (.dtrunc k)).any (·.tmpl == Lowering.dtruncTemplate k)
 
 end Substrait

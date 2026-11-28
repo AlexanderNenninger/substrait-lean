@@ -889,8 +889,13 @@ class Dialect:
         return self.cast(a, k)
 
     def decimal_to_int(self, a: str) -> str:
-        """Truncated toward zero; fails outside 64 bits."""
-        return self.cast(f"TRUNC({a})", "int")
+        """`dtrunc`: truncated toward zero, a `BIGINT`; fails outside 64 bits."""
+        raise self.not_written("CAST(decimal AS BIGINT)")
+
+    def decimal_to_wide(self, a: str) -> str | None:
+        """`dtrunc` in 128 bits, for a `narrow` that checks the 64-bit range after it
+        (ruling 284's X2); None where the dialect writes `decimal_to_int` instead."""
+        return None
 
     def decimal_to_float(self, a: str) -> str:
         """Correctly rounded: through the decimal's text."""
@@ -5769,6 +5774,16 @@ class _Writer:
                 return d.float_to_int_or_null(self.float_operand(a, ref, cols))
             case Un(op="narrow_or_null", arg=a, digits=bits):
                 return d.narrow_or_null(self.int_operand(a, ref, cols, "TRY_CAST to INT"), bits)
+            case Un(op="narrow", arg=Un(op="dtrunc", arg=b), digits=bits) if (
+                w := d.decimal_to_wide(go(b, kind(b)))
+            ) is not None:
+                # The range check is narrow's own, on the 128-bit value, and the cast to
+                # BIGINT after it cannot fail (ruling 284's X2).
+                lo, hi = d.int_lit(-(2 ** (bits - 1))), d.int_lit(2 ** (bits - 1) - 1)
+                fail = d.raise_(f"CAST to a {bits}-bit integer out of range", w, "int", "badCast")
+                return d.cast(
+                    f"(CASE WHEN {w} NOT BETWEEN {lo} AND {hi} THEN {fail} ELSE {w} END)", "int"
+                )
             case Un(op="narrow", arg=a, digits=bits):
                 x = self.int_operand(a, ref, cols, "CAST to INT")
                 lo, hi = d.int_lit(-(2 ** (bits - 1))), d.int_lit(2 ** (bits - 1) - 1)

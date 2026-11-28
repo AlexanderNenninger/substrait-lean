@@ -53,6 +53,18 @@ def table(engine: str = SETTING) -> Mapping[str, Json]:
     return {e["fn"]: e["template"] for e in _export()[engine]}
 
 
+def render_dtrunc(x: str) -> str:
+    """DuckDB's decimal cast to an integer as its entry writes it at every scale
+    (`Lowering.dtruncEntry`, `--lowering-table`'s `"dtrunc"`): the template
+    `dtrunc k (x − x % 10ᵏ)`, its `x − x % 10ᵏ` rendered as the export says, `trunc(x)`
+    (duckdb-decimal-trunc), and the cast as a HUGEINT, which never raises on 38 digits."""
+    entry = _export()["dtrunc"]
+    t = entry["template"]
+    assert entry["renders"] == "trunc", entry
+    assert t["fn"].startswith("Substrait.UnFn.dtrunc") and t["args"][0]["fn"] == "dsub", t
+    return f"CAST(trunc({x}) AS HUGEINT)"
+
+
 @functools.cache
 def asks(engine: str) -> Mapping[tuple[str, str], str]:
     """What an engine's rendering of a function asks for (ruling 282's C8): the

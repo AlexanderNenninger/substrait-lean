@@ -557,4 +557,89 @@ theorem Lowering.ftoiOrNull_agree (s : DuckDBSettings) (x : Value) :
     exact Outcome.agree_refl _
   all_goals rfl
 
+/-! ## A decimal cast to an integer (ruling 284 as amended, ruling 290)
+
+DuckDB's `CAST` of a decimal to an integer rounds half away from zero (duckdb-R9),
+which `Profile.duckdb` does not state (`DuckDB.dtruncExcepted`, ruling 290: covered by
+`cast.num`'s `float_to_int`, the profile statement deferred for proof cost). The entry
+casts `x − x % 10ᵏ`, a multiple of `10ᵏ`, where the half-away cast is the truncation:
+the native cast is reached only there (`Lowering.dtrunc_native_not_excepted`). It is
+rendered `CAST(trunc(x) AS HUGEINT)` (duckdb-decimal-trunc), which returns on every
+decimal of 38 digits (P6). -/
+
+/-- `dtrunc k (x − x % 10ᵏ)`. -/
+def Lowering.dtruncArg (k : Nat) : Expr :=
+  .bin .dsub (.field 0) (.bin .dmod (.field 0) (.lit (.int (10 ^ k))))
+
+/-- **The template of a decimal cast to an integer**: `dtrunc k` of `x − x % 10ᵏ`. -/
+def Lowering.dtruncTemplate (k : Nat) : Expr := .un (.dtrunc k) (Lowering.dtruncArg k)
+
+omit [Boxes.Ambient] in
+theorem Lowering.dtruncTemplate_must (k : Nat) : 0 ∈ (Lowering.dtruncTemplate k).must := by
+  simp [Expr.must, Lowering.dtruncTemplate, Lowering.dtruncArg]
+
+omit [Boxes.Ambient] in
+theorem Lowering.pow10_ne_zero (k : Nat) : (10 : Int) ^ k ≠ 0 := by
+  have h : (0 : Int) < 10 ^ k := Int.pow_pos (by decide)
+  omega
+
+omit [Boxes.Ambient] in
+theorem Lowering.sub_tmod_eq (u m : Int) : u - u.tmod m = m * u.tdiv m := by
+  have := Int.mul_tdiv_add_tmod u m; omega
+
+theorem Lowering.ref_dtrunc (k : Nat) (v : Value) :
+    Profile.reference.un (.dtrunc k) v = .ok (match v.unscaled? with
+      | some i => .int (i.tdiv (10 ^ k))
+      | none => .null) := by
+  cases v <;> rfl
+
+theorem Lowering.dtruncArg_eval (s : DuckDBSettings) (k : Nat) (x : Value) :
+    (Lowering.dtruncArg k).evalP (Profile.duckdb s) [x] = .ok (match x.unscaled? with
+      | some u => .int (u - u.tmod (10 ^ k))
+      | none => .null) := by
+  simp only [Lowering.dtruncArg, Expr.evalP, List.getD_cons_zero, Outcome.ok_bind,
+    Lowering.duck_bin_ref (f := .dmod) (fun _ _ => rfl), Lowering.duck_bin_ref (f := .dsub) (fun _ _ => rfl)]
+  cases hx : x.unscaled? with
+  | none =>
+    rw [Lowering.ref_dmod_null (.inl hx)]
+    simp only [Outcome.ok_bind, Lowering.ref_dsub, BinFn.apply, hx]
+  | some u =>
+    rw [Lowering.ref_dmod hx (show (Value.int (10 ^ k)).unscaled? = some (10 ^ k) from rfl)
+      (Lowering.pow10_ne_zero k)]
+    have hi : (Value.int (u.tmod (10 ^ k))).unscaled? = some (u.tmod (10 ^ k)) := rfl
+    simp only [Outcome.ok_bind, Lowering.ref_dsub]
+    simp only [BinFn.apply, hx, hi]
+
+/-- **P1 (ruling 290): the native cast is reached only on a multiple of `10ᵏ`.** -/
+theorem Lowering.dtrunc_native_not_excepted (s : DuckDBSettings) (k : Nat) {x v : Value}
+    (h : (Lowering.dtruncArg k).evalP (Profile.duckdb s) [x] = .ok v) :
+    DuckDB.dtruncExcepted k v = false := by
+  rw [Lowering.dtruncArg_eval] at h
+  cases hx : x.unscaled? <;> simp only [hx, Except.ok.injEq] at h <;> subst h
+  · rfl
+  · rename_i u
+    simp [DuckDB.dtruncExcepted, Lowering.sub_tmod_eq, Int.mul_emod_right]
+
+/-- **A decimal cast to an integer on DuckDB is the reference's.** -/
+theorem Lowering.dtrunc_agree (s : DuckDBSettings) (k : Nat) (x : Value) :
+    ((Lowering.dtruncTemplate k).evalP (Profile.duckdb s) [x]).Agree
+      (Profile.reference.un (.dtrunc k) x) := by
+  simp only [Lowering.dtruncTemplate, Expr.evalP, Lowering.dtruncArg_eval, Outcome.ok_bind,
+    Lowering.duck_un_ref (f := .dtrunc k) (fun _ => rfl)]
+  have hm := Lowering.pow10_ne_zero k
+  rw [Lowering.ref_dtrunc, Lowering.ref_dtrunc]
+  cases hx : x.unscaled? <;>
+    simp [Outcome.Agree, Lowering.sub_tmod_eq, Int.mul_tdiv_cancel_left _ hm]
+
+omit [Boxes.Ambient] in
+/-- **A bare decimal cast to an integer fits a `BIGINT`** (ruling 284's X3): the parser
+writes `dtrunc s` without `narrow 64` only for a `DECIMAL(p, s)` with `p − s ≤ 18`
+(`Parse.lean`, the cast to an integer), whose truncation is below `10¹⁸` in magnitude,
+below `2⁶³`. So DuckDB's cast of the 128-bit value to `BIGINT` there cannot fail. -/
+theorem Lowering.dtrunc_bare_fits : (10 : Int) ^ 18 < 2 ^ 63 := by decide
+
+/-- **DuckDB's entry for a decimal cast to an integer**, hand-built for each scale. -/
+def Lowering.dtruncEntry (k : Nat) : UnEntry (Profile.duckdb {}) (.dtrunc k) :=
+  .ofAgree (Lowering.dtruncTemplate k) (Lowering.dtruncTemplate_must k) (Lowering.dtrunc_agree {} k)
+
 end Substrait

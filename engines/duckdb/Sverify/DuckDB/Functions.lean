@@ -148,6 +148,17 @@ def duckUn (s : DuckDBSettings) : UnFn → Int → Option Outcome
   | .ftoiOrNull, x => some (.ok (DuckDBSQL.castOrNull (FloatCode.roundEven x)))
   | _, _ => none
 
+/-- **Where `Profile.duckdb`'s decimal cast to an integer keeps the reference's value
+though DuckDB computes another** (ruling 290's P2): a decimal that is not an integer at
+scale `k`, which DuckDB's `CAST` rounds half away from zero (duckdb-R9) where the
+reference truncates. Covered by an option (`cast.num`'s `float_to_int`), the profile
+statement deferred for proof cost. The lowering never casts such a value
+(`Lowering.dtrunc_native_not_excepted`). -/
+def DuckDB.dtruncExcepted (k : Nat) (v : Value) : Bool :=
+  match v.unscaled? with
+  | some u => !decide (u % 10 ^ k = 0)
+  | none => false
+
 variable [Boxes.Ambient]
 /-- **DuckDB's profile**, as a diff against the reference (`duckBin`,
 `duckUn`): what DuckDB 2.0 computes under the settings `s`, as probed

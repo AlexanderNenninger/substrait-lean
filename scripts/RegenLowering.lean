@@ -40,7 +40,9 @@ generate_lowering duckdbOn : Profile.duckdb { errorOnDivZero := true }
     Lowering.ref_bin_nondouble_l, Lowering.ref_bin_nondouble_r,
     BinFn.apply_eq_nondouble_l, BinFn.apply_eq_nondouble_r, BinFn.apply_lt_nondouble_l,
     BinFn.apply_lt_nondouble_r, Value.isNum_float_nondouble]
-  excluding [UnFn.fit, UnFn.dtextFull]
+  -- A decimal cast to an integer rounds half away from zero on DuckDB (duckdb-R9): a
+  -- hand-built entry, `Lowering.dtruncEntry`, and no other template calls it (ruling 290).
+  excluding [UnFn.fit, UnFn.dtextFull, UnFn.dtrunc]
   hand_written LoweringSearch.duckdbSchemas
   cache loweringCache
   writing "engines/duckdb/Sverify/DuckDB/LoweringOn"

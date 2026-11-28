@@ -94,6 +94,7 @@ def schemaBin? (f : BinFn) : Option Tm :=
   | _ => nan self
 
 /-- DuckDB's schemas, for `generate_lowering`. -/
-def duckdbSchemas : Schemas := { un := schema?, bin := schemaBin? }
+def duckdbSchemas : Schemas :=
+  { un := schema?, bin := schemaBin?, entries := [(``UnFn.dtrunc, ``Lowering.dtruncEntry)] }
 
 end Substrait.LoweringSearch

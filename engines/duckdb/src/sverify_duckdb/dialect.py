@@ -130,6 +130,19 @@ class DuckDBDialect(Dialect):
         low = self.lowered("Substrait.UnFn.ftoi", [x], "float")
         return low if low is not None else f"CAST(trunc({x}) AS BIGINT)"
 
+    def decimal_to_wide(self, x: str) -> str | None:
+        # The generated, proved template of a decimal cast to an integer at every scale
+        # (`Lowering.dtruncEntry`, ruling 284 as amended): `x − x % 10ᵏ` rendered
+        # `trunc(x)` (duckdb-decimal-trunc), cast to HUGEINT, which never raises on 38 digits.
+        from sverify.sql import lowering
+
+        return lowering.render_dtrunc(x)
+
+    def decimal_to_int(self, x: str) -> str:
+        # A bare `dtrunc` is the parser's only where its decimal has at most 18 integer
+        # digits (`Parse.lean`, `Lowering.dtrunc_bare_fits`): the cast to BIGINT cannot fail.
+        return f"CAST({self.decimal_to_wide(x)} AS BIGINT)"
+
     def float_to_int_or_null(self, x: str) -> str:
         # NULL where `float_to_int` raises: the template's `TRY_CAST` of the
         # truncated value (`Lowering.ftoiOrNull_agree`).

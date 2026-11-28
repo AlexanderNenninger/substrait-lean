@@ -215,6 +215,10 @@ class SnowflakeDialect(Dialect):
 
     # Doubles
 
+    def decimal_to_int(self, a: str) -> str:
+        # Snowflake's cast of a decimal rounds: truncate first.
+        return self.cast(f"TRUNC({a})", "int")
+
     def float_to_int(self, x: str) -> str:
         # Doubles in [-2^63, 2^63) truncate into 64 bits; the float NaN is
         # above 'inf', so the range check rejects it too.
