@@ -49,11 +49,16 @@ theorem Lowering.polars_exact_except :
 
 
 -- The hand-written entries are in the table, not the native call: a regeneration
--- that drops `excluding [BinFn.bit]` (`scripts/RegenLoweringPolars.lean`) would
--- make Polars's shifts, which it lacks, native again, and fails here.
+-- that drops `excluding [BinFn.bit, BinFn.dmul, UnFn.froundTo]`
+-- (`scripts/RegenLoweringPolars.lean`) would make Polars's shifts, which it lacks, its
+-- rounding product of decimals and its `round(x, d)` for every `d` native again, and
+-- fails here. `round(x, d)` is `Polars.froundToEntry`: native for 0 ≤ d ≤ 22, none past.
 #guard letI := Boxes.Ambient.none
   (Lowering.polars.bin (.bit .shl)).any (·.tmpl == Polars.shlTemplate) &&
-    (Lowering.polars.bin (.bit .shr)).any (·.tmpl == Polars.shrTemplate)
+    (Lowering.polars.bin (.bit .shr)).any (·.tmpl == Polars.shrTemplate) &&
+    (Lowering.polars.bin .dmul).any (·.tmpl == Polars.dmulTemplate) &&
+    [0, 2, 22].all (fun d => (Lowering.polars.un (.froundTo d)).isSome) &&
+    [-1, 23].all (fun d => (Lowering.polars.un (.froundTo d)).isNone)
 
 /-- No entry is stated on doubles only (`Lowering.NoneOnDbl`). -/
 theorem Lowering.polars_noneOnDbl : Lowering.polars.NoneOnDbl :=
