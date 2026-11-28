@@ -1,0 +1,288 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/test_repeat.py",
+  "license": "MIT",
+  "module": "functions__test_repeat",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 68
+  },
+  "results": {
+    "test_ones[0-1-Int16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_ones[1-1-String]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_ones[1-value9-dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_ones[2-1-UInt32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_ones[2-value4-dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_ones[2-value6-dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_ones[2-value7-dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_ones[2-value8-dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_ones[3-1-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_ones[4-True-Boolean]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_ones_zeros_misc": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[-2147483648-3-None-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[-2147483649-3-None-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[0-0-None-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[1.0-5-None-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[2147483647-5-None-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[2147483648-5-None-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[7.5-5-UInt16-UInt16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[8-2-UInt8-UInt8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[None-7-None-Null]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[True-4-None-Boolean]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[ab12-3-Binary-Binary]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[foo-2-None-String]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[value10-3-None-Date]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[value11-1-None-Time]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[value12-10-None-Duration]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[value14-3-Datetime-Datetime]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_repeat[value16-2-dtype16-expected_dtype16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat[value9-3-None-Datetime]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_repeat_by_arr": {
+      "outcome": "skipped",
+      "reason": "translator: Function RepeatBy"
+    },
+    "test_repeat_by_length_limit_raises_24330": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_repeat_by_list": {
+      "outcome": "skipped",
+      "reason": "translator: Function RepeatBy"
+    },
+    "test_repeat_by_list_in_struct": {
+      "outcome": "skipped",
+      "reason": "translator: Function RepeatBy"
+    },
+    "test_repeat_by_literal_none_20268": {
+      "outcome": "skipped",
+      "reason": "translator: Function RepeatBy"
+    },
+    "test_repeat_by_logical_dtype": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_repeat_by_nested_list": {
+      "outcome": "skipped",
+      "reason": "translator: Function RepeatBy"
+    },
+    "test_repeat_by_nested_struct": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_repeat_by_none_13053[data0-expected_data0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function RepeatBy"
+    },
+    "test_repeat_by_none_13053[data1-expected_data1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function RepeatBy"
+    },
+    "test_repeat_by_none_13053[data2-expected_data2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function RepeatBy"
+    },
+    "test_repeat_by_none_13053[data3-expected_data3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function RepeatBy"
+    },
+    "test_repeat_by_null": {
+      "outcome": "skipped",
+      "reason": "translator: Function RepeatBy"
+    },
+    "test_repeat_by_struct": {
+      "outcome": "skipped",
+      "reason": "translator: Function RepeatBy"
+    },
+    "test_repeat_by_struct_in_list": {
+      "outcome": "skipped",
+      "reason": "translator: Function RepeatBy"
+    },
+    "test_repeat_expr_input_eager": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat_expr_input_lazy": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_repeat_n_empty": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_repeat_n_negative": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_repeat_n_non_integer[1.5]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_repeat_n_non_integer[2.0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_repeat_n_non_integer[hello]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_repeat_n_non_integer[n2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_repeat_n_zero": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_repeat_nonscalar_n[n0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_repeat_nonscalar_n[n1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_repeat_nonscalar_value[value0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_repeat_nonscalar_value[value1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_repeat_value_first": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_zeros[0-0-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_zeros[1-0-String]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_zeros[1-value9-dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_zeros[2-0-UInt8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_zeros[2-value4-dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_zeros[2-value6-dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_zeros[2-value8-dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_zeros[3-0-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_zeros[3-value7-dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_zeros[4-False-Boolean]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    }
+  }
+}

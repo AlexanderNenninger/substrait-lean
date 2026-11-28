@@ -1,0 +1,88 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/test_fill_null.py",
+  "license": "MIT",
+  "module": "operations__test_fill_null",
+  "summary": {
+    "agree": 2,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 16
+  },
+  "results": {
+    "test_fill_enum_upcast": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_fill_null_arr_nonull_cat_28247": {
+      "outcome": "skipped",
+      "reason": "translator: Eval"
+    },
+    "test_fill_null_date_with_int_11362": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_fill_null_decimal_with_int_14331": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_fill_null_f32_with_lit": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_fill_null_int_dtype_15546": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_fill_null_lit_": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: []}}"
+    },
+    "test_fill_null_minimal_upcast_4056": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_fill_null_non_lit": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: []}}"
+    },
+    "test_fill_null_null_dtype_24451": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_fill_null_static_schema_4843": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_fill_null_with_list_10869": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_fill_streaming_matches_in_memory[backward_fill]": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_fill_streaming_matches_in_memory[forward_fill]": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_forward_fill_chunking_25273": {
+      "outcome": "skipped",
+      "reason": "translator: Filter"
+    },
+    "test_forward_fill_is_length_preserving": {
+      "outcome": "skipped",
+      "reason": "translator: Eval"
+    },
+    "test_self_broadcast": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_unequal_lengths_22018": {
+      "outcome": "skipped",
+      "reason": "raises"
+    }
+  }
+}

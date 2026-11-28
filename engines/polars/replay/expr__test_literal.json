@@ -1,0 +1,204 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/expr/test_literal.py",
+  "license": "MIT",
+  "module": "expr__test_literal",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 47
+  },
+  "results": {
+    "test_floordiv_mod[Int8-Int8-0-10-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[Int8-Int8-1-0-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[Int8-Int8-1-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[Int8-Int8-10-2-5-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[Int8-Int8-10-3-3-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[Int8-None-0-10-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[Int8-None-1-0-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[Int8-None-1-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[Int8-None-10-2-5-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[Int8-None-10-3-3-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-Int8-0-10-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-Int8-1-0-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-Int8-1-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-Int8-10-2-5-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-Int8-10-3-3-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-None-0-10-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-None-1-0-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-None-1-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-None-10-2-5-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-None-10-3-3-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-UInt8-0-10-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-UInt8-1-0-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-UInt8-1-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-UInt8-10-2-5-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[None-UInt8-10-3-3-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[UInt8-None-0-10-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[UInt8-None-1-0-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[UInt8-None-1-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[UInt8-None-10-2-5-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[UInt8-None-10-3-3-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[UInt8-UInt8-0-10-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[UInt8-UInt8-1-0-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[UInt8-UInt8-1-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[UInt8-UInt8-10-2-5-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_floordiv_mod[UInt8-UInt8-10-3-3-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_literal_datetime_timezone[tz0-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_literal_datetime_timezone[tz1-lit_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_literal_datetime_timezone[tz2-lit_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_literal_datetime_timezone[tz3-lit_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_literal_datetime_timezone_utc_error": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_literal_datetime_timezone_utc_offset[tz0-None-expected_item0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_literal_datetime_timezone_utc_offset[tz1-None-expected_item1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_literal_datetime_timezone_utc_offset[tz2-lit_dtype2-expected_item2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_literal_datetime_timezone_utc_offset[tz3-lit_dtype3-expected_item3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_literal_integer_20807": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_literal_object_25679": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_literal_scalar_list_18686": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: …}}"
+    }
+  }
+}

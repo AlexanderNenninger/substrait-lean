@@ -1,0 +1,81 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/aggregation/test_vertical.py",
+  "license": "MIT",
+  "module": "operations__aggregation__test_vertical",
+  "summary": {
+    "agree": 4,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 1,
+    "unproved": 0,
+    "skipped": 11
+  },
+  "results": {
+    "test_alias_for_col_agg[^a|b$-cum_sum]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_alias_for_col_agg[^a|b$-max]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_alias_for_col_agg[^a|b$-min]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_alias_for_col_agg[^a|b$-sum]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_alias_for_col_agg[a-cum_sum]": {
+      "outcome": "skipped",
+      "reason": "translator: Function CumSum"
+    },
+    "test_alias_for_col_agg[a-max]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_alias_for_col_agg[a-min]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_alias_for_col_agg[a-sum]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_alias_for_col_agg_bool[^a|b$-all]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_alias_for_col_agg_bool[^a|b$-any]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_alias_for_col_agg_bool[a-all]": {
+      "outcome": "skipped",
+      "reason": "translator: Function All"
+    },
+    "test_alias_for_col_agg_bool[a-any]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Any"
+    },
+    "test_all_expr": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_any_expr": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.int to Substrait.Kind.bool. Lean's model does not cover it y",
+      "collects": 2
+    },
+    "test_deep_subexpression_f32_schema_7129": {
+      "outcome": "skipped",
+      "reason": "translator: an aggregate outside group_by"
+    },
+    "test_mean_overflow": {
+      "outcome": "skipped",
+      "reason": "inputs: a plan over 256 KB"
+    }
+  }
+}

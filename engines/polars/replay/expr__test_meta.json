@@ -1,0 +1,32 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/expr/test_meta.py",
+  "license": "MIT",
+  "module": "expr__test_meta",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 4
+  },
+  "results": {
+    "test_expression_hash_set": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_hash_expr_hint": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_meta_eq_tot_cmp_28469": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_meta_properties": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    }
+  }
+}

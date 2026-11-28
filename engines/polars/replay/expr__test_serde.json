@@ -1,0 +1,68 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/expr/test_serde.py",
+  "license": "MIT",
+  "module": "expr__test_serde",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 13
+  },
+  "results": {
+    "test_expr_deserialize_file_not_found": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_expr_deserialize_invalid_json": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_expr_serde_roundtrip_binary[expr0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_expr_serde_roundtrip_binary[expr1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_expr_serde_roundtrip_binary[expr2]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_expr_serde_roundtrip_binary[expr3]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_expr_serde_roundtrip_binary[expr4]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_expr_serde_roundtrip_json[expr0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_expr_serde_roundtrip_json[expr1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_expr_serde_roundtrip_json[expr2]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_expr_serde_roundtrip_json[expr3]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_expr_serde_roundtrip_json[expr4]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_expression_json_13991": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    }
+  }
+}

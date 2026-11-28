@@ -1,0 +1,48 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/test_select.py",
+  "license": "MIT",
+  "module": "operations__test_select",
+  "summary": {
+    "agree": 2,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 6
+  },
+  "results": {
+    "test_select_args_kwargs": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_select_by_col_list": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_select_duplicate_name": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_select_empty": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_select_empty_list": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_select_named_inputs_reserved": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_select_none": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_select_none_combined": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    }
+  }
+}

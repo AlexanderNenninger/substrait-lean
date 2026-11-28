@@ -1,0 +1,36 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/expr/test_expr_multi_cols.py",
+  "license": "MIT",
+  "module": "expr__test_expr_multi_cols",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 5
+  },
+  "results": {
+    "test_arg_sort_argument_expansion": {
+      "outcome": "skipped",
+      "reason": "translator: RenameAlias"
+    },
+    "test_exclude_name_from_dtypes": {
+      "outcome": "skipped",
+      "reason": "translator: RenameAlias"
+    },
+    "test_fold_regex_expand": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_multiple_columns_length_9137": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_regex_in_cols": {
+      "outcome": "skipped",
+      "reason": "translator: RenameAlias"
+    }
+  }
+}

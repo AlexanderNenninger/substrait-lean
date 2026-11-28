@@ -1,0 +1,48 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/test_with_columns.py",
+  "license": "MIT",
+  "module": "operations__test_with_columns",
+  "summary": {
+    "agree": 3,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 5
+  },
+  "results": {
+    "test_lazy_with_columns_to_select_28285": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_with_columns": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_with_columns_empty": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_with_columns_invalid_type": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_with_columns_scalar_20981": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_with_columns_seq": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_with_columns_single_series": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_with_columns_zero_width_input_29320": {
+      "outcome": "skipped",
+      "reason": "translator: IbisTypeError: You must select at least one column for a valid projection"
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/test_business_day_count.py",
+  "license": "MIT",
+  "module": "functions__test_business_day_count",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 10
+  },
+  "results": {
+    "test_against_np_busday_count": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_business_day_count": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_business_day_count_bad_holidays": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_business_day_count_multiple_holidays": {
+      "outcome": "skipped",
+      "reason": "translator: Function Business"
+    },
+    "test_business_day_count_schema": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_business_day_count_w_holidays": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_business_day_count_w_week_mask": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_business_day_count_w_week_mask_invalid": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_business_day_nulls_28018": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_unequal_length_22018": {
+      "outcome": "skipped",
+      "reason": "raises"
+    }
+  }
+}

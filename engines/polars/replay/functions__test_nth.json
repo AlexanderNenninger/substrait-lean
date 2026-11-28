@@ -1,0 +1,36 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/test_nth.py",
+  "license": "MIT",
+  "module": "functions__test_nth",
+  "summary": {
+    "agree": 4,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 1
+  },
+  "results": {
+    "test_nth[expr0-a]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_nth[expr1-c]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_nth[expr2-expected_cols2]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_nth[expr3-expected_cols3]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_nth_duplicate": {
+      "outcome": "skipped",
+      "reason": "raises"
+    }
+  }
+}

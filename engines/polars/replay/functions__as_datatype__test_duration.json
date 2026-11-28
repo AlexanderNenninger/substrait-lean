@@ -1,0 +1,76 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/as_datatype/test_duration.py",
+  "license": "MIT",
+  "module": "functions__as_datatype__test_duration",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 15
+  },
+  "results": {
+    "test_add_duration_3786": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_date_duration_offset": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_duration_offset": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_duration_from_i128_23050": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_duration_subseconds_us[ms-11-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_duration_subseconds_us[ns-0-0-11007003]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_duration_subseconds_us[us-0-11007-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_duration_time_unit_ms": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_duration_time_unit_ns": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_duration_time_unit_us": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_duration_time_units[ms-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_duration_time_units[ns-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_duration_time_units[us-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_duration_wildcard_expansion": {
+      "outcome": "skipped",
+      "reason": "translator: KeepName"
+    },
+    "test_empty_duration": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    }
+  }
+}

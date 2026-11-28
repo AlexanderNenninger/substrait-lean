@@ -1,0 +1,236 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/test_concat.py",
+  "license": "MIT",
+  "module": "functions__test_concat",
+  "summary": {
+    "agree": 24,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 31
+  },
+  "results": {
+    "test_concat_19877": {
+      "outcome": "skipped",
+      "reason": "translator: Function ConcatExpr"
+    },
+    "test_concat_align_associativity_26788[3-align]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_concat_align_associativity_26788[3-align_full]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_concat_align_associativity_26788[3-align_inner]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_concat_align_associativity_26788[3-align_left]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_concat_align_associativity_26788[3-align_right]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_concat_align_associativity_26788[4-align]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_concat_align_associativity_26788[4-align_full]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_concat_align_associativity_26788[4-align_inner]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_concat_align_associativity_26788[4-align_left]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_concat_align_associativity_26788[4-align_right]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_concat_align_associativity_26788[5-align]": {
+      "outcome": "agree",
+      "collects": 7
+    },
+    "test_concat_align_associativity_26788[5-align_full]": {
+      "outcome": "agree",
+      "collects": 7
+    },
+    "test_concat_align_associativity_26788[5-align_inner]": {
+      "outcome": "agree",
+      "collects": 7
+    },
+    "test_concat_align_associativity_26788[5-align_left]": {
+      "outcome": "agree",
+      "collects": 7
+    },
+    "test_concat_align_associativity_26788[5-align_right]": {
+      "outcome": "agree",
+      "collects": 7
+    },
+    "test_concat_align_associativity_26788[6-align]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_concat_align_associativity_26788[6-align_full]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_concat_align_associativity_26788[6-align_inner]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_concat_align_associativity_26788[6-align_left]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_concat_align_associativity_26788[6-align_right]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_concat_align_lazy_frames": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_concat_align_no_common_columns": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_df": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_diagonal": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_diagonal_relaxed": {
+      "outcome": "skipped",
+      "reason": "translator: Union, diagonal or to supertypes"
+    },
+    "test_concat_expressions": {
+      "outcome": "skipped",
+      "reason": "translator: Function ConcatExpr"
+    },
+    "test_concat_expressions_stack_overflow": {
+      "outcome": "skipped",
+      "reason": "inputs: a plan over 256 KB"
+    },
+    "test_concat_group_by": {
+      "outcome": "skipped",
+      "reason": "translator: Function ConcatExpr"
+    },
+    "test_concat_horizontal": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_horizontal_extend": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_horizontal_lazy_strict_raises_shape_error_27415": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_concat_horizontal_nested_strict_pruned_input": {
+      "outcome": "skipped",
+      "reason": "translator: HConcat"
+    },
+    "test_concat_horizontal_strict_cached_projection_27923": {
+      "outcome": "skipped",
+      "reason": "translator: HConcat"
+    },
+    "test_concat_horizontal_strict_pruned_input_before_cache": {
+      "outcome": "skipped",
+      "reason": "translator: HConcat"
+    },
+    "test_concat_horizontal_zero_width_height_mismatch_26876": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_concat_invalid_how_parameter": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_invalid_schema_err_20355": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_concat_lazyframe_diagonal": {
+      "outcome": "skipped",
+      "reason": "translator: Union, diagonal or to supertypes"
+    },
+    "test_concat_lazyframe_horizontal": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_concat_lazyframe_horizontal_extend": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_concat_lf_stack_overflow": {
+      "outcome": "skipped",
+      "reason": "inputs: a plan over 256 KB"
+    },
+    "test_concat_multiple_parquet_inmem": {
+      "outcome": "skipped",
+      "reason": "translator: Scan"
+    },
+    "test_concat_null_20501": {
+      "outcome": "skipped",
+      "reason": "translator: RelationError: Table schemas must be equal for set operations."
+    },
+    "test_concat_ordered_union_slice_done_28272": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_concat_series": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_series_invalid_strategy": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_single_element": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_to_empty": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_unsupported_type": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_vertically_relaxed": {
+      "outcome": "skipped",
+      "reason": "translator: Union, diagonal or to supertypes"
+    },
+    "test_concat_with_empty_dataframes": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_with_empty_dataframes_nonstrict_25727": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_concat_with_empty_dataframes_strict_25725": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_concat_zip_series_21980": {
+      "outcome": "skipped",
+      "reason": "translator: Function ConcatExpr"
+    }
+  }
+}

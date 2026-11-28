@@ -1,0 +1,2764 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/test_is_in.py",
+  "license": "MIT",
+  "module": "operations__test_is_in",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 687
+  },
+  "results": {
+    "test_cat_is_in_from_str[Categorical]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_cat_is_in_from_str[dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_cat_is_in_series[False-Categorical]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_is_in_series[False-dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_is_in_series[True-Categorical]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_is_in_series[True-dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_is_in_series_non_existent[False]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_is_in_series_non_existent[True]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_is_in_with_lit_str[False-Categorical]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_is_in_with_lit_str[False-dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_is_in_with_lit_str[True-Categorical]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_is_in_with_lit_str[True-dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_is_in_with_lit_str_cache_setup[Categorical]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_is_in_with_lit_str_cache_setup[dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_is_in_with_lit_str_non_existent[False]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_is_in_with_lit_str_non_existent[True]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_list_is_in_from_cat[Categorical]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_list_is_in_from_cat[dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_cat_list_is_in_from_cat_single[None-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_cat_list_is_in_from_cat_single[b-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: {…: …"
+    },
+    "test_cat_list_is_in_from_cat_single[e-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: {…: …"
+    },
+    "test_cat_list_is_in_from_single_str[None-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_cat_list_is_in_from_single_str[b-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_cat_list_is_in_from_single_str[e-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_cat_list_is_in_from_str": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_contains_needle_of_another_length_raises[1-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_contains_needle_of_another_length_raises[1-list.contains]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_contains_needle_of_another_length_raises[300-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_contains_needle_of_another_length_raises[300-list.contains]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_enum_is_in_series_non_existent[False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_enum_is_in_series_non_existent[True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_9070": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_all_null_literal_haystack": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_bool[False]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_bool[True]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_bool_11216": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_boolean[False]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_boolean[True]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_boolean_list[False-dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_boolean_list[False-dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_boolean_list[True-dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_boolean_list[True-dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[datetime-coarser-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[datetime-coarser-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[datetime-coarser-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[datetime-coarser-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[datetime-finer-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[datetime-finer-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[datetime-finer-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[datetime-finer-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[duration-finer-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[duration-finer-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[duration-finer-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[duration-finer-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[int-narrowing-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[int-narrowing-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[int-narrowing-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[int-narrowing-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[int-sign-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[int-sign-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[int-sign-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[int-sign-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[u128-signed-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[u128-signed-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[u128-signed-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_casts_the_needle_to_the_element_dtype[u128-signed-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_categorical_needle_in_null_data[False-Categorical-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_categorical_needle_in_null_data[False-Categorical-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_categorical_needle_in_null_data[False-Categorical-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_categorical_needle_in_null_data[False-Categorical-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_categorical_needle_in_null_data[False-needle_dtype1-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_categorical_needle_in_null_data[False-needle_dtype1-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_categorical_needle_in_null_data[False-needle_dtype1-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_categorical_needle_in_null_data[False-needle_dtype1-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_categorical_needle_in_null_data[True-Categorical-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_categorical_needle_in_null_data[True-Categorical-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_categorical_needle_in_null_data[True-Categorical-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_categorical_needle_in_null_data[True-Categorical-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_categorical_needle_in_null_data[True-needle_dtype1-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_categorical_needle_in_null_data[True-needle_dtype1-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_categorical_needle_in_null_data[True-needle_dtype1-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_categorical_needle_in_null_data[True-needle_dtype1-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_categorical_needle_keeps_its_categories": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_categorical_needle_matches_categories_of_later_batches_29743": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_is_in_collection": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_compares_instants_across_time_zones[ms-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: [{…: […, {…: …}]}, N]}}"
+    },
+    "test_is_in_compares_instants_across_time_zones[ms-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: [{…: […, {…: …}]}, N]}}"
+    },
+    "test_is_in_compares_instants_across_time_zones[ms-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: {…: […, {…: …}]}}}"
+    },
+    "test_is_in_compares_instants_across_time_zones[ms-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: {…: […, {…: …}]}}}"
+    },
+    "test_is_in_compares_instants_across_time_zones[us-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: [{…: […, {…: …}]}, N]}}"
+    },
+    "test_is_in_compares_instants_across_time_zones[us-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: [{…: […, {…: …}]}, N]}}"
+    },
+    "test_is_in_compares_instants_across_time_zones[us-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: {…: […, {…: …}]}}}"
+    },
+    "test_is_in_compares_instants_across_time_zones[us-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: {…: […, {…: …}]}}}"
+    },
+    "test_is_in_compares_strings_with_categories_natively[False-Categorical-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_compares_strings_with_categories_natively[False-Categorical-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_compares_strings_with_categories_natively[False-Categorical-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_compares_strings_with_categories_natively[False-Categorical-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_compares_strings_with_categories_natively[False-dtype0-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_compares_strings_with_categories_natively[False-dtype0-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_compares_strings_with_categories_natively[False-dtype0-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_compares_strings_with_categories_natively[False-dtype0-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_compares_strings_with_categories_natively[True-Categorical-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_compares_strings_with_categories_natively[True-Categorical-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_compares_strings_with_categories_natively[True-Categorical-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_compares_strings_with_categories_natively[True-Categorical-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_compares_strings_with_categories_natively[True-dtype0-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_compares_strings_with_categories_natively[True-dtype0-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_compares_strings_with_categories_natively[True-dtype0-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_compares_strings_with_categories_natively[True-dtype0-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_date_range": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_decimal[False]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_decimal[True]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_decimal_needle_in_integer_data[arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N]}}"
+    },
+    "test_is_in_decimal_needle_in_integer_data[is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N]}}"
+    },
+    "test_is_in_decimal_needle_in_integer_data[is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N]}}"
+    },
+    "test_is_in_decimal_needle_in_integer_data[list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N]}}"
+    },
+    "test_is_in_decimal_of_another_scale[hit-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_decimal_of_another_scale[hit-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_decimal_of_another_scale[hit-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_decimal_of_another_scale[hit-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_decimal_of_another_scale[reverse-overflow-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_decimal_of_another_scale[reverse-overflow-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_decimal_of_another_scale[reverse-overflow-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_decimal_of_another_scale[reverse-overflow-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_decimal_of_another_scale[rounded-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_decimal_of_another_scale[rounded-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_decimal_of_another_scale[rounded-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_decimal_of_another_scale[rounded-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_df": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_does_not_match_null_on_temporal_overflow": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_empty_list_4559[False]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_empty_list_4559[True]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_empty_list_4639": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_error_names_the_materialized_needle_dtype[arr.contains]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_error_names_the_materialized_needle_dtype[is_in-array]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_error_names_the_materialized_needle_dtype[is_in-list]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_error_names_the_materialized_needle_dtype[list.contains]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_expr_list_series[df0-matches0-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_expr_list_series[df1-matches1-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_expr_list_series[df2-matches2-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_expr_list_series[df3-None-'is_in' cannot check for String values in List\\\\(Int64\\\\) data]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_expr_list_series[df4-None-'is_in' cannot check for Date values in List\\\\(Int64\\\\) data]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_expr_list_series_nonullpropagate[df0-matches0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_expr_list_series_nonullpropagate[df1-matches1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_expr_list_series_nonullpropagate[df2-matches2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_expr_list_series_nonullpropagate[df3-matches3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_float[Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_float[Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_float_list_10764": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_haystack_of_another_dtype_is_not_a_filter_constraint[decimal-scale]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_haystack_of_another_dtype_is_not_a_filter_constraint[string-enum]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_is_in_inexact_literal_needle_keeps_the_shape[arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_inexact_literal_needle_keeps_the_shape[is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_inexact_literal_needle_keeps_the_shape[is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_inexact_literal_needle_keeps_the_shape[list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_inexact_needle_with_a_scalar_haystack": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_is_in_int_range": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_integer_column_needle_out_of_range[decimal-False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[decimal-False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[decimal-False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[decimal-False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[decimal-True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[decimal-True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[decimal-True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[decimal-True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int64-int8-False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int64-int8-False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int64-int8-False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int64-int8-False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int64-int8-True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int64-int8-True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int64-int8-True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int64-int8-True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int8-uint8-False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int8-uint8-False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int8-uint8-False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int8-uint8-False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int8-uint8-True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int8-uint8-True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int8-uint8-True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_integer_column_needle_out_of_range[int8-uint8-True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_integer_column_needle_out_of_range[uint128-int8-False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[uint128-int8-False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[uint128-int8-False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[uint128-int8-False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[uint128-int8-True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[uint128-int8-True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[uint128-int8-True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_column_needle_out_of_range[uint128-int8-True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_integer_needle_in_decimal_data[arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_integer_needle_in_decimal_data[is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_integer_needle_in_decimal_data[is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_integer_needle_in_decimal_data[list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_invalid_shape": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_large_uint64_21966": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_list_rhs": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_literal_array_haystack_with_an_unrepresentable_element": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_array_dtype[in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_array_dtype[streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_categorical_mismatch": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_literal_haystack_chunked_needle_with_nulls[in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_chunked_needle_with_nulls[streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_edge_cases[Binary-needles17-haystack17-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Binary-needles17-haystack17-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Binary-needles17-haystack17-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Binary-needles17-haystack17-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Binary-needles18-haystack18-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Binary-needles18-haystack18-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Binary-needles18-haystack18-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Binary-needles18-haystack18-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Boolean-needles6-haystack6-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Boolean-needles6-haystack6-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Boolean-needles6-haystack6-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Boolean-needles6-haystack6-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Float64-needles1-haystack1-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Float64-needles1-haystack1-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Float64-needles1-haystack1-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Float64-needles1-haystack1-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int16-needles12-haystack12-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int16-needles12-haystack12-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int16-needles12-haystack12-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int16-needles12-haystack12-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int32-needles13-haystack13-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int32-needles13-haystack13-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int32-needles13-haystack13-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int32-needles13-haystack13-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles0-haystack0-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles0-haystack0-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles0-haystack0-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles0-haystack0-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles11-haystack11-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles11-haystack11-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles11-haystack11-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles11-haystack11-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles4-haystack4-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles4-haystack4-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles4-haystack4-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles4-haystack4-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles8-haystack8-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles8-haystack8-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles8-haystack8-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Int64-needles8-haystack8-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles14-haystack14-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles14-haystack14-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles14-haystack14-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles14-haystack14-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles15-haystack15-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles15-haystack15-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles15-haystack15-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles15-haystack15-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles16-haystack16-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles16-haystack16-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles16-haystack16-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles16-haystack16-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles2-haystack2-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles2-haystack2-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles2-haystack2-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles2-haystack2-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles5-haystack5-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles5-haystack5-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles5-haystack5-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles5-haystack5-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles9-haystack9-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles9-haystack9-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles9-haystack9-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[String-needles9-haystack9-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[Time-needles24-haystack24-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column : times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_is_in_literal_haystack_edge_cases[Time-needles24-haystack24-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column : times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_is_in_literal_haystack_edge_cases[Time-needles24-haystack24-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column : times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_is_in_literal_haystack_edge_cases[Time-needles24-haystack24-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column : times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_is_in_literal_haystack_edge_cases[UInt64-needles10-haystack10-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[UInt64-needles10-haystack10-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[UInt64-needles10-haystack10-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[UInt64-needles10-haystack10-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype19-needles19-haystack19-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype19-needles19-haystack19-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype19-needles19-haystack19-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype19-needles19-haystack19-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype20-needles20-haystack20-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype20-needles20-haystack20-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype20-needles20-haystack20-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype20-needles20-haystack20-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype21-needles21-haystack21-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype21-needles21-haystack21-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype21-needles21-haystack21-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype21-needles21-haystack21-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype22-needles22-haystack22-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype22-needles22-haystack22-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype22-needles22-haystack22-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype22-needles22-haystack22-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype23-needles23-haystack23-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype23-needles23-haystack23-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype23-needles23-haystack23-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype23-needles23-haystack23-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype25-needles25-haystack25-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype25-needles25-haystack25-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype25-needles25-haystack25-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype25-needles25-haystack25-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype3-needles3-haystack3-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype3-needles3-haystack3-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype3-needles3-haystack3-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype3-needles3-haystack3-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype7-needles7-haystack7-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype7-needles7-haystack7-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype7-needles7-haystack7-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_edge_cases[dtype7-needles7-haystack7-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_in_group_by": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_many_chunks[in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_is_in_literal_haystack_many_chunks[streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_is_in_literal_haystack_paths[Binary-needles11-haystack11-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Binary-needles11-haystack11-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Binary-needles11-haystack11-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Binary-needles11-haystack11-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Binary-needles11-haystack11-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Binary-needles11-haystack11-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Binary-needles11-haystack11-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Binary-needles11-haystack11-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles12-haystack12-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles12-haystack12-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles12-haystack12-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles12-haystack12-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles12-haystack12-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles12-haystack12-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles12-haystack12-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles12-haystack12-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles13-haystack13-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles13-haystack13-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles13-haystack13-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles13-haystack13-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles13-haystack13-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles13-haystack13-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles13-haystack13-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles13-haystack13-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles14-haystack14-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles14-haystack14-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles14-haystack14-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles14-haystack14-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles14-haystack14-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles14-haystack14-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles14-haystack14-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Boolean-needles14-haystack14-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Date-needles15-haystack15-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Date-needles15-haystack15-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Date-needles15-haystack15-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Date-needles15-haystack15-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Date-needles15-haystack15-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Date-needles15-haystack15-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Date-needles15-haystack15-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Date-needles15-haystack15-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float32-needles8-haystack8-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float32-needles8-haystack8-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float32-needles8-haystack8-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float32-needles8-haystack8-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float32-needles8-haystack8-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float32-needles8-haystack8-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float32-needles8-haystack8-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float32-needles8-haystack8-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float64-needles7-haystack7-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float64-needles7-haystack7-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float64-needles7-haystack7-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float64-needles7-haystack7-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float64-needles7-haystack7-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float64-needles7-haystack7-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float64-needles7-haystack7-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Float64-needles7-haystack7-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int128-needles6-haystack6-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_literal_haystack_paths[Int128-needles6-haystack6-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_literal_haystack_paths[Int128-needles6-haystack6-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_literal_haystack_paths[Int128-needles6-haystack6-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_literal_haystack_paths[Int128-needles6-haystack6-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_literal_haystack_paths[Int128-needles6-haystack6-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_literal_haystack_paths[Int128-needles6-haystack6-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_literal_haystack_paths[Int128-needles6-haystack6-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_is_in_literal_haystack_paths[Int32-needles1-haystack1-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int32-needles1-haystack1-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int32-needles1-haystack1-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int32-needles1-haystack1-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int32-needles1-haystack1-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int32-needles1-haystack1-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int32-needles1-haystack1-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int32-needles1-haystack1-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles0-haystack0-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles0-haystack0-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles0-haystack0-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles0-haystack0-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles0-haystack0-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles0-haystack0-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles0-haystack0-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles0-haystack0-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles3-haystack3-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles3-haystack3-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles3-haystack3-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles3-haystack3-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles3-haystack3-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles3-haystack3-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles3-haystack3-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles3-haystack3-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles4-haystack4-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles4-haystack4-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles4-haystack4-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles4-haystack4-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles4-haystack4-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles4-haystack4-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles4-haystack4-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int64-needles4-haystack4-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int8-needles2-haystack2-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int8-needles2-haystack2-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int8-needles2-haystack2-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int8-needles2-haystack2-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int8-needles2-haystack2-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int8-needles2-haystack2-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int8-needles2-haystack2-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[Int8-needles2-haystack2-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles10-haystack10-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles10-haystack10-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles10-haystack10-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles10-haystack10-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles10-haystack10-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles10-haystack10-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles10-haystack10-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles10-haystack10-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles9-haystack9-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles9-haystack9-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles9-haystack9-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles9-haystack9-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles9-haystack9-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles9-haystack9-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles9-haystack9-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[String-needles9-haystack9-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[UInt64-needles5-haystack5-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[UInt64-needles5-haystack5-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[UInt64-needles5-haystack5-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[UInt64-needles5-haystack5-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[UInt64-needles5-haystack5-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[UInt64-needles5-haystack5-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[UInt64-needles5-haystack5-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[UInt64-needles5-haystack5-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype16-needles16-haystack16-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype16-needles16-haystack16-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype16-needles16-haystack16-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype16-needles16-haystack16-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype16-needles16-haystack16-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype16-needles16-haystack16-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype16-needles16-haystack16-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype16-needles16-haystack16-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype17-needles17-haystack17-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype17-needles17-haystack17-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype17-needles17-haystack17-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype17-needles17-haystack17-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype17-needles17-haystack17-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype17-needles17-haystack17-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype17-needles17-haystack17-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype17-needles17-haystack17-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype18-needles18-haystack18-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype18-needles18-haystack18-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype18-needles18-haystack18-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype18-needles18-haystack18-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype18-needles18-haystack18-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype18-needles18-haystack18-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype18-needles18-haystack18-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_paths[dtype18-needles18-haystack18-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_haystack_scalar_needle[in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: a select of literals only: one row in Polars"
+    },
+    "test_is_in_literal_haystack_scalar_needle[streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: a select of literals only: one row in Polars"
+    },
+    "test_is_in_literal_haystack_streaming_filter_and_group_by": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_haystack_takes_the_column_dtype[datetime-other-zone]": {
+      "outcome": "skipped",
+      "reason": "translator: Scan"
+    },
+    "test_is_in_literal_haystack_takes_the_column_dtype[decimal-rounded]": {
+      "outcome": "skipped",
+      "reason": "translator: Scan"
+    },
+    "test_is_in_literal_haystack_takes_the_column_dtype[enum-in-string]": {
+      "outcome": "skipped",
+      "reason": "translator: Scan"
+    },
+    "test_is_in_literal_haystack_takes_the_column_dtype[narrower-int]": {
+      "outcome": "skipped",
+      "reason": "translator: Scan"
+    },
+    "test_is_in_literal_haystack_takes_the_column_dtype[out-of-range]": {
+      "outcome": "skipped",
+      "reason": "translator: Scan"
+    },
+    "test_is_in_literal_haystack_takes_the_column_dtype[string-in-enum]": {
+      "outcome": "skipped",
+      "reason": "translator: Scan"
+    },
+    "test_is_in_literal_haystack_takes_the_column_dtype[wider-float]": {
+      "outcome": "skipped",
+      "reason": "translator: Scan"
+    },
+    "test_is_in_literal_haystack_takes_the_column_dtype[wider-int]": {
+      "outcome": "skipped",
+      "reason": "translator: Scan"
+    },
+    "test_is_in_literal_matches_per_row_haystack[Boolean-needles5-haystack5-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[Boolean-needles5-haystack5-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[Float64-needles2-haystack2-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[Float64-needles2-haystack2-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[Int64-needles0-haystack0-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[Int64-needles0-haystack0-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[Int64-needles1-haystack1-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[Int64-needles1-haystack1-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[String-needles3-haystack3-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[String-needles3-haystack3-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[String-needles4-haystack4-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[String-needles4-haystack4-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[dtype6-needles6-haystack6-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[dtype6-needles6-haystack6-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[dtype7-needles7-haystack7-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_matches_per_row_haystack[dtype7-needles7-haystack7-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner0-False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner0-False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner0-False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner0-False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner0-True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner0-True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner0-True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner0-True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner1-False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner1-False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner1-False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner1-False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner1-True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner1-True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner1-True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[None-inner1-True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner0-False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner0-False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner0-False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner0-False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner0-True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner0-True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner0-True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner0-True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner1-False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner1-False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner1-False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner1-False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner1-True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner1-True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner1-True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_literal_nested_needle_with_a_null_container[needle0-inner1-True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_multi_row_literal_haystack[in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_multi_row_literal_haystack[streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_narrows_a_float_needle[f32-f16-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_is_in_narrows_a_float_needle[f32-f16-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_is_in_narrows_a_float_needle[f32-f16-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_is_in_narrows_a_float_needle[f32-f16-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_is_in_narrows_a_float_needle[f64-f16-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_is_in_narrows_a_float_needle[f64-f16-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_is_in_narrows_a_float_needle[f64-f16-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_is_in_narrows_a_float_needle[f64-f16-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_is_in_narrows_a_float_needle[f64-f32-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_narrows_a_float_needle[f64-f32-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_narrows_a_float_needle[f64-f32-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_narrows_a_float_needle[f64-f32-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_native_pair_does_not_skip_row_groups_by_category_order": {
+      "outcome": "skipped",
+      "reason": "translator: Scan"
+    },
+    "test_is_in_native_pair_with_a_scalar_haystack[decimal-other-scale]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_native_pair_with_a_scalar_haystack[enum-in-string]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_native_pair_with_a_scalar_haystack[string-in-enum]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_needle_cast_evaluates_the_needle_once[float-narrowing-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_needle_cast_evaluates_the_needle_once[float-narrowing-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_needle_cast_evaluates_the_needle_once[float-narrowing-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_needle_cast_evaluates_the_needle_once[float-narrowing-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_needle_cast_evaluates_the_needle_once[int-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_needle_cast_evaluates_the_needle_once[int-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_needle_cast_evaluates_the_needle_once[int-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_needle_cast_evaluates_the_needle_once[int-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_needle_cast_evaluates_the_needle_once[temporal-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_is_in_needle_cast_evaluates_the_needle_once[temporal-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_is_in_needle_cast_evaluates_the_needle_once[temporal-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_is_in_needle_cast_evaluates_the_needle_once[temporal-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_is_in_needle_cast_masks_with_the_evaluated_container[False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function DropNulls"
+    },
+    "test_is_in_needle_cast_masks_with_the_evaluated_container[False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function DropNulls"
+    },
+    "test_is_in_needle_cast_masks_with_the_evaluated_container[False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function DropNulls"
+    },
+    "test_is_in_needle_cast_masks_with_the_evaluated_container[False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function DropNulls"
+    },
+    "test_is_in_needle_cast_masks_with_the_evaluated_container[True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function DropNulls"
+    },
+    "test_is_in_needle_cast_masks_with_the_evaluated_container[True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function DropNulls"
+    },
+    "test_is_in_needle_cast_masks_with_the_evaluated_container[True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function DropNulls"
+    },
+    "test_is_in_needle_cast_masks_with_the_evaluated_container[True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function DropNulls"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[min-datetime-False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: n holds timestamps outside N–N (N, e.g. <value out of range: -N>); the reference's calendar covers N–N. Filter them, or read the column"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[min-datetime-False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: n holds timestamps outside N–N (N, e.g. <value out of range: -N>); the reference's calendar covers N–N. Filter them, or read the column"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[min-datetime-False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: n holds timestamps outside N–N (N, e.g. <value out of range: -N>); the reference's calendar covers N–N. Filter them, or read the column"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[min-datetime-False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: n holds timestamps outside N–N (N, e.g. <value out of range: -N>); the reference's calendar covers N–N. Filter them, or read the column"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[min-datetime-True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: n holds timestamps outside N–N (N, e.g. <value out of range: -N>); the reference's calendar covers N–N. Filter them, or read the column"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[min-datetime-True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: n holds timestamps outside N–N (N, e.g. <value out of range: -N>); the reference's calendar covers N–N. Filter them, or read the column"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[min-datetime-True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: n holds timestamps outside N–N (N, e.g. <value out of range: -N>); the reference's calendar covers N–N. Filter them, or read the column"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[min-datetime-True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: n holds timestamps outside N–N (N, e.g. <value out of range: -N>); the reference's calendar covers N–N. Filter them, or read the column"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[overflow-False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, None]}}"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[overflow-False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, None]}}"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[overflow-False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, None]}}"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[overflow-False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, None]}}"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[overflow-True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, None]}}"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[overflow-True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, None]}}"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[overflow-True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, None]}}"
+    },
+    "test_is_in_needle_with_an_inexact_cast_never_matches[overflow-True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, None]}}"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-of-null-False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-of-null-False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-of-null-False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-of-null-False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-of-null-True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-of-null-True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-of-null-True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[list-of-null-True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-of-null-False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-of-null-False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-of-null-False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-of-null-False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-of-null-True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-of-null-True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-of-null-True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_nested_needle_with_a_null_container[struct-of-null-True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_nested_null_needles_in_aggregation[dtype0-needles0-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_nested_null_needles_in_aggregation[dtype0-needles0-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_nested_null_needles_in_aggregation[dtype1-needles1-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_nested_null_needles_in_aggregation[dtype1-needles1-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_nested_null_needles_in_aggregation[dtype2-needles2-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_nested_null_needles_in_aggregation[dtype2-needles2-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_non_literal_scalar_haystack[holds-null-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Gather"
+    },
+    "test_is_in_non_literal_scalar_haystack[holds-null-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Gather"
+    },
+    "test_is_in_non_literal_scalar_haystack[implode-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_non_literal_scalar_haystack[implode-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_non_literal_scalar_haystack[null-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_is_in_non_literal_scalar_haystack[null-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_is_in_non_literal_scalar_haystack[values-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_is_in_non_literal_scalar_haystack[values-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_is_in_non_nested_container": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_null[False]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_null[True]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_null_category_does_not_match_an_unknown_label[arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_null_category_does_not_match_an_unknown_label[is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_null_category_does_not_match_an_unknown_label[is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_null_category_does_not_match_an_unknown_label[list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_null_elements_take_the_needle_dtype[list-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_null_elements_take_the_needle_dtype[list-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_null_elements_take_the_needle_dtype[list-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_null_elements_take_the_needle_dtype[list-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_null_elements_take_the_needle_dtype[null-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: {…: N, 'catego"
+    },
+    "test_is_in_null_elements_take_the_needle_dtype[null-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: {…: N, 'catego"
+    },
+    "test_is_in_null_elements_take_the_needle_dtype[null-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: {…: N, 'catego"
+    },
+    "test_is_in_null_elements_take_the_needle_dtype[null-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: {…: N, 'catego"
+    },
+    "test_is_in_null_elements_take_the_needle_dtype[struct-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [[…, {…: N"
+    },
+    "test_is_in_null_elements_take_the_needle_dtype[struct-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [[…, {…: N"
+    },
+    "test_is_in_null_elements_take_the_needle_dtype[struct-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [[…, {…: N"
+    },
+    "test_is_in_null_elements_take_the_needle_dtype[struct-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [[…, {…: N"
+    },
+    "test_is_in_null_needle_in_a_literal_struct_haystack": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_null_needle_in_null_data_keeps_null_containers_null[False]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_null_needle_in_null_data_keeps_null_containers_null[True]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_null_prop": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_is_in_null_series[False]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_null_series[True]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_is_in_other_time_zone_does_not_skip_row_groups": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_is_in_other_time_zone_is_not_a_filter_constraint": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_is_in_other_time_zone_with_a_scalar_haystack": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_is_in_rejects_a_decimal_needle_in_primitive_numeric_data[float-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_rejects_a_decimal_needle_in_primitive_numeric_data[float-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_rejects_a_decimal_needle_in_primitive_numeric_data[float-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_rejects_a_decimal_needle_in_primitive_numeric_data[float-list.contains]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_rejects_naive_and_aware_datetimes[False-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_rejects_naive_and_aware_datetimes[False-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_rejects_naive_and_aware_datetimes[False-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_rejects_naive_and_aware_datetimes[False-list.contains]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_rejects_naive_and_aware_datetimes[True-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_rejects_naive_and_aware_datetimes[True-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_rejects_naive_and_aware_datetimes[True-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_rejects_naive_and_aware_datetimes[True-list.contains]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_series": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_is_in_shows_the_needle_cast_on_the_function[arr.contains]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_is_in_shows_the_needle_cast_on_the_function[is_in-array]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_is_in_shows_the_needle_cast_on_the_function[is_in-list]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_is_in_shows_the_needle_cast_on_the_function[list.contains]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_is_in_struct": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_struct_enum_17618[False]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_struct_enum_17618[True]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_is_in_widens_a_numeric_needle_exactly[f16-f64-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_is_in_widens_a_numeric_needle_exactly[f16-f64-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_is_in_widens_a_numeric_needle_exactly[f16-f64-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_is_in_widens_a_numeric_needle_exactly[f16-f64-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_is_in_widens_a_numeric_needle_exactly[f32-f64-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_widens_a_numeric_needle_exactly[f32-f64-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_widens_a_numeric_needle_exactly[f32-f64-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_widens_a_numeric_needle_exactly[f32-f64-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_widens_a_numeric_needle_exactly[i8-i64-arr.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArrayExpr"
+    },
+    "test_is_in_widens_a_numeric_needle_exactly[i8-i64-is_in-array]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_widens_a_numeric_needle_exactly[i8-i64-is_in-list]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsIn"
+    },
+    "test_is_in_widens_a_numeric_needle_exactly[i8-i64-list.contains]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_is_in_with_wildcard_13809": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_null_propagate_all_paths[False]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_null_propagate_all_paths[True]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_null_propagate_all_paths_cat[False]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_null_propagate_all_paths_cat[True]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_struct_logical_is_in": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_struct_logical_is_in_nonullpropagate": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    }
+  }
+}

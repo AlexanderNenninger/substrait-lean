@@ -1,0 +1,71 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_neg.py",
+  "license": "MIT",
+  "module": "operations__arithmetic__test_neg",
+  "summary": {
+    "agree": 8,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 2,
+    "unproved": 1,
+    "skipped": 2
+  },
+  "results": {
+    "test_neg_decimal": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_neg_duration": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: type interval(…) is not supported; cast the column to a supported type in the source query; only a column the query never reads is l",
+      "collects": 2
+    },
+    "test_neg_method": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_neg_non_numeric": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_neg_operator[Float32]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: negate of FLOAT (fp32) values is not modelled; cast them to DOUBLE first. Lean's model does not c",
+      "collects": 2
+    },
+    "test_neg_operator[Float64]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_neg_operator[Int16]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_neg_operator[Int32]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_neg_operator[Int64]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_neg_operator[Int8]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_neg_overflow_wrapping": {
+      "outcome": "unproved",
+      "reason": "data: N row(s) of polars_input_0 violate (_.a >= -N): refused before the run. The precondition was inferred from … (overflow otherwise): drop those rows before ",
+      "collects": 1
+    },
+    "test_neg_series_operator": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_neg_unsigned_int": {
+      "outcome": "skipped",
+      "reason": "raises"
+    }
+  }
+}

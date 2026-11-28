@@ -56,6 +56,98 @@ The probes ran on macOS arm64. The elementary functions are Rust's `f64`
 functions, which call the platform's libm, and the sign of a NaN that
 arithmetic creates is the platform's, so no observation depends on either.
 
+## Polars's own tests
+
+`python -m sverify_dev.polars_tests` (`python/tools/sverify_dev/polars_tests.py`, #2615)
+replays a slice of Polars's Python unit tests at `py-2.1.0` (MIT,
+[LICENSE-polars](../replay/LICENSE-polars)): each query a passing test collects is
+translated to Ibis, verified under `semantics="polars"`, and compared three ways: the
+model, sverify's run on Polars, and Polars's own result on its developers' inputs. A
+collect where the model and the run agree with each other but not with Polars is triaged
+in [triage.json](../replay/triage.json), into a translation gap, a fact or a bug. The
+ledgers are [../replay/](../replay/), one per module, and the run belongs on homelab:
+
+```bash
+cd python && uv run python -m sverify_dev.polars_tests --write
+```
+
+<!-- replay:start -->
+Totals over 10736 tests of Polars's `py-2.1.0` suite: 817 agree, 0 disagree, 3 unattributed, 691 refused, 42 unproved, 9183 skipped.
+
+| Module | Agree | Disagree | Unattributed | Refused | Unproved | Skipped |
+|---|---:|---:|---:|---:|---:|---:|
+| [expr/test_arity](../replay/expr__test_arity.json) | 3 | 0 | 0 | 1 | 0 | 8 |
+| [expr/test_binary](../replay/expr__test_binary.json) | 0 | 0 | 0 | 0 | 0 | 24 |
+| [expr/test_dtype_of](../replay/expr__test_dtype_of.json) | 0 | 0 | 0 | 0 | 0 | 1 |
+| [expr/test_dunders](../replay/expr__test_dunders.json) | 2 | 0 | 0 | 0 | 0 | 0 |
+| [expr/test_expr_apply_eval](../replay/expr__test_expr_apply_eval.json) | 1 | 0 | 0 | 0 | 0 | 0 |
+| [expr/test_expr_multi_cols](../replay/expr__test_expr_multi_cols.json) | 0 | 0 | 0 | 0 | 0 | 5 |
+| [expr/test_exprs](../replay/expr__test_exprs.json) | 7 | 0 | 0 | 1 | 1 | 131 |
+| [expr/test_is_sorted](../replay/expr__test_is_sorted.json) | 0 | 0 | 0 | 0 | 0 | 17 |
+| [expr/test_literal](../replay/expr__test_literal.json) | 0 | 0 | 0 | 0 | 0 | 47 |
+| [expr/test_meta](../replay/expr__test_meta.json) | 0 | 0 | 0 | 0 | 0 | 4 |
+| [expr/test_pipe_with_dtype](../replay/expr__test_pipe_with_dtype.json) | 0 | 0 | 0 | 0 | 0 | 14 |
+| [expr/test_serde](../replay/expr__test_serde.json) | 0 | 0 | 0 | 0 | 0 | 13 |
+| [expr/test_udfs](../replay/expr__test_udfs.json) | 0 | 0 | 0 | 0 | 0 | 8 |
+| [functions/as_datatype/test_concat_arr](../replay/functions__as_datatype__test_concat_arr.json) | 0 | 0 | 0 | 0 | 0 | 10 |
+| [functions/as_datatype/test_concat_list](../replay/functions__as_datatype__test_concat_list.json) | 1 | 0 | 0 | 0 | 0 | 17 |
+| [functions/as_datatype/test_concat_str](../replay/functions__as_datatype__test_concat_str.json) | 0 | 0 | 0 | 0 | 0 | 16 |
+| [functions/as_datatype/test_datetime](../replay/functions__as_datatype__test_datetime.json) | 0 | 0 | 0 | 0 | 0 | 23 |
+| [functions/as_datatype/test_duration](../replay/functions__as_datatype__test_duration.json) | 0 | 0 | 0 | 0 | 0 | 15 |
+| [functions/as_datatype/test_format](../replay/functions__as_datatype__test_format.json) | 0 | 0 | 0 | 0 | 0 | 1 |
+| [functions/as_datatype/test_struct](../replay/functions__as_datatype__test_struct.json) | 0 | 0 | 0 | 128 | 0 | 43 |
+| [functions/as_datatype/test_time](../replay/functions__as_datatype__test_time.json) | 0 | 0 | 0 | 0 | 0 | 1 |
+| [functions/range/test_date_range](../replay/functions__range__test_date_range.json) | 0 | 0 | 0 | 0 | 0 | 15 |
+| [functions/range/test_date_ranges](../replay/functions__range__test_date_ranges.json) | 0 | 0 | 0 | 0 | 0 | 13 |
+| [functions/range/test_datetime_range](../replay/functions__range__test_datetime_range.json) | 0 | 0 | 0 | 0 | 0 | 38 |
+| [functions/range/test_datetime_ranges](../replay/functions__range__test_datetime_ranges.json) | 0 | 0 | 0 | 0 | 0 | 94 |
+| [functions/range/test_int_range](../replay/functions__range__test_int_range.json) | 1 | 0 | 0 | 0 | 0 | 32 |
+| [functions/range/test_linear_space](../replay/functions__range__test_linear_space.json) | 9 | 0 | 0 | 121 | 0 | 212 |
+| [functions/range/test_time_range](../replay/functions__range__test_time_range.json) | 0 | 0 | 0 | 0 | 0 | 18 |
+| [functions/test_business_day_count](../replay/functions__test_business_day_count.json) | 0 | 0 | 0 | 0 | 0 | 10 |
+| [functions/test_col](../replay/functions__test_col.json) | 3 | 0 | 0 | 0 | 0 | 3 |
+| [functions/test_concat](../replay/functions__test_concat.json) | 24 | 0 | 0 | 0 | 0 | 31 |
+| [functions/test_cum_count](../replay/functions__test_cum_count.json) | 0 | 0 | 0 | 0 | 0 | 6 |
+| [functions/test_cumulative_eval](../replay/functions__test_cumulative_eval.json) | 0 | 0 | 0 | 0 | 0 | 6 |
+| [functions/test_ewm_by](../replay/functions__test_ewm_by.json) | 0 | 0 | 0 | 0 | 0 | 3 |
+| [functions/test_functions](../replay/functions__test_functions.json) | 11 | 0 | 0 | 0 | 2 | 63 |
+| [functions/test_horizontal](../replay/functions__test_horizontal.json) | 0 | 0 | 0 | 0 | 0 | 5 |
+| [functions/test_lit](../replay/functions__test_lit.json) | 0 | 0 | 0 | 0 | 0 | 43 |
+| [functions/test_nth](../replay/functions__test_nth.json) | 4 | 0 | 0 | 0 | 0 | 1 |
+| [functions/test_repeat](../replay/functions__test_repeat.json) | 0 | 0 | 0 | 0 | 0 | 68 |
+| [functions/test_union](../replay/functions__test_union.json) | 19 | 0 | 0 | 0 | 0 | 14 |
+| [functions/test_when_then](../replay/functions__test_when_then.json) | 175 | 0 | 0 | 127 | 2 | 414 |
+| [functions/test_wildcard_expansion](../replay/functions__test_wildcard_expansion.json) | 0 | 0 | 0 | 0 | 0 | 10 |
+| [operations/aggregation/test_aggregations](../replay/operations__aggregation__test_aggregations.json) | 17 | 0 | 0 | 6 | 3 | 1015 |
+| [operations/aggregation/test_folds](../replay/operations__aggregation__test_folds.json) | 0 | 0 | 0 | 0 | 0 | 4 |
+| [operations/aggregation/test_horizontal](../replay/operations__aggregation__test_horizontal.json) | 23 | 0 | 0 | 4 | 2 | 60 |
+| [operations/aggregation/test_implode](../replay/operations__aggregation__test_implode.json) | 1 | 0 | 0 | 1 | 0 | 3 |
+| [operations/aggregation/test_vertical](../replay/operations__aggregation__test_vertical.json) | 4 | 0 | 0 | 1 | 0 | 11 |
+| [operations/arithmetic/test_arithmetic](../replay/operations__arithmetic__test_arithmetic.json) | 29 | 0 | 0 | 26 | 3 | 283 |
+| [operations/arithmetic/test_array](../replay/operations__arithmetic__test_array.json) | 0 | 0 | 0 | 0 | 0 | 117 |
+| [operations/arithmetic/test_list](../replay/operations__arithmetic__test_list.json) | 0 | 0 | 0 | 6 | 0 | 154 |
+| [operations/arithmetic/test_neg](../replay/operations__arithmetic__test_neg.json) | 8 | 0 | 0 | 2 | 1 | 2 |
+| [operations/arithmetic/test_pos](../replay/operations__arithmetic__test_pos.json) | 1 | 0 | 0 | 0 | 0 | 2 |
+| [operations/arithmetic/test_pow](../replay/operations__arithmetic__test_pow.json) | 0 | 0 | 0 | 0 | 0 | 1 |
+| [operations/test_cast](../replay/operations__test_cast.json) | 4 | 0 | 0 | 25 | 10 | 926 |
+| [operations/test_comparison](../replay/operations__test_comparison.json) | 207 | 0 | 0 | 146 | 1 | 266 |
+| [operations/test_fill_null](../replay/operations__test_fill_null.json) | 2 | 0 | 0 | 0 | 0 | 16 |
+| [operations/test_filter](../replay/operations__test_filter.json) | 9 | 0 | 0 | 2 | 1 | 2830 |
+| [operations/test_group_by](../replay/operations__test_group_by.json) | 66 | 0 | 2 | 12 | 7 | 508 |
+| [operations/test_is_in](../replay/operations__test_is_in.json) | 0 | 0 | 0 | 0 | 0 | 687 |
+| [operations/test_is_null](../replay/operations__test_is_null.json) | 1 | 0 | 0 | 0 | 1 | 1 |
+| [operations/test_join](../replay/operations__test_join.json) | 84 | 0 | 0 | 52 | 2 | 437 |
+| [operations/test_over](../replay/operations__test_over.json) | 1 | 0 | 0 | 0 | 0 | 35 |
+| [operations/test_select](../replay/operations__test_select.json) | 2 | 0 | 0 | 0 | 0 | 6 |
+| [operations/test_sort](../replay/operations__test_sort.json) | 82 | 0 | 0 | 23 | 1 | 147 |
+| [operations/test_window](../replay/operations__test_window.json) | 6 | 0 | 1 | 5 | 3 | 111 |
+| [operations/test_with_columns](../replay/operations__test_with_columns.json) | 3 | 0 | 0 | 0 | 0 | 5 |
+| [operations/unique/test_is_unique](../replay/operations__unique__test_is_unique.json) | 1 | 0 | 0 | 0 | 0 | 10 |
+| [operations/unique/test_n_unique](../replay/operations__unique__test_n_unique.json) | 0 | 0 | 0 | 2 | 0 | 9 |
+| [operations/unique/test_unique](../replay/operations__unique__test_unique.json) | 6 | 0 | 0 | 0 | 2 | 35 |
+| [operations/unique/test_unique_counts](../replay/operations__unique__test_unique_counts.json) | 0 | 0 | 0 | 0 | 0 | 5 |
+<!-- replay:end -->
+
 ## The Polars diff, as a table
 
 How Polars 2.1.0 compares with the reference, option by option. "Native"

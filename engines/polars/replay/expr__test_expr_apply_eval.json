@@ -1,0 +1,20 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/expr/test_expr_apply_eval.py",
+  "license": "MIT",
+  "module": "expr__test_expr_apply_eval",
+  "summary": {
+    "agree": 1,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 0
+  },
+  "results": {
+    "test_expression_15183": {
+      "outcome": "agree",
+      "collects": 2
+    }
+  }
+}

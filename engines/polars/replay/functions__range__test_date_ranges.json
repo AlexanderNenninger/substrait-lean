@@ -1,0 +1,68 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/range/test_date_ranges.py",
+  "license": "MIT",
+  "module": "functions__range__test_date_ranges",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 13
+  },
+  "results": {
+    "test_date_ranges_broadcasting": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_date_ranges_broadcasting_fail": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_date_ranges_eager": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_date_ranges_lazy_with_expressions[high1-low1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_date_ranges_lazy_with_expressions[high1-start]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_date_ranges_lazy_with_expressions[stop-low1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_date_ranges_lazy_with_expressions[stop-start]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_date_ranges_lazy_with_literals": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_date_ranges_single_row_lazy_7110": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_date_ranges_start_end_interval_forwards[both-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_date_ranges_start_end_interval_forwards[left-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_date_ranges_start_end_interval_forwards[none-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_date_ranges_start_end_interval_forwards[right-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/test_col.py",
+  "license": "MIT",
+  "module": "functions__test_col",
+  "summary": {
+    "agree": 3,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 3
+  },
+  "results": {
+    "test_col_as_attribute": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_col_as_attribute_class_mangling_25129": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_col_as_attribute_edge_cases": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_col_select": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_col_series_selection": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_col_unwrap_28316": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    }
+  }
+}

@@ -1,0 +1,188 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/test_lit.py",
+  "license": "MIT",
+  "module": "functions__test_lit",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 43
+  },
+  "results": {
+    "test_allow_dtype_expr_lit_26644": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_datetime_ms": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_datetime_ns": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_datetime_us": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_list_datetime_11571": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_ambiguous_datetimes_11379": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_lit_decimal": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_decimal_parametric": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_lit_enum_input_16668[EnumBase0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_lit_enum_input_16668[EnumBase1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_lit_enum_input_16668[EnumBase2]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_lit_enum_input_non_string[EnumBase0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_enum_input_non_string[EnumBase1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_enum_input_non_string[EnumBase2]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_enum_input_non_string[EnumBase3]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_enum_input_non_string[EnumBase4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_int_return_type[above i32 max]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_int_return_type[above i64 max]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_int_return_type[below i32 min]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_int_return_type[i32 max]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_int_return_type[i32 min]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_int_return_type[i64 max]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_list_input[input0]": {
+      "outcome": "skipped",
+      "reason": "translator: an aggregate outside group_by"
+    },
+    "test_lit_list_input[input1]": {
+      "outcome": "skipped",
+      "reason": "translator: an aggregate outside group_by"
+    },
+    "test_lit_numpy_array_input": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_lit_object_type_25713": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_lit_string_float": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_structs[item0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_structs[item1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_lit_tuple_input[input0]": {
+      "outcome": "skipped",
+      "reason": "translator: an aggregate outside group_by"
+    },
+    "test_lit_tuple_input[input1]": {
+      "outcome": "skipped",
+      "reason": "translator: an aggregate outside group_by"
+    },
+    "test_lit_unsupported_type": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_np_datetime64_as_date_24521": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_numpy_lit[1.2-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_numpy_lit[value0-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_numpy_lit[value2-Int8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_numpy_lit[value3-UInt8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_numpy_lit[value4-Int16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_numpy_lit[value5-UInt16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_numpy_lit[value6-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_numpy_lit[value7-UInt32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_numpy_lit[value8-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_numpy_lit[value9-UInt64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    }
+  }
+}

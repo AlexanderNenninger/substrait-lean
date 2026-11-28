@@ -1,0 +1,25 @@
+{
+  "about": "The collects of Polars's tests (#2615, sverify_dev.polars_tests) where the model and sverify's run on Polars agree with each other and differ from Polars's own result, each triaged by hand (ruling 288, P3): `as` is `skipped: translation` (the translator's reading, with its reason), `fact` (an engine fact that states the difference) or `bug` (an issue). Keyed by `<test>@<plan>`, the plan's hash in the ledger.",
+  "triaged": {
+    "tests/unit/operations/test_group_by.py::test_group_by_max_sorted_nan_28121@73d8e3b3d772919e": {
+      "as": "fact",
+      "fact": "polars-min-max-nan",
+      "reason": "Polars's max skips NaN; semantics=\"polars\" gives the reference's max, NaN greatest"
+    },
+    "tests/unit/operations/test_group_by.py::test_group_by_when_then_no_aggregation_predicate@d8eaf833731ef7e1": {
+      "as": "fact",
+      "fact": "polars-sum-int",
+      "reason": "Polars's sum of no values is 0; semantics=\"polars\" gives the reference's NULL"
+    },
+    "tests/unit/operations/test_window.py::test_window_5868@668b3636613baffb": {
+      "as": "fact",
+      "fact": "polars-sum-int",
+      "reason": "Polars's sum over a partition of NULLs is 0; semantics=\"polars\" gives the reference's NULL"
+    },
+    "tests/unit/operations/test_window.py::test_window_5868@04f2dd59e948d32a": {
+      "as": "fact",
+      "fact": "polars-sum-int",
+      "reason": "Polars's sum over a partition of NULLs is 0; semantics=\"polars\" gives the reference's NULL"
+    }
+  }
+}

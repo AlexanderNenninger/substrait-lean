@@ -1,0 +1,484 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_array.py",
+  "license": "MIT",
+  "module": "operations__arithmetic__test_array",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 117
+  },
+  "results": {
+    "test_array_add_supertype[exec_op_with_expr]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_add_supertype[exec_op_with_expr_no_type_coercion]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_add_supertype[exec_op_with_series]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_array_arith_double_nested_shape": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_array_arithmetic_dtype_mismatch[exec_op_with_expr]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_array_arithmetic_dtype_mismatch[exec_op_with_expr_no_type_coercion]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_array_arithmetic_dtype_mismatch[exec_op_with_series]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_array_arithmetic_literal_dtype[lhs_dtype0-1-add-expected_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_array_arithmetic_literal_dtype[lhs_dtype1-1-sub-expected_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_array_arithmetic_literal_dtype[lhs_dtype2-2-mul-expected_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_array_arithmetic_literal_dtype[lhs_dtype3-1-add-expected_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_array_arithmetic_literal_dtype[lhs_dtype4-1-mod-expected_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_array_arithmetic_literal_dtype[lhs_dtype5-2-floordiv-expected_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_array_arithmetic_literal_dtype[lhs_dtype6-1-truediv-expected_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_array_arithmetic_literal_dtype[lhs_dtype7-2-truediv-expected_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_array_arithmetic_literal_dtype[lhs_dtype8-1.5-add-expected_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_both-both3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_both-both]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_both-left3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_both-left]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_both-none]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_both-right3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_both-right]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_left-both3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_left-both]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_left-left3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_left-none]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_left-right3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_none-both3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_none-both]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_none-left3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_none-left]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_none-none]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_none-right3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_none-right]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_right-both3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_right-both]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_right-left3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_right-none]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_right-right3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr-broadcast_right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_both-both3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_both-both]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_both-left3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_both-left]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_both-none]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_both-right3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_both-right]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_left-both3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_left-both]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_left-left3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_left-none]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_left-right3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_none-both3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_none-both]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_none-left3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_none-left]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_none-none]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_none-right3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_none-right]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_right-both3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_right-both]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_right-left3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_right-none]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_right-right3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_expr_no_type_coercion-broadcast_right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_both-both3]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_both-both]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_both-left3]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_both-left]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_both-none]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_both-right3]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_both-right]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_left-both3]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_left-both]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_left-left3]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_left-none]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_left-right3]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_none-both3]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_none-both]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_none-left3]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_none-left]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_none-none]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_none-right3]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_none-right]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_right-both3]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_right-both]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_right-left3]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_right-none]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_right-right3]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_array_arithmetic_values[exec_op_with_series-broadcast_right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_elementwise_arithmetic_19682": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_array_literal_broadcast": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, N]}}"
+    },
+    "test_array_numeric_op_validity_combination[broadcast_both-exec_op_with_expr]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_numeric_op_validity_combination[broadcast_both-exec_op_with_expr_no_type_coercion]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_numeric_op_validity_combination[broadcast_both-exec_op_with_series]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_numeric_op_validity_combination[broadcast_left-exec_op_with_expr]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_numeric_op_validity_combination[broadcast_left-exec_op_with_expr_no_type_coercion]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_numeric_op_validity_combination[broadcast_left-exec_op_with_series]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_numeric_op_validity_combination[broadcast_none-exec_op_with_expr]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_numeric_op_validity_combination[broadcast_none-exec_op_with_expr_no_type_coercion]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_numeric_op_validity_combination[broadcast_none-exec_op_with_series]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_numeric_op_validity_combination[broadcast_right-exec_op_with_expr]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_numeric_op_validity_combination[broadcast_right-exec_op_with_expr_no_type_coercion]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_array_numeric_op_validity_combination[broadcast_right-exec_op_with_series]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_array_truediv_schema[lhs_dtype0-Int64-expected_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_array_truediv_schema[lhs_dtype1-Float32-expected_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_array_truediv_schema[lhs_dtype2-Int64-expected_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    }
+  }
+}

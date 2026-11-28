@@ -1,0 +1,88 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/range/test_time_range.py",
+  "license": "MIT",
+  "module": "functions__range__test_time_range",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 18
+  },
+  "results": {
+    "test_time_range_eager_explode": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_time_range_expr": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column start: times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_time_range_input_shape_empty": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_time_range_input_shape_multiple_values": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_time_range_invalid_step[interval0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_time_range_invalid_step[interval1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_time_range_lit_eager": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column tm: times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_time_range_lit_lazy": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_time_range_name": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_time_range_schema": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_time_range_start_equals_end": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_time_range_start_equals_end_open[left]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_time_range_start_equals_end_open[none]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_time_range_start_equals_end_open[right]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_time_range_start_later_than_end": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_time_ranges_broadcasting": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column time: times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_time_ranges_eager": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_time_ranges_mismatched_chunks": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    }
+  }
+}

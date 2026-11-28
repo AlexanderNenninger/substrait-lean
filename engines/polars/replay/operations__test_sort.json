@@ -1,0 +1,1052 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/test_sort.py",
+  "license": "MIT",
+  "module": "operations__test_sort",
+  "summary": {
+    "agree": 82,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 23,
+    "unproved": 1,
+    "skipped": 147
+  },
+  "results": {
+    "test_arg_sort_by_descending": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 3
+    },
+    "test_arg_sort_by_nulls": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_arg_sort_nulls[<lambda>-expected0]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_arg_sort_nulls[<lambda>-expected1]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_arg_sort_nulls[<lambda>-expected2]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_arg_sort_rank_nans[<lambda>0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 2
+    },
+    "test_arg_sort_rank_nans[<lambda>1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 3
+    },
+    "test_arg_sort_struct": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_arg_sort_window_functions[<lambda>0]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Function"
+    },
+    "test_arg_sort_window_functions[<lambda>1]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_arg_sort_window_functions[<lambda>2]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_df_sort_idempotent": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_explicit_list_agg_sort_in_group_by": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_expr_arg_sort_nulls_last[False-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_expr_arg_sort_nulls_last[True-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_expr_arg_sort_nulls_last[nulls_last2-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_expr_arg_sort_nulls_last[nulls_last3-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_expr_sort_by_multi_nulls_last": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_expr_sort_by_nulls_last[<lambda>0]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_expr_sort_by_nulls_last[<lambda>1]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_expr_sort_by_nulls_last[<lambda>2]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_expr_sort_by_nulls_last[<lambda>3]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_limit_larger_than_sort[<lambda>0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_limit_larger_than_sort[<lambda>1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_limit_larger_than_sort[<lambda>2]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_merge_sorted": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_merge_sorted_one_empty": {
+      "outcome": "skipped",
+      "reason": "translator: MergeSorted"
+    },
+    "test_series_sort_idempotent": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_set_sorted_schema": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_sort_aggregation_fast_paths": {
+      "outcome": "skipped",
+      "reason": "translator: RenameAlias"
+    },
+    "test_sort_already_sorted_no_rechunk_25733": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sort_args": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_sort_bool_nulls_last": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_sort_by[<lambda>-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by[<lambda>-expected1]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sort_by[<lambda>-expected2]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sort_by_11653": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sort_by_descending": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_dynamic_24057[expr0-result0]": {
+      "outcome": "skipped",
+      "reason": "translator: GroupBy with apply, a dynamic or rolling window or a slice"
+    },
+    "test_sort_by_dynamic_24057[expr1-result1]": {
+      "outcome": "skipped",
+      "reason": "translator: GroupBy with apply, a dynamic or rolling window or a slice"
+    },
+    "test_sort_by_dynamic_24057[expr2-result2]": {
+      "outcome": "skipped",
+      "reason": "translator: GroupBy with apply, a dynamic or rolling window or a slice"
+    },
+    "test_sort_by_dynamic_24057[expr3-result3]": {
+      "outcome": "skipped",
+      "reason": "translator: GroupBy with apply, a dynamic or rolling window or a slice"
+    },
+    "test_sort_by_dynamic_24057[expr4-result4]": {
+      "outcome": "skipped",
+      "reason": "translator: GroupBy with apply, a dynamic or rolling window or a slice"
+    },
+    "test_sort_by_dynamic_24057[expr5-result5]": {
+      "outcome": "skipped",
+      "reason": "translator: GroupBy with apply, a dynamic or rolling window or a slice"
+    },
+    "test_sort_by_empty_group_29630": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_empty_group_multiple_by_25433": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_empty_list_eval_25433": {
+      "outcome": "skipped",
+      "reason": "translator: Eval"
+    },
+    "test_sort_by_empty_list_eval_multiple_by_25433": {
+      "outcome": "skipped",
+      "reason": "translator: Eval"
+    },
+    "test_sort_by_exprs": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_sort_by_exps_nulls_last[<lambda>0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Pow"
+    },
+    "test_sort_by_exps_nulls_last[<lambda>1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 2
+    },
+    "test_sort_by_exps_nulls_last[<lambda>2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 2
+    },
+    "test_sort_by_first_last_head_with_cse": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_by_first_last_null_key[Int64-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_by_first_last_null_key[Int64-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_by_first_last_null_key[Null-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_by_first_last_null_key[Null-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_by_first_last_streaming_evictions[by0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinBy"
+    },
+    "test_sort_by_first_last_streaming_evictions[by1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinBy"
+    },
+    "test_sort_by_first_last_to_min_max_by[False-False-in-memory]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sort_by_first_last_to_min_max_by[False-False-streaming]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sort_by_first_last_to_min_max_by[False-True-in-memory]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sort_by_first_last_to_min_max_by[False-True-streaming]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sort_by_first_last_to_min_max_by[True-False-in-memory]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sort_by_first_last_to_min_max_by[True-False-streaming]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sort_by_first_last_to_min_max_by[True-True-in-memory]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sort_by_first_last_to_min_max_by[True-True-streaming]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sort_by_first_maintain_order[in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_by_first_maintain_order[streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_by_in_over_5499": {
+      "outcome": "skipped",
+      "reason": "translator: Over of SortBy"
+    },
+    "test_sort_by_last_nan_under_null[in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_sort_by_last_nan_under_null[streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_sort_by_logical": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_by_multi_key_options_29630": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_multiple_length_mismatch_27759": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_sort_by_multiple_nested_keys[key0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_sort_by_multiple_nested_keys[key1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Int64, shape=(N,)), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/Alexan",
+      "collects": 6
+    },
+    "test_sort_by_multiple_nested_keys[key2]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_sort_by_nested_categorical_keys[key0]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Categorical(Categories(…))), the plan expects List(String); run it with engine=… (see #2540, https://github.c",
+      "collects": 5
+    },
+    "test_sort_by_nested_categorical_keys[key1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Categorical(Categories(…)), shape=(N,)), the plan expects List(String); run it with engine=… (see #2540, htt",
+      "collects": 5
+    },
+    "test_sort_by_nested_categorical_keys[key2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Struct({…: Categorical(Categories(…))}), the plan expects Struct({…: String}); run it with engine=… (see #2540, ht",
+      "collects": 5
+    },
+    "test_sort_by_nulls_last_agg_map_batches": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_sort_by_over_reordered_input_29630": {
+      "outcome": "skipped",
+      "reason": "translator: Over of SortBy"
+    },
+    "test_sort_by_pending_group_update_29630": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reordered_input_29630": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_sort_by_reordered_key_29630": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reordered_later_key_29630": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last0-descending0]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last0-descending1]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last0-descending2]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last0-descending3]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last1-descending0]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last1-descending1]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last1-descending2]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last1-descending3]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last2-descending0]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last2-descending1]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last2-descending2]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last2-descending3]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last3-descending0]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last3-descending1]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last3-descending2]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_null_placement_27917[nulls_last3-descending3]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_tie_order_with_maintain_order_28386[False]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_reverse_preserves_tie_order_with_maintain_order_28386[True]": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_scalar_key_29583_29760": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_sort_by_sliced_groups_29630": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_by_struct[<lambda>0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 1
+    },
+    "test_sort_by_struct[<lambda>1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 2
+    },
+    "test_sort_by_struct[<lambda>2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 2
+    },
+    "test_sort_by_unequal_lengths_7207": {
+      "outcome": "skipped",
+      "reason": "translator: SortBy"
+    },
+    "test_sort_cat_nulls_last[dtype0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_sort_cat_nulls_last[dtype1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_sort_chunked_no_nulls[<lambda>-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArgSort"
+    },
+    "test_sort_chunked_no_nulls[<lambda>-expected1]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sort_chunked_no_nulls[<lambda>-expected2]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sort_dates_multiples": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_sort_descending": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sort_descending_nulls_last[False-False-<lambda>0]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sort_descending_nulls_last[False-False-<lambda>1]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[False-False-<lambda>2]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[False-False-<lambda>3]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[False-False-<lambda>4]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[False-True-<lambda>0]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sort_descending_nulls_last[False-True-<lambda>1]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[False-True-<lambda>2]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[False-True-<lambda>3]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[False-True-<lambda>4]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[True-False-<lambda>0]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sort_descending_nulls_last[True-False-<lambda>1]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[True-False-<lambda>2]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[True-False-<lambda>3]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[True-False-<lambda>4]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[True-True-<lambda>0]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sort_descending_nulls_last[True-True-<lambda>1]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[True-True-<lambda>2]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[True-True-<lambda>3]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_descending_nulls_last[True-True-<lambda>4]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_sort_first_last_to_total_min_max[Boolean-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_first_last_to_total_min_max[Boolean-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_first_last_to_total_min_max[Categorical-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: GroupBy with apply, a dynamic or rolling window or a slice"
+    },
+    "test_sort_first_last_to_total_min_max[Categorical-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: GroupBy with apply, a dynamic or rolling window or a slice"
+    },
+    "test_sort_first_last_to_total_min_max[Date-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_first_last_to_total_min_max[Date-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_first_last_to_total_min_max[Float32-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_first_last_to_total_min_max[Float32-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_first_last_to_total_min_max[Float64-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_first_last_to_total_min_max[Float64-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_first_last_to_total_min_max[Int64-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_first_last_to_total_min_max[Int64-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_first_last_to_total_min_max[String-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_first_last_to_total_min_max[String-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_first_last_to_total_min_max[dtype6-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_first_last_to_total_min_max[dtype6-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_first_last_to_total_min_max[dtype8-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: GroupBy with apply, a dynamic or rolling window or a slice"
+    },
+    "test_sort_first_last_to_total_min_max[dtype8-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: GroupBy with apply, a dynamic or rolling window or a slice"
+    },
+    "test_sort_head_streaming_top_k": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_sort_head_uses_limit[0-0-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-0-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-0-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-0-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-0-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-0-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-0-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-0-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-1-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_head_uses_limit[0-1-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_head_uses_limit[0-1-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_head_uses_limit[0-1-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_head_uses_limit[0-1-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_head_uses_limit[0-1-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_head_uses_limit[0-1-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_head_uses_limit[0-1-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sort_head_uses_limit[0-20-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-20-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-20-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-20-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-20-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-20-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-20-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-20-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-3-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-3-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-3-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-3-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-3-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-3-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-3-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[0-3-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[2-2-False-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[2-2-False-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[2-2-False-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[2-2-False-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[2-2-True-False-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[2-2-True-False-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[2-2-True-True-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_head_uses_limit[2-2-True-True-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_sort_into_function_into_dynamic_groupby_20715": {
+      "outcome": "skipped",
+      "reason": "translator: GroupBy with apply, a dynamic or rolling window or a slice"
+    },
+    "test_sort_limit_shared_by_cse[in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: a select of aggregates and columns (a broadcast)"
+    },
+    "test_sort_limit_shared_by_cse[streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: a select of aggregates and columns (a broadcast)"
+    },
+    "test_sort_literals": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_sort_maintain_order_all_nulls_27514[False-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 1
+    },
+    "test_sort_maintain_order_all_nulls_27514[False-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 1
+    },
+    "test_sort_maintain_order_all_nulls_27514[True-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 1
+    },
+    "test_sort_maintain_order_all_nulls_27514[True-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 1
+    },
+    "test_sort_maintain_order_nested_keys_28586[key0]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sort_maintain_order_nested_keys_28586[key1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Int64, shape=(N,)), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/Alexan",
+      "collects": 2
+    },
+    "test_sort_maintain_order_nested_keys_28586[key2]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sort_multicolum_null": {
+      "outcome": "unproved",
+      "reason": "data: table polars_input_0 differs from the schema the plan was verified for: column … is null, the plan expects int64: refused before the run. Declare the colu",
+      "collects": 1
+    },
+    "test_sort_multiple_keys_maintain_order_reversed_input[in-memory]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_sort_multiple_keys_maintain_order_reversed_input[streaming]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_sort_nan_1942": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_sort_nans_3740[<lambda>0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_sort_nans_3740[<lambda>1]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sort_nans_3740[<lambda>2]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sort_nested_multi_column": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_sort_reverse_head_returns_top_values_not_nulls_27917": {
+      "outcome": "skipped",
+      "reason": "translator: Slice"
+    },
+    "test_sort_reverse_preserves_null_placement_27917[False-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Sort"
+    },
+    "test_sort_reverse_preserves_null_placement_27917[False-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Sort"
+    },
+    "test_sort_reverse_preserves_null_placement_27917[True-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Sort"
+    },
+    "test_sort_reverse_preserves_null_placement_27917[True-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Sort"
+    },
+    "test_sort_row_fmt": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_sort_scalar_broadcast_in_memory_28387": {
+      "outcome": "skipped",
+      "reason": "translator: Sort"
+    },
+    "test_sort_series_nulls_last[input0-expected0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_sort_series_nulls_last[input1-expected1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_sort_series_nulls_last[input2-expected2]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_sort_slice_fast_path_5245[<lambda>0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_sort_slice_fast_path_5245[<lambda>1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_sort_slice_fast_path_5245[<lambda>2]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_sort_string_nulls": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_sort_top_k_fast_path": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_sort_type_coercion_6892": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_sort_with_null_12139[<lambda>0]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_sort_with_null_12139[<lambda>1]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_sort_with_null_12139[<lambda>2]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_sort_with_null_12139[<lambda>3]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_sort_with_null_12139[<lambda>4]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_sort_with_null_12272": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sorted_arg_sort_fast_paths[<lambda>0-df0-expected0]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sorted_arg_sort_fast_paths[<lambda>0-df1-expected1]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sorted_arg_sort_fast_paths[<lambda>1-df0-expected0]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sorted_arg_sort_fast_paths[<lambda>1-df1-expected1]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sorted_arg_sort_fast_paths[<lambda>2-df0-expected0]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sorted_arg_sort_fast_paths[<lambda>2-df1-expected1]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sorted_arg_sort_fast_paths[<lambda>3-df0-expected0]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sorted_arg_sort_fast_paths[<lambda>3-df1-expected1]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_sorted_fast_paths": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_sorted_join_and_dtypes[Int16]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_sorted_join_and_dtypes[Int32]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_sorted_join_and_dtypes[Int64]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_sorted_join_and_dtypes[Int8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_sorted_join_query_5406": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_sorted_slice_after_function_20712": {
+      "outcome": "skipped",
+      "reason": "translator: Function Extract"
+    }
+  }
+}

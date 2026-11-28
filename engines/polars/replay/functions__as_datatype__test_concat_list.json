@@ -1,0 +1,88 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/as_datatype/test_concat_list.py",
+  "license": "MIT",
+  "module": "functions__as_datatype__test_concat_list",
+  "summary": {
+    "agree": 1,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 17
+  },
+  "results": {
+    "test_categorical_list_concat_4762": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: {…: …, …: …, …: …}}}"
+    },
+    "test_concat_list_broadcast_empty": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_concat_list_empty": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_concat_list_empty_raises": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_list_empty_struct": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_concat_list_in_agg_6397": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_concat_list_lit_first_returns_empty_df_26428": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_concat_list_reverse_struct_fields": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_concat_list_with_lit": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_cross_join_concat_list_18587": {
+      "outcome": "skipped",
+      "reason": "translator: Join Cross"
+    },
+    "test_datetime_broadcast_concat_list_23102": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_list_concat": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_list_concat_nulls": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_list_concat_rolling_window": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_list_concat_supertype": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_list_function": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsList"
+    },
+    "test_list_function_single_input_keeps_chunks": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsList"
+    },
+    "test_list_function_w_scalars": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsList"
+    }
+  }
+}

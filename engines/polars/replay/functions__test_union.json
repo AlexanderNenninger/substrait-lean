@@ -1,0 +1,148 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/test_union.py",
+  "license": "MIT",
+  "module": "functions__test_union",
+  "summary": {
+    "agree": 19,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 14
+  },
+  "results": {
+    "test_concat_invalid_how_parameter": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_unsupported_type": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_union_align_associativity_26788[3-align]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_union_align_associativity_26788[3-align_full]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_union_align_associativity_26788[3-align_inner]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_union_align_associativity_26788[3-align_left]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_union_align_associativity_26788[3-align_right]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_union_align_associativity_26788[4-align]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_union_align_associativity_26788[4-align_full]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_union_align_associativity_26788[4-align_inner]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_union_align_associativity_26788[4-align_left]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_union_align_associativity_26788[4-align_right]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_union_align_associativity_26788[5-align]": {
+      "outcome": "agree",
+      "collects": 7
+    },
+    "test_union_align_associativity_26788[5-align_full]": {
+      "outcome": "agree",
+      "collects": 7
+    },
+    "test_union_align_associativity_26788[5-align_inner]": {
+      "outcome": "agree",
+      "collects": 7
+    },
+    "test_union_align_associativity_26788[5-align_left]": {
+      "outcome": "agree",
+      "collects": 7
+    },
+    "test_union_align_associativity_26788[5-align_right]": {
+      "outcome": "agree",
+      "collects": 7
+    },
+    "test_union_align_lazy_frames": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_union_align_no_common_columns": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_union_basic": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_union_diagonal": {
+      "outcome": "skipped",
+      "reason": "translator: Union, diagonal or to supertypes"
+    },
+    "test_union_diagonal_relaxed": {
+      "outcome": "skipped",
+      "reason": "translator: Union, diagonal or to supertypes"
+    },
+    "test_union_expressions": {
+      "outcome": "skipped",
+      "reason": "translator: Function ConcatExpr"
+    },
+    "test_union_group_by": {
+      "outcome": "skipped",
+      "reason": "translator: Function ConcatExpr"
+    },
+    "test_union_horizontal": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_union_horizontal_extend": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_union_lazyframe_diagonal": {
+      "outcome": "skipped",
+      "reason": "translator: Union, diagonal or to supertypes"
+    },
+    "test_union_lazyframe_horizontal": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_union_lazyframe_horizontal_extend": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_union_series_invalid_strategy": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_union_single_element": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_union_vertical_relaxed": {
+      "outcome": "skipped",
+      "reason": "translator: Union, diagonal or to supertypes"
+    },
+    "test_union_with_empty_dataframes": {
+      "outcome": "agree",
+      "collects": 2
+    }
+  }
+}

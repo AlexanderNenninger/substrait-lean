@@ -1,0 +1,48 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/expr/test_udfs.py",
+  "license": "MIT",
+  "module": "expr__test_udfs",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 8
+  },
+  "results": {
+    "test_pass_name_alias_18914": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_raises_udf[Boolean]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raises_udf[Int64]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raises_udf[String]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raises_udf[dtype3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raises_udf[dtype4]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raises_udf[dtype5]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raises_udf[dtype6]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    }
+  }
+}

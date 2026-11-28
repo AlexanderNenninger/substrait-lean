@@ -1,0 +1,3017 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/test_when_then.py",
+  "license": "MIT",
+  "module": "functions__test_when_then",
+  "summary": {
+    "agree": 175,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 127,
+    "unproved": 2,
+    "skipped": 414
+  },
+  "results": {
+    "test_chained_when_no_subclass_17142": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_comp_categorical_lit_dtype": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_comp_incompatible_enum_dtype": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_list_zip_with_logical_type": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_nested_when_then_and_wildcard_expansion_6284": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_object_when_then_4702": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_predicate_broadcast": {
+      "outcome": "skipped",
+      "reason": "translator: SignatureValidationError: Aggregate(<ibis.expr.operations.relations.DatabaseTable object at 0x74334c75fd10>, {…: <ibis.expr.operations.relations.Fie"
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr0-mask_expr0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr0-mask_expr1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr0-mask_expr2]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr0-mask_expr3]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr0-mask_expr4]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr0-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr0-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr0-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr1-mask_expr0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr1-mask_expr1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr1-mask_expr2]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr1-mask_expr3]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr1-mask_expr4]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr1-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr1-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr1-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr2-mask_expr0]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr2-mask_expr1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr2-mask_expr2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr2-mask_expr3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr2-mask_expr4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr2-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr2-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr0-truthy_expr2-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr0-mask_expr0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr0-mask_expr1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr0-mask_expr2]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr0-mask_expr3]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr0-mask_expr4]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr0-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr0-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr0-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr1-mask_expr0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr1-mask_expr1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr1-mask_expr2]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr1-mask_expr3]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr1-mask_expr4]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr1-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr1-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr1-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr2-mask_expr0]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr2-mask_expr1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr2-mask_expr2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr2-mask_expr3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr2-mask_expr4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr2-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr2-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr1-truthy_expr2-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr0-mask_expr0]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr0-mask_expr1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr0-mask_expr2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr0-mask_expr3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr0-mask_expr4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr0-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr0-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr0-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr1-mask_expr0]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr1-mask_expr1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr1-mask_expr2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr1-mask_expr3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr1-mask_expr4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr1-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr1-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr1-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr2-mask_expr0]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr2-mask_expr1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr2-mask_expr2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr2-mask_expr3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr2-mask_expr4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr2-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr2-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[False-falsy_expr2-truthy_expr2-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr0-mask_expr0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr0-mask_expr1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr0-mask_expr2]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr0-mask_expr3]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr0-mask_expr4]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr0-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr0-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr0-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr1-mask_expr0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr1-mask_expr1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr1-mask_expr2]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr1-mask_expr3]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr1-mask_expr4]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr1-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr1-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr1-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr2-mask_expr0]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr2-mask_expr1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr2-mask_expr2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr2-mask_expr3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr2-mask_expr4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr2-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr2-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr0-truthy_expr2-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr0-mask_expr0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr0-mask_expr1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr0-mask_expr2]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr0-mask_expr3]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr0-mask_expr4]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr0-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr0-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr0-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr1-mask_expr0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr1-mask_expr1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr1-mask_expr2]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr1-mask_expr3]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr1-mask_expr4]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr1-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr1-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr1-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr2-mask_expr0]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr2-mask_expr1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr2-mask_expr2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr2-mask_expr3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr2-mask_expr4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr2-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr2-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr1-truthy_expr2-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr0-mask_expr0]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr0-mask_expr1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr0-mask_expr2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr0-mask_expr3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr0-mask_expr4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr0-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr0-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr0-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr1-mask_expr0]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr1-mask_expr1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr1-mask_expr2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr1-mask_expr3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr1-mask_expr4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr1-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr1-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr1-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr2-mask_expr0]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr2-mask_expr1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr2-mask_expr2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr2-mask_expr3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr2-mask_expr4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr2-mask_expr5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr2-mask_expr6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_single_element_broadcast[True-falsy_expr2-truthy_expr2-mask_expr7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Int32), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/AlexanderNenninger/",
+      "collects": 7
+    },
+    "test_struct_when_then_broadcasting_combinations_19122[values0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function StructExpr"
+    },
+    "test_struct_when_then_broadcasting_combinations_19122[values1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function StructExpr"
+    },
+    "test_struct_when_then_broadcasting_combinations_19122[values2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function StructExpr"
+    },
+    "test_struct_when_then_broadcasting_combinations_19122[values3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function StructExpr"
+    },
+    "test_struct_when_then_broadcasting_combinations_19122[values4]": {
+      "outcome": "skipped",
+      "reason": "translator: Function StructExpr"
+    },
+    "test_struct_when_then_broadcasting_combinations_19122[values5]": {
+      "outcome": "skipped",
+      "reason": "translator: Function StructExpr"
+    },
+    "test_struct_when_then_broadcasting_combinations_19122[values6]": {
+      "outcome": "skipped",
+      "reason": "translator: Function StructExpr"
+    },
+    "test_struct_when_then_broadcasting_combinations_19122[values7]": {
+      "outcome": "skipped",
+      "reason": "translator: Function StructExpr"
+    },
+    "test_struct_when_then_broadcasting_combinations_19122[values8]": {
+      "outcome": "skipped",
+      "reason": "translator: Function StructExpr"
+    },
+    "test_struct_when_then_broadcasting_combinations_19122[values9]": {
+      "outcome": "skipped",
+      "reason": "translator: Function StructExpr"
+    },
+    "test_type_coercion_when_then_otherwise_2806": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_when_otherwise_broadcast_28969[False-False-0-0-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-0-0-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-0-0-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-0-1-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-0-1-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-0-1-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-0-8-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-0-8-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-0-8-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-1-0-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-1-0-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-1-0-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-1-1-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-1-1-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-1-1-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-1-8-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-1-8-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-1-8-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-8-0-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-8-0-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-8-0-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-8-1-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-8-1-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-8-1-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-8-8-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-8-8-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-False-8-8-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-0-0-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-0-0-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-0-0-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-0-1-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-0-1-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-0-1-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-0-8-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-0-8-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-0-8-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-1-0-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-1-0-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-1-0-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-1-1-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-1-1-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-1-1-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-1-8-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-1-8-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-1-8-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-8-0-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-8-0-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-8-0-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-8-1-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-8-1-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-8-1-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-8-8-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-8-8-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[False-True-8-8-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-0-0-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-0-0-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-0-0-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-0-1-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-0-1-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-0-1-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-0-8-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-0-8-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-0-8-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-1-0-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-1-0-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-1-0-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-1-1-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-1-1-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-1-1-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-1-8-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-1-8-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-1-8-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-8-0-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-8-0-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-8-0-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-8-1-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-8-1-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-8-1-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-8-8-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-8-8-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-False-8-8-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-0-0-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-0-0-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-0-0-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-0-1-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-0-1-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-0-1-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-0-8-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-0-8-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-0-8-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-1-0-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-1-0-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-1-0-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-1-1-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-1-1-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-1-1-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-1-8-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-1-8-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-1-8-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-8-0-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-8-0-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-8-0-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-8-1-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-8-1-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-8-1-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-8-8-0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-8-8-1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_otherwise_broadcast_28969[True-True-8-8-8]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_predicates_kwargs": {
+      "outcome": "skipped",
+      "reason": "translator: Function AllHorizontal"
+    },
+    "test_when_then": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_then_binary_op_predicate_agg_12526": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_chained": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_then_chunked_fill_null_22794": {
+      "outcome": "skipped",
+      "reason": "translator: Function FillNullWithStrategy"
+    },
+    "test_when_then_chunked_structs_18673": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_complex_conditional_22959": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_when_then_edge_cases_3994": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_when_then_else_struct_18961": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_empty_list_5547": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_when_then_implicit_none": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_then_in_group_by_aggregated_22922": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_invalid_chains": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_masks_multichunk_struct_29799[in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_when_then_masks_multichunk_struct_29799[streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_when_then_nested_non_unit_literal_predicate_agg_broadcast_12242": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_when_then_nested_null_28941": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_then_non_unit_literal_predicate_agg_broadcast_12382": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_when_then_null_broadcast": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_when_then_output_name_12380[False]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_output_name_12380[True]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-Boolean-100]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-Boolean-10]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-Boolean-1]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-Boolean-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast0-Float32-100]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-Float32-10]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-Float32-1]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-Float32-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast0-Float64-100]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-Float64-10]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-Float64-1]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-Float64-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast0-IntArray-100]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Int64, shape=(N,)), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/Alexan",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-IntArray-10]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Int64, shape=(N,)), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/Alexan",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-IntArray-1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Int64, shape=(N,)), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/Alexan",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-IntArray-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast0-List-100]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-List-10]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-List-1]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-List-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast0-Object-100]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast0-Object-10]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast0-Object-1]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast0-Object-500]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast0-StrArray-100]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(String, shape=(N,)), the plan expects List(String); run it with engine=… (see #2540, https://github.com/Alex",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-StrArray-10]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(String, shape=(N,)), the plan expects List(String); run it with engine=… (see #2540, https://github.com/Alex",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-StrArray-1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(String, shape=(N,)), the plan expects List(String); run it with engine=… (see #2540, https://github.com/Alex",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-StrArray-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast0-String-100]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-String-10]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-String-1]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-String-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast0-Struct-100]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Struct({…: Int32, …: String}), the plan expects Struct({…: Int64, …: String}); run it with engine=… (see #2540, ht",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-Struct-10]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Struct({…: Int32, …: String}), the plan expects Struct({…: Int64, …: String}); run it with engine=… (see #2540, ht",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-Struct-1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Struct({…: Int32, …: String}), the plan expects Struct({…: Int64, …: String}); run it with engine=… (see #2540, ht",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-Struct-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast0-UInt16-100]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-UInt16-10]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-UInt16-1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-UInt16-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast0-UInt32-100]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-UInt32-10]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-UInt32-1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-UInt32-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast0-UInt64-100]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-UInt64-10]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-UInt64-1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-UInt64-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast0-UInt8-100]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-UInt8-10]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-UInt8-1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_when_then_parametric[broadcast0-UInt8-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast1-Boolean-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-Boolean-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-Boolean-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-Boolean-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast1-Float32-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-Float32-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-Float32-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-Float32-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast1-Float64-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-Float64-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-Float64-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-Float64-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast1-IntArray-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-IntArray-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-IntArray-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-IntArray-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast1-List-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-List-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-List-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-List-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast1-Object-100]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast1-Object-10]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast1-Object-1]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast1-Object-500]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast1-StrArray-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-StrArray-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-StrArray-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-StrArray-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast1-String-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-String-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-String-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-String-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast1-Struct-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-Struct-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-Struct-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-Struct-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast1-UInt16-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-UInt16-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-UInt16-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-UInt16-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast1-UInt32-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-UInt32-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-UInt32-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-UInt32-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast1-UInt64-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-UInt64-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-UInt64-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-UInt64-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast1-UInt8-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-UInt8-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-UInt8-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast1-UInt8-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast2-Boolean-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-Boolean-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-Boolean-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-Boolean-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast2-Float32-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-Float32-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-Float32-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-Float32-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast2-Float64-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-Float64-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-Float64-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-Float64-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast2-IntArray-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-IntArray-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-IntArray-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-IntArray-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast2-List-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-List-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-List-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-List-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast2-Object-100]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast2-Object-10]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast2-Object-1]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast2-Object-500]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast2-StrArray-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-StrArray-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-StrArray-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-StrArray-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast2-String-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-String-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-String-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-String-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast2-Struct-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-Struct-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-Struct-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-Struct-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast2-UInt16-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-UInt16-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-UInt16-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-UInt16-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast2-UInt32-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-UInt32-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-UInt32-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-UInt32-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast2-UInt64-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-UInt64-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-UInt64-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-UInt64-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast2-UInt8-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-UInt8-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-UInt8-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast2-UInt8-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast3-Boolean-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-Boolean-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-Boolean-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-Boolean-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast3-Float32-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-Float32-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-Float32-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-Float32-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast3-Float64-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-Float64-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-Float64-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-Float64-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast3-IntArray-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-IntArray-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-IntArray-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-IntArray-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast3-List-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-List-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-List-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-List-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast3-Object-100]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast3-Object-10]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast3-Object-1]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast3-Object-500]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast3-StrArray-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-StrArray-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-StrArray-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-StrArray-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast3-String-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-String-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-String-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-String-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast3-Struct-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-Struct-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-Struct-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-Struct-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast3-UInt16-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-UInt16-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-UInt16-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-UInt16-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast3-UInt32-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-UInt32-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-UInt32-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-UInt32-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast3-UInt64-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-UInt64-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-UInt64-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-UInt64-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast3-UInt8-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-UInt8-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-UInt8-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast3-UInt8-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast4-Boolean-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-Boolean-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-Boolean-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-Boolean-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast4-Float32-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-Float32-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-Float32-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-Float32-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast4-Float64-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-Float64-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-Float64-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-Float64-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast4-IntArray-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-IntArray-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-IntArray-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-IntArray-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast4-List-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-List-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-List-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-List-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast4-Object-100]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast4-Object-10]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast4-Object-1]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast4-Object-500]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast4-StrArray-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-StrArray-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-StrArray-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-StrArray-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast4-String-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-String-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-String-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-String-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast4-Struct-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-Struct-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-Struct-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-Struct-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast4-UInt16-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-UInt16-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-UInt16-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-UInt16-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast4-UInt32-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-UInt32-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-UInt32-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-UInt32-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast4-UInt64-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-UInt64-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-UInt64-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-UInt64-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast4-UInt8-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-UInt8-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-UInt8-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast4-UInt8-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast5-Boolean-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-Boolean-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-Boolean-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-Boolean-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast5-Float32-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-Float32-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-Float32-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-Float32-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast5-Float64-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-Float64-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-Float64-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-Float64-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast5-IntArray-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-IntArray-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-IntArray-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-IntArray-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast5-List-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-List-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-List-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-List-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast5-Object-100]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast5-Object-10]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast5-Object-1]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast5-Object-500]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast5-StrArray-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-StrArray-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-StrArray-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-StrArray-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast5-String-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-String-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-String-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-String-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast5-Struct-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-Struct-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-Struct-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-Struct-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast5-UInt16-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-UInt16-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-UInt16-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-UInt16-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast5-UInt32-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-UInt32-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-UInt32-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-UInt32-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast5-UInt64-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-UInt64-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-UInt64-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-UInt64-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast5-UInt8-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-UInt8-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-UInt8-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast5-UInt8-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast6-Boolean-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-Boolean-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-Boolean-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-Boolean-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast6-Float32-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-Float32-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-Float32-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-Float32-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast6-Float64-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-Float64-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-Float64-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-Float64-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast6-IntArray-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-IntArray-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-IntArray-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-IntArray-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast6-List-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-List-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-List-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-List-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast6-Object-100]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast6-Object-10]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast6-Object-1]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast6-Object-500]": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_when_then_parametric[broadcast6-StrArray-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-StrArray-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-StrArray-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-StrArray-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast6-String-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-String-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-String-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-String-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast6-Struct-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-Struct-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-Struct-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-Struct-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast6-UInt16-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-UInt16-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-UInt16-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-UInt16-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast6-UInt32-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-UInt32-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-UInt32-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-UInt32-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast6-UInt64-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-UInt64-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-UInt64-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-UInt64-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast6-UInt8-100]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-UInt8-10]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-UInt8-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_when_then_parametric[broadcast6-UInt8-500]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_when_then_parametric[broadcast7-Boolean-100]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Boolean-10]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Boolean-1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Boolean-500]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Float32-100]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Float32-10]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Float32-1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Float32-500]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Float64-100]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Float64-10]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Float64-1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Float64-500]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-IntArray-100]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-IntArray-10]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-IntArray-1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-IntArray-500]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-List-100]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-List-10]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-List-1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-List-500]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Object-100]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Object-10]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Object-1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Object-500]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-StrArray-100]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-StrArray-10]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-StrArray-1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-StrArray-500]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-String-100]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-String-10]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-String-1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-String-500]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Struct-100]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Struct-10]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Struct-1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-Struct-500]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt16-100]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt16-10]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt16-1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt16-500]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt32-100]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt32-10]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt32-1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt32-500]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt64-100]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt64-10]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt64-1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt64-500]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt8-100]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt8-10]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt8-1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_parametric[broadcast7-UInt8-500]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_scalar_condition_masks_unselected_branch[in-memory]": {
+      "outcome": "refused",
+      "construct": "run: refused on polars: the black box varchar_bigint is not yet supported on polars; run it with engine=… (see #2540, https://github.com/AlexanderNenninger/subs",
+      "collects": 1
+    },
+    "test_when_then_scalar_condition_masks_unselected_branch[streaming]": {
+      "outcome": "refused",
+      "construct": "run: refused on polars: the black box varchar_bigint is not yet supported on polars; run it with engine=… (see #2540, https://github.com/AlexanderNenninger/subs",
+      "collects": 1
+    },
+    "test_when_then_scalar_condition_on_empty_frame_with_cse": {
+      "outcome": "skipped",
+      "reason": "translator: Function CumSum"
+    },
+    "test_when_then_scalar_condition_with_cse_scalar_branch[0]": {
+      "outcome": "unproved",
+      "reason": "overflow",
+      "collects": 1
+    },
+    "test_when_then_scalar_condition_with_cse_scalar_branch[3]": {
+      "outcome": "unproved",
+      "reason": "overflow",
+      "collects": 1
+    },
+    "test_when_then_simplification": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_simplification_scalar_branches": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_when_then_string_literal_categorical_join_29816": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_when_then_supertype_15975": {
+      "outcome": "skipped",
+      "reason": "translator: Function Pow"
+    },
+    "test_when_then_supertype_15975_comment": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_when_then_to_decimal_18375": {
+      "outcome": "skipped",
+      "reason": "translator: Function ToDecimal"
+    }
+  }
+}

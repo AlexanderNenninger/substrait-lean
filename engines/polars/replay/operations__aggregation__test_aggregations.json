@@ -1,0 +1,4189 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/aggregation/test_aggregations.py",
+  "license": "MIT",
+  "module": "operations__aggregation__test_aggregations",
+  "summary": {
+    "agree": 17,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 6,
+    "unproved": 3,
+    "skipped": 1015
+  },
+  "results": {
+    "test_agg_empty_sum_after_filter_14734": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_agg_expr_returns_list_type_15574": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_agg_filter_over_empty_df_13610": {
+      "outcome": "skipped",
+      "reason": "translator: Filter"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df0-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "fails, skips or is xfailed in Polars's own run"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "fails, skips or is xfailed in Polars's own run"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df1-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df10-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df11-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df12-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df13-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df14-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df15-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df16-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df17-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df2-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df3-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df4-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df5-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df6-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df7-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df8-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[False-df9-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df0-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "fails, skips or is xfailed in Polars's own run"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "fails, skips or is xfailed in Polars's own run"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df1-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df10-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df11-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df12-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df13-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df14-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df15-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df16-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df17-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df2-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df3-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df4-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df5-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df6-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df7-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df8-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-all-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-any-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-approx_n_unique-expr17]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-arg_max-expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-arg_min-expr5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-bitwise_and-expr18]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-bitwise_or-expr19]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-bitwise_xor-expr20]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-first-expr15]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-is_empty-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-is_empty_ignore_nulls-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-last-expr16]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-max-expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-mean-expr8]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-median-expr9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Median"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-min-expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-product-expr10]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-quantile-expr11]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-std-expr12]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-sum-expr14]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_invalid_same_engines_behavior[True-df9-var-expr13]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_agg_scalar_empty_groups_20115": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_agg_with_filter_then_cast_23682[False-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_agg_with_filter_then_cast_23682[False-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_agg_with_filter_then_cast_23682[True-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Filter"
+    },
+    "test_agg_with_filter_then_cast_23682[True-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_agg_with_slice_then_cast_23682[False-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_agg_with_slice_then_cast_23682[False-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_agg_with_slice_then_cast_23682[True-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice"
+    },
+    "test_agg_with_slice_then_cast_23682[True-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_all_any_on_list_raises_error": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_approx_quantile_bad_error[-0.1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_approx_quantile_bad_error[0.0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_approx_quantile_bad_error[1.0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_approx_quantile_bad_error[1e-18]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_approx_quantile_bad_error[2.0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_approx_quantile_bad_error[nan]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_approx_quantile_bad_method": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_approx_quantile_dtypes[values0-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_approx_quantile_dtypes[values1-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_approx_quantile_dtypes[values10-dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_approx_quantile_dtypes[values2-UInt64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_approx_quantile_dtypes[values3-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_approx_quantile_dtypes[values4-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_approx_quantile_dtypes[values5-Date]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_approx_quantile_dtypes[values6-Datetime]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_approx_quantile_dtypes[values7-Duration]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_approx_quantile_dtypes[values8-String]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_approx_quantile_dtypes[values9-Boolean]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_approx_quantile_dyn_literal_input": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_approx_quantile_dyn_literal_quantile[0.5-2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxQuantile"
+    },
+    "test_approx_quantile_dyn_literal_quantile[1-3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxQuantile"
+    },
+    "test_approx_quantile_empty": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxQuantile"
+    },
+    "test_approx_quantile_empty_group": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_approx_quantile_empty_quantile[Float64]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_approx_quantile_empty_quantile[dtype1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_approx_quantile_expression_quantile[auto]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_approx_quantile_expression_quantile[kll]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_approx_quantile_expression_quantile[req_both]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_approx_quantile_expression_quantile[req_hi]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_approx_quantile_expression_quantile[req_lo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_approx_quantile_group_by_is_exact[auto]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_approx_quantile_group_by_is_exact[kll]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_approx_quantile_group_by_is_exact[req_both]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_approx_quantile_group_by_is_exact[req_hi]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_approx_quantile_group_by_is_exact[req_lo]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_approx_quantile_is_monotone[auto]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_approx_quantile_is_monotone[kll]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_approx_quantile_is_monotone[req_both]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_approx_quantile_is_monotone[req_hi]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_approx_quantile_is_monotone[req_lo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_approx_quantile_is_monotone_around_median": {
+      "outcome": "skipped",
+      "reason": "translator: Explode"
+    },
+    "test_approx_quantile_lossless_rank[auto]": {
+      "outcome": "skipped",
+      "reason": "translator: Explode"
+    },
+    "test_approx_quantile_lossless_rank[kll]": {
+      "outcome": "skipped",
+      "reason": "translator: Explode"
+    },
+    "test_approx_quantile_lossless_rank[req_both]": {
+      "outcome": "skipped",
+      "reason": "translator: Explode"
+    },
+    "test_approx_quantile_lossless_rank[req_hi]": {
+      "outcome": "skipped",
+      "reason": "translator: Explode"
+    },
+    "test_approx_quantile_lossless_rank[req_lo]": {
+      "outcome": "skipped",
+      "reason": "translator: Explode"
+    },
+    "test_approx_quantile_merged_rank_error[auto]": {
+      "outcome": "skipped",
+      "reason": "inputs: a plan over 256 KB"
+    },
+    "test_approx_quantile_merged_rank_error[kll]": {
+      "outcome": "skipped",
+      "reason": "inputs: a plan over 256 KB"
+    },
+    "test_approx_quantile_merged_rank_error[req_both]": {
+      "outcome": "skipped",
+      "reason": "inputs: a plan over 256 KB"
+    },
+    "test_approx_quantile_merged_rank_error[req_hi]": {
+      "outcome": "skipped",
+      "reason": "inputs: a plan over 256 KB"
+    },
+    "test_approx_quantile_merged_rank_error[req_lo]": {
+      "outcome": "skipped",
+      "reason": "inputs: a plan over 256 KB"
+    },
+    "test_approx_quantile_null_quantile": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_approx_quantile_out_of_range[-0.1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_approx_quantile_out_of_range[1.1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_approx_quantile_protected_tail_is_exact": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_approx_quantile_rank_error": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_approx_quantile_series_literal_quantile[quantile0-3.0]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_approx_quantile_series_literal_quantile[quantile1-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_approx_quantile_smallest_error[auto]": {
+      "outcome": "skipped",
+      "reason": "translator: Explode"
+    },
+    "test_approx_quantile_smallest_error[kll]": {
+      "outcome": "skipped",
+      "reason": "translator: Explode"
+    },
+    "test_approx_quantile_smallest_error[req_both]": {
+      "outcome": "skipped",
+      "reason": "translator: Explode"
+    },
+    "test_approx_quantile_smallest_error[req_hi]": {
+      "outcome": "skipped",
+      "reason": "translator: Explode"
+    },
+    "test_approx_quantile_smallest_error[req_lo]": {
+      "outcome": "skipped",
+      "reason": "translator: Explode"
+    },
+    "test_approx_quantile_unsupported_dtype": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_binary_op_agg_context_no_simplify_expr_12423": {
+      "outcome": "refused",
+      "construct": "run: multiply of Int8 and Int8; run it with engine=… (see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/N)",
+      "collects": 2
+    },
+    "test_boolean_aggs": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_date_mean_engine_consistency_29357[days0-expected0]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.int to Substrait.Kind.date. Lean's model does not cover it y",
+      "collects": 3
+    },
+    "test_date_mean_engine_consistency_29357[days1-expected1]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.int to Substrait.Kind.date. Lean's model does not cover it y",
+      "collects": 3
+    },
+    "test_duration_aggs": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: type interval(…) is not supported; cast the column to a supported type in the source query; only a column the query never reads is l",
+      "collects": 8
+    },
+    "test_duration_function_literal": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, 'Micro"
+    },
+    "test_empty_agg_22005": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_filter_aggregation_16642": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_first_last_nested[Date-first_value3-last_value3-False-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_first_last_nested[Date-first_value3-last_value3-False-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_first_last_nested[Date-first_value3-last_value3-True-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg FirstNonNull"
+    },
+    "test_first_last_nested[Date-first_value3-last_value3-True-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg FirstNonNull"
+    },
+    "test_first_last_nested[Float32-1.0-2.0-False-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_first_last_nested[Float32-1.0-2.0-False-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_first_last_nested[Float32-1.0-2.0-True-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg FirstNonNull"
+    },
+    "test_first_last_nested[Float32-1.0-2.0-True-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg FirstNonNull"
+    },
+    "test_first_last_nested[dtype0-first_value0-last_value0-False-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_first_last_nested[dtype0-first_value0-last_value0-False-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_first_last_nested[dtype0-first_value0-last_value0-True-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg FirstNonNull"
+    },
+    "test_first_last_nested[dtype0-first_value0-last_value0-True-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg FirstNonNull"
+    },
+    "test_first_last_nested[dtype1-first_value1-last_value1-False-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_first_last_nested[dtype1-first_value1-last_value1-False-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_first_last_nested[dtype1-first_value1-last_value1-True-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg FirstNonNull"
+    },
+    "test_first_last_nested[dtype1-first_value1-last_value1-True-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg FirstNonNull"
+    },
+    "test_first_last_nested[dtype2-first_value2-last_value2-False-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_first_last_nested[dtype2-first_value2-last_value2-False-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_first_last_nested[dtype2-first_value2-last_value2-True-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg FirstNonNull"
+    },
+    "test_first_last_nested[dtype2-first_value2-last_value2-True-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg FirstNonNull"
+    },
+    "test_first_last_unit_length_12363": {
+      "outcome": "skipped",
+      "reason": "translator: RenameAlias"
+    },
+    "test_group_by_categorical_min_max_25906": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_group_count_over_null_column_15705": {
+      "outcome": "unproved",
+      "reason": "data: table polars_input_0 differs from the schema the plan was verified for: column … is null, the plan expects int64: refused before the run. Declare the colu",
+      "collects": 1
+    },
+    "test_grouped_minmax_after_reverse_on_sorted_column_26141[max-2]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_grouped_minmax_after_reverse_on_sorted_column_26141[min-0]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_grouping_hash_14749": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_horizontal_mean_in_group_by_15115": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_horizontal_mean_single_column[Boolean-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_horizontal_mean_single_column[Float32-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_horizontal_mean_single_column[Float64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_horizontal_mean_single_column[Int16-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_horizontal_mean_single_column[Int32-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_horizontal_mean_single_column[Int64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_horizontal_mean_single_column[Int8-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_horizontal_mean_single_column[UInt16-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_horizontal_mean_single_column[UInt32-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_horizontal_mean_single_column[UInt64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_horizontal_mean_single_column[UInt8-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_horizontal_sum_bool_dtype": {
+      "outcome": "skipped",
+      "reason": "translator: Function SumHorizontal"
+    },
+    "test_horizontal_sum_in_group_by_15102": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_horizontal_sum_null_to_identity": {
+      "outcome": "skipped",
+      "reason": "translator: Function SumHorizontal"
+    },
+    "test_implode_and_agg": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_int16_max_12904[Int16]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_int16_max_12904[UInt16]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_invalid_agg_dtypes_should_raise[df0-cum_sum-expr6]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df0-mean-expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df0-median-expr2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df0-quantile-expr5]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df0-std-expr3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df0-sum-expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df0-var-expr4]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df1-cum_sum-expr6]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df1-mean-expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df1-median-expr2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df1-quantile-expr5]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df1-std-expr3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df1-sum-expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df1-var-expr4]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df2-cum_sum-expr6]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df2-mean-expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df2-median-expr2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df2-quantile-expr5]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df2-std-expr3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df2-sum-expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df2-var-expr4]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df3-cum_sum-expr6]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df3-mean-expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df3-median-expr2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df3-quantile-expr5]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df3-std-expr3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df3-sum-expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df3-var-expr4]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df4-cum_sum-expr6]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df4-mean-expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df4-median-expr2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df4-quantile-expr5]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df4-std-expr3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df4-sum-expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df4-var-expr4]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df5-cum_sum-expr6]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df5-mean-expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df5-median-expr2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df5-quantile-expr5]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df5-std-expr3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df5-sum-expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_agg_dtypes_should_raise[df5-var-expr4]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_item_on_groups": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_item_on_groups_empty": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_item_on_groups_null_29780[2.0]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_item_on_groups_null_29780[True]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_item_on_groups_null_29780[x]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_item_on_groups_too_many": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_item_too_many": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_list_aggregation_that_filters_all_data_6017": {
+      "outcome": "skipped",
+      "reason": "translator: Filter"
+    },
+    "test_literal_group_agg_chunked_7968": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_mapped_literal_to_literal_9217": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_max_by_scalar_26548": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Function"
+    },
+    "test_max_sorted_all_nan_with_nulls[Float32]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_max_sorted_all_nan_with_nulls[Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_mean_null_simd": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: more than N rows"
+    },
+    "test_mean_overflow": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_median": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_min_max_2850": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_min_max_by[cat-agg_funcs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[cat-agg_funcs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[date-agg_funcs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[date-agg_funcs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[dec-agg_funcs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[dec-agg_funcs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[dt-agg_funcs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[dt-agg_funcs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[enum-agg_funcs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[enum-agg_funcs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[flt-agg_funcs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[flt-agg_funcs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[int-agg_funcs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[int-agg_funcs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[str-agg_funcs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by[str-agg_funcs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_min_max_by_all_null_by_group[max_by]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxBy"
+    },
+    "test_min_max_by_all_null_by_group[min_by]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinBy"
+    },
+    "test_min_max_by_all_null_by_group_slice[max_by]": {
+      "outcome": "skipped",
+      "reason": "translator: GroupBy with apply, a dynamic or rolling window or a slice"
+    },
+    "test_min_max_by_all_null_by_group_slice[min_by]": {
+      "outcome": "skipped",
+      "reason": "translator: GroupBy with apply, a dynamic or rolling window or a slice"
+    },
+    "test_min_max_by_extreme_keys_29760[by0-max_by]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxBy"
+    },
+    "test_min_max_by_extreme_keys_29760[by0-min_by]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinBy"
+    },
+    "test_min_max_by_extreme_keys_29760[by1-max_by]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxBy"
+    },
+    "test_min_max_by_extreme_keys_29760[by1-min_by]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinBy"
+    },
+    "test_min_max_by_extreme_keys_29760[by2-max_by]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxBy"
+    },
+    "test_min_max_by_extreme_keys_29760[by2-min_by]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinBy"
+    },
+    "test_min_max_by_extreme_keys_29760[by3-max_by]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxBy"
+    },
+    "test_min_max_by_extreme_keys_29760[by3-min_by]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinBy"
+    },
+    "test_min_max_by_extreme_keys_29760[by4-max_by]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxBy"
+    },
+    "test_min_max_by_extreme_keys_29760[by4-min_by]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinBy"
+    },
+    "test_min_max_by_nested_by_group_by[array-max_by-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxBy"
+    },
+    "test_min_max_by_nested_by_group_by[array-min_by-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinBy"
+    },
+    "test_min_max_by_nested_by_group_by[list-max_by-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxBy"
+    },
+    "test_min_max_by_nested_by_group_by[list-min_by-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinBy"
+    },
+    "test_min_max_by_nested_by_group_by[struct-max_by-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxBy"
+    },
+    "test_min_max_by_nested_by_group_by[struct-min_by-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinBy"
+    },
+    "test_min_max_by_on_boolean_26847[max_by-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxBy"
+    },
+    "test_min_max_by_on_boolean_26847[min_by-1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinBy"
+    },
+    "test_min_max_by_scalar_inputs_29760[max_by]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_min_max_by_scalar_inputs_29760[min_by]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_min_max_by_series_length_mismatch_26049[max_by]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_min_max_by_series_length_mismatch_26049[min_by]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_multi_arg_structify_15834": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Struct({…: Int32, …: Float64}), the plan expects Struct({…: Int64, …: Float64}); run it with engine=… (see #2540, ",
+      "collects": 2
+    },
+    "test_multi_quantile_group_by_unsupported_26956": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_nan_inf_aggregation": {
+      "outcome": "unproved",
+      "reason": "value",
+      "collects": 1
+    },
+    "test_online_variance": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_quantile": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_quantile_date": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_datetime[Asia/Tokyo-ms]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_datetime[Asia/Tokyo-ns]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_datetime[Asia/Tokyo-us]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_datetime[None-ms]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_datetime[None-ns]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_datetime[None-us]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_datetime[UTC-ms]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_datetime[UTC-ns]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_datetime[UTC-us]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_duration[ms]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_duration[ns]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_duration[us]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_empty_quantile[Float64]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_quantile_empty_quantile[dtype1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_quantile_empty_quantile_group_by": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_quantile_error_checking": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_quantile_expr_input": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_quantile_null_quantile": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_quantile_time": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_quantile_varying_quantiles_unsupported[approx_quantile]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_quantile_varying_quantiles_unsupported[quantile]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_quantile_vs_numpy[1-float]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_quantile_vs_numpy[1-int]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_quantile_vs_numpy[10-float]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_quantile_vs_numpy[10-int]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_quantile_vs_numpy[100-float]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_quantile_vs_numpy[100-int]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_quantile_vs_numpy[2-float]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_quantile_vs_numpy[2-int]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_single": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_single_element_std": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_single_empty": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_slice_after_agg": {
+      "outcome": "skipped",
+      "reason": "translator: Slice"
+    },
+    "test_sort_by_over_multiple_nulls_first": {
+      "outcome": "skipped",
+      "reason": "translator: Over of SortBy"
+    },
+    "test_sort_by_over_multiple_nulls_last": {
+      "outcome": "skipped",
+      "reason": "translator: Over of SortBy"
+    },
+    "test_sort_by_over_single_nulls_first": {
+      "outcome": "skipped",
+      "reason": "translator: Over of SortBy"
+    },
+    "test_sort_by_over_single_nulls_last": {
+      "outcome": "skipped",
+      "reason": "translator: Over of SortBy"
+    },
+    "test_string_par_materialize_8207": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_struct_enum_agg_streaming_24936": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_sum_empty_and_null_set": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: sum of FLOAT (fp32) values is not modelled; cast them to DOUBLE first. Lean's model does not cove",
+      "collects": 2
+    },
+    "test_sum_inf_not_nan_25849": {
+      "outcome": "unproved",
+      "reason": "data: N row(s) of polars_input_0 violate (_.x >= -1e+N): refused before the run",
+      "collects": 1
+    },
+    "test_unordered_implode_reduction_27373[Binary-input7-expect7]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unordered_implode_reduction_27373[Boolean-input1-expect1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unordered_implode_reduction_27373[Categorical-input4-expect4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_unordered_implode_reduction_27373[Date-input2-expect2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unordered_implode_reduction_27373[Int32-input0-expect0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unordered_implode_reduction_27373[String-input6-expect6]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unordered_implode_reduction_27373[dtype3-input3-expect3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unordered_implode_reduction_27373[dtype5-input5-expect5]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    }
+  }
+}
