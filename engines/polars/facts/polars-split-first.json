@@ -1,0 +1,40 @@
+{
+  "id": "polars-split-first",
+  "engine": "polars",
+  "engine_version": "py-2.1.0",
+  "title": "`str.split(t).list.first()`: the prefix before the leftmost `t`, characters for an empty `t`",
+  "verdict": "`sverify_split_first` for `t ≠ ''`; for `t = ''` the first character, NULL for `''`",
+  "area": "strings",
+  "options": [],
+  "rows": [],
+  "constructs": [
+    "str.split",
+    "list.first"
+  ],
+  "settings": {
+    "engine": [
+      "in-memory",
+      "streaming"
+    ]
+  },
+  "description": [
+    "`s.str.split(t).list.first()` is the part of `s` before the leftmost occurrence of `t`, or `s` where `t` does not occur, counted in characters on non-ASCII text, with `t` read literally (`.` and `*` are not patterns). A NULL `s` or `t` gives NULL.",
+    "An empty `t` splits `s` into its characters: `'abc'` gives `'a'`, and `''` gives NULL."
+  ],
+  "reference": "`sverify_split_first(s, t)` (`Text.splitFirst`, ruling 286) is the prefix before the leftmost `t`, `s` where `t` does not occur, and `s` for an empty `t`. The two agree for `t ≠ ''`; a lowering that writes the split guards the empty `t` first.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-28",
+      "method": "probe",
+      "checked_by": "#2586 session (polars 2.1.0, collect(engine='in-memory') and collect(engine='streaming'), 17 rows)",
+      "evidence": [
+        {
+          "file": "engines/polars/probes/split_first.py"
+        }
+      ],
+      "notes": "Each row compared with a model of Text.splitFirst: non-ASCII text and needles, several and overlapping occurrences (the leftmost wins), a needle at the start, regex metacharacters, an absent needle, one longer than s, the empty s, the whole string, NULLs in either argument. 15 rows agree on both engines; the two with an empty t differ ('abc' → 'a', '' → NULL)."
+    }
+  ]
+}
