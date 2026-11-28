@@ -27,13 +27,13 @@ from sverify.plan_json import (
 from sverify.sql_lift._base import (
     _KNOWN,
     CONSTANT_FIX,
-    DIALECT,
     Column,
     E,
     Sub,
     _fn,
     _Lift,
     _shown,
+    _sql,
     register,
 )
 from sverify.sql_lift.strings import _ANONYMOUS_STRINGS
@@ -180,7 +180,7 @@ def _at_time_zone(lf: _Lift, node: sge.AtTimeZone, sub: Sub, scope: list[Column]
     text = zone.name if isinstance(zone, sge.Literal) and zone.is_string else None
     if text is None or text.upper() not in {"UTC", "ETC/UTC", "Z"}:
         raise SqlUnsupported(
-            f"AT TIME ZONE {zone.sql(DIALECT) if zone is not None else '?'}: only 'UTC' is "
+            f"AT TIME ZONE {_sql(zone) if zone is not None else '?'}: only 'UTC' is "
             f"read, in the same way as a timestamp with a time zone {INSTANT_NOTE}",
             construct="AT TIME ZONE",
         )

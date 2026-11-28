@@ -393,9 +393,9 @@ _duckdb.on_reset(lambda: setattr(DuckDBStore, "_db", None))
 def _lift(query: str, schemas: Any, semantics: str) -> Any:
     """DuckDB's SQL lifted to a plan (`sverify.sql_lift`), under the profile
     `semantics` names (`"duckdb"` or `"portable"`)."""
-    from sverify.sql_lift import lift
+    from sverify.sql_lift import DUCKDB_SQL, lift
 
-    return lift(query, schemas, semantics)
+    return lift(query, schemas, semantics, surface=DUCKDB_SQL)
 
 
 PLUGIN = ProfilePlugin(
