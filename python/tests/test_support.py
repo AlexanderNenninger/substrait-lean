@@ -46,7 +46,7 @@ def plan(name: str, key: str = "scalarFunction", anchor: int = 7) -> dict:
 
 @pytest.mark.parametrize("dialect", ["spark", "snowflake", "Polars"])
 @pytest.mark.parametrize(
-    "name", ["regexp_extract", "md5", "first", "median", "corr", "list_prepend", "flatten"]
+    "name", ["regexp_extract", "md5", "first", "median", "mode", "list_prepend", "flatten"]
 )
 def test_duckdb_only(name: str, dialect: str) -> None:
     label = re.escape(_support._LABELS.get(name, name))
@@ -63,9 +63,9 @@ def test_duckdb_only(name: str, dialect: str) -> None:
 def test_messages() -> None:
     bb = sorted(black_box.NAMES)[0]
     assert _support.refusal(bb, "spark") == black_box.refusal(bb, "spark")
-    assert _support.refusal("sverify_pair", "spark").startswith(
-        "covariance and correlation (Ibis cov, corr) runs on duckdb only: "
-        "run it with engine='duckdb' (spark does not run it yet; see #2540, https://"
+    assert _support.refusal("sverify_pair", "polars").startswith(
+        "covariance and correlation (Ibis cov, corr) runs on duckdb and spark only: "
+        "run it with engine='duckdb' (polars does not run it yet; see #2540, https://"
     )
     assert _support.refusal("sverify_raise", "snowflake").endswith(
         ": Snowflake's SQL of the date guards grows past what it runs: a date from "

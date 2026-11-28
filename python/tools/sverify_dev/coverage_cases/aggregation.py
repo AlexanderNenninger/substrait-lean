@@ -8,6 +8,7 @@ from sverify_dev.coverage_cases._common import (
     DUCKDB_ONLY,
     NO_LISTS_SNOWFLAKE,
     NO_ORDERED_LISTS,
+    NOT_ON_POLARS,
     Case,
     R,
     V,
@@ -151,7 +152,7 @@ CASES: list[Case] = [
 ]
 
 REFUSED: dict[str, dict[str, str]] = {
-    "cov, corr": DUCKDB_ONLY,
+    "cov, corr": NOT_ON_POLARS,
     "first, last ordered": DUCKDB_ONLY,
     "distinct(on=)": DUCKDB_ONLY,
     "arbitrary": DUCKDB_ONLY,

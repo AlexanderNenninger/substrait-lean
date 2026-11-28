@@ -400,7 +400,7 @@ class DuckDBDialect(Dialect):
         return f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN NULL ELSE list_value({a}, {b}) END)"
 
     def covar(self, fn: str, v: str) -> str:
-        return f"{fn.upper()}({v}[1], {v}[2])"
+        return f"{fn.upper()}({self.pair_item(v, 1)}, {self.pair_item(v, 2)})"
 
     def is_ascii(self, s: str) -> str:
         return f"(strlen({s}) = length({s}))"
