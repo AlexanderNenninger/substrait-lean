@@ -28,11 +28,12 @@ CASES = [
 ]
 
 #: An empty `t`: Polars's split gives the first code point (the unit `Text.substr`
-#: counts), NULL for an empty `s`: `Profile.polars`'s template for the split.
+#: counts), NULL for an empty `s` (`Lowering.splitExcepted`, ruling 290).
 EMPTY = [
     ("日本", ""),  # a first character of three bytes
     ("😀a", ""),  # of four bytes
-    ("e\u0301x", ""),  # a base letter and a combining mark: two code points
+    ("\u00e9x", ""),  # the single code point U+00E9: comes back whole
+    ("e\u0301x", ""),  # e followed by U+0301 (a combining acute): two code points
     ("a", ""),
     ("", ""),
     (None, ""),
@@ -41,8 +42,8 @@ EMPTY = [
 
 
 def polars_ref(s: str | None, t: str | None) -> str | None:
-    """`Profile.polars`'s split: `if t = '' then (if s = '' then NULL else
-    substr(s, 1, 1)) else splitFirst(s, t)`."""
+    """Polars's own split: the first code point for an empty `t`, NULL for an
+    empty `s`, else `Text.splitFirst`."""
     if s is None or t is None:
         return None
     if t == "":
@@ -77,7 +78,7 @@ def main() -> None:
         got = e.lazy().select(r=pl.col("s").str.split(pl.col("t")).list.first())
         got = got.collect(engine=engine)["r"].to_list()
         bad = [(c, g) for c, g in zip(EMPTY, got, strict=True) if g != polars_ref(*c)]
-        print(engine, f"{len(EMPTY)} rows of an empty t against the profile's template:", bad)
+        print(engine, f"{len(EMPTY)} rows of an empty t, the first code point:", bad)
 
 
 if __name__ == "__main__":

@@ -19,7 +19,8 @@
   },
   "description": [
     "`s.str.split(t).list.first()` is the part of `s` before the leftmost occurrence of `t`, or `s` where `t` does not occur, counted in characters on non-ASCII text, with `t` read literally (`.` and `*` are not patterns). A NULL `s` or `t` gives NULL.",
-    "An empty `t` splits `s` into its code points, so the first part is the first code point: `'abc'` gives `'a'`, `'日本'` `'日'`, `'😀a'` `'😀'`, and `'éx'` (a base letter followed by a combining mark) `'e'`. An empty `s` gives NULL. That is `substr(s, 1, 1)` of the reference, which counts code points (`Text.substr`), and NULL for `''`."
+    "An empty `t` splits `s` into its code points, so the first part is the first code point: `'abc'` gives `'a'`, `'日本'` `'日'`, `'😀a'` `'😀'`, `'éx'` written as the single code point U+00E9 gives `'é'` whole, and `'éx'` written as `e` followed by U+0301 (a combining acute) gives `'e'`: code points, not graphemes. An empty `s` gives NULL. That is `substr(s, 1, 1)` of the reference, which counts code points (`Text.substr`), and NULL for `''`.",
+    "The native call returns on every one of these inputs, an empty pattern included: it raises nowhere and gives a value or NULL (ruling 290's P6), so a lowering that evaluates it there and discards the value is safe."
   ],
   "reference": "`sverify_split_first(s, t)` (`Text.splitFirst`, ruling 286) is the prefix before the leftmost `t`, `s` where `t` does not occur, and `s` for an empty `t`. The two agree but for a string and an empty `t` (`Polars.splitExcepted`), which `Profile.polars` keeps as the reference's: the lowering writes `if t = '' then s else split` and never reaches the split there (ruling 290, `Polars.split_native_not_excepted`).",
   "status": "open",
@@ -28,13 +29,13 @@
     {
       "checked_at": "2026-11-28",
       "method": "probe",
-      "checked_by": "#2586 session (polars 2.1.0, collect(engine='in-memory') and collect(engine='streaming'), 24 rows)",
+      "checked_by": "#2586 session (polars 2.1.0, collect(engine='in-memory') and collect(engine='streaming'), 25 rows)",
       "evidence": [
         {
           "file": "engines/polars/probes/split_first.py"
         }
       ],
-      "notes": "Each row compared with a model of Text.splitFirst: non-ASCII text and needles, several and overlapping occurrences (the leftmost wins), a needle at the start, regex metacharacters, an absent needle, one longer than s, the empty s, the whole string, NULLs in either argument; 15 rows agree on both engines, and the two with an empty t differ. Seven more rows with an empty t (first characters of three and four bytes, a base letter and a combining mark, one character, the empty s, a NULL s, a NULL t) compared with Profile.polars's template: 0 mismatches on both engines."
+      "notes": "Each row compared with a model of Text.splitFirst: non-ASCII text and needles, several and overlapping occurrences (the leftmost wins), a needle at the start, regex metacharacters, an absent needle, one longer than s, the empty s, the whole string, NULLs in either argument; 15 rows agree on both engines, and the two with an empty t differ. Eight more rows with an empty t (first characters of three and four bytes, U+00E9 as one code point, e followed by U+0301, one character, the empty s, a NULL s, a NULL t) compared with the first code point, NULL for '': 0 mismatches on both engines."
     }
   ]
 }

@@ -28,7 +28,8 @@ CASES = [
 EMPTY = [
     ("日本", ""),  # a first character of three bytes
     ("😀a", ""),  # of four bytes
-    ("éx", ""),  # a base letter and a combining mark: two code points
+    ("\u00e9x", ""),  # the single code point U+00E9: comes back whole
+    ("e\u0301x", ""),  # e followed by U+0301 (a combining acute): two code points
     ("a", ""),
     ("", ""),
     (None, ""),
