@@ -61,6 +61,16 @@ def test_another_result_than_polarss_is_found() -> None:
     assert replay.replay_collect(_plan(lf), other)["outcome"] == "unattributed"
 
 
+def test_rows_that_tie_may_come_in_any_order() -> None:
+    """Under a sort the keys are in order and the rows that tie on them may
+    come in any order the model allows: Polars's own order of ties agrees."""
+    lf = FRAME.sort("b", nulls_last=True)
+    got = lf.collect()
+    swapped = pl.concat([got[1:2], got[0:1], got[2:]])  # the two `x` rows tie
+    assert swapped["b"].to_list()[:2] == ["x", "x"]
+    assert replay.replay_collect(_plan(lf), swapped) == {"outcome": "agree"}
+
+
 def test_a_literal_the_json_plan_loses_is_not_read() -> None:
     """Polars's JSON writes a NaN or an infinite literal as `null`, which is no
     NULL: the translator skips it."""

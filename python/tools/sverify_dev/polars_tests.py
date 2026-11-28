@@ -795,7 +795,9 @@ def replay_collect(plan_text: str, result: Any) -> dict[str, Any]:
     if not lean_engine:
         side = "lean" if engine_polars else ("engine" if lean_polars else "neither")
         return {"outcome": "disagree", "side": side, "reason": f"{len(engine)} engine rows"}
-    if lean_polars and engine_polars:
+    # Where the model leaves a choice open (ties), the engine and Polars may
+    # pick different rows it allows: both are its results.
+    if lean_polars and (keys is None or keys_in_order(engine, theirs, keys)):
         return {"outcome": "agree"}
     return {
         "outcome": "unattributed",
