@@ -2,7 +2,8 @@
 
 `docs/stability.md` asks that a break be loud and caught by a unit test of
 the old form. Each test here uses the old form and checks that it raises;
-where the error can name the replacement, it does. `docs/upgrading-0.9.md`
+where the error can name the replacement, it does (an attribute of a module,
+not a `from … import`, whose `ImportError` is Python's own). `docs/upgrading.md`
 has each migration note with an example.
 
 Tested elsewhere: the exception names and the checker's environment
@@ -51,7 +52,16 @@ def test_a_renamed_module_name_raises_naming_the_new_one(module, old, new):
 
 def test_an_unknown_name_says_no_more_than_python_does():
     with pytest.raises(AttributeError, match=r"^module 'sverify.types' has no attribute 'Nope'$"):
-        sverify.types.Nope  # noqa: B018
+        getattr(sverify.types, "Nope")  # noqa: B009
+
+
+def test_an_import_of_a_renamed_name_fails_with_pythons_message():
+    """`from m import name` turns the module's `AttributeError` into Python's
+    own `ImportError`, which drops its message: the import fails, and the
+    attribute's error and `docs/upgrading.md` name the replacement."""
+    message = r"^cannot import name 'Observation' from 'sverify\.types'"
+    with pytest.raises(ImportError, match=message):
+        exec("from sverify.types import Observation")
 
 
 # -- attributes and keywords: the old name is gone -----------------------------

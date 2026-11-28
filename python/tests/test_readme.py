@@ -58,7 +58,7 @@ EXEMPT = {
     "CLAUDE.md": "instructions for the agents that work on the repository",
     "CHANGELOG.md": "the release notes quote old versions of the API",
     "dbt/API-NOTES.md": "notes on the API for contributors: fragments with their own setup",
-    "docs/upgrading-0.9.md": "migration notes quote 0.8's API; test_breaking_0_9.py runs it",
+    "docs/upgrading.md": "migration notes quote 0.8's API; test_breaking_0_9.py runs it",
 }
 
 

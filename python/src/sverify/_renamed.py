@@ -3,7 +3,7 @@ that replaces it (#2577). A public module's `__getattr__` raises
 `AttributeError` with the replacement for one of these, so the old spelling
 fails loudly and says what to write. None of them is an alias: each raises.
 
-`docs/upgrading-0.9.md` has the migration note for each, with an example."""
+`docs/upgrading.md` has the migration note for each, with an example."""
 
 #: Old dotted name -> the name to write instead.
 RENAMED: dict[str, str] = {

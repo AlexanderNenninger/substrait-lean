@@ -278,7 +278,7 @@ Each release is checked against these rules: the format fixtures, the "Breaking 
 section and its migration notes, and the facts or upstream records of each
 soundness fix.
 
-[Upgrading from 0.8 to 0.9](upgrading-0.9.md) gives 0.9.0's breaking
+[Upgrading from 0.8 to 0.9](upgrading.md) gives 0.9.0's breaking
 changes their migration notes with examples, and names the fact or upstream
 record behind each of its soundness fixes.
 

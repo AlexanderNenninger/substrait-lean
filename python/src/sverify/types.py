@@ -35,6 +35,8 @@ This module only names them; `import sverify` doesn't import it. What is
 public is defined in `docs/stability.md`.
 """
 
+from typing import TYPE_CHECKING
+
 from sverify._dialect import DialectDifference
 from sverify._quarantine import QuarantineReport
 from sverify._retention import RetentionReport
@@ -92,7 +94,9 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str) -> object:
-    from sverify._renamed import missing
+if not TYPE_CHECKING:  # a type checker keeps flagging names the module lacks
 
-    raise missing(__name__, name)
+    def __getattr__(name: str) -> object:
+        from sverify._renamed import missing
+
+        raise missing(__name__, name)

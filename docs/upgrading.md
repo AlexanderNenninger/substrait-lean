@@ -6,9 +6,11 @@ lists the changes, and [stability.md](stability.md#the-python-api) states
 the rule each break follows. The last section names the engine fact or
 upstream record behind each soundness fix of 0.9.0.
 
-0.9.0 keeps no deprecated alias. An old spelling raises; a renamed name of a
-public module, a removed flag, `sv.sql(as_=)`, `SVERIFY_PREBUILT_CHECK` and a
-sink's `_keeps_retired` say what replaced them, and
+0.9.0 keeps no deprecated alias. An old spelling raises. A renamed name of
+a public module read as an attribute (`sverify.types.Observation`), a removed
+flag, `sv.sql(as_=)`, `SVERIFY_PREBUILT_CHECK` and a sink's `_keeps_retired`
+say what replaced them. `from sverify.types import Observation` fails with
+Python's own `ImportError`, which names the old name alone, and
 [`tests/test_breaking_0_9.py`](../python/tests/test_breaking_0_9.py) runs
 each old spelling.
 
