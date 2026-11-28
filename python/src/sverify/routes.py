@@ -947,13 +947,18 @@ def recheck(report: Report, profile: str) -> tuple[bool | None, str]:
 # -- choosing the route (D13) -------------------------------------------------
 
 
-def max_rows_fix(report: Report, engine: str, required: Lenses | None) -> dict[str, list[str]]:
+def max_rows_fix(
+    report: Report, engine: str, required: Lenses | None, between_runs: bool = False
+) -> dict[str, list[str]]:
     """The `sv.max_rows(N)` under which the plan's bound on its doubles
     (`Report._epsilon`) meets the tolerance `required` states, by the input
     table that has a row cap now: the bound grows linearly with the rows,
     so `N` is the cap scaled by the tightest ratio of tolerance to bound.
     Empty where there is no stated tolerance, no single capped input, or
-    the bound already meets it; `sv.max_rows(0)` where no cap does."""
+    the bound already meets it; `sv.max_rows(0)` where no cap does. With
+    `between_runs`, for a rerun, the absolute bound counts twice: two runs
+    are within twice each run's distance to the reference
+    (`Realize.rerunBound`)."""
     from sverify.conditions import MaxRows
 
     if required is None or not isinstance(required.floats, Within) or not report._epsilon:
@@ -968,6 +973,7 @@ def max_rows_fix(report: Report, engine: str, required: Lenses | None) -> dict[s
         met = False
         best = 0.0
         for k, (v, _p) in bounds.items():
+            v = 2 * v if between_runs and k == "abs" else v
             tol = getattr(required.floats, k)
             if tol is None or not v:
                 continue
@@ -1161,8 +1167,8 @@ def _rerun_problem(engine: str, p: Mapping[str, Any], report: Report, required: 
             f"{k}={v:g}" + ("" if ok else " (tested)") for k, (v, ok) in bounds.items()
         )
         return (
-            f"{where}: each run's {p['column']} is within {shown} of the reference, and a "
-            f"rerun must reproduce {want}: pass "
+            f"{where}: two runs on {engine} are within {shown} of each other on "
+            f"{p['column']}, and a rerun must reproduce {want}: pass "
             f"reproducible=sv.equivalent(floats={_smallest(bounds)}) or looser, or "
             "sv.equivalent(floats=\"plan\") (the sinks' default) for the plan's own bound"
         )
@@ -1304,7 +1310,7 @@ def choose(
         problems, rerun_evidence = reproducibility(report, e, reproducible)
         if problems:
             ties = "" if det else f"; {ties_fix(report)}"
-            cap = max_rows_fix(report, e, reproducible)
+            cap = max_rows_fix(report, e, reproducible, between_runs=True)
             return replace(
                 refuse(
                     "a rerun must give the same result: "

@@ -1,0 +1,3 @@
+### A rerun's tolerance holds between runs
+
+A stated `reproducible=sv.equivalent(floats=sv.within(abs=...))` was met against the plan's bound on each run's distance to the reference, so two runs up to twice that bound apart passed. The checker now meets it against the bound between two runs: twice the absolute bound (`FloatBounds.rerun_abs`), and the relative bound as it is, which already holds between any two runs (`epsilon_sum_rel`). A tolerance between the plan's absolute bound and twice it is refused now, and the refusal's suggested `sv.max_rows` counts the doubled bound. The sinks' default (`floats="plan"`) is unchanged ([#2631](https://github.com/AlexanderNenninger/substrait-lean/issues/2631)).

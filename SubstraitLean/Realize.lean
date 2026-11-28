@@ -632,6 +632,23 @@ Python only words its problems (`sverify.routes.reproducibility`):
 The evidence is `proved` only where every option has a row with a variation, each variation
 is proved (`ObsRow.rerunEvidence`), and the bound that meets the lenses is. -/
 
+/-- A column's run-to-run bound, from its `ε` (ruling 281 Z6, #2631): what two runs of the
+engine may differ by, which a stated tolerance must meet (D20: `q_det` holds between runs).
+
+* `abs` is each run's distance to the reference (`StdModel.epsilon_sum_cr`, `_avg_cr`), so two
+  runs are within twice it (`FloatBounds.rerun_abs`).
+* `rel` is already the bound between any two runs, relative to either
+  (`StdModel.epsilon_sum_rel`, `epsilon_avg_rel`), which is at most the lens's distance
+  relative to the larger value: `"epsilon"`'s relative bounds are `Epsilon.PairwiseRel`s.
+  A relative bound per run against the reference (`epsilonByEngine`'s) would become
+  `2ρ/(1 − ρ)` by `FloatBounds.rerun_rel_of_ref`; the rerun check does not read one.
+* `ulps`: no bound of that kind is proved between runs, so it is dropped, and a tolerance in
+  ulps alone is not met. -/
+def rerunBound (e : EpsCol) : EpsCol :=
+  { e with bounds := e.bounds.filterMap fun (k, v, p) =>
+      if k == "abs" then some (k, ⟨2 * v.mantissa, v.exponent⟩, p)
+      else if k == "rel" then some (k, v, p) else none }
+
 /-- The lenses a rerun must reproduce by default, the sinks' (`PLAN_BOUND`): rows and list
 elements as multisets, one zero and one NaN, doubles within the plan's bound. -/
 def Seen.planBound : Seen :=
@@ -651,11 +668,12 @@ def rerunCheck (det exact : Bool) (required : Seen) (eps : List (String × EpsCo
     else if !exact && required.readsMembers then [Json.mkObj [("code", toJson "class_picks")]]
     else []
   let mut proved := true
+  let runs := eps.map fun (c, e) => (c, rerunBound e)
   for (d, r?) in rows do
     let some (r, v) := r?.bind fun r => r.rerun.map (r, ·)
       | proved := false; continue
     let (pb, unproved) :=
-      if v.floats != .exact then planBound required.floats eps [] else ([], false)
+      if v.floats != .exact then planBound required.floats runs [] else ([], false)
     if unproved || r.rerunEvidence.theorem?.isNone then proved := false
     let rest := { v with floats := .exact }
     let missed := rest.coarserThan required.q
@@ -693,6 +711,15 @@ private def planVaries : Option ObsRow := sumRow (some { floats := .within "plan
 private def sums (s : Seen) : List String × Bool :=
   codes (rerunCheck true true s eps [(sumDep, planVaries)])
 
+-- Two runs are within twice the absolute bound (ε = 0.001), the relative one as it is
+-- (#2631): a tolerance with ε ≤ τ < 2ε is not met, τ = 2ε is; the relative bound meets
+-- what it met per run; a tolerance in ulps alone is not met.
+#guard sums (within { abs := some ⟨15, 4⟩ }) == (["not_met"], true)
+#guard sums (within { abs := some ⟨2, 3⟩ }) == ([], true)
+#guard sums (within { rel := some ⟨1, 10⟩ }) == ([], false)
+#guard sums (within { ulps := some 1000 }) == (["not_met"], true)
+#guard (eps.map fun (_, e) => (rerunBound e).bounds) ==
+  [[("abs", ⟨2, 3⟩, true), ("rel", ⟨1, 10⟩, false)]]
 -- A summation order that varies between runs (`test_a_float_sum_on_polars_streaming`): a
 -- tolerance the proved absolute bound meets is proved, one only the tested relative bound
 -- meets is tested, and exact doubles are refused.

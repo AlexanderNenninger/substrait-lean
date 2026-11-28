@@ -310,6 +310,15 @@ theorem StdModel.epsilon_avg_cr {ps : List (ℝ × ℝ)} (hd : Decoded ps) (hne 
     _ ≤ _ := abs_sub _ _
     _ ≤ _ := by linarith
 
+/-- **Two runs, each within `ε` of the reference (#2631, ruling 281 Z6)**: two results within
+`ε` of the reference's `r`, as `epsilon_sum_cr` and `epsilon_avg_cr` bound each engine run, are
+within `2ε` of each other. A rerun meets a stated absolute tolerance against this bound
+(`Realize.rerunBound` in `SubstraitLean/Realize.lean`). -/
+theorem rerun_abs {a b r ε : ℝ} (ha : |a - r| ≤ ε) (hb : |b - r| ≤ ε) : |a - b| ≤ 2 * ε := by
+  calc |a - b| = |(a - r) - (b - r)| := by ring_nf
+    _ ≤ _ := abs_sub _ _
+    _ ≤ _ := by linarith
+
 /-! ## Relative: values of one sign -/
 
 theorem absSum_nonneg : ∀ {xs : List ℝ}, (∀ x ∈ xs, 0 ≤ x) → (xs.map abs).sum = xs.sum
@@ -347,6 +356,17 @@ theorem rel_of_near {a b S g : ℝ} (hg0 : 0 ≤ g) (hg : g < 1) (ha : |a - S| �
   rw [div_mul_eq_mul_div, le_div_iff₀ (by linarith)]
   have := mul_le_mul_of_nonneg_left hS (by linarith : (0 : ℝ) ≤ 2 * g)
   nlinarith
+
+/-- **Two runs, each within `ρ` of the reference relatively (#2631, ruling 281 Z6)**: they are
+within `2ρ/(1 − ρ)` of each other relative to the larger, the lens's relative distance
+(`Within.close`). Unused: the relative bounds the rerun check reads are already between two
+runs (`epsilon_sum_rel`, `epsilon_avg_rel`). A rerun that reads a relative bound per run
+against the reference (`epsilonByEngine`'s) goes through this one. -/
+theorem rerun_rel_of_ref {a b r ρ : ℝ} (h0 : 0 ≤ ρ) (h1 : ρ < 1) (ha : |a - r| ≤ ρ * |r|)
+    (hb : |b - r| ≤ ρ * |r|) : |a - b| ≤ 2 * ρ / (1 - ρ) * max |a| |b| := by
+  have hk : 0 ≤ 2 * ρ / (1 - ρ) := div_nonneg (by linarith) (by linarith)
+  calc |a - b| ≤ 2 * ρ / (1 - ρ) * |b| := rel_of_near h0 h1 ha hb
+    _ ≤ _ := mul_le_mul_of_nonneg_left (le_max_right _ _) hk
 
 /-- **`"rel"` of a `SUM`**: for doubles of one sign, two results the engines'
 orders give are within `2γ/(1 − γ)` of each other, relative to either,

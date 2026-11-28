@@ -33,9 +33,12 @@ place. Polars's streaming `SUM` of doubles may add in
 another order each run, so a double sum on Polars states both: the transform's
 `ensures=[sv.equivalent(floats=sv.within(abs=...))]` for the route, and the
 sink's `reproducible=sv.equivalent(floats=sv.within(abs=...))` for the
-rerun, each at least the plan's bound. With `x` within ±1000 and
-`max_rows(1000)` that bound is about `2.2e-7`, so `abs=1e-6` passes. Exact
-doubles on a rerun need doubles that are exact on the engine, so
+rerun. The transform's tolerance must be at least the plan's bound, each
+run's distance to the reference. Two runs may differ by twice that, so the
+sink's absolute tolerance must be at least twice the plan's absolute bound,
+or its relative tolerance at least the plan's relative bound. With `x` within
+±1000 and `max_rows(1000)` that bound is about `2.2e-7`, so `abs=1e-6` passes
+both. Exact doubles on a rerun need doubles that are exact on the engine, so
 `sv.equivalent()` over a double `SUM` or `AVG` is refused; the default
 (`floats="plan"`) or a tolerance with a row cap is met:
 

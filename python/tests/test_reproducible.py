@@ -54,7 +54,9 @@ def test_a_float_sum_on_polars_streaming(con) -> None:
     exact = routes.choose(report, "polars", reproducible=sv.equivalent())
     assert exact.refused
     assert "a rerun must give the same result" in exact.why
-    assert "each run's total is within abs=111.023, rel=2.22045e-10 of the reference" in exact.why
+    # Two runs are within twice each run's absolute bound, and the relative bound as it is
+    # (#2631).
+    assert "two runs on polars are within abs=222.045, rel=2.22045e-10 of each other" in exact.why
     assert exact.reproducible == sv.equivalent()
     # Without a requirement, the route only reports.
     assert routes.choose(report, "polars").taken == "translated"
@@ -68,7 +70,7 @@ def test_a_stated_tolerance_against_the_plans_bound(con) -> None:
     report = _float_sum(con)
     strict = sv.equivalent(floats=sv.within(abs=1.0))
     problems, _ = routes.reproducibility(report, "polars", strict)
-    assert len(problems) == 1 and "total is within abs=111.023" in problems[0]
+    assert len(problems) == 1 and "within abs=222.045" in problems[0]
     assert "pass reproducible=sv.equivalent(floats=sv.within(rel=3e-10)) or looser" in problems[0]
     loose = sv.equivalent(floats=sv.within(abs=1e3))
     assert routes.reproducibility(report, "polars", loose) == ([], "tested")

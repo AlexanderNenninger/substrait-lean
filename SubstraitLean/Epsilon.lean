@@ -70,6 +70,22 @@ def relEps (k : Nat) : Rat :=
   let γ := ku / (1 - ku)
   2 * γ / (1 - γ)
 
+/-- A relative bound between any two results the engines' orders give, relative to either
+(`StdModel.epsilon_sum_rel`, `epsilon_avg_rel`): `relEps`, or `0` where every order adds
+exactly (`intMeanExact`). It is the only relative bound `"epsilon"` carries (`boundJson`), and
+only this file makes one, so a rerun reads it as its run-to-run bound as it stands
+(`Realize.rerunBound`, ruling 281 Z6). A relative bound per run against the reference
+(`epsilonByEngine`'s) is not one. -/
+structure PairwiseRel where
+  private mk ::
+  value : Rat
+
+/-- `relEps k`: the bound between two orders' results after `k` roundings. -/
+def PairwiseRel.ofRoundings (k : Nat) : PairwiseRel := ⟨relEps k⟩
+
+/-- No difference: every order gives the same result. -/
+def PairwiseRel.exact : PairwiseRel := ⟨0⟩
+
 variable [Boxes.Ambient]
 /-- A `SUM` or `AVG` of converted integers that every engine computes
 exactly (#1608 12b-1): the argument is `itof e`, `e`'s values at most `M`
@@ -92,8 +108,8 @@ least `2⁻¹⁰²²`). Outside `intMeanExact`'s case it gives no bound over mor
 `2³²` rows: a `SUM` or `AVG` of a double column under a larger row cap is
 unbounded (`test_a_double_sum_over_more_than_2_32_rows_has_no_bound`). -/
 def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
-    Option (Rat × Option (Rat × Bool)) := do
-  if intMeanExact env m rows then return (0, some (0, true))
+    Option (Rat × Option (PairwiseRel × Bool)) := do
+  if intMeanExact env m rows then return (0, some (.exact, true))
   let a := m.arg.absD env []
   guard a.intsOnly
   let b ← a.int
@@ -108,7 +124,7 @@ def measureEps (env : List AVal) (m : Measure) (rows : Option Nat) :
   let oneSign := 0 ≤ FloatCode.scaled lo || FloatCode.scaled hi ≤ 0
   let normal := (2 ^ 53 : Int) ≤ FloatCode.scaled lo || FloatCode.scaled hi ≤ -(2 ^ 53 : Int)
   let rel := if oneSign && n < 2 ^ 40 then
-      some (relEps (if m.fn = .avg then n + 2 else n), m.fn ≠ .avg || normal)
+      some (.ofRoundings (if m.fn = .avg then n + 2 else n), m.fn ≠ .avg || normal)
     else none
   return (unscale t, rel)
 
@@ -1104,9 +1120,9 @@ where
         .unbounded derivedWhy else .other
 
 /-- A bound as `"epsilon"` gives it, proved or not. -/
-def boundJson (e : Rat) (rel : Option (Rat × Bool)) (p : Bool) : Json :=
+def boundJson (e : Rat) (rel : Option (PairwiseRel × Bool)) (p : Bool) : Json :=
   Json.mkObj ([("abs", toJsonUp e)] ++
-    (match rel with | some (r, _) => [("rel", toJsonUp r)] | none => []) ++
+    (match rel with | some (r, _) => [("rel", toJsonUp r.value)] | none => []) ++
     [("proved", Json.mkObj ([("abs", toJson p)] ++
       match rel with | some (_, pr) => [("rel", toJson (p && pr))] | none => []))])
 
