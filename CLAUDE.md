@@ -320,8 +320,8 @@ Task recipes live in `.claude/skills/` and load when needed: `add-function`
 (functions and coverage cases; older comments call it CLAUDE.md's "Adding
 functions"), `engine-fact` (formerly "Engine facts"), `upstream-bug`,
 `upstream-report`, `prove-lean`, `chaos-run`, `query-semantics`,
-`release-sverify` and `create-pull-request` (branch, checks, `Fixes #N`, the
-review and mergeq).
+`release-sverify`, `create-pull-request` (branch, checks, `Fixes #N`, the
+review) and `mergeq` (the labels, admission, refusals and batches).
 
 ## sverify-dbt
 
