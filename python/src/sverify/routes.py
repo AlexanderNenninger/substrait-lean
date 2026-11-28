@@ -1093,11 +1093,9 @@ def _rerun(report: Report, engine: str, required: Lenses) -> Mapping[str, Any] |
     elif report._contract is None:
         return "the report keeps no contract to check a rerun against: verify the plan again"
     else:
-        from sverify.contracts import _observation_json
-
         out = _rerun_request(
             json.dumps(report._contract, sort_keys=True),
-            json.dumps(_observation_json(required), sort_keys=True),
+            json.dumps(required.checker_json(), sort_keys=True),
         )
         got = ((out.get("engines") or {}).get(engine) or {}).get("rerun")
     if got is None:
