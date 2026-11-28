@@ -16,7 +16,8 @@ reference's.
 Each call is written as `Profile.polars` states Polars computes it: `//` and
 `%` floor, `round` rounds halves away from zero (the `rounding` shim's
 argument, as `shims.round_half_away` writes it), the 128-bit `dadd` and
-`dsub` are exact on 64-bit operands, and `&`, `+`, `-`, `*` and `**` of
+`dsub` are exact on 64-bit operands and the 128-bit `dmul` below `2¹²⁷`
+(ruling 282), and `&`, `+`, `-`, `*` and `**` of
 integers are Int64's, exact where the reference's do not raise. Native expressions only, no Python
 per row.
 
@@ -59,6 +60,9 @@ _BINARY: dict[str, Callable[[pl.Expr, pl.Expr], pl.Expr]] = {
     "dmod": lambda a, b: a % b,
     "dadd": lambda a, b: _wide(a) + _wide(b),
     "dsub": lambda a, b: _wide(a) - _wide(b),
+    # Exact below 2¹²⁷ (polars-int-arith): `Polars.dmulTemplate` calls it only
+    # where `Polars.dmul_bound` proves the product within 2¹²⁶ - 1.
+    "dmul": lambda a, b: _wide(a) * _wide(b),
     # Int64's `+`, `-`, `*`, which wrap past 64 bits (polars-int-arith): the
     # profile raises there, and the templates call them only inside 64 bits.
     "add": lambda a, b: a + b,

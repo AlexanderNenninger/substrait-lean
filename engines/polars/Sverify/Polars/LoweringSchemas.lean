@@ -10,7 +10,9 @@ The constructs the lowering search does not reach on `Profile.polars`, for
 `-0.0` on Polars, integer `//` and `%` and decimal `%`, which floor, and a decimal cast to a
 smaller scale, which rounds half to even (a hand-built entry, `Polars.droundEntry`,
 whose template's literals depend on the scale), and `<<` and `>>`, which Polars
-lacks (polars-int-shift). Each comes with its
+lacks (polars-int-shift). A product of decimals is a hand-built entry that is
+not exact (`Polars.dmulEntry`): its guard raises before Polars's Int128 `*`
+could leave 128 bits. Each comes with its
 proof, `Polars.<construct>_agree` (`Sverify.Polars.LoweringLemmas`,
 `Sverify.Polars.Profile`), which the kernel checks. `%` of doubles floors too
 and has no exact template from Polars's functions: the table has no entry
@@ -47,6 +49,6 @@ def polarsSchemas : Schemas where
         "shr: error outside 0-63, else (#0 & -1) // 2^#1 floored")
     | _ => none
   proofs := `Substrait.Polars
-  entries := [(``UnFn.dround, ``Polars.droundEntry)]
+  entries := [(``UnFn.dround, ``Polars.droundEntry), (``BinFn.dmul, ``Polars.dmulEntry)]
 
 end Substrait.LoweringSearch

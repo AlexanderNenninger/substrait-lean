@@ -544,14 +544,13 @@ def decimal_rescale(v: Val, p: int, s: int, what: str) -> Val:
 
 def decimal_mul(a: Val, b: Val, p: int, s: int) -> Val:
     """`a × b` at scale `s₁ + s₂`, exactly (`BinFn.dmul`): the product of the
-    unscaled values. Polars's own product rounds to `max(s₁, s₂)`. It is
-    computed only where it has at most `p` digits, so it never leaves 128
-    bits: `|x| ≤ (10ᵖ − 1) // |y|`."""
-    x, y = unscaled(a), unscaled(b)
-    ay = y.abs()
-    bad = (ay != 0) & (x.abs() > (i128(10**p - 1) // pl.when(ay == 0).then(i128(1)).otherwise(ay)))
-    u = pl.when(bad).then(i128(0)).otherwise(x) * y
-    return fit_decimal(u, p, s, "multiply", a, b, bad=bad)
+    unscaled values, as the generated table writes it (`Polars.dmulTemplate`).
+    Polars's own product rounds to `max(s₁, s₂)`. The template raises an
+    overflow before the Int128 product could leave 128 bits; the product's
+    digits are then `fit_decimal`'s."""
+    raised: list[pl.Expr] = []
+    u = lowered("dmul", unscaled(a), unscaled(b), raise_=lambda _, rows: raised.append(rows))
+    return fit_decimal(u, p, s, "multiply", a, b, bad=pl.any_horizontal(raised))
 
 
 def decimal_div(a: Val, b: Val, p: int, s: int) -> Val:

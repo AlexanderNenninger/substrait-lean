@@ -168,19 +168,21 @@ theorem Lowering.lowerE_raises_of {p : Profile} (L : Lowering p) {e : Expr}
     simp [Outcome.Agree, Outcome.err?]
 
 /-- **A plan the partial table lowers raises only where the reference may**,
-as `Lowering.lowerRel_raises` for a table that need not be total. -/
-theorem Lowering.lowerRel?_raises {p : Profile} {L : Lowering p} (hX : L.AllExact)
-    (hN : L.NoneOnDbl) {cat : Catalog} {r r' : Rel} (hr : L.lowerRel? r = .ok r')
+as `Lowering.lowerRel_raises` for a table that need not be total, nor exact
+but on the plan's own expressions (`exactOn`, ruling 277; for a table whose
+every entry is exact, `Lowering.exactOn_of_allExact`). -/
+theorem Lowering.lowerRel?_raises {p : Profile} {L : Lowering p}
+    (hN : L.NoneOnDbl) {cat : Catalog} {r r' : Rel}
+    (hx : ∀ e ∈ r.mappedExprs, L.exactOn e = true) (hr : L.lowerRel? r = .ok r')
     (h : r'.Raises p cat) : r.Raises Profile.reference cat := by
   unfold lowerRel? at hr
   split at hr
   · rename_i hall
     cases hr
-    exact Rel.raises_mapExprs_on (Q := fun e => (L.lower e).isSome = true)
-      (fun _ he => L.lowerE_exact_of hN he) (fun _ => rfl)
-      (fun e row he => L.lowerE_raises_of he (exactOn_of_allExact hX e) row
-        (.inl (dblFree_of_noneOnDbl hN e)))
-      (fun _ h => Rel.evalI_reference h) (fun e he => List.all_eq_true.mp hall e he) h
+    exact Rel.raises_mapExprs_on (Q := fun e => (L.lower e).isSome = true ∧ L.exactOn e = true)
+      (fun _ he => L.lowerE_exact_of hN he.1) (fun _ => rfl)
+      (fun e row he => L.lowerE_raises_of he.1 he.2 row (.inl (dblFree_of_noneOnDbl hN e)))
+      (fun _ h => Rel.evalI_reference h) (fun e he => ⟨List.all_eq_true.mp hall e he, hx e he⟩) h
   · cases hr
 
 /-- Every expression of the plan is lowered by exact entries (`Lowering.exactOn`):

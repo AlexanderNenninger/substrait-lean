@@ -45,7 +45,7 @@ def test_engines_and_their_translations(table):
     assert table["polars"]["theorem"] == "Engine.polars_sound"
     assert table["spark"]["theorem"] == "Engine.spark_sound"
     assert table["duckdb"]["side"] == "Engine.NoRaiseSide"
-    assert table["polars"]["side"] == "Engine.GuardFreeSide"
+    assert table["polars"]["side"] == "Engine.PolarsSide"
     assert table["spark"]["side"] == "Engine.SparkSide"
     for e in table.values():
         assert e["version"]

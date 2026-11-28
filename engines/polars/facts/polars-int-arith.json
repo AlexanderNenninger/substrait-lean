@@ -29,7 +29,8 @@
   "description": [
     "Integer arithmetic wraps at the operands' width (two's complement, Rust's `wrapping_add`, `wrapping_sub`, `wrapping_mul`, `wrapping_neg`): `Int8` 127 + 1 is -128, `-MIN` is `MIN`. No setting makes it raise or saturate. Polars keeps the width of the operands; a literal takes the column's type.",
     "`**` on integers wraps too (`2 ** 63` is `-2⁶³` in `Int64`); a negative integer exponent raises (`InvalidOperationError`, the exponent is cast to `u32`).",
-    "The docs are silent on integer overflow: a docs gap."
+    "The docs are silent on integer overflow: a docs gap.",
+    "`Int128` is the same: `*`, `+` and `-` wrap past `2¹²⁷` and are exact below it, so a product whose size is at most `2¹²⁶ - 1` is the exact one (ruling 282's T1; `Polars.dmul_bound` proves it of `Polars.dmulTemplate`)."
   ],
   "reference": "`add`, `subtract`, `multiply`, `negate` with `overflow: ERROR` when the plan omits it (#202); `SILENT` when the plan asks. Polars gives `SILENT` natively; `ERROR` needs a guard, at each width.",
   "status": "open",
@@ -206,6 +207,20 @@
         }
       ],
       "notes": "`2 ** (bits - 1)` wraps to MIN at Int8, Int16, Int32 and Int64."
+    },
+    {
+      "checked_at": "2026-11-24",
+      "method": "probe",
+      "checked_by": "session lean-d (#2586, ruling 282 S1)",
+      "evidence": [
+        {
+          "test": "engines/polars/tests/test_lowering_agrees.py::test_int128_product_exact_below_2_127"
+        },
+        {
+          "sql": "pl.DataFrame({'a': [2**100, 2**100], 'b': [2**27, -(2**26)]}, schema={'a': pl.Int128, 'b': pl.Int128}).select(pl.col('a') * pl.col('b'))",
+          "observed": "[-2**127, -2**126]: 2**127 wraps to -2**127, -2**126 is exact"
+        }
+      ]
     }
   ],
   "issues": [

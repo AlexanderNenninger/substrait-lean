@@ -71,6 +71,8 @@ def verdict(
         _run_plan=out.get("run_plan"),
         _run_gate=out.get("run_gate"),
         _run_unchecked=out.get("run_unchecked"),
+        _exact_lowering=out.get("exact_lowering"),
+        _run_exact_lowering=out.get("run_exact_lowering"),
         rows=out.get("rows"),
         _relations=[
             RelationRows(r["op"], r["depth"], r["rows"], r["group_rows"])
