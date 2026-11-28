@@ -24,7 +24,7 @@ from sverify.engine import connect, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify.testing import inline_tables, lean_rows, lean_values
 from sverify_polars import engine as polars_engine
-from sverify_polars import shims
+from sverify_polars import lowering, shims
 
 pytestmark = pytest.mark.backend("polars")
 
@@ -360,14 +360,19 @@ TEXTS = [(0, "héllo", "l"), (1, "日本語本", "本"), (2, "", ""), (3, "", "a
          (5, "abcabc", "bc"), (6, "abc", "z"), (7, None, "a"), (8, "a", None)]  # fmt: skip
 
 
-def test_polars_finds_bytes_from_zero_and_the_shim_characters_from_one():
+def test_polars_finds_bytes_from_zero_and_the_template_characters_from_one():
+    """`str.find` counts bytes from 0 (polars-strpos); the generated table's
+    template (`Polars.strposTemplate`, ruling 286) counts characters from 1,
+    from the split, and never calls `str.find`."""
     df = pl.DataFrame({"s": [s for _, s, _ in TEXTS], "t": [t for _, _, t in TEXTS]})
     s, t = pl.col("s"), pl.col("t")
     want = [
         (None,) if a is None or b is None else (a.find(b) + 1,) for _, a, b in TEXTS
     ]  # `Text.strpos`, as Python's `find`
     assert native(df, s.str.find(t, literal=True)) != want
-    assert native(df, shims.strpos_chars(s, t)) == want
+    out = lowering.render("Substrait.BinFn.strpos", [s, t])
+    assert out is not None and "find" not in str(out)
+    assert native(df, out) == want
 
 
 def test_strpos_matches_lean():

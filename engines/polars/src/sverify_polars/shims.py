@@ -80,8 +80,6 @@ SHIMS: tuple[Shim, ...] = (
     Shim("one_zero", "zero_sign", "ONE_ZERO, also as a group key: on read and after each "
          "operation that can give -0.0", "IEEE: -0.0 kept; a group's key is its first zero",
          "polars-zero-sign-streaming", "expression"),
-    Shim("strpos_chars", "negative_start", "1-based characters, 0 when absent",
-         "str.find: 0-based bytes, NULL when absent", "polars-strpos", "expression"),
     Shim("substring_wrap", "negative_start", "WRAP_FROM_END",
          "str.slice: a negative offset counts from the end, by characters",
          "polars-substring", "expression"),
@@ -266,24 +264,6 @@ def decimal_div_half_away(x: pl.Expr, n: pl.Expr, k: int) -> tuple[pl.Expr, pl.E
 
 
 # --- Strings -------------------------------------------------------------------
-
-
-def strpos_chars(s: pl.Expr, t: pl.Expr) -> pl.Expr:
-    """`Text.strpos`: the 1-based character position of the first `t` in `s`,
-    0 where there is none, 1 for an empty `t`. Polars's `str.find` counts
-    bytes from 0 and is NULL where `t` is absent (polars-strpos); the
-    characters before the first `t` are the first part of a split."""
-    before = s.str.split(t).list.first().str.len_chars().cast(pl.Int64)
-    found = s.str.find(t, literal=True)
-    return (
-        pl.when(s.is_null() | t.is_null())
-        .then(None)
-        .when(t == "")
-        .then(pl.lit(1, pl.Int64))
-        .when(found.is_null())
-        .then(pl.lit(0, pl.Int64))
-        .otherwise(before + 1)
-    )
 
 
 def substring_wrap(start: pl.Expr, s: pl.Expr) -> pl.Expr:

@@ -185,8 +185,8 @@ PLUGIN = ProfilePlugin(
         "decimal_round_half_away": "decimal rounding rewritten to round half away from zero",
         "decimal_div_half_away": "decimal division rewritten to round half away from zero",
         "null_order": "NULLs sorted as the reference sorts them",
-        "strpos_chars": "string positions counted in characters",
         "substring_wrap": "substring positions rewritten as the reference reads them",
+        "strpos from the split": "string positions counted in characters",
         "sum_empty_null": "a SUM of no rows written as NULL",
     },
 )

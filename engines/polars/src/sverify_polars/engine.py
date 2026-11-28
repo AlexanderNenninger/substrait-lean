@@ -1821,7 +1821,8 @@ class Exprs:
             e = x.str.starts_with(y) if name == "starts_with" else x.str.ends_with(y)
             return Val(e, pl.Boolean, found)
         if name == "strpos":
-            return Val(shims.strpos_chars(x, y), pl.Int64, found)
+            # The generated table's template (`Polars.strposTemplate`, ruling 286).
+            return Val(lowered("Substrait.BinFn.strpos", x, y), pl.Int64, found)
         if name == "levenshtein":
             raise Unsupported(
                 "levenshtein on Polars: Polars has no levenshtein "

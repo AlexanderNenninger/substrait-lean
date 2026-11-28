@@ -36,12 +36,13 @@ def run(exprs: dict[str, pl.Expr], cols: dict[str, pl.Series]) -> dict[str, list
 
 
 def test_the_table_covers_what_polars_computes_its_own_way():
-    """`round`, `round_even`, `ceil`, integer `//` and `%`, decimal `%`, `<<` and `>>` have
-    templates; `%` of doubles has no entry (refused); everything else is native, and `render`
-    gives None."""
+    """`round`, `round_even`, `ceil`, integer `//` and `%`, decimal `%`, `<<`, `>>`,
+    `strpos` and the split have templates; `%` of doubles has no entry (refused);
+    everything else is native, and `render` gives None."""
     assert set(table_export.table("polars")) == {
         "Substrait.UnFn.fround", "Substrait.UnFn.froundEven", "Substrait.UnFn.fceil",
         "idiv", "imod", "dmod", "bit:bitwise_shift_left", "bit:bitwise_shift_right",
+        "Substrait.BinFn.strpos", "Substrait.BinFn.splitFirst",
     }  # fmt: skip
     assert lowering.render("fadd", [pl.col("a"), pl.col("b")]) is None
 
@@ -161,3 +162,34 @@ def test_round_asks_half_away_from_zero_once():
         {"x": pl.Series([0.5, 2.5, -2.5] * 400)},
     )
     assert got["r"][:3] == [1.0, 3.0, -3.0]
+
+
+def _split_first(s: str | None, t: str | None) -> str | None:
+    """`Text.splitFirst`: the prefix before the leftmost `t`, `s` where it does
+    not occur or `t` is empty."""
+    if s is None or t is None:
+        return None
+    i = s.find(t) if t else -1
+    return s if i < 0 else s[:i]
+
+
+SPLIT_CASES = [
+    ("héllo wörld", "ö"), ("日本語日本", "本"), ("aaa", "aa"), ("abc", "d"), ("ab", "abc"),
+    ("abc", ""), ("", ""), ("éx", ""), ("a.b", "."), (None, "a"), ("abc", None), ("", "a"),
+]  # fmt: skip
+
+
+def test_the_split_and_strpos_agree_with_the_reference():
+    """Ruling 286: the split's entry passes `s` through for an empty `t`, where
+    Polars's own split gives the first code point; `strpos` is the template
+    over it, one-based in characters, 0 when absent, 1 for an empty `t`."""
+    cols = {
+        "s": pl.Series([s for s, _ in SPLIT_CASES], dtype=pl.String),
+        "t": pl.Series([t for _, t in SPLIT_CASES], dtype=pl.String),
+    }
+    split = lowering.render("Substrait.BinFn.splitFirst", [pl.col("s"), pl.col("t")])
+    pos = lowering.render("Substrait.BinFn.strpos", [pl.col("s"), pl.col("t")])
+    assert split is not None and pos is not None
+    got = run({"split": split, "pos": pos}, cols)
+    assert got["split"] == [_split_first(s, t) for s, t in SPLIT_CASES]
+    assert got["pos"] == [None if s is None or t is None else s.find(t) + 1 for s, t in SPLIT_CASES]

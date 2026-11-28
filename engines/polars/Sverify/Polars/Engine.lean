@@ -409,7 +409,7 @@ theorem Lowering.polars_bin_tmpl (f : BinFn) (en : BinEntry Profile.polars f)
     simp [BinEntry.native, BinEntry.ofAgree, Expr.ctors, Polars.idivTemplate, Polars.imodTemplate,
       Polars.bitAndT, Polars.bitOrT, Polars.bitXorT, Polars.shlTemplate, Polars.shrTemplate,
       Polars.shlLow, Polars.shlK, Polars.shrOutside, Polars.shrPow,
-      Polars.dmodTemplate]
+      Polars.dmodTemplate, Polars.strposEntry, Polars.strposTemplate, Polars.splitFirstSchemaT]
 
 /-- **Polars's lowering calls no `%` of doubles** (R1): the table has no entry
 for it (`refusing`), and no template calls it, so no expression of a plan it
@@ -516,8 +516,8 @@ end Example
   nativeOffIs Profile.polars.table Profile.polars.obs Lowering.polars.nativeUn Lowering.polars.nativeBin
     [-- C4: `round(x, d)` half to even.
      (.un (.froundTo 0), "rounding"),
-     -- C4: zero-based characters and bytes.
-     (.bin .strpos, "string_positions"), (.bin (.substr none true), "string_positions"),
+     -- C4: zero-based characters.
+     (.bin (.substr none true), "string_positions"),
      -- C4: Polars's `*` of decimals rounds to `max(s₁, s₂)` half to even.
      (.bin .dmul, "decimal_rescale")]
     -- C7: `+` and `-` of decimals are at `max(s₁, s₂)` on Polars and never rescale.

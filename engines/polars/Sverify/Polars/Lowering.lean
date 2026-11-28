@@ -47,6 +47,17 @@ theorem Lowering.polars_allExact : Lowering.polars.AllExact :=
   (Lowering.polars.bin (.bit .shl)).any (·.tmpl == Polars.shlTemplate) &&
     (Lowering.polars.bin (.bit .shr)).any (·.tmpl == Polars.shrTemplate)
 
+-- `strpos` is the template over the split (ruling 286), not Polars's `str.find`, which
+-- counts bytes: no entry of the table calls `strpos` natively, and a regeneration that
+-- drops `excluding [.., BinFn.strpos]` fails here.
+#guard letI := Boxes.Ambient.none
+  (Lowering.polars.bin .strpos).any (·.tmpl == Polars.strposTemplate) &&
+    (Lowering.polars.bin .splitFirst).any (·.tmpl == Polars.splitFirstSchemaT) &&
+    (LoweringExport.unFns.all fun f => (Lowering.polars.un f).all fun e =>
+      !e.tmpl.ctors.contains (Functions.Ctor.bin .strpos)) &&
+    LoweringExport.binFns.all fun f => (Lowering.polars.bin f).all fun e =>
+      !e.tmpl.ctors.contains (Functions.Ctor.bin .strpos)
+
 /-- No entry is stated on doubles only (`Lowering.NoneOnDbl`). -/
 theorem Lowering.polars_noneOnDbl : Lowering.polars.NoneOnDbl :=
   ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),

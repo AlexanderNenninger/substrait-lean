@@ -40,10 +40,12 @@ generate_lowering duckdbOn : Profile.duckdb { errorOnDivZero := true }
     Lowering.ref_bin_nondouble_l, Lowering.ref_bin_nondouble_r,
     BinFn.apply_eq_nondouble_l, BinFn.apply_eq_nondouble_r, BinFn.apply_lt_nondouble_l,
     BinFn.apply_lt_nondouble_r, Value.isNum_float_nondouble]
-  excluding [UnFn.fit, UnFn.dtextFull]
+  -- `sverify_split_first` is internal (ruling 286): no plan DuckDB lowers calls it.
+  excluding [UnFn.fit, UnFn.dtextFull, BinFn.splitFirst]
   hand_written LoweringSearch.duckdbSchemas
   cache loweringCache
   writing "engines/duckdb/Sverify/DuckDB/LoweringOn"
   proving_guards
+  refusing [BinFn.splitFirst]
 
 end Substrait

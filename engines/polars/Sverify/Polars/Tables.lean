@@ -234,7 +234,9 @@ def Profile.polars.obs : ObsTable := [
   (none, "negative_start", (ObsRow.native ["polars-substring"]).proved "Lowering.polars_exact"),
   (none, "case_sensitivity", (ObsRow.native ["polars-match-functions"]).proved "Lowering.polars_exact"),
   (some "str.sub", "string_positions", (ObsRow.shimmed "substring_wrap" ["polars-substring"]).proved "Polars.substring_wrap"),
-  (some "str.match", "string_positions", (ObsRow.shimmed "strpos_chars" ["polars-strpos"]).proved "Polars.strpos_chars"),
+  -- `strpos` from the split, without `str.find`'s bytes (ruling 286).
+  (some "str.match", "string_positions", (ObsRow.shimmed "strpos from the split"
+    ["polars-strpos", "polars-split-first"]).proved "Polars.strpos_agree"),
   (none, "null_join_keys", (ObsRow.native ["polars-null-keys"]).tracking 2539),
   -- Past 38 digits, where the reference raises past the result's precision,
   -- which the translation checks (`fit_decimal`).
@@ -257,7 +259,7 @@ def Profile.polars.shimCosts : List (String × ShimCost) :=
    ("int_div_trunc", .expression), ("int_mod_trunc", .expression),
    ("round: 0.0 for a negative value that rounds to zero", .expression),
    ("sum_empty_null", .expression), ("avg_int_declared", .expression),
-   ("one_zero", .expression), ("strpos_chars", .expression),
+   ("one_zero", .expression), ("strpos from the split", .expression),
    ("substring_wrap", .expression),
    ("decimal_round_half_away", .expression), ("decimal_div_half_away", .expression),
    ("max_nan_greatest", .expression), ("nan_through", .expression),
