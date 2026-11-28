@@ -397,8 +397,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs (Lean's rows: degenerate_statistic)",
-   "polars": "refused: corr runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)",
-   "snowflake": "refused: corr runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
+   "polars": "refused: corr runs on duckdb and spark only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)",
+   "snowflake": "refused: corr runs on duckdb and spark only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   },
   "contract": {
    "proved": true,
