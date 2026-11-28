@@ -321,12 +321,13 @@ def test_a_decimal_product_keeps_its_guards_on_polars(guard_free_calls) -> None:
 
 def test_a_plan_without_a_decimal_product_runs_guard_free_on_polars(guard_free_calls) -> None:
     """Ruling 282 Q5: every other entry is exact, so a guard-free plan without
-    `dmul` runs guard-free on Polars (`Rel.polars_sound`)."""
-    report, con = _decimal_report(lambda t: t.select(r=t.a + t.b))
+    `dmul` runs guard-free on Polars (`Rel.polars_sound`). The sum is of one
+    scale: a sum of two scales brings one to the other by a `dmul` by `10ᵏ`."""
+    report, con = _decimal_report(lambda t: t.select(r=t.a + t.a))
     assert report._exact_lowering.get("polars", True) is True
     out = report.run(con, "polars")
     assert report.routes["polars"].taken == "translated", report.routes["polars"]
-    assert out.column("r").to_pylist() == [D("13.85"), D("2.45"), None]
+    assert out.column("r").to_pylist() == [D("24.70"), D("-0.10"), None]
     assert guard_free_calls == ["polars"]
 
 
