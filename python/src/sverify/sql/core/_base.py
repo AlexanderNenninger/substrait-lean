@@ -5437,7 +5437,13 @@ class _Writer:
             a = self.alias()
             partition, peers, _ = order()
             keys = [self.asc(self.ref(a, tie))]
-        over = d.over(partition, keys)
+
+        def over() -> str:
+            # Written only for the functions that read the row order: a
+            # dialect may refuse a window without ORDER BY (Spark's ranking
+            # functions need one), and an aggregate over the whole partition
+            # has none to give.
+            return d.over(partition, keys)
 
         def whole() -> str:
             return f"OVER ({'PARTITION BY ' + ', '.join(partition) if partition else ''})"
@@ -5445,11 +5451,11 @@ class _Writer:
         items = [f"{col(j)} AS {self.c(j)}" for j in range(m)]
         for j, f in enumerate(fns):
             if f.fn == "row_number":
-                sql = d.row_number(over)
+                sql = d.row_number(over())
             elif f.fn in ("lag", "lead"):
                 default = self.lit(f.default, ks[f.col])
                 fn = d.lag if f.fn == "lag" else d.lead
-                sql = fn(col(f.col), f.offset, default, over)
+                sql = fn(col(f.col), f.offset, default, over())
             elif f.fn in ("rank", "dense_rank"):
                 sql = f"{f.fn.upper()}() {d.over(partition, peers)}"
             elif f.fn == "ntile":
@@ -5459,7 +5465,7 @@ class _Writer:
                 # a positive constant (`positive`).
                 if f.offset > 2**31 - 1:
                     raise WriterUnsupported("NTILE of more than 2147483647 buckets")
-                sql = f"NTILE({int(f.offset)}) {over}"
+                sql = f"NTILE({int(f.offset)}) {over()}"
             elif f.fn in ("percent_rank", "cume_dist"):
                 n = f"COUNT(*) {whole()}"
                 if f.fn == "percent_rank":
