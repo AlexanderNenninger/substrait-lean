@@ -91,6 +91,29 @@ def test_the_reference_lift_is_checked_too(query):
     assert code == 0, err or out
 
 
+#: A comparison with a dialect's name: `== "duckdb"`, `in ("spark", …)`, `.read != …`.
+_DIALECT_BRANCH = re.compile(
+    r"""(==|!=|\bin)\s*[\(\[{]?\s*["'](duckdb|spark|polars|snowflake)["']"""
+    r"""|\.(read|title)\s*(==|!=)"""
+)
+
+
+def test_the_shared_lift_branches_on_no_dialect_name():
+    """Every dialect fact the lift reads comes from its `Surface` and profiles
+    (#866, ruling 288 F3): no line of the shared lift tests a dialect's name."""
+    from pathlib import Path
+
+    import sverify.sql_lift
+
+    found = [
+        f"{p.name}:{n}: {line.strip()}"
+        for p in sorted(Path(sverify.sql_lift.__file__).parent.glob("*.py"))
+        for n, line in enumerate(p.read_text().splitlines(), 1)
+        if _DIALECT_BRANCH.search(line)
+    ]
+    assert not found, found
+
+
 def test_the_profiles_differ_only_in_what_functions_do():
     fields = DUCKDB.__dataclass_fields__
     assert {f for f in fields if getattr(DUCKDB, f) != getattr(PORTABLE, f)} == {

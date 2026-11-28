@@ -1,0 +1,14 @@
+{
+  "id": "F288",
+  "date": "2026-11-28",
+  "decided_by": "fable",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "#866's Spark SQL lift and #2615's replays are accepted: the generic lift moves to engines-common naming no engine, the Spark front end registers without pyspark, and the replays classify a Polars case where model and engine agree against Polars's own result as unattributed until triaged, compare Spark's golden rows as parsed typed values, and gate the JVM-free side in oracle A.",
+  "issues": [
+    866,
+    2615
+  ],
+  "source": "fable-ruling-288-866-2615-spark-lift-replays.md",
+  "note": "Q1 is D73. Conditions: B1-B3 (byte-identical DuckDB lift modules, unchanged axioms), C1-C4 (the report names the assumed Spark settings; case-insensitive-only names refused), E1-E2, F1-F3, P1-P5, G1-G4, H1-H4; nonansi/ and off-profile --SET skipped."
+}

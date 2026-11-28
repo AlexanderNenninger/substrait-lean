@@ -46,7 +46,8 @@
   "description": [
     "A double or decimal cast to an integer truncates toward zero (1.9 → 1, -2.5 → -2), in both modes. Under ANSI a value outside the target's range, NaN and ±inf raise `CAST_OVERFLOW`; `try_cast` gives NULL for them.",
     "Without ANSI a double saturates at `INT` and `BIGINT` (`CAST(1e20 AS INT)` is 2147483647, -inf gives `MIN`) and gives 0 for NaN; `TINYINT` and `SMALLINT` go through `INT` and then wrap (`CAST(130.0 AS TINYINT)` is -126, `CAST(3e9 AS TINYINT)` -1). A decimal or `BIGINT` cast to a narrower integer wraps (`CAST(300 AS TINYINT)` is 44).",
-    "Under ANSI the double 2⁶³ (`9.223372036854775807E18D`) casts to 9223372036854775807 rather than raising, and −2⁶³ to `MIN`: the range test admits 2⁶³ itself. `SparkDialect.float_to_int` checks −2⁶³ ≤ x < 2⁶³ before the cast, so the reference's raise at 2⁶³ stays."
+    "Under ANSI the double 2⁶³ (`9.223372036854775807E18D`) casts to 9223372036854775807 rather than raising, and −2⁶³ to `MIN`: the range test admits 2⁶³ itself. `SparkDialect.float_to_int` checks −2⁶³ ≤ x < 2⁶³ before the cast, so the reference's raise at 2⁶³ stays.",
+    "Under ANSI the query raises; which row the error names is unspecified, and it varies between runs and between the folded and the generated code paths (F287 T1a, 2026-11-28: six runs of the probe suite on homelab, Spark 4.3.0, Java 21.0.13.1)."
   ],
   "reference": "`float_to_int: TRUNCATE` (#209); `cast_failure` as the cast states, `THROW_EXCEPTION` for `UNSPECIFIED` (ST-6). Spark under ANSI is native; `try_cast` is `RETURN_NULL`.",
   "status": "no-finding",

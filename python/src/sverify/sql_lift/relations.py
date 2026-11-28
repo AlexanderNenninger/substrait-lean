@@ -22,7 +22,6 @@ from sverify.plan_json import (
     values_rel,
 )
 from sverify.sql_lift._base import (
-    DIALECT,
     JOIN_METHODS,
     PARSE_REWRITES,
     SOURCES,
@@ -35,6 +34,7 @@ from sverify.sql_lift._base import (
     _normalized,
     _numbered,
     _shown,
+    _sql,
     register,
 )
 
@@ -429,7 +429,7 @@ def _series(tree: sge.Expr) -> sge.Expr:
                 isinstance(count, sge.Literal) and count.name.isdigit()
             ):
                 raise SqlUnsupported(
-                    f"{name} with the step {step_node.sql(DIALECT)} is not supported",
+                    f"{name} with the step {_sql(step_node)} is not supported",
                     hint="use a step of whole weeks, days, hours, minutes or seconds",
                     issue=321,
                     construct=f"function {name}",
@@ -439,7 +439,7 @@ def _series(tree: sge.Expr) -> sge.Expr:
             step = _constant(step_node)
             if not isinstance(step, int) or temporal:
                 raise SqlUnsupported(
-                    f"{name} with the step {step_node.sql(DIALECT)} is not supported",
+                    f"{name} with the step {_sql(step_node)} is not supported",
                     construct=f"function {name}",
                 )
         if not step:

@@ -27,7 +27,8 @@
   },
   "description": [
     "`spark.sql.ansi.enabled` (true by default since 4.0) switches overflow, division by zero, casts, indexes and string coercion between raising and NULL or wrapping, and changes type coercion (`FLOAT + INT`, `'1' + 1`); it also sets `size(NULL)` (`spark.sql.legacy.sizeOfNull`) and the text of decimals cast to strings. `spark.sql.timestampType` decides what `TIMESTAMP` means, `spark.sql.session.timeZone` how `TIMESTAMP_LTZ` reads and prints. `spark.sql.legacy.statisticalAggregate` turns the NULLs of degenerate `var_samp`, `covar_samp`, `corr` into NaN. `spark.sql.decimalOperations.allowPrecisionLoss` decides the result scale past 38 digits. `spark.sql.timeType.enabled` enables `TIME`. `spark.sql.shuffle.partitions` and the cluster's parallelism change the order of double sums, `first`, `collect_list` and ties (spark-exec-parallel). Outside Spark's configuration, the JVM's default locale changes `upper` and `lower` (spark-case).",
-    "sverify's Spark session sets ANSI on, UTC, `TIMESTAMP_NTZ`, case-sensitive names and unescaped string literals (`sverify_spark.dialect.SPARK_CONF`); the probes ran with those, and each fact records the settings it was checked under."
+    "sverify's Spark session sets ANSI on, UTC, `TIMESTAMP_NTZ`, case-sensitive names and unescaped string literals (`sverify_spark.dialect.SPARK_CONF`); the probes ran with those, and each fact records the settings it was checked under.",
+    "`spark.sql.timeType.enabled` changes the outcome of no probe but the one that reads `TIME` (F287 T1). Of the 291 probes that do not set it themselves, run on homelab with it off and on alternately, six runs in one job (off, on, off, on, off, on), each gives the same outcome per probe whatever the setting: it raises with the same error class and SQLSTATE, or gives the same rows up to open ties. `time-type` changes as the setting means: `UNSUPPORTED_TIME_TYPE` off, `DATETIME_OVERFLOW` for `TIME'12:00:00' + INTERVAL 13 HOUR` on. Five probes vary from run to run under either setting: the ANSI casts `cast-double-to-int`, `cast-int-narrow`, `cast-string-to-int` and `cast-string-to-double` in which row their error names, and `sort-ties` in the order of its ties."
   ],
   "reference": "The reference has no settings. A profile's facts hold under the settings they record (`sverify._engine_settings`, #444); the Spark row needs ANSI on and the settings of `SPARK_CONF`.",
   "status": "open",
@@ -136,6 +137,24 @@
         "It exercises spark.sql.ansi.enabled on and off throughout; size(NULL) under each; spark.sql.legacy.statisticalAggregate on and off for var_samp.",
         "list_index[0]: 300 rows, `element_at(a, i)`, `a[i]`, `get(a, i)`, `try_element_at(a, i)`, `size(a)`, `array_size(a)`, 6326 of 6326 results as the fact says (raised: INVALID_ARRAY_INDEX 30, INVALID_ARRAY_INDEX_IN_ELEMENT_AT 28, INVALID_INDEX_OF_ZERO 92); aggregates[1]: 300 rows, `var_samp(x)`, `var_pop(x)`, `stddev_samp(x)`, 1440 of 1440 results as the fact says; int_divide[3]: 300 rows, `a div b`, `a / b`, 2394 of 2394 results as the fact says (raised: ARITHMETIC_OVERFLOW 2, DIVIDE_BY_ZERO 58); Spark differs from Rel.eval on 0 of 283; fp32[0]: 300 rows, `a + b`, `a * b`, `a / b`, `a + i`, `sqrt(a)`, 5970 of 5970 results as the fact says (raised: DIVIDE_BY_ZERO 30); raise_set[0]: 300 rows, `n + s`, `element_at(a, i)`, 1812 of 1812 results as the fact says (raised: CAST_INVALID_INPUT 30, INVALID_ARRAY_INDEX_IN_ELEMENT_AT 21, INVALID_INDEX_OF_ZERO 39).",
         "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
+    },
+    {
+      "checked_at": "2026-11-28",
+      "method": "probe",
+      "checked_by": "F287 T1 (session types-casts-caff57): sverify_dev.probe_spark.probe() on homelab, Spark 4.3.0, Java 21.0.13.1, Linux x86_64; main at f94d82abd (T1) and eafe3f6e8 (T1a)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/probes.json",
+          "note": "T1: 291 probes with the setting off and on against the recorded run (Java 21.0.12.1); the four that differed were the TIME probe and three run-to-run variations"
+        },
+        {
+          "file": "engines/spark/probes/probes.json",
+          "note": "T1a: off, on, off, on, off, on in one job; outcome per ANSI mode and path (error class and SQLSTATE, or rows) tracks the setting only for time-type"
+        }
+      ],
+      "notes": [
+        "The recorded probes.json ran on Java 21.0.12.1; these runs on Java 21.0.13.1. No outcome differs between them."
       ]
     }
   ],
