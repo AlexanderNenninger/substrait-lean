@@ -146,6 +146,7 @@ def core : List FnRow := [
   { name := "round", anchor := 17, group := "fp.round", ctor := some (.un .froundEven) },
   { name := "modulus", anchor := 18, group := "int.mod", ctor := some (.bin .imod),
     reads := .plain, pretty := "%" },
+  { name := "modulus", anchor := 18, group := "dec.mod", ctor := some (.bin .dmod), pretty := "%" },
   { name := "power", anchor := 19, group := "int.pow", ctor := some (.bin .ipow),
     reads := .plain, pretty := "^" },
   { name := "power", anchor := 19, group := "fp.pow", ctor := some (.bin .fpow), reads := .float,
@@ -409,6 +410,9 @@ def groups : List (String × List String) := [
   ("int.mod", ["overflow", "on_division_by_zero", "division_type", "min_mod_neg_one"]),
   ("int.bit", []), ("int.shift", ["shift_range"]),
   ("dec.arith", ["overflow", "decimal_rescale"]), ("dec.div", []),
+  -- D62: a floored remainder takes the divisor's sign, and a zero divisor gives NULL or an error
+  -- as `on_division_by_zero` says.
+  ("dec.mod", ["on_division_by_zero", "division_type"]),
   ("fp.arith", ["rounding", "nan_creation", "zero_sign", "float_overflow"]),
   ("fp.neg", ["zero_sign"]),
   ("fp.div", ["rounding", "on_division_by_zero", "on_domain_error", "nan_creation", "zero_sign",

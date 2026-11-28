@@ -139,10 +139,11 @@ condition. `DataAssumed` asks for the bounds on rows per key, which the
 sharper `check_proved_on_polars` does not need. -/
 theorem verified_holds_polars {input : Json} {R : Request} {rep : Report} {T : Plan} {k : Nat}
     {p : Post} (h : Verified input R rep T k p) (hE : Verified.GuardFree rep) {data : Catalog}
-    (hD : DataAssumed R data T) {r' : Rel} (hr : Lowering.polars.lowerRel? T.root = .ok r') :
+    (hD : DataAssumed R data T) (hx : T.root.ExactOnB Lowering.polars = true) {r' : Rel}
+    (hr : Lowering.polars.lowerRel? T.root = .ok r') :
     p.HoldsOn (r'.eval data Engine.polars.impl) :=
   check_proved_on_polars h.parsed h.checked hD.meets h.transform h.post h.proved hE.1 hD.small hE.2
-    hr
+    hx hr
 
 /-- **A verified postcondition holds on Spark's model**, under its report
 condition. The sharper form is `check_proved_on_spark`, without the bounds
@@ -212,11 +213,12 @@ declared foreign keys (`references`) and the assumptions of
 theorem verified_holds_run_plan_polars {input : Json} {R : Request} {rep : Report} {T : Plan}
     {k : Nat} {p : Post} (h : Verified input R rep T k p) (hE : Verified.GuardFree rep)
     {data : Catalog} (hD : DataAssumed R data T) {s : Rel}
-    (hs : R.runPlanIn R.kenv = .ok s) {s' : Rel} (hr : Lowering.polars.lowerRel? s = .ok s') :
+    (hs : R.runPlanIn R.kenv = .ok s) (hx : s.ExactOnB Lowering.polars = true) {s' : Rel}
+    (hr : Lowering.polars.lowerRel? s = .ok s') :
     p.HoldsOn (s'.eval data Engine.polars.impl) :=
   verified_holds_run_plan h hE.1 hD.meets hs Engine.polars_sound
     (by simp [Engine.polars, hr, Except.toOption])
-    (run_plan_guardFreeSide h.toChecked hD.meets hs hD.small hE.2)
+    (.inl ⟨hx, run_plan_guardFreeSide h.toChecked hD.meets hs hD.small hE.2⟩)
 
 /-- **A verified postcondition holds on Spark's model of the plan to run**
 (#2007), as `verified_holds_run_plan_polars`. -/

@@ -453,6 +453,9 @@ def contract (es : List EngineProfile) (input : String) : IO UInt32 := do
         |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
         |>.setObjVal! "margin_checks" margins
         |>.setObjVal! "asof_checks" asofs
+        -- Whether each generated table lowers the plan exactly (ruling 282 Q2).
+        |>.setObjVal! "exact_lowering"
+          ((R.transform.map fun T => T.root.exactLoweringJson).getD Lean.Json.null)
         -- The black boxes the transformation calls, with their laws (#1484).
         |>.setObjVal! "black_boxes"
           ((R.transform.map fun T => blackBoxesOf T.root).getD (Lean.Json.arr #[]))

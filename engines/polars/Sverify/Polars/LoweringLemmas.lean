@@ -14,7 +14,12 @@ step raises where the reference gives a value, on integers of any width.
 (`Polars.fround_agree`, `Polars.fceil_agree`). A decimal cast to a smaller
 scale, which rounds half to even on Polars, is `Polars.droundAwayT`, the
 reference's half away from zero from Polars's truncation (`Polars.droundEntry`,
-ruling 278's addendum).
+ruling 278's addendum). `>>` and `<<`, which Polars lacks, are `Polars.shrTemplate`, the floor
+division by `2ᵏ` (`Polars.bit_shr_agree`), and `Polars.shlTemplate`, the
+low bits times `2ᵏ` with the next bit as the sign (`Polars.bit_shl_agree`).
+A product of decimals is `Polars.dmulTemplate`, Polars's Int128 `*` under a
+guard that keeps it below `2¹²⁶` (`Polars.dmul_bound`), and an overflow
+elsewhere: one-sided (`Polars.dmulEntry`, ruling 282).
 -/
 
 namespace Substrait
@@ -341,6 +346,95 @@ theorem imod_agree (x y : Value) :
     all_goals exact imodTemplate_notInt (.inr fun _ h => by cases h)
   all_goals exact imodTemplate_notInt (.inl fun _ h => by cases h)
 
+/-! ## Decimal `%` (D62)
+
+Polars's decimal `%` floors (`Profile.polars_dmod`). The template takes the
+remainder by the negated divisor where the operands' signs differ, so that
+Polars's `%` sees operands of one sign, where floored and truncated agree: the
+`int_mod_trunc` shim on the unscaled integers. The signs are read on the
+unscaled integers (`a + 0`), since a decimal and the integer `0` do not
+compare. -/
+
+/-- `a % b` of decimals truncated, on Polars: Polars's `%` by `-b` where the
+signs differ, else Polars's `%`. -/
+def dmodTemplate : Expr :=
+  let a := Expr.field 0
+  let b := Expr.field 1
+  let z := Expr.lit (.int 0)
+  let x := Expr.bin .dadd a z
+  let y := Expr.bin .dadd b z
+  .ifThen (.bin .or (.bin .and (.bin .lt x z) (.bin .lt z y)) (.bin .and (.bin .lt y z) (.bin .lt z x)))
+    (.bin .dmod a (.bin .dsub z y)) (.bin .dmod a b)
+
+omit [Boxes.Ambient] in
+theorem dmodTemplate_must : 0 ∈ dmodTemplate.must ∧ 1 ∈ dmodTemplate.must := by
+  simp [Expr.must, dmodTemplate]
+
+theorem polars_dadd_zero_some {x : Value} {a : Int} (hx : x.unscaled? = some a) :
+    Profile.polars.bin .dadd x (.int 0) = .ok (.int a) := by
+  show Profile.reference.bin .dadd _ _ = _
+  rw [Lowering.ref_dadd]; simp only [BinFn.apply, hx]; simp
+
+/-- On two numbers. -/
+theorem dmodTemplate_num {x y : Value} {a b : Int} (hx : x.unscaled? = some a)
+    (hy : y.unscaled? = some b) :
+    (dmodTemplate.evalP Profile.polars [x, y]).Agree (Profile.reference.bin .dmod x y) := by
+  simp only [dmodTemplate, Expr.evalP, List.getD, List.getElem?_cons_zero, List.getElem?_cons_succ,
+    Option.getD_some, polars_dadd_zero_some hx, polars_dadd_zero_some hy, polars_lt_int,
+    polars_and_bool, polars_or_bool, polars_dsub_int, bind, Except.bind, isTrue_bool,
+    Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq]
+  by_cases c : (a < 0 ∧ 0 < b) ∨ (b < 0 ∧ 0 < a)
+  · have hb0 : b ≠ 0 := by omega
+    simp only [eq_true c, ↓reduceIte]
+    rw [Profile.polars_dmod hx (show (Value.int (0 - b)).unscaled? = some (0 - b) from rfl) (by omega),
+      Lowering.ref_dmod hx hy hb0, Polars.floorMod,
+      (Polars.fdiv_fmod_same (a := a) (b := 0 - b) (by omega) (by omega)).2,
+      show (0 : Int) - b = -b by omega, Int.tmod_neg]
+    exact Outcome.agree_refl _
+  · simp only [eq_false c, ↓reduceIte]
+    by_cases hb0 : b = 0
+    · subst hb0
+      rw [Profile.polars_dmod_zero hx hy, Lowering.ref_dmod_zero hx hy]
+      exact Outcome.agree_refl _
+    · rw [Profile.polars_dmod hx hy hb0, Lowering.ref_dmod hx hy hb0, Polars.floorMod,
+        (Polars.fdiv_fmod_same (a := a) (b := b) (by omega) (by omega)).2]
+      exact Outcome.agree_refl _
+
+/-- A guard of `dmodTemplate` with a `NULL` operand never holds. -/
+theorem isTrue_signs_null {u v : Value} (h : u = .null ∨ v = .null) :
+    (or3 (and3 (BinFn.apply .lt u (.int 0)) (BinFn.apply .lt (.int 0) v))
+      (and3 (BinFn.apply .lt v (.int 0)) (BinFn.apply .lt (.int 0) u))).isTrue = false := by
+  rcases h with rfl | rfl
+  · exact isTrue_or3_not (and3_null_l _) (and3_null_r _)
+  · exact isTrue_or3_not (and3_null_r _) (and3_null_l _)
+
+theorem polars_dadd : Profile.polars.bin .dadd = Profile.reference.bin .dadd := rfl
+
+/-- With an operand that is not a number (`NULL`). -/
+theorem dmodTemplate_null {x y : Value} (h : x.unscaled? = none ∨ y.unscaled? = none) :
+    (dmodTemplate.evalP Profile.polars [x, y]).Agree (Profile.reference.bin .dmod x y) := by
+  rw [Lowering.ref_dmod_null h]
+  have hn : BinFn.apply .dadd x (.int 0) = .null ∨ BinFn.apply .dadd y (.int 0) = .null := by
+    rcases h with h | h
+    · left; simp only [BinFn.apply, h]
+    · right; simp only [BinFn.apply, h]
+  simp only [dmodTemplate, Expr.evalP, List.getD, List.getElem?_cons_zero, List.getElem?_cons_succ,
+    Option.getD_some, polars_dadd, Lowering.ref_dadd, polars_lt, polars_and, polars_or,
+    Lowering.ref_lt, Lowering.ref_and, Lowering.ref_or, bind, Except.bind, isTrue_signs_null hn,
+    Bool.false_eq_true, ↓reduceIte, Profile.polars_dmod_null h]
+  exact Outcome.agree_refl _
+
+/-- **Polars's lowering of decimal `%`** (`dmodTemplate`) agrees with the
+reference's on every value. -/
+theorem dmod_agree (x y : Value) :
+    (dmodTemplate.evalP Profile.polars [x, y]).Agree (Profile.reference.bin .dmod x y) := by
+  cases hx : x.unscaled? with
+  | none => exact dmodTemplate_null (.inl hx)
+  | some a =>
+    cases hy : y.unscaled? with
+    | none => exact dmodTemplate_null (.inr hy)
+    | some b => exact dmodTemplate_num hx hy
+
 /-! ## A decimal cast to a smaller scale: half away from zero (ruling 278's addendum) -/
 
 /-- The reference's decimal cast to a scale `k` digits smaller, from Polars's
@@ -431,6 +525,745 @@ def froundToEntry (d : Int) : Option (UnEntry Profile.polars (.froundTo d)) :=
 -- The range, at its ends and just past them.
 #guard letI := Boxes.Ambient.none; (froundToEntry 0).isSome && (froundToEntry 22).isSome
 #guard letI := Boxes.Ambient.none; (froundToEntry 23).isNone && (froundToEntry (-1)).isNone
+
+/-! ## `&`, `|` and `^`
+
+Polars has them (`&`, `|`, `^` of Int64), but not `<<` and `>>`, so the
+regeneration names `BinFn.bit` among the functions Polars lacks
+(`scripts/RegenLoweringPolars.lean`) and these three take the native call as
+a hand-written schema. -/
+
+/-- `#0 & #1`. -/
+def bitAndT : Expr := .bin (.bit .and) (.field 0) (.field 1)
+/-- `#0 | #1`. -/
+def bitOrT : Expr := .bin (.bit .or) (.field 0) (.field 1)
+/-- `#0 ^ #1`. -/
+def bitXorT : Expr := .bin (.bit .xor) (.field 0) (.field 1)
+
+omit [Boxes.Ambient] in
+theorem bitAndT_must : 0 ∈ bitAndT.must ∧ 1 ∈ bitAndT.must := by simp [bitAndT, Expr.must]
+omit [Boxes.Ambient] in
+theorem bitOrT_must : 0 ∈ bitOrT.must ∧ 1 ∈ bitOrT.must := by simp [bitOrT, Expr.must]
+omit [Boxes.Ambient] in
+theorem bitXorT_must : 0 ∈ bitXorT.must ∧ 1 ∈ bitXorT.must := by simp [bitXorT, Expr.must]
+
+/-- Polars's bitwise functions are the reference's. -/
+theorem bit_native_agree (op : BitOp) (x y : Value) :
+    ((Expr.bin (.bit op) (.field 0) (.field 1)).evalP Profile.polars [x, y]).Agree
+      (Profile.reference.bin (.bit op) x y) := by
+  simp only [Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind]
+  exact Outcome.agree_refl _
+
+theorem bit_and_agree (x y : Value) : (bitAndT.evalP Profile.polars [x, y]).Agree
+    (Profile.reference.bin (.bit .and) x y) := bit_native_agree .and x y
+theorem bit_or_agree (x y : Value) : (bitOrT.evalP Profile.polars [x, y]).Agree
+    (Profile.reference.bin (.bit .or) x y) := bit_native_agree .or x y
+theorem bit_xor_agree (x y : Value) : (bitXorT.evalP Profile.polars [x, y]).Agree
+    (Profile.reference.bin (.bit .xor) x y) := bit_native_agree .xor x y
+
+/-! ## `>>` -/
+
+/-- `#1 < 0 OR NOT #1 < n`. -/
+def shrOutside (n : Int) : Expr :=
+  .bin .or (.bin .lt (.field 1) (.lit (.int 0))) (.un .not (.bin .lt (.field 1) (.lit (.int n))))
+
+/-- `2 ^ #1` for `#1` in `0`–`62`, else `2 ^ 0`. -/
+def shrPow : Expr := .bin .ipow (.lit (.int 2)) (.ifThen (shrOutside 63) (.lit (.int 0)) (.field 1))
+
+/-- `CASE WHEN #0 IS INT AND (#1 < 0 OR NOT #1 < 64) THEN error ELSE (CASE WHEN
+#1 = 63 THEN (w // 2⁶²) // 2 ELSE w // 2 ^ #1 END) END` with `w = #0 & -1`:
+the reference's `>>`, which raises outside `0`–`63`, from Polars's floored `//`,
+since Polars has no shift (polars-int-shift). `w` is `#0` read at 64 bits, as
+`BitOp.apply` reads it, and `2⁶³` does not fit, so a shift by 63 divides
+twice. Polars computes every branch on every row, so the exponent is `0`
+outside `0`–`62` (`shrPow`): `**` fails the whole query on a negative one
+(polars-int-pow-exponent). -/
+def shrTemplate : Expr :=
+  let w := Expr.bin (.bit .and) (.field 0) (.lit (.int (-1)))
+  .ifThen (.bin .and (.un (.isNum .int) (.field 0)) (shrOutside 64))
+    (.un (.raise "domain error") (.field 1))
+    (.ifThen (.bin .eq (.field 1) (.lit (.int 63)))
+      (.bin .idiv (.bin .idiv w (.lit (.int (2 ^ 62)))) (.lit (.int 2)))
+      (.bin .idiv w shrPow))
+
+omit [Boxes.Ambient] in
+theorem shrTemplate_must : 0 ∈ shrTemplate.must ∧ 1 ∈ shrTemplate.must := by
+  simp [Expr.must, shrTemplate, shrOutside, shrPow]
+
+/-! ### Its steps -/
+
+omit [Boxes.Ambient] in
+theorem ofInt_neg_one : BitVec.ofInt 64 (-1) = BitVec.allOnes 64 := by decide
+
+/-- `x & -1` is `x` read at 64 bits. -/
+theorem polars_bitAnd_neg_one (a : Int) :
+    Profile.polars.bin (.bit .and) (.int a) (.int (-1)) = .ok (.int (BitVec.ofInt 64 a).toInt) := by
+  have h : BitOp.apply .and a (-1) = some (BitVec.ofInt 64 a).toInt := by
+    simp only [BitOp.apply, ofInt_neg_one, BitVec.and_allOnes]
+  show Profile.reference.bin (.bit .and) (.int a) (.int (-1)) = _
+  simp [Profile.reference, raiseIf, BinFn.issue, domainIssue, BinFn.apply, h]
+
+omit [Boxes.Ambient] in
+theorem inI64_toInt (a : Int) : inI64 (BitVec.ofInt 64 a).toInt = true := by
+  have h1 := BitVec.toInt_lt (x := BitVec.ofInt 64 a)
+  have h2 := BitVec.le_toInt (x := BitVec.ofInt 64 a)
+  rw [inI64_iff]; simp at h1 h2 ⊢; omega
+
+theorem polars_ipow_two {b : Int} (h0 : 0 ≤ b) (h : b < 63) :
+    Profile.polars.bin .ipow (.int 2) (.int b) = .ok (.int (2 ^ b.toNat)) := by
+  show Profile.reference.bin .ipow (.int 2) (.int b) = _
+  have hn : 2 ^ b.toNat ≤ 2 ^ 62 := Nat.pow_le_pow_right (by decide) (by omega)
+  have hp : (2 : Int) ^ b.toNat ≤ 2 ^ 62 := by exact_mod_cast hn
+  have hp0 : 0 < (2 : Int) ^ b.toNat := by exact_mod_cast Nat.two_pow_pos b.toNat
+  have hi : inI64 ((2 : Int) ^ b.toNat) = true := by rw [inI64_iff]; omega
+  simp only [Profile.reference]
+  simp [raiseIf, BinFn.issue, BinFn.apply, hi, show ¬ b < 0 by omega, show ¬ 64 < b by omega]
+
+/-- Polars's `//` by a positive 64-bit divisor is the floor, `Int`'s `/`. -/
+theorem polars_idiv_pos {w p : Int} (hw : inI64 w = true) (hp : inI64 p = true) (h0 : 0 < p) :
+    Profile.polars.bin .idiv (.int w) (.int p) = .ok (.int (w / p)) := by
+  rw [Profile.polars_idiv hw hp (by omega) (by omega), floorDiv, Int.fdiv_eq_ediv_of_nonneg _ (by omega)]
+
+/-- The reference's `>>` inside `0`–`63`: the floor of `x` at 64 bits by `2ᵇ`. -/
+theorem ref_shr_int (a b : Int) (h0 : 0 ≤ b) (h : b < 64) :
+    Profile.reference.bin (.bit .shr) (.int a) (.int b) =
+      .ok (.int ((BitVec.ofInt 64 a).toInt / 2 ^ b.toNat)) := by
+  simp only [Profile.reference]
+  simp [raiseIf, BinFn.issue, domainIssue, BitOp.apply, BinFn.apply, h0, h,
+    BitVec.toInt_sshiftRight, Int.shiftRight_eq_div_pow]
+
+omit [Boxes.Ambient] in
+theorem inI64_two_pow {n : Nat} (h : n ≤ 62) : inI64 ((2 : Int) ^ n) = true := by
+  have hn : 2 ^ n ≤ 2 ^ 62 := Nat.pow_le_pow_right (by decide) h
+  have hp : (2 : Int) ^ n ≤ 2 ^ 62 := by exact_mod_cast hn
+  have hp0 : 0 < (2 : Int) ^ n := by exact_mod_cast Nat.two_pow_pos n
+  rw [inI64_iff]; omega
+
+theorem polars_isNum_ok (k : NumKind) (x : Value) :
+    Profile.polars.un (.isNum k) x = .ok (.bool (x.isNum k)) := Lowering.ref_isNum k x
+theorem polars_not_ok (x : Value) :
+    Profile.polars.un .not x = .ok (match x with | .bool b => .bool !b | _ => .null) :=
+  Lowering.ref_not x
+theorem polars_raise_ok (m : String) (x : Value) : Profile.polars.un (.raise m) x = .error .raised :=
+  Lowering.ref_raise m x
+theorem polars_lt_ok (x y : Value) : Profile.polars.bin .lt x y = .ok (BinFn.apply .lt x y) :=
+  Lowering.ref_lt x y
+theorem polars_eq_ok (x y : Value) : Profile.polars.bin .eq x y = .ok (BinFn.apply .eq x y) :=
+  Lowering.ref_eq x y
+theorem polars_and_ok (x y : Value) : Profile.polars.bin .and x y = .ok (and3 x y) := Lowering.ref_and x y
+theorem polars_or_ok (x y : Value) : Profile.polars.bin .or x y = .ok (or3 x y) := Lowering.ref_or x y
+
+theorem apply_lt_int (a b : Int) : BinFn.apply .lt (.int a) (.int b) = .bool (decide (a < b)) := rfl
+theorem apply_eq_int (a b : Int) : BinFn.apply .eq (.int a) (.int b) = .bool (a == b) := by
+  simp [BinFn.apply]
+
+omit [Boxes.Ambient] in
+theorem and3_bool (p q : Bool) : and3 (.bool p) (.bool q) = .bool (p && q) := by
+  cases p <;> cases q <;> rfl
+omit [Boxes.Ambient] in
+theorem or3_bool (p q : Bool) : or3 (.bool p) (.bool q) = .bool (p || q) := by
+  cases p <;> cases q <;> rfl
+
+omit [Boxes.Ambient] in
+theorem inI64_ediv_two_pow_62 {w : Int} (hw : inI64 w = true) : inI64 (w / 2 ^ 62) = true := by
+  rw [inI64_iff] at hw ⊢
+  rw [show (2 : Int) ^ 62 = 4611686018427387904 from rfl]; omega
+
+/-- On two integers. -/
+theorem shr_int (a b : Int) :
+    (shrTemplate.evalP Profile.polars [.int a, .int b]).Agree
+      (Profile.reference.bin (.bit .shr) (.int a) (.int b)) := by
+  simp only [shrTemplate, shrOutside, shrPow, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind,
+    polars_isNum_ok, polars_lt_ok, polars_or_ok, polars_not_ok, polars_and_ok, polars_raise_ok, polars_eq_ok,
+    apply_lt_int, apply_eq_int, Value.isNum, polars_bitAnd_neg_one, and3_bool, or3_bool, isTrue_bool,
+    Bool.true_and]
+  have hw := inI64_toInt a
+  by_cases hr : 0 ≤ b ∧ b < 64
+  · rw [ref_shr_int a b hr.1 hr.2]
+    have h1 : ¬ b < 0 := by omega
+    by_cases h63 : b = 63
+    · have e63 : (b == 63) = true := by simp [h63]
+      simp only [h1, hr.2, e63, decide_false, decide_true, Bool.not_true, Bool.or_false,
+        Bool.false_eq_true, ↓reduceIte]
+      rw [polars_idiv_pos (p := 2 ^ 62) hw rfl (by decide), Outcome.ok_bind,
+        polars_idiv_pos (p := 2) (inI64_ediv_two_pow_62 hw) rfl (by decide),
+        Int.ediv_ediv_of_nonneg (by decide), h63]
+      rfl
+    · have h2 : b < 63 := by omega
+      have e63 : (b == 63) = false := by simp [h63]
+      simp only [h1, h2, e63, hr.2, decide_false, decide_true, Bool.not_true, Bool.or_false,
+        Bool.false_eq_true, ↓reduceIte, Outcome.ok_bind]
+      rw [polars_ipow_two hr.1 h2, Outcome.ok_bind, polars_idiv_pos hw (inI64_two_pow (by omega))
+        (by exact_mod_cast Nat.two_pow_pos _)]
+      exact Outcome.agree_refl _
+  · have hc : (decide (b < 0) || !decide (b < 64)) = true := by
+      simp only [Bool.or_eq_true, decide_eq_true_eq, Bool.not_eq_true', decide_eq_false_iff_not]
+      omega
+    have hr' : Profile.reference.bin (.bit .shr) (.int a) (.int b) = .error .domain := by
+      simp [Profile.reference, raiseIf, BinFn.issue, domainIssue, BitOp.apply, hr, Issue.isError]
+    simp [hc, hr', Outcome.Agree]
+
+theorem polars_bitAnd_notInt {x : Value} (h : NotInt x) :
+    Profile.polars.bin (.bit .and) x (.int (-1)) = .ok .null := by
+  cases x <;> first | rfl | exact absurd rfl (h _)
+
+/-- `shrPow` never raises. -/
+theorem shrPow_ok (x y : Value) : ∃ v, shrPow.evalP Profile.polars [x, y] = .ok v := by
+  simp only [shrPow, shrOutside, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ,
+    Outcome.ok_bind, polars_lt_ok, polars_or_ok, polars_not_ok]
+  cases y
+  case int b =>
+    simp only [apply_lt_int, or3_bool, isTrue_bool]
+    by_cases h : b < 0 ∨ ¬ b < 63
+    · have hc : (decide (b < 0) || !decide (b < 63)) = true := by
+        simp only [Bool.or_eq_true, decide_eq_true_eq, Bool.not_eq_true', decide_eq_false_iff_not]
+        exact h
+      simp only [hc, ↓reduceIte, Outcome.ok_bind]
+      exact ⟨_, polars_ipow_two (b := 0) (by decide) (by decide)⟩
+    · have hc : (decide (b < 0) || !decide (b < 63)) = false := by
+        simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not, Bool.not_eq_false',
+          decide_eq_true_eq]
+        omega
+      simp only [hc, Bool.false_eq_true, ↓reduceIte, Outcome.ok_bind]
+      exact ⟨_, polars_ipow_two (by omega) (by omega)⟩
+  all_goals exact ⟨_, rfl⟩
+
+theorem shrOutside_ok (n : Int) (x y : Value) : ∃ g, (shrOutside n).evalP Profile.polars [x, y] = .ok g := by
+  simp only [shrOutside, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind,
+    polars_lt_ok, polars_or_ok, polars_not_ok]
+  exact ⟨_, rfl⟩
+
+theorem shrOutside_notInt (n : Int) (x : Value) {y : Value} (hy : NotInt y) :
+    (shrOutside n).evalP Profile.polars [x, y] = .ok .null := by
+  simp only [shrOutside, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind,
+    polars_lt_ok, polars_or_ok, polars_not_ok, apply_lt_notInt_l hy]
+  rfl
+
+omit [Boxes.Ambient] in
+theorem isTrue_and3_false (v : Value) : (and3 (.bool false) v).isTrue = false := by
+  cases v <;> first | rfl | (rename_i b; cases b <;> rfl)
+
+omit [Boxes.Ambient] in
+theorem isNum_notInt {x : Value} (h : NotInt x) : x.isNum .int = false := by
+  cases x <;> first | rfl | exact absurd rfl (h _)
+
+theorem apply_eq_notInt {y : Value} (hy : NotInt y) (c : Int) : BinFn.apply .eq y (.int c) = .null := by
+  cases y <;> first | rfl | exact absurd rfl (hy _)
+
+/-- Where an argument is not an integer, every step gives `NULL`, as the
+reference's `>>` does. -/
+theorem shr_notInt {x y : Value} (h : NotInt x ∨ NotInt y) :
+    (shrTemplate.evalP Profile.polars [x, y]).Agree
+      (Profile.reference.bin (.bit .shr) x y) := by
+  have hr : Profile.reference.bin (.bit .shr) x y = .ok .null := by
+    rcases h with h | h <;> cases x <;> cases y <;> first | rfl | exact absurd rfl (h _)
+  rw [hr]
+  have hnull : NotInt Value.null := fun _ h => by cases h
+  simp only [shrTemplate, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind,
+    polars_isNum_ok, polars_and_ok, polars_eq_ok, polars_raise_ok]
+  rcases h with hx | hy
+  · obtain ⟨g, hg⟩ := shrOutside_ok 64 x y
+    obtain ⟨v, hv⟩ := shrPow_ok x y
+    simp only [hg, Outcome.ok_bind, isNum_notInt hx, isTrue_and3_false, Bool.false_eq_true,
+      ↓reduceIte, polars_bitAnd_notInt hx, polars_idiv_notInt (.inl hnull), hv]
+    split <;> exact Outcome.agree_refl _
+  · have hv : shrPow.evalP Profile.polars [x, y] = .ok .null := by
+      simp only [shrPow, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind,
+        shrOutside_notInt 63 x hy, isTrue_null, Bool.false_eq_true, ↓reduceIte]
+      cases y <;> first | rfl | exact absurd rfl (hy _)
+    obtain ⟨w, hw⟩ : ∃ w, Profile.polars.bin (.bit .and) x (.int (-1)) = .ok w := by
+      cases x <;> first | exact ⟨_, rfl⟩ | exact ⟨_, polars_bitAnd_neg_one _⟩
+    simp only [shrOutside_notInt 64 x hy, Outcome.ok_bind, isTrue_and3_null_r, Bool.false_eq_true,
+      ↓reduceIte, apply_eq_notInt hy, isTrue_null, hw, hv, polars_idiv_notInt (.inr hnull)]
+    exact Outcome.agree_refl _
+
+/-- **Polars's lowering of `>>`** (`shrTemplate`) agrees with the reference on
+every value. -/
+theorem bit_shr_agree (x y : Value) :
+    (shrTemplate.evalP Profile.polars [x, y]).Agree (Profile.reference.bin (.bit .shr) x y) := by
+  cases x
+  case int a =>
+    cases y
+    case int b => exact shr_int a b
+    all_goals exact shr_notInt (.inr fun _ h => by cases h)
+  all_goals exact shr_notInt (.inl fun _ h => by cases h)
+
+/-! ## `<<` -/
+
+/-- `#1` where it is in `0`–`63`, else `0`. -/
+def shlK : Expr := .ifThen (shrOutside 64) (.lit (.int 0)) (.field 1)
+
+/-- `2 ^ (63 - k)` for `k = shlK` in `1`–`63`, else `2 ^ 0`. -/
+def shlLow : Expr :=
+  let j := Expr.bin .sub (.lit (.int 63)) shlK
+  .bin .ipow (.lit (.int 2)) (.ifThen (.un .not (.bin .lt j (.lit (.int 63)))) (.lit (.int 0)) j)
+
+/-- `CASE WHEN #0 IS INT AND (#1 < 0 OR NOT #1 < 64) THEN error WHEN #1 = 0 THEN w
+WHEN (w // 2ʲ) % 2 = 1 THEN (w % 2ʲ) · 2ᵏ + MIN ELSE (w % 2ʲ) · 2ᵏ END`, with
+`k = #1`, `j = 63 - k` and `w = #0 & -1`: the reference's `<<`, which drops
+the bits shifted out and raises outside `0`–`63`, in Polars's 64-bit
+functions, since Polars has no shift (polars-int-shift). The low `j` bits of
+`w`, shifted, fit in 63 bits, and bit `j` becomes the sign (`shl_pieces`), so
+no step wraps (Polars's `*` would, polars-int-arith, where the profile
+raises). As in `shrTemplate`, every exponent is in `0`–`62`. -/
+def shlTemplate : Expr :=
+  let w := Expr.bin (.bit .and) (.field 0) (.lit (.int (-1)))
+  let t := Expr.bin .imod w shlLow
+  let c := Expr.bin .imod (.bin .idiv w shlLow) (.lit (.int 2))
+  let lo := Expr.bin .mul t shrPow
+  .ifThen (.bin .and (.un (.isNum .int) (.field 0)) (shrOutside 64))
+    (.un (.raise "domain error") (.field 1))
+    (.ifThen (.bin .eq (.field 1) (.lit (.int 0))) w
+      (.ifThen (.bin .eq c (.lit (.int 1))) (.bin .add lo (.lit (.int (-2 ^ 63)))) lo))
+
+omit [Boxes.Ambient] in
+theorem shlTemplate_must : 0 ∈ shlTemplate.must ∧ 1 ∈ shlTemplate.must := by
+  simp [Expr.must, shlTemplate, shrOutside, shrPow, shlLow, shlK]
+
+omit [Boxes.Ambient] in
+/-- `x` at 64 bits differs from `x` by a multiple of `2⁶⁴`. -/
+theorem toInt_ofInt_eq (a : Int) : ∃ z, (BitVec.ofInt 64 a).toInt = a + 2 ^ 64 * z := by
+  rw [BitVec.toInt_ofInt, Int.bmod_def, Int.emod_def]
+  simp only [Int.natCast_pow, Int.cast_ofNat_Int]
+  split
+  · exact ⟨-(a / 2 ^ 64), by grind⟩
+  · exact ⟨-(a / 2 ^ 64) - 1, by grind⟩
+
+omit [Boxes.Ambient] in
+/-- **The left shift in 64-bit pieces**: `a · 2ᵏ` wrapped at 64 bits, for
+`k` in `1`–`63` and `j = 63 - k`, is `(w mod 2ʲ) · 2ᵏ`, less `2⁶³` where bit
+`j` of `w` is set, for `w` congruent to `a` modulo `2⁶⁴`. -/
+theorem shl_pieces {a w z : Int} (hz : w = a + 2 ^ 64 * z) {k j : Nat} (hk : j + k = 63) :
+    (a * 2 ^ k + 2 ^ 63) % 2 ^ 64 - 2 ^ 63 =
+      if (w / 2 ^ j) % 2 = 1 then (w % 2 ^ j) * 2 ^ k - 2 ^ 63 else (w % 2 ^ j) * 2 ^ k := by
+  have hP : (0 : Int) < 2 ^ j := by exact_mod_cast Nat.two_pow_pos j
+  have hPX : (2 : Int) ^ j * 2 ^ k = 2 ^ 63 := by rw [← Int.pow_add, hk]
+  have ht0 : 0 ≤ w % 2 ^ j := Int.emod_nonneg _ (by omega)
+  have ht1 : w % 2 ^ j < 2 ^ j := Int.emod_lt_of_pos _ hP
+  have hX : (0 : Int) < 2 ^ k := by exact_mod_cast Nat.two_pow_pos k
+  have hu1 : (w % 2 ^ j) * 2 ^ k < 2 ^ 63 := by
+    rw [← hPX]; exact Int.mul_lt_mul_of_pos_right ht1 hX
+  have hu0 : 0 ≤ (w % 2 ^ j) * 2 ^ k := Int.mul_nonneg ht0 (by omega)
+  have hc0 : 0 ≤ (w / 2 ^ j) % 2 := Int.emod_nonneg _ (by decide)
+  have hc1 : (w / 2 ^ j) % 2 < 2 := Int.emod_lt_of_pos _ (by decide)
+  have hq := Int.emod_add_mul_ediv (w / 2 ^ j) 2
+  have hw := Int.emod_add_mul_ediv w (2 ^ j)
+  have e : a * 2 ^ k + 2 ^ 63 =
+      ((2 ^ 63 * ((w / 2 ^ j) % 2) + (w % 2 ^ j) * 2 ^ k + 2 ^ 63)
+        + 2 ^ 64 * ((w / 2 ^ j) / 2 - z * 2 ^ k)) := by
+    generalize w / 2 ^ j = q at hq hw
+    generalize w % 2 ^ j = t at hw
+    generalize q / 2 = r at hq
+    generalize q % 2 = c at hq
+    generalize (2 : Int) ^ j = P at hPX hw
+    generalize (2 : Int) ^ k = X at hPX
+    have ha : a = w - 2 ^ 64 * z := by omega
+    subst ha
+    subst hw
+    subst hq
+    grind
+  rw [e, Int.add_mul_emod_self_left]
+  generalize (w / 2 ^ j) % 2 = c at hc0 hc1 ⊢
+  generalize (w % 2 ^ j) * 2 ^ k = u at hu0 hu1 ⊢
+  split <;> omega
+
+/-! ### Its steps -/
+
+theorem polars_imod_pos {x m : Int} (hx : inI64 x = true) (hm : inI64 m = true) (h0 : 0 < m) :
+    Profile.polars.bin .imod (.int x) (.int m) = .ok (.int (x % m)) := by
+  rw [Profile.polars_imod hx hm (by omega), floorMod, Int.fmod_eq_emod_of_nonneg _ (by omega)]
+
+theorem polars_mul_i64 {x y : Int} (h : inI64 (x * y) = true) :
+    Profile.polars.bin .mul (.int x) (.int y) = .ok (.int (x * y)) := by
+  have ha : BinFn.apply .mul (.int x) (.int y) = .int (x * y) := rfl
+  show raiseIf (BinFn.issue .mul (.int x) (.int y)) (BinFn.apply .mul (.int x) (.int y)) = _
+  simp [raiseIf, BinFn.issue, wrapNum, Value.numOf?, wrapIf, h, ha]
+
+theorem polars_add_i64 {x y : Int} (h : inI64 (x + y) = true) :
+    Profile.polars.bin .add (.int x) (.int y) = .ok (.int (x + y)) := by
+  have := (inI64_iff _).mp h; exact ref_add_int x y this.1 this.2
+
+theorem polars_sub_i64 {x y : Int} (h : inI64 (x - y) = true) :
+    Profile.polars.bin .sub (.int x) (.int y) = .ok (.int (x - y)) := by
+  have := (inI64_iff _).mp h; exact ref_sub_int x y this.1 this.2
+
+theorem ref_shl_int (a b : Int) (h0 : 0 ≤ b) (h : b < 64) :
+    Profile.reference.bin (.bit .shl) (.int a) (.int b) =
+      .ok (.int ((a * 2 ^ b.toNat + 2 ^ 63) % 2 ^ 64 - 2 ^ 63)) := by
+  have hs := Lowering.shl_apply a b
+  simp only [show ¬ b < 0 by omega, h, ite_false, ite_true] at hs
+  simp [Profile.reference, raiseIf, BinFn.issue, domainIssue, BinFn.apply, hs]
+
+omit [Boxes.Ambient] in
+theorem inI64_ediv {w P : Int} (hw : inI64 w = true) (hP : 1 ≤ P) : inI64 (w / P) = true := by
+  have hw' := (inI64_iff _).mp hw
+  have h1 := Int.mul_ediv_add_emod w P
+  have h2 := Int.emod_nonneg w (show P ≠ 0 by omega)
+  have h3 := Int.emod_lt_of_pos w (show 0 < P by omega)
+  rw [inI64_iff]
+  generalize w / P = q at h1 ⊢
+  generalize w % P = t at h1 h2 h3
+  have e : (P - 1) * q = P * q - q := by rw [Int.sub_mul, Int.one_mul]
+  by_cases hq : 0 ≤ q
+  · have : 0 ≤ (P - 1) * q := Int.mul_nonneg (by omega) hq
+    omega
+  · have : (P - 1) * q ≤ 0 := Int.mul_nonpos_of_nonneg_of_nonpos (by omega) (by omega)
+    have : P * q + t < P * q + P := by omega
+    have e2 : P * (q + 1) = P * q + P := by rw [Int.mul_add, Int.mul_one]
+    have : P * (q + 1) ≤ q + 1 := by
+      have : (P - 1) * (q + 1) ≤ 0 := Int.mul_nonpos_of_nonneg_of_nonpos (by omega) (by omega)
+      have e3 : (P - 1) * (q + 1) = P * (q + 1) - (q + 1) := by rw [Int.sub_mul, Int.one_mul]
+      omega
+    omega
+
+theorem shrPow_eval (x : Value) {b : Int} (h0 : 0 ≤ b) (h : b < 63) :
+    shrPow.evalP Profile.polars [x, .int b] = .ok (.int (2 ^ b.toNat)) := by
+  simp only [shrPow, shrOutside, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ,
+    Outcome.ok_bind, polars_lt_ok, polars_or_ok, polars_not_ok, apply_lt_int, or3_bool, isTrue_bool,
+    show ¬ b < 0 by omega, h, decide_false, decide_true, Bool.not_true, Bool.or_false,
+    Bool.false_eq_true, ↓reduceIte]
+  exact polars_ipow_two h0 h
+
+theorem shrPow_eval_63 (x : Value) : shrPow.evalP Profile.polars [x, .int 63] = .ok (.int 1) := by
+  simp only [shrPow, shrOutside, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ,
+    Outcome.ok_bind, polars_lt_ok, polars_or_ok, polars_not_ok, apply_lt_int, or3_bool, isTrue_bool]
+  exact polars_ipow_two (b := 0) (by decide) (by decide)
+
+theorem shlLow_eval (x : Value) {b : Int} (h1 : 1 ≤ b) (h2 : b < 64) :
+    shlLow.evalP Profile.polars [x, .int b] = .ok (.int (2 ^ (63 - b).toNat)) := by
+  have hj : inI64 (63 - b) = true := by rw [inI64_iff]; omega
+  simp only [shlLow, shlK, shrOutside, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ,
+    Outcome.ok_bind, polars_lt_ok, polars_or_ok, polars_not_ok, apply_lt_int, or3_bool, isTrue_bool,
+    show ¬ b < 0 by omega, h2, decide_false, decide_true, Bool.not_true, Bool.or_false,
+    Bool.false_eq_true, ↓reduceIte, polars_sub_i64 hj, show 63 - b < 63 by omega]
+  exact polars_ipow_two (by omega) (by omega)
+
+/-- On two integers. -/
+theorem shl_int (a b : Int) :
+    (shlTemplate.evalP Profile.polars [.int a, .int b]).Agree
+      (Profile.reference.bin (.bit .shl) (.int a) (.int b)) := by
+  simp only [shlTemplate, shrOutside, Expr.evalP, List.getD_cons_zero,
+    List.getD_cons_succ, Outcome.ok_bind, polars_isNum_ok, polars_lt_ok, polars_or_ok, polars_not_ok,
+    polars_and_ok, polars_raise_ok, polars_eq_ok, apply_lt_int, apply_eq_int, Value.isNum,
+    polars_bitAnd_neg_one, and3_bool, or3_bool, isTrue_bool, Bool.true_and]
+  have hw := inI64_toInt a
+  obtain ⟨z, hz⟩ := toInt_ofInt_eq a
+  by_cases hr : 0 ≤ b ∧ b < 64
+  · rw [ref_shl_int a b hr.1 hr.2]
+    have h1 : ¬ b < 0 := by omega
+    simp only [h1, hr.2, decide_false, decide_true, Bool.not_true, Bool.or_false,
+      Bool.false_eq_true, ↓reduceIte]
+    by_cases hb0 : b = 0
+    · subst hb0
+      simp only [show ((0 : Int) == 0) = true from rfl, ↓reduceIte, Outcome.Agree, Value.int.injEq]
+      rw [BitVec.toInt_ofInt, Lowering.bmod_fit]; simp
+    · have e0 : (b == 0) = false := by simp [hb0]
+      obtain ⟨n, rfl⟩ : ∃ n : Nat, b = n := ⟨b.toNat, by omega⟩
+      have hn : 1 ≤ n ∧ n < 64 := by omega
+      have hP0 : (0 : Int) < 2 ^ (63 - n) := by exact_mod_cast Nat.two_pow_pos _
+      have hPi : inI64 ((2 : Int) ^ (63 - n)) = true := inI64_two_pow (by omega)
+      have hq : inI64 ((BitVec.ofInt 64 a).toInt / 2 ^ (63 - n)) = true := inI64_ediv hw hP0
+      have hn' : ((n : Int) - 0).toNat = n := by omega
+      simp only [e0, Bool.false_eq_true, ↓reduceIte, shlLow_eval _ (b := (n : Int)) (by omega) (by omega),
+        Outcome.ok_bind, show ((63 : Int) - n).toNat = 63 - n by omega,
+        polars_imod_pos hw hPi hP0, polars_idiv_pos hw hPi hP0, polars_imod_pos (m := 2) hq rfl (by decide),
+        apply_eq_int]
+      have hpc := shl_pieces (a := a) (z := z) hz (k := n) (j := 63 - n) (by omega)
+      rw [show ((n : Int)).toNat = n by omega, hpc]
+      have hX : (0 : Int) < 2 ^ n := by exact_mod_cast Nat.two_pow_pos n
+      have hPX : (2 : Int) ^ (63 - n) * 2 ^ n = 2 ^ 63 := by
+        rw [← Int.pow_add, show 63 - n + n = 63 by omega]
+      generalize (BitVec.ofInt 64 a).toInt = w at hw hq ⊢
+      have ht0 : 0 ≤ w % 2 ^ (63 - n) := Int.emod_nonneg _ (by omega)
+      have ht1 : w % 2 ^ (63 - n) < 2 ^ (63 - n) := Int.emod_lt_of_pos _ hP0
+      have hu1 : (w % 2 ^ (63 - n)) * 2 ^ n < 2 ^ 63 := by
+        rw [← hPX]; exact Int.mul_lt_mul_of_pos_right ht1 hX
+      have hu0 : 0 ≤ (w % 2 ^ (63 - n)) * 2 ^ n := Int.mul_nonneg ht0 (by omega)
+      obtain ⟨F, hF, hTF⟩ : ∃ F, shrPow.evalP Profile.polars [.int a, .int (n : Int)] = .ok (.int F) ∧
+          (w % 2 ^ (63 - n)) * F = (w % 2 ^ (63 - n)) * 2 ^ n := by
+        by_cases h63 : n = 63
+        · subst h63
+          refine ⟨1, shrPow_eval_63 _, ?_⟩
+          simp [Int.emod_one]
+        · exact ⟨_, shrPow_eval _ (b := (n : Int)) (by omega) (by omega),
+            by rw [show ((n : Int)).toNat = n by omega]⟩
+      have hm : inI64 ((w % 2 ^ (63 - n)) * F) = true := by rw [hTF, inI64_iff]; omega
+      rw [hF, Outcome.ok_bind, polars_mul_i64 hm, hTF]
+      generalize (w % 2 ^ (63 - n)) * 2 ^ n = u at hu0 hu1 ⊢
+      by_cases hc : w / 2 ^ (63 - n) % 2 = 1
+      · have ha : inI64 (u + -2 ^ 63) = true := by rw [inI64_iff]; omega
+        simp only [hc, beq_self_eq_true, isTrue_bool, ↓reduceIte, Outcome.ok_bind,
+          polars_add_i64 ha, Outcome.Agree, Value.int.injEq]
+        omega
+      · have hc' : (w / 2 ^ (63 - n) % 2 == 1) = false := by simp [hc]
+        simp only [hc, hc', isTrue_bool, Bool.false_eq_true, ↓reduceIte]
+        exact Outcome.agree_refl _
+  · have hc : (decide (b < 0) || !decide (b < 64)) = true := by
+      simp only [Bool.or_eq_true, decide_eq_true_eq, Bool.not_eq_true', decide_eq_false_iff_not]
+      omega
+    have hr' : Profile.reference.bin (.bit .shl) (.int a) (.int b) = .error .domain := by
+      simp [Profile.reference, raiseIf, BinFn.issue, domainIssue, BitOp.apply, hr, Issue.isError]
+    simp [hc, hr', Outcome.Agree]
+
+theorem polars_imod_null_l (v : Value) : Profile.polars.bin .imod .null v = .ok .null := by
+  rw [polars_imod_notInt (.inl fun _ h => by cases h)]; cases v <;> rfl
+theorem polars_imod_null_r (x : Value) : Profile.polars.bin .imod x .null = .ok .null := by
+  rw [polars_imod_notInt (.inr fun _ h => by cases h)]; cases x <;> rfl
+theorem polars_mul_null_l (v : Value) : Profile.polars.bin .mul .null v = .ok .null := by
+  cases v <;> rfl
+theorem polars_add_null_l (v : Value) : Profile.polars.bin .add .null v = .ok .null := by
+  cases v <;> rfl
+theorem apply_eq_null_l (v : Value) : BinFn.apply .eq .null v = .null := by
+  cases v <;> rfl
+
+/-- `shlLow` never raises. -/
+theorem shlLow_ok (x y : Value) : ∃ v, shlLow.evalP Profile.polars [x, y] = .ok v := by
+  cases y
+  case int b =>
+    by_cases hr : 1 ≤ b ∧ b < 64
+    · exact ⟨_, shlLow_eval x hr.1 hr.2⟩
+    · simp only [shlLow, shlK, shrOutside, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ,
+        Outcome.ok_bind, polars_lt_ok, polars_or_ok, polars_not_ok, apply_lt_int, or3_bool,
+        isTrue_bool]
+      by_cases ho : b < 0 ∨ ¬ b < 64
+      · have hc : (decide (b < 0) || !decide (b < 64)) = true := by
+          simp only [Bool.or_eq_true, decide_eq_true_eq, Bool.not_eq_true', decide_eq_false_iff_not]
+          exact ho
+        simp only [hc, ↓reduceIte, Outcome.ok_bind, polars_sub_i64 (x := 63) (y := 0) rfl,
+          apply_lt_int]
+        exact ⟨_, polars_ipow_two (b := 0) (by decide) (by decide)⟩
+      · have hb : b = 0 := by omega
+        subst hb
+        simp only [show (decide ((0 : Int) < 0) || !decide ((0 : Int) < 64)) = false from rfl,
+          Bool.false_eq_true, ↓reduceIte, Outcome.ok_bind, polars_sub_i64 (x := 63) (y := 0) rfl,
+          apply_lt_int]
+        exact ⟨_, polars_ipow_two (b := 0) (by decide) (by decide)⟩
+  all_goals exact ⟨_, rfl⟩
+
+/-- Where an argument is not an integer, every step gives `NULL`, as the
+reference's `<<` does. -/
+theorem shl_notInt {x y : Value} (h : NotInt x ∨ NotInt y) :
+    (shlTemplate.evalP Profile.polars [x, y]).Agree
+      (Profile.reference.bin (.bit .shl) x y) := by
+  have hr : Profile.reference.bin (.bit .shl) x y = .ok .null := by
+    rcases h with h | h <;> cases x <;> cases y <;> first | rfl | exact absurd rfl (h _)
+  rw [hr]
+  have hnull : NotInt Value.null := fun _ h => by cases h
+  obtain ⟨P, hP⟩ := shlLow_ok x y
+  obtain ⟨F, hF⟩ := shrPow_ok x y
+  simp only [shlTemplate, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ, Outcome.ok_bind,
+    polars_isNum_ok, polars_and_ok, polars_eq_ok, polars_raise_ok, hP, hF]
+  rcases h with hx | hy
+  · obtain ⟨g, hg⟩ := shrOutside_ok 64 x y
+    simp only [hg, Outcome.ok_bind, isNum_notInt hx, isTrue_and3_false, Bool.false_eq_true,
+      ↓reduceIte, polars_bitAnd_notInt hx, polars_imod_null_l, polars_idiv_notInt (.inl hnull),
+      apply_eq_null_l, isTrue_null, polars_mul_null_l]
+    split <;> exact Outcome.agree_refl _
+  · obtain ⟨w, hw⟩ : ∃ w, Profile.polars.bin (.bit .and) x (.int (-1)) = .ok w := by
+      cases x <;> first | exact ⟨_, rfl⟩ | exact ⟨_, polars_bitAnd_neg_one _⟩
+    have hP' : P = .null := by
+      have : shlLow.evalP Profile.polars [x, y] = .ok .null := by
+        simp only [shlLow, shlK, Expr.evalP, List.getD_cons_zero, List.getD_cons_succ,
+          Outcome.ok_bind, shrOutside_notInt 64 x hy, isTrue_null, Bool.false_eq_true, ↓reduceIte,
+          polars_lt_ok, polars_not_ok]
+        cases y <;> first | rfl | exact absurd rfl (hy _)
+      rw [hP] at this; cases this; rfl
+    subst hP'
+    simp only [shrOutside_notInt 64 x hy, Outcome.ok_bind, isTrue_and3_null_r, Bool.false_eq_true,
+      ↓reduceIte, apply_eq_notInt hy, isTrue_null, hw, polars_imod_null_r,
+      polars_idiv_notInt (.inr hnull), polars_imod_null_l, apply_eq_null_l, polars_mul_null_l]
+    exact Outcome.agree_refl _
+
+/-- **Polars's lowering of `<<`** (`shlTemplate`) agrees with the reference on
+every value. -/
+theorem bit_shl_agree (x y : Value) :
+    (shlTemplate.evalP Profile.polars [x, y]).Agree (Profile.reference.bin (.bit .shl) x y) := by
+  cases x
+  case int a =>
+    cases y
+    case int b => exact shl_int a b
+    all_goals exact shl_notInt (.inr fun _ h => by cases h)
+  all_goals exact shl_notInt (.inl fun _ h => by cases h)
+
+/-! ## `dmul` -/
+
+/-- `#i` as its unscaled integer (`dadd` with `0`): the comparisons of the
+guard read integers. -/
+def dmulArg (i : Nat) : Expr := .bin .dadd (.field i) (.lit (.int 0))
+
+/-- `-2⁶³ < e < 2⁶³`. -/
+def dmulSmall (e : Expr) : Expr :=
+  .bin .and (.bin .lt (.lit (.int (-2 ^ 63))) e) (.bin .lt e (.lit (.int (2 ^ 63))))
+
+/-- `(2¹²⁶ - 1) // e`, by the operand of `e`'s sign: Polars's `//` of operands
+of one sign, whose quotient is within 64 bits for `|e| ≥ 2⁶³`. -/
+def dmulQuot (e : Expr) : Expr :=
+  .ifThen (.bin .lt (.lit (.int 0)) e) (.bin .idiv (.lit (.int (2 ^ 126 - 1))) e)
+    (.bin .idiv (.lit (.int (-(2 ^ 126 - 1)))) e)
+
+/-- `|b| ≥ 2⁶³ ∧ -q ≤ a ≤ q` for `q = dmulQuot b`; the quotient only where
+`|b| ≥ 2⁶³`. -/
+def dmulWide (a b : Expr) : Expr :=
+  .ifThen (.un .not (dmulSmall b))
+    (.bin .and (.un .not (.bin .lt (dmulQuot b) a))
+      (.un .not (.bin .lt a (.bin .dsub (.lit (.int 0)) (dmulQuot b)))))
+    (.lit (.bool false))
+
+/-- The guard: `|x · y| ≤ 2¹²⁶ - 1` by three cases (Fable's G-a, G-b, G-c). -/
+def dmulFits : Expr :=
+  .bin .or (.bin .and (dmulSmall (dmulArg 0)) (dmulSmall (dmulArg 1)))
+    (.bin .or (dmulWide (dmulArg 0) (dmulArg 1)) (dmulWide (dmulArg 1) (dmulArg 0)))
+
+/-- `CASE WHEN NOT fits THEN error ELSE #0 * #1 END` for decimals' unscaled
+integers (`dmul`), with `fits` Fable's three cases (ruling 282): both within
+64 bits, or one at least `2⁶³` in size and the other within `(2¹²⁶ - 1) // it`,
+a quotient within 64 bits. Where it holds, `|x · y| ≤ 2¹²⁶ - 1`
+(`dmul_bound`), so Polars's Int128 `*` is exact; elsewhere it raises an
+overflow, also on products below `2¹²⁷` the reference computes: the entry is
+one-sided (`dmulEntry`). -/
+def dmulTemplate : Expr :=
+  .ifThen (.un .not dmulFits) (.un (.raise "overflow") (.field 1)) (.bin .dmul (.field 0) (.field 1))
+
+omit [Boxes.Ambient] in
+theorem dmulTemplate_must : 0 ∈ dmulTemplate.must ∧ 1 ∈ dmulTemplate.must := by
+  simp [Expr.must, dmulTemplate, dmulFits, dmulSmall, dmulArg, dmulWide, dmulQuot]
+
+/-! ### It agrees with the reference where it gives a value -/
+
+theorem polars_dmul : Profile.polars.bin .dmul = Profile.reference.bin .dmul := rfl
+
+/-- Where the template gives a value, it is the reference's: it raises, or
+multiplies as the reference does. -/
+theorem dmul_agreeOrRaises (x y : Value) :
+    (dmulTemplate.evalP Profile.polars [x, y]).AgreeOrRaises (Profile.reference.bin .dmul x y) := by
+  simp only [dmulTemplate, Expr.evalP]
+  cases dmulFits.evalP Profile.polars [x, y] with
+  | error _ => trivial
+  | ok g =>
+    simp only [Outcome.ok_bind, polars_not_ok, polars_raise_ok, List.getD_cons_zero,
+      List.getD_cons_succ, polars_dmul]
+    generalize Profile.reference.bin .dmul x y = o
+    split <;> cases o <;> (try split) <;> simp [Outcome.AgreeOrRaises]
+
+omit [Boxes.Ambient] in
+/-- **G-b's bound**: for `0 < j` and `|i| ≤ N / j`, `|i · j| ≤ N`. -/
+theorem wide_bound {i j N : Int} (hj : 0 < j) (h1 : -(N / j) ≤ i) (h2 : i ≤ N / j) :
+    -N ≤ i * j ∧ i * j ≤ N := by
+  have hq : N / j * j ≤ N := Int.ediv_mul_le N (by omega)
+  have u : i * j ≤ N / j * j := Int.mul_le_mul_of_nonneg_right h2 (by omega)
+  have l : -(N / j) * j ≤ i * j := Int.mul_le_mul_of_nonneg_right h1 (by omega)
+  rw [Int.neg_mul] at l
+  omega
+
+omit [Boxes.Ambient] in
+/-- G-a's bound. -/
+theorem small_bound {i j : Int} (hi : -2 ^ 63 < i ∧ i < 2 ^ 63) (hj : -2 ^ 63 < j ∧ j < 2 ^ 63) :
+    -(2 ^ 126 - 1) ≤ i * j ∧ i * j ≤ 2 ^ 126 - 1 := by
+  have ha : i.natAbs < 2 ^ 63 := by omega
+  have hb : j.natAbs < 2 ^ 63 := by omega
+  have hab : i.natAbs * j.natAbs < 2 ^ 63 * 2 ^ 63 :=
+    Nat.mul_lt_mul_of_lt_of_le ha (Nat.le_of_lt hb) (by omega)
+  have e : (i * j).natAbs = i.natAbs * j.natAbs := Int.natAbs_mul i j
+  have : (i * j).natAbs < 2 ^ 126 := by rw [e]; exact Nat.lt_of_lt_of_eq hab (by decide)
+  generalize i * j = m at this
+  omega
+
+theorem polars_dadd_ok (x y : Value) : Profile.polars.bin .dadd x y = .ok (BinFn.apply .dadd x y) :=
+  Lowering.ref_dadd x y
+theorem polars_dsub_ok (x y : Value) : Profile.polars.bin .dsub x y = .ok (BinFn.apply .dsub x y) :=
+  Lowering.ref_dsub x y
+
+theorem apply_dsub_int (a b : Int) : BinFn.apply .dsub (.int a) (.int b) = .int (a - b) := rfl
+
+theorem dmulArg_eval {row : Row} {i : Nat} {c : Int} (h : (row.getD i .null).unscaled? = some c) :
+    (dmulArg i).evalP Profile.polars row = .ok (.int c) := by
+  simp only [dmulArg, Expr.evalP, Outcome.ok_bind, polars_dadd_ok, apply_dadd_of h, Int.add_zero]
+
+theorem dmulSmall_eval {e : Expr} {row : Row} {a : Int} (he : e.evalP Profile.polars row = .ok (.int a)) :
+    (dmulSmall e).evalP Profile.polars row =
+      .ok (.bool (decide (-2 ^ 63 < a) && decide (a < 2 ^ 63))) := by
+  simp only [dmulSmall, Expr.evalP, he, Outcome.ok_bind, polars_lt_ok, apply_lt_int, polars_and_ok,
+    and3_bool]
+
+/-- `dmulWide` is a truth value or raises, and where it is true, `|a · b| ≤ N`. -/
+theorem dmulWide_eval {ea eb : Expr} {row : Row} {a b : Int}
+    (ha : ea.evalP Profile.polars row = .ok (.int a)) (hb : eb.evalP Profile.polars row = .ok (.int b)) :
+    (∃ k, (dmulWide ea eb).evalP Profile.polars row = .error k) ∨
+      ∃ w : Bool, (dmulWide ea eb).evalP Profile.polars row = .ok (.bool w) ∧
+        (w = true → -(2 ^ 126 - 1) ≤ a * b ∧ a * b ≤ 2 ^ 126 - 1) := by
+  simp only [dmulWide, Expr.evalP, dmulSmall_eval hb, Outcome.ok_bind, polars_not_ok, isTrue_bool]
+  by_cases hs : (decide (-2 ^ 63 < b) && decide (b < 2 ^ 63)) = true
+  · simp only [hs, Bool.not_true, Bool.false_eq_true, ↓reduceIte]
+    exact .inr ⟨false, rfl, by simp⟩
+  · have hs' : (!(decide (-2 ^ 63 < b) && decide (b < 2 ^ 63))) = true := by
+      revert hs; cases (decide (-2 ^ 63 < b) && decide (b < 2 ^ 63)) <;> simp
+    simp only [hs', ↓reduceIte, dmulQuot, Expr.evalP, hb, ha, Outcome.ok_bind, polars_lt_ok,
+      apply_lt_int, isTrue_bool]
+    have hb' : b ≤ -2 ^ 63 ∨ 2 ^ 63 ≤ b := by
+      by_cases h1 : -2 ^ 63 < b
+      · by_cases h2 : b < 2 ^ 63
+        · simp only [h1, h2, decide_true, Bool.and_self, not_true_eq_false] at hs
+        · omega
+      · omega
+    by_cases hp : 0 < b
+    · simp only [decide_eq_true hp, ↓reduceIte]
+      rw [polars_idiv_same (by omega) (by omega), ref_idiv_eq _ _ (by omega)]
+      split
+      · simp only [Outcome.ok_bind, apply_lt_int, polars_dsub_ok, apply_dsub_int, polars_and_ok,
+          and3_bool]
+        refine .inr ⟨_, rfl, fun h => ?_⟩
+        simp only [Int.zero_sub, Bool.and_eq_true, Bool.not_eq_true', decide_eq_false_iff_not,
+          Int.not_lt] at h
+        rw [Int.tdiv_eq_ediv_of_nonneg (by omega)] at h
+        exact wide_bound hp h.2 h.1
+      · exact .inl ⟨_, rfl⟩
+    · simp only [decide_eq_false hp, Bool.false_eq_true, ↓reduceIte]
+      rw [polars_idiv_same (by omega) (by omega), ref_idiv_eq _ _ (by omega)]
+      split
+      · simp only [Outcome.ok_bind, apply_lt_int, polars_dsub_ok, apply_dsub_int, polars_and_ok,
+          and3_bool]
+        refine .inr ⟨_, rfl, fun h => ?_⟩
+        simp only [Int.zero_sub, Bool.and_eq_true, Bool.not_eq_true', decide_eq_false_iff_not,
+          Int.not_lt] at h
+        rw [Int.neg_tdiv, ← Int.tdiv_neg, Int.tdiv_eq_ediv_of_nonneg (by omega)] at h
+        have := wide_bound (i := -a) (j := -b) (N := 2 ^ 126 - 1) (by omega) (by omega) (by omega)
+        rw [Int.neg_mul_neg] at this
+        exact this
+      · exact .inl ⟨_, rfl⟩
+
+/-- **The product the template computes is within `±(2¹²⁶ - 1)`** (ruling
+282's T1): wherever it gives a value for two numbers, the guard held, so
+Polars's Int128 product, exact below `2¹²⁷` (polars-int-arith), is the
+exact one. -/
+theorem dmul_bound {x y v : Value} {i j : Int} (hx : x.unscaled? = some i)
+    (hy : y.unscaled? = some j) (h : dmulTemplate.evalP Profile.polars [x, y] = .ok v) :
+    -(2 ^ 126 - 1) ≤ i * j ∧ i * j ≤ 2 ^ 126 - 1 := by
+  have h0 : (dmulArg 0).evalP Profile.polars [x, y] = .ok (.int i) := dmulArg_eval (by simpa using hx)
+  have h1 : (dmulArg 1).evalP Profile.polars [x, y] = .ok (.int j) := dmulArg_eval (by simpa using hy)
+  simp only [dmulTemplate, dmulFits, Expr.evalP, dmulSmall_eval h0, dmulSmall_eval h1,
+    Outcome.ok_bind, polars_and_ok, and3_bool] at h
+  rcases dmulWide_eval h0 h1 with ⟨k, e1⟩ | ⟨w1, e1, b1⟩
+  · simp [e1, bind, Except.bind] at h
+  rcases dmulWide_eval h1 h0 with ⟨k, e2⟩ | ⟨w2, e2, b2⟩
+  · simp [e1, e2, bind, Except.bind] at h
+  simp only [e1, e2, Outcome.ok_bind, polars_or_ok, or3_bool, polars_not_ok, isTrue_bool] at h
+  by_cases hg : ((decide (-2 ^ 63 < i) && decide (i < 2 ^ 63)) &&
+      (decide (-2 ^ 63 < j) && decide (j < 2 ^ 63)) || (w1 || w2)) = true
+  · simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq] at hg
+    rcases hg with ⟨hi, hj⟩ | hw | hw
+    · exact small_bound hi hj
+    · exact b1 hw
+    · rw [Int.mul_comm]; exact b2 hw
+  · simp only [Bool.not_eq_true] at hg
+    simp only [hg, Bool.not_false, ↓reduceIte, polars_raise_ok] at h
+    cases h
+
+/-- **Polars's entry for `dmul`**, hand-built and one-sided (`exact = false`,
+ruling 282): the product where the guard holds, the reference's, and an
+overflow raised elsewhere, where the reference has a value. -/
+def dmulEntry : BinEntry Profile.polars .dmul :=
+  ⟨dmulTemplate, dmulTemplate_must, false, false, fun x y _ => dmul_agreeOrRaises x y,
+    fun h => absurd h (by decide)⟩
 
 end Polars
 

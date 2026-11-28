@@ -76,6 +76,12 @@ def floorFmodT : Expr := Expr.floorFmodOf (.field 0) (.field 1)
 
 theorem floorFmodT_subst (a b : Expr) : floorFmodT.subst [a, b] = Expr.floorFmodOf a b := rfl
 
+/-- Polars's `%` of decimals over the arguments as fields 0 and 1: the floored
+remainder of the unscaled integers (polars-decimal-modulus, D62). -/
+def floorDModT : Expr := Expr.floorDModOf (.field 0) (.field 1)
+
+theorem floorDModT_subst (a b : Expr) : floorDModT.subst [a, b] = Expr.floorDModOf a b := rfl
+
 /-- Polars's `round` or `ceil` of the argument as field 0, as the translation
 writes them (`round(mode='half_away_from_zero')`, `ceil`): the reference's,
 but IEEE's `-0.0` for a negative value that rounds to zero (`round(-0.4)`,
@@ -138,15 +144,19 @@ def BinFn.polarsTmpl : BinFn → Option Expr
   | .idiv => some Polars.floorDivT
   | .imod => some Polars.floorModT
   | .fmod => some Polars.floorFmodT
+  | .dmod => some Polars.floorDModT
   | _ => none
 
 variable [Boxes.Ambient]
 /-- **Polars's profile**: `//` and `%` floor (`division_type` =
-`FLOOR`), of integers and, for `%`, of doubles; `round` and `ceil` give `-0.0`
+`FLOOR`), of integers and, for `%`, of doubles and decimals; `round` and `ceil` give `-0.0`
 for a negative value that rounds to zero (`round_zero_sign`); a double cast to a
 decimal rounds the product half to even, and a decimal cast to a smaller scale
 rounds half to even (`decimal_rescale`); every other function is the
-reference's. -/
+reference's. The product of decimals' unscaled integers (`dmul`) is the
+reference's exact one, which Polars's Int128 `*` gives only below `2¹²⁷`: past
+it Polars wraps (polars-int-arith), and the lowering's template raises before
+(`Polars.dmul_bound`, ruling 282's T3). -/
 def Profile.polars : Profile where
   un f v := match f.polarsTmpl with
     | some t => t.evalP Profile.reference [v]
@@ -335,6 +345,149 @@ theorem Profile.polars_zero_divisor (f : BinFn) (hf : f = .idiv ∨ f = .imod) (
     Option.getD_some, Polars.ref_lt_int, bind, Except.bind, Polars.isTrue_bool, decide_eq_true_eq,
     c, ↓reduceIte, hz _ (.inl rfl), hz _ (.inr rfl), ite_self]
 
+/-! ## The truncated remainder from Polars's floored one
+
+`Polars.fmod_of_tmod` below is proved from these, which `Polars.Shims` held
+before the generated lowering (#271) replaced its integer shims. -/
+
+namespace Polars
+
+omit [Boxes.Ambient] in
+/-- `int_div_trunc`: one more than the floored quotient where the remainder is
+not zero and the signs differ. -/
+def intDivTrunc (a b : Int) : Int :=
+  if floorMod a b ≠ 0 ∧ (decide (a < 0) ≠ decide (b < 0)) then floorDiv a b + 1 else floorDiv a b
+
+omit [Boxes.Ambient] in
+/-- `int_mod_trunc`: the divisor taken off where the remainder's sign is not
+the dividend's. -/
+def intModTrunc (a b : Int) : Int :=
+  let r := floorMod a b
+  if r ≠ 0 ∧ (decide (r < 0) ≠ decide (a < 0)) then r - b else r
+
+omit [Boxes.Ambient] in
+theorem fmod_eq_zero_iff {a b : Int} : a.fmod b = 0 ↔ b ∣ a := Int.dvd_iff_fmod_eq_zero.symm
+
+omit [Boxes.Ambient] in
+/-- The floored remainder has the divisor's sign. -/
+theorem fmod_sign (a : Int) {b : Int} : (0 < b → 0 ≤ a.fmod b) ∧ (b < 0 → a.fmod b ≤ 0) := by
+  refine ⟨fun h => Int.fmod_nonneg_of_pos a h, fun h => ?_⟩
+  have := Int.fmod_nonneg_of_pos (-a) (b := -b) (by omega)
+  rw [Int.neg_fmod_neg] at this
+  omega
+
+omit [Boxes.Ambient] in
+/-- **`Polars.int_div_trunc`**: the shimmed quotient is the reference's
+(`Int.tdiv`, `BinFn.idiv`). -/
+theorem int_div_trunc (a : Int) {b : Int} (hb : b ≠ 0) : intDivTrunc a b = a.tdiv b := by
+  unfold intDivTrunc floorDiv floorMod
+  rw [Int.tdiv_eq_fdiv]
+  by_cases hd : b ∣ a
+  · have : a.fmod b = 0 := fmod_eq_zero_iff.mpr hd
+    simp [hd, this]
+  · have : a.fmod b ≠ 0 := fun h => hd (fmod_eq_zero_iff.mp h)
+    simp only [hd, ite_false, ne_eq, this, not_false_eq_true, true_and]
+    have hs : b.sign = if 0 < b then 1 else -1 := by
+      rcases Int.lt_trichotomy b 0 with h | h | h
+      · simp [Int.sign_eq_neg_one_of_neg h, show ¬ 0 < b by omega]
+      · omega
+      · simp [Int.sign_eq_one_of_pos h, h]
+    by_cases ha : 0 ≤ a <;> by_cases hb' : 0 ≤ b <;> simp_all <;> omega
+
+omit [Boxes.Ambient] in
+/-- **`Polars.int_mod_trunc`**: the shimmed remainder is the reference's
+(`Int.tmod`, `BinFn.imod`). -/
+theorem int_mod_trunc (a : Int) {b : Int} (hb : b ≠ 0) : intModTrunc a b = a.tmod b := by
+  have hq := int_div_trunc a hb
+  have h1 := Int.fmod_add_mul_fdiv a b
+  have h2 := Int.tmod_add_mul_tdiv a b
+  unfold intDivTrunc floorDiv floorMod at hq
+  unfold intModTrunc floorMod
+  dsimp only
+  -- The remainders differ by `b` exactly where the quotients differ by one.
+  have hfm : a.fmod b ≠ 0 → (decide (a.fmod b < 0) ≠ decide (a < 0) ↔
+      decide (a < 0) ≠ decide (b < 0)) := by
+    intro hne
+    have hsgn := fmod_sign a (b := b)
+    by_cases hbp : 0 < b <;> simp_all <;> omega
+  by_cases hc : a.fmod b ≠ 0 ∧ (decide (a < 0) ≠ decide (b < 0))
+  · simp only [hc, ne_eq, not_false_eq_true, and_self, ite_true] at hq
+    have hc' : a.fmod b ≠ 0 ∧ (decide (a.fmod b < 0) ≠ decide (a < 0)) :=
+      ⟨hc.1, (hfm hc.1).mpr hc.2⟩
+    simp only [hc', ne_eq, not_false_eq_true, and_self, ite_true]
+    rw [← hq] at h2
+    rw [Int.mul_add] at h2
+    omega
+  · simp only [hc, ite_false] at hq
+    have hc' : ¬ (a.fmod b ≠ 0 ∧ (decide (a.fmod b < 0) ≠ decide (a < 0))) := by
+      rintro ⟨h0, h⟩; exact hc ⟨h0, (hfm h0).mp h⟩
+    simp only [hc', ite_false]
+    rw [← hq] at h2
+    omega
+
+end Polars
+
+omit [Boxes.Ambient] in
+/-- The floored remainder from the truncated one: the divisor added where
+the truncated remainder is not zero and its sign is not the divisor's. -/
+theorem Polars.fmod_of_tmod (a : Int) {b : Int} (hb : b ≠ 0) :
+    a.fmod b = if (a.tmod b < 0 ∧ 0 < b) ∨ (0 < a.tmod b ∧ b < 0) then a.tmod b + b
+      else a.tmod b := by
+  have h := Polars.int_mod_trunc a hb
+  unfold Polars.intModTrunc Polars.floorMod at h
+  have hs := Polars.fmod_sign a (b := b)
+  have h1 : 0 < b → a.fmod b < b := Int.fmod_lt_of_pos a
+  have h2 : b < 0 → b < a.fmod b := fun hb' => by
+    have := Int.fmod_lt_of_pos (-a) (b := -b) (by omega)
+    rw [Int.neg_fmod_neg] at this; omega
+  have t1 : 0 ≤ a → 0 ≤ a.tmod b := fun ha => Int.tmod_nonneg b ha
+  have t2 : a < 0 → a.tmod b ≤ 0 := fun ha => by
+    have := Int.tmod_nonneg b (show 0 ≤ -a by omega); rw [Int.neg_tmod] at this; omega
+  dsimp only at h
+  split at h
+  · rename_i c1
+    have c1' : a.fmod b ≠ 0 ∧ ¬(a.fmod b < 0 ↔ a < 0) := by simpa using c1
+    split <;> omega
+  · rename_i c1
+    have c1' : ¬(a.fmod b ≠ 0 ∧ ¬(a.fmod b < 0 ↔ a < 0)) := by simpa using c1
+    split <;> omega
+
+/-- **Polars's `%` of decimals** is the floored remainder of their unscaled
+integers (`Polars.floorMod`, polars-decimal-modulus), for two decimals of one
+scale as the parser brings them to (D62). -/
+theorem Profile.polars_dmod {x y : Value} {a b : Int} (hx : x.unscaled? = some a)
+    (hy : y.unscaled? = some b) (h0 : b ≠ 0) :
+    Profile.polars.bin .dmod x y = .ok (.int (Polars.floorMod a b)) := by
+  have er := Lowering.ref_dmod hx hy h0
+  have ey : Profile.reference.bin .dadd y (.int 0) = .ok (.int b) := by
+    rw [Lowering.ref_dadd]; simp only [BinFn.apply, hy]; simp
+  have es : ∀ t, Profile.reference.bin .dadd (.int t) (.int b) = .ok (.int (t + b)) := fun t => by
+    rw [Lowering.ref_dadd]; rfl
+  simp only [Profile.polars, BinFn.polarsTmpl, Polars.floorDModT, Expr.floorDModOf, Expr.evalP,
+    List.getD, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, er, ey, es,
+    Polars.ref_lt_int, bind, Except.bind, Polars.isTrue_bool, decide_eq_true_eq, Polars.floorMod,
+    Polars.fmod_of_tmod a h0]
+  by_cases d1 : a.tmod b < 0 <;> by_cases d2 : 0 < b <;> by_cases d3 : 0 < a.tmod b <;>
+    by_cases d4 : b < 0 <;> simp only [d1, d2, d3, d4, ↓reduceIte, and_true, and_false, or_false,
+      false_or] <;> omega
+
+/-- A zero divisor of a decimal `%` raises under `Profile.polars`, as on Polars
+(polars-decimal-modulus) and in the reference. -/
+theorem Profile.polars_dmod_zero {x y : Value} {a : Int} (hx : x.unscaled? = some a)
+    (hy : y.unscaled? = some 0) : Profile.polars.bin .dmod x y = .error .divByZero := by
+  simp only [Profile.polars, BinFn.polarsTmpl, Polars.floorDModT, Expr.floorDModOf, Expr.evalP,
+    List.getD, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,
+    Lowering.ref_dmod_zero hx hy, bind, Except.bind]
+
+/-- A decimal `%` with an operand that is not a number (`NULL`) is `NULL` under
+`Profile.polars`, as in the reference. -/
+theorem Profile.polars_dmod_null {x y : Value} (h : x.unscaled? = none ∨ y.unscaled? = none) :
+    Profile.polars.bin .dmod x y = .ok .null := by
+  simp only [Profile.polars, BinFn.polarsTmpl, Polars.floorDModT, Expr.floorDModOf, Expr.evalP,
+    List.getD, List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some,
+    Lowering.ref_dmod_null h, Lowering.ref_lt, bind, Except.bind]
+  rfl
+
 /-! ## Evaluating under `Profile.polars` is evaluating the elaboration -/
 
 namespace Polars
@@ -379,15 +532,15 @@ theorem tmpl_subst_eval {f : BinFn} {t : Expr} (h : f.polarsTmpl = some t) (a b 
   cases ha : a.evalP Profile.reference row with
   | error k =>
     cases f <;> simp only [BinFn.polarsTmpl, reduceCtorEq, Option.some.injEq] at h <;> subst h <;>
-      simp [floorDivT, floorModT, floorFmodT, Expr.floorDivOf, Expr.floorModOf, Expr.floorFmodOf,
-        Expr.subst, Expr.evalP,
+      simp [floorDivT, floorModT, floorFmodT, floorDModT, Expr.floorDivOf, Expr.floorModOf,
+        Expr.floorFmodOf, Expr.floorDModOf, Expr.subst, Expr.evalP,
         ha, bind, Except.bind]
   | ok x =>
     cases hb : b.evalP Profile.reference row with
     | error k =>
       cases f <;> simp only [BinFn.polarsTmpl, reduceCtorEq, Option.some.injEq] at h <;> subst h <;>
-        simp [floorDivT, floorModT, floorFmodT, Expr.floorDivOf, Expr.floorModOf, Expr.floorFmodOf,
-        Expr.subst, Expr.evalP,
+        simp [floorDivT, floorModT, floorFmodT, floorDModT, Expr.floorDivOf, Expr.floorModOf,
+          Expr.floorFmodOf, Expr.floorDModOf, Expr.subst, Expr.evalP,
           ha, hb, bind, Except.bind, Lowering.ref_lt]
       all_goals split <;> rfl
     | ok y =>
@@ -432,7 +585,8 @@ template of Polars's `//` or `%` (of doubles too): the elaboration of the native
 theorem elaborate_floor (a b : Expr) :
     elaborate (.bin .idiv a b) = Expr.floorDivOf (elaborate a) (elaborate b) ∧
     elaborate (.bin .imod a b) = Expr.floorModOf (elaborate a) (elaborate b) ∧
-    elaborate (.bin .fmod a b) = Expr.floorFmodOf (elaborate a) (elaborate b) := ⟨rfl, rfl, rfl⟩
+    elaborate (.bin .fmod a b) = Expr.floorFmodOf (elaborate a) (elaborate b) ∧
+    elaborate (.bin .dmod a b) = Expr.floorDModOf (elaborate a) (elaborate b) := ⟨rfl, rfl, rfl, rfl⟩
 
 end Polars
 

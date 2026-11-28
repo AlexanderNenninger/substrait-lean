@@ -63,7 +63,7 @@ import itertools
 import json
 import math
 import re
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal
@@ -73,6 +73,7 @@ import pyarrow as pa
 from sverify import _decimals, _plan_read, _support
 from sverify._plan_read import REPEAT_MAX, SUBSTR_MAX, US_PER_DAY
 from sverify._support import DUCKDB_ONLY
+from sverify._unsupported import DECIMAL_MOD_38
 from sverify._unsupported import Unsupported as _Unsupported
 
 try:
@@ -83,10 +84,11 @@ except ImportError as e:
 from sverify_polars import lowering, shims
 
 
-def lowered(fn: str, *xs: pl.Expr) -> pl.Expr:
+def lowered(fn: str, *xs: pl.Expr, raise_: Callable[[str, pl.Expr], None] | None = None) -> pl.Expr:
     """`fn` as the generated table writes it (`sverify_polars.lowering`):
-    the functions Polars computes its own way."""
-    e = lowering.render(fn, xs)
+    the functions Polars computes its own way. `raise_` takes the rows where
+    its template raises."""
+    e = lowering.render(fn, xs, raise_)
     if e is None:
         raise AssertionError(f"the Polars lowering table has no entry for {fn}")
     return e
@@ -175,6 +177,12 @@ class DomainError(RuntimeIssue):
     shift count outside 0–63, …): Substrait's `on_domain_error` = ERROR."""
 
     issue = "domain error"
+
+
+#: The issue a lowering template's `raise` stands for, by its message.
+RAISED: dict[str, type[RuntimeIssue]] = {
+    c.issue: c for c in (DomainError, DivisionByZero, Overflow)
+}
 
 
 class InfiniteResult(RuntimeIssue):
@@ -536,14 +544,13 @@ def decimal_rescale(v: Val, p: int, s: int, what: str) -> Val:
 
 def decimal_mul(a: Val, b: Val, p: int, s: int) -> Val:
     """`a × b` at scale `s₁ + s₂`, exactly (`BinFn.dmul`): the product of the
-    unscaled values. Polars's own product rounds to `max(s₁, s₂)`. It is
-    computed only where it has at most `p` digits, so it never leaves 128
-    bits: `|x| ≤ (10ᵖ − 1) // |y|`."""
-    x, y = unscaled(a), unscaled(b)
-    ay = y.abs()
-    bad = (ay != 0) & (x.abs() > (i128(10**p - 1) // pl.when(ay == 0).then(i128(1)).otherwise(ay)))
-    u = pl.when(bad).then(i128(0)).otherwise(x) * y
-    return fit_decimal(u, p, s, "multiply", a, b, bad=bad)
+    unscaled values, as the generated table writes it (`Polars.dmulTemplate`).
+    Polars's own product rounds to `max(s₁, s₂)`. The template raises an
+    overflow before the Int128 product could leave 128 bits; the product's
+    digits are then `fit_decimal`'s."""
+    raised: list[pl.Expr] = []
+    u = lowered("dmul", unscaled(a), unscaled(b), raise_=lambda _, rows: raised.append(rows))
+    return fit_decimal(u, p, s, "multiply", a, b, bad=pl.any_horizontal(raised))
 
 
 def decimal_div(a: Val, b: Val, p: int, s: int) -> Val:
@@ -556,6 +563,23 @@ def decimal_div(a: Val, b: Val, p: int, s: int) -> Val:
     u, bad = shims.decimal_div_half_away(x, n, s - s1)
     out = fit_decimal(u, p, s, "sverify_decimal_div", a, b, bad=bad.fill_null(False) & (n != 0))
     return Val(pl.when(n == 0).then(None).otherwise(out.expr), out.dtype, out.issues)
+
+
+def decimal_mod(a: Val, b: Val, p: int, s: int, floor: bool = False) -> Val:
+    """`a % b` of decimals at scale `s` (`BinFn.dmod`, D62): the remainder with
+    the dividend's sign, on the unscaled values at that scale. Polars's `%`
+    takes the divisor's (polars-decimal-modulus, polars-int128-remainder): the
+    generated table's template (`Polars.dmodTemplate`), or Polars's own with `floor`
+    (`division_type` FLOOR, `Profile.polars`). The types bound both operands to 38 digits at scale
+    `s` (`_decimals.mod`), so they fit 128 bits. Polars raises for a zero
+    divisor, which the issue raises as the reference does."""
+    (_, s1), (_, s2) = decimal_of(a.dtype, "modulus"), decimal_of(b.dtype, "modulus")
+    x, y = unscaled(a) * i128(10 ** (s - s1)), unscaled(b) * i128(10 ** (s - s2))
+    zero = y == 0
+    safe = pl.when(zero).then(i128(1)).otherwise(y)
+    u = x % safe if floor else lowered("dmod", x, safe)
+    out = fit_decimal(u, p, s, "modulus", a, b)
+    return Val(out.expr, out.dtype, (*out.issues, issue(zero, DivisionByZero, "modulus by zero")))
 
 
 #: The smallest normal double, 2⁻¹⁰²².
@@ -686,22 +710,6 @@ def nan_case(name: str, x: pl.Expr, y: pl.Expr) -> pl.Expr:
 BITWISE = (
     "bitwise_and", "bitwise_or", "bitwise_xor", "bitwise_shift_left", "bitwise_shift_right",
 )  # fmt: skip
-
-
-def shift_left(a: pl.Expr, k: pl.Expr) -> pl.Expr:
-    """`BitOp.shl` for `k` in 0–63: the bits shifted out are lost. Polars has
-    no shift (polars-int-shift); `a · 2^k` wraps at 64 bits (polars-int-arith),
-    which drops them, and `2^63` itself wraps to `-2^63`, the same factor
-    modulo `2^64`."""
-    return a * pl.lit(2, pl.Int64).pow(k.cast(pl.UInt32))
-
-
-def shift_right(a: pl.Expr, k: pl.Expr) -> pl.Expr:
-    """`BitOp.shr` for `k` in 0–63: the arithmetic shift, `a` divided by `2^k`
-    rounding down, which Polars's integer `//` does (polars-int-divide). At
-    `k = 63`, where `2^63` does not fit, the shift leaves the sign."""
-    sign = pl.when(a < 0).then(-1).otherwise(0).cast(pl.Int64)
-    return pl.when(k == 63).then(sign).otherwise(a // pl.lit(2, pl.Int64).pow(k.cast(pl.UInt32)))
 
 
 def like_regex(p: str, fold: bool = False) -> str:
@@ -1204,6 +1212,10 @@ class Exprs:
                     )
                 p = dp if dp is not None else _decimals.mul((p1, s1), (p2, s2))[0]
                 return decimal_mul(a, b, p, sc)
+            case "modulus", [a, b], [d1, d2]:
+                if (t := _decimals.mod(d1, d2)) is None:
+                    raise Unsupported(DECIMAL_MOD_38)
+                return decimal_mod(a, b, dp if dp is not None else t[0], scale(t[1]))
             case (("negate" | "subtract"), [a], _):
                 return Val(-a.expr, a.dtype, a.issues)
             case "abs", [a], _:
@@ -1413,6 +1425,11 @@ class Exprs:
         with no shim (`Profile.polars`, `engines/polars/Sverify/Polars/Profile.lean`).
         A zero divisor and `MIN // -1` raise, as under `Profile.polars`; the
         guards check them."""
+        if name == "modulus" and (is_decimal(a.dtype) or is_decimal(b.dtype)):
+            d1, d2 = decimal_of(a.dtype, name), decimal_of(b.dtype, name)
+            if (t := _decimals.mod(d1, d2)) is None:
+                raise Unsupported(DECIMAL_MOD_38)
+            return decimal_mod(a, b, *t, floor=True)
         if unify(a.dtype, b.dtype, name) not in (pl.Int64, pl.Null):
             raise Unsupported(f"{name} with division_type FLOOR of {a.dtype} and {b.dtype}")
         x, y = a.expr.cast(pl.Int64), b.expr.cast(pl.Int64)
@@ -1608,12 +1625,16 @@ class Exprs:
             if name in ("bitwise_and", "bitwise_or", "bitwise_xor"):
                 out = {"bitwise_and": x & y, "bitwise_or": x | y, "bitwise_xor": x ^ y}[name]
                 return Val(out, pl.Int64, issues(a, b))
-            # Only a shift of an integer raises (`BinFn.issue`): `NULL >> -1` is NULL.
-            bad = x.is_not_null() & ((y < 0) | (y > 63))
-            n = pl.when(bad).then(0).otherwise(y)
-            shift = shift_right if name == "bitwise_shift_right" else shift_left
-            shifted = pl.when(x.is_null() | n.is_null()).then(None).otherwise(shift(x, n))
-            return self.domain(bad, shifted, pl.Int64, name, a, b)
+            # `<<` and `>>` are the generated table's: Polars has no shift
+            # (polars-int-shift). Only a shift of an integer raises
+            # (`BinFn.issue`): `NULL >> -1` is NULL.
+            errs: list[Issue] = []
+
+            def raised(message: str, rows: pl.Expr) -> None:
+                errs.append(issue(rows, RAISED[message], f"{name} outside its domain"))
+
+            out = lowered(f"bit:{name}", x, y, raise_=raised).cast(pl.Int64)
+            return Val(out, pl.Int64, (*issues(a, b), *errs))
         floats = ("add", "subtract", "multiply", "divide", "divide_ieee", "modulus", "power")
         if name in floats and pl.Float64 in (ta, tb):
             if unify(ta, tb, name) != pl.Float64:
@@ -2466,7 +2487,10 @@ class Windows:
             odd = self.total((x.is_infinite() | x.is_nan()).fill_null(False).cast(pl.Int64), fr)
             self.issues.append(issue(some & (odd == 0) & s.is_infinite(), InfiniteAggregate,
                                      f"{f.agg} overflows to infinity"))  # fmt: skip
-            return pl.when(some).then(s if f.agg == "fsum" else s / n)
+            # Polars returns a one-row frame's `-0.0` as its sum, where the reference's
+            # correctly rounded sum of an exact zero is `0.0` (ruling 285, #2587): one
+            # zero, as the grouped `float_sum` (`Shim.one_zero`).
+            return pl.when(some).then(shims.one_zero(s if f.agg == "fsum" else s / n))
         if f.agg in ("fmin", "fmax"):
             # By the codes' order: NaN above every double, and one zero.
             nan = self.total(v.is_nan().fill_null(False).cast(pl.Int64), fr)

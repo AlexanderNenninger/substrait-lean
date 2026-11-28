@@ -546,6 +546,12 @@ class Report:
     _run_unchecked: dict | None = field(default=None, repr=False)
     """`_unchecked` for `_run_plan`, as the checker writes it: the marks of
     its expressions (ruling 226)."""
+    _exact_lowering: dict[str, bool] = field(default_factory=dict, repr=False)
+    """Per engine whose generated table has a one-sided entry, whether the
+    plan as written is lowered by exact entries (`Rel.ExactOnB`): Polars runs
+    it guard-free only where it is (`Engine.PolarsSide`, ruling 282)."""
+    _run_exact_lowering: dict[str, bool] = field(default_factory=dict, repr=False)
+    """`_exact_lowering` for `_run_plan`."""
 
     _assumed_check: tuple[dict, list[tuple[str, str]]] | None = field(default=None, repr=False)
     """The check of the assumed issues (#2018, ruling 195): a plan of one row
@@ -1020,6 +1026,17 @@ class Report:
             return None
         return marks
 
+    def _lowered_exactly(self, plan: str, engine: str) -> bool:
+        """Whether `engine`'s generated table lowers `plan`, the plan a run
+        runs, by exact entries (`_exact_lowering`, `_run_exact_lowering`);
+        true for an engine the checker does not name, whose table has no
+        one-sided entry."""
+        if self._run_plan is not None and plan == json.dumps(self._run_plan):
+            exact = self._run_exact_lowering
+        else:
+            exact = self._exact_lowering
+        return exact.get(engine, True)
+
     def _with_plan(
         self,
         plan: str,
@@ -1422,38 +1439,34 @@ class Report:
             if plugin is not None and fallbacks is not None and chosen is not None:
                 self._streaming(con, chosen, streaming, plugin.engine, fallbacks, written)
 
+        guard_free = (
+            check_requires
+            and kind == "translated"
+            and self.semantics == "portable"
+            and self._guard_free
+            and theorem is not None
+        )
+
+        def run_one(plan: str) -> pa.Table:
+            # A plan the table lowers with a one-sided entry (Polars's decimal
+            # multiply) keeps its guards (`Engine.PolarsSide`, ruling 282).
+            if guard_free and theorem is not None and self._lowered_exactly(plan, name):
+                return run_guard_free(con, plan, name, theorem, finite=finite, rows=rows)
+            return _run_plan(
+                con,
+                plan,
+                engine,
+                finite=finite,
+                asof=self._native_asof(plan, run_engine),
+                # A proved report's exact level justifies Spark's windows
+                # without a row-order tiebreak (`to_sql`'s `deterministic`).
+                tie_free=self._exact and kind != "unverified",
+                unchecked=self._marks_of(plan) if marked else None,
+                rows=rows,
+            )
+
         try:
-            if (
-                check_requires
-                and kind == "translated"
-                and self.semantics == "portable"
-                and self._guard_free
-                and theorem is not None
-            ):
-                out = self._with_plan(
-                    plan,
-                    run_engine,
-                    lambda plan: run_guard_free(con, plan, name, theorem, finite=finite, rows=rows),
-                    recheck,
-                )
-            else:
-                out = self._with_plan(
-                    plan,
-                    run_engine,
-                    lambda plan: _run_plan(
-                        con,
-                        plan,
-                        engine,
-                        finite=finite,
-                        asof=self._native_asof(plan, run_engine),
-                        # A proved report's exact level justifies Spark's windows
-                        # without a row-order tiebreak (`to_sql`'s `deterministic`).
-                        tie_free=self._exact and kind != "unverified",
-                        unchecked=self._marks_of(plan) if marked else None,
-                        rows=rows,
-                    ),
-                    recheck,
-                )
+            out = self._with_plan(plan, run_engine, run_one, recheck)
         except Exception as e:
             if (oom := _duckdb.memory_limit_error(e, "run")) is not None:
                 raise oom from e

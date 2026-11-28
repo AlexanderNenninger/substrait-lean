@@ -159,6 +159,7 @@ def Substrait.duckdbOn : Substrait.Lowering (Substrait.Profile.duckdb (Substrait
     | Substrait.BinFn.dsub  => some (Substrait.duckdbOn.dsub )
     | Substrait.BinFn.dmul  => some (Substrait.duckdbOn.dmul )
     | Substrait.BinFn.ddiv  => some (Substrait.duckdbOn.ddiv )
+    | Substrait.BinFn.dmod  => some (Substrait.duckdbOn.dmod )
     | Substrait.BinFn.pair  => some (Substrait.duckdbOn.pair )
     | Substrait.BinFn.greatest  => some (Substrait.duckdbOn.greatest )
     | Substrait.BinFn.least  => some (Substrait.duckdbOn.least )
@@ -177,9 +178,9 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("UnFn.fround", "hand-written schema: round: 0.0 for a negative value that rounds to zero", 0),
   ("UnFn.froundEven", "hand-written schema: round_even: 0.0 for a negative value that rounds to zero", 0),
   ("UnFn.froundTo", "native", 0),
-  ("UnFn.ftoi", "native", 0),
+  ("UnFn.ftoi", "hand-written schema: CAST(x AS BIGINT) of x truncated first (DuckDB's cast rounds half to even)", 0),
   ("UnFn.narrow", "native", 0),
-  ("UnFn.ftoiOrNull", "native", 0),
+  ("UnFn.ftoiOrNull", "hand-written schema: TRY_CAST(x AS BIGINT) of x truncated first (DuckDB's cast rounds half to even)", 0),
   ("UnFn.narrowOrNull", "native", 0),
   ("UnFn.wrap", "native", 0),
   ("UnFn.itos", "native", 0),
@@ -284,6 +285,7 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("BinFn.dsub", "native", 0),
   ("BinFn.dmul", "native", 0),
   ("BinFn.ddiv", "native", 0),
+  ("BinFn.dmod", "native", 0),
   ("BinFn.pair", "native", 0),
   ("BinFn.greatest", "native", 0),
   ("BinFn.least", "native", 0),

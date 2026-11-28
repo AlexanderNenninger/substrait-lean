@@ -1,5 +1,6 @@
 import Sverify.Engines.Engine
 import Sverify.Engines.Transfer
+import Sverify.Engines.LoweringRaises
 import Sverify.Core.AllowedNear
 import Sverify.Analysis.AllowedAnalysis
 
@@ -57,7 +58,9 @@ variable [Boxes.Ambient]
 
 /-- The side condition of an engine whose model is its profile's functions
 where they do not raise (`okImpl`, DuckDB): the translated plan does not
-raise. -/
+raise. A raise there is a template's or a shim's own guard, which sverify's
+translation checks and which stops the run: no guarantee rests on the engine
+raising (D70). -/
 def Engine.NoRaiseSide (E : Engine) (cat : Catalog) (r : Rel) : Prop :=
   ∀ r', E.lower r = some r' → ¬r'.Raises E.profile cat
 
@@ -90,6 +93,14 @@ def Engine.GuardFreePlan (cat : Catalog) (A : String → List AVal) (F : String 
 hypotheses, Polars's and Spark's. -/
 def Engine.GuardFreeSide (cat : Catalog) (r : Rel) : Prop :=
   ∃ A F T, Engine.GuardFreeData cat A F T r ∧ Engine.GuardFreePlan cat A F T r
+
+/-- **The side condition of an engine with a generated table that has
+one-sided entries** (ruling 277, and for Polars ruling 282 with 256 P1
+amended): the plan's expressions are lowered by exact entries and the run is
+guard-free, or the lowered plan, every guard kept, does not raise. -/
+def Engine.ExactOrNoRaiseSide (E : Engine) {p : Profile} (L : Lowering p) (cat : Catalog)
+    (r : Rel) : Prop :=
+  (r.ExactOnB L = true ∧ Engine.GuardFreeSide cat r) ∨ E.NoRaiseSide cat r
 
 /-! ## Within the engine's table -/
 

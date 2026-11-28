@@ -1,3 +1,0 @@
-### `sverify.contracts` re-exports nothing (breaking for its imports)
-
-`sverify.contracts` is internal, and it no longer re-exports the 40 names it took from `sverify.conditions` and `sverify.report`. An import such as `from sverify.contracts import unique, Report` raises `ImportError`. Import from the public modules: `sverify` (`sv.unique`, `sv.max_rows`, `sv.references`, `sv.rows_per`, `sv.arrives_within`, `sv.approx`, `sv.Report`) and `sverify.types` (the condition and report types, such as `Unique`, `Needed`, `Issue`). `docs/stability.md` lists the public modules ([#2410](https://github.com/AlexanderNenninger/substrait-lean/pull/2410), [#2081](https://github.com/AlexanderNenninger/substrait-lean/issues/2081)).

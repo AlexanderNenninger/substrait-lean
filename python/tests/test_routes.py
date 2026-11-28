@@ -564,3 +564,80 @@ def test_what_the_engine_keeps_of_an_unbounded_double_still_runs() -> None:
     s2, uncapped, _capped = _unbounded_means()
     stated = sv.verify(s2, requires=uncapped, ensures=[sv.approx(_.avg <= 100)], on_inferred="warn")
     assert not routes.choose(stated, "duckdb").refused
+
+
+def test_an_unbounded_double_under_exact_doubles_is_a_problem_like_a_bound_above_zero(con) -> None:
+    """#2486: with no bound at all a plan is no better off than with one above zero, which
+    an exact observation does not meet. The message names the exits."""
+    t = con.table("t")
+    report = sv.verify(t.select("k"), ensures=[sv.equivalent(floats="exact")])
+    unbounded = {"code": "unbounded", "column": "total", "why": "a SUM", "group": "", "option": "o"}
+    r = _on_polars(report, cls="observed", problems=[unbounded])
+    assert r.refused and "asks exact doubles" in r.why
+    assert 'floats="plan"' in r.why and "sv.max_rows(n)" in r.why and "unverified=True" in r.why
+
+
+def test_an_unbounded_mean_under_exact_doubles_is_refused_on_polars() -> None:
+    s, uncapped, capped = _unbounded_means()
+    for requires, what in ((uncapped, "has no bound on its distance"), (capped, "is within")):
+        report = sv.verify(s, requires=requires, ensures=[sv.equivalent(floats="exact")])
+        why = routes.choose(report, "polars").why
+        assert "avg" in why and what in why, why
+
+
+def test_the_checker_bounds_every_double_output_column() -> None:
+    """The realization meets a row that bounds doubles per plan against the plan's `ε`, so
+    `ε` must name every double output column (#2486): an empty one would meet nothing."""
+    s, uncapped, capped = _unbounded_means()
+    for requires in (uncapped, capped):
+        report = sv.verify(s, requires=requires)
+        doubles = {c for c, t in report.output.items() if t.is_floating()}
+        assert doubles and doubles <= set(report._epsilon or {})
+
+
+def _ranked(amount: str):
+    """Each customer's rank by the sum of its amounts, descending (the census's `rank-by-sum`)."""
+    t = ibis.table({"c": "int64", amount: "float64" if amount == "x" else "int64"}, name="t")
+    s = t.group_by("c").aggregate(total=t[amount].sum())
+    return s.mutate(rk=ibis.rank().over(order_by=ibis.desc(s.total)))
+
+
+def test_a_rank_over_a_double_sum_is_refused_where_the_sum_is_inexact() -> None:
+    """#2573: a rank orders near-equal sums, and an engine whose `sum_order` is not the
+    reference's can order two customers the other way round, so the window's sort key is a
+    threshold decision (rule #568). With integer amounts the sum is exact and nothing changes."""
+    inexact = sv.verify(_ranked("x"), requires={"t": [_.x.between(0, 100), sv.max_rows(1000)]})
+    for engine in ("polars", "spark"):
+        r = routes.choose(inexact, engine)
+        assert r.refused and "may keep other rows" in r.why, (engine, r.why)
+    exact = sv.verify(_ranked("n"), requires={"t": [_.n.between(0, 100), sv.max_rows(1000)]})
+    for engine in ("polars", "spark"):
+        assert not routes.choose(exact, engine).refused, engine
+
+
+def test_two_engines_rank_the_same_double_sums_differently() -> None:
+    """The counterexample behind it (#2573): customers who hold the same amounts in another row
+    order. Their sums differ in the last bits by engine, and so do their ranks."""
+    import random
+
+    duckdb = pytest.importorskip("duckdb")
+    pl = pytest.importorskip("polars")
+    random.seed(1)
+    rows = []
+    for p in range(60):
+        amounts = [round(random.uniform(0.01, 9.99), 2) for _ in range(40)]
+        shuffled = amounts[:]
+        random.shuffle(shuffled)
+        for customer, xs in ((f"a{p}", amounts), (f"b{p}", shuffled)):
+            rows += [(customer, x) for x in xs]
+    df = pl.DataFrame(rows, schema=["c", "x"], orient="row")
+    con = duckdb.connect()
+    con.register("t", df.to_arrow())
+    ranked = con.sql("select c, rank() over (order by sum(x) desc) from t group by c").fetchall()
+    on_duckdb = dict(ranked)
+    summed = df.group_by("c").agg(pl.col("x").sum().alias("total"))
+    ranked_on_polars = summed.with_columns(
+        pl.col("total").rank("min", descending=True).cast(pl.Int64).alias("rk")
+    )
+    on_polars = {r["c"]: r["rk"] for r in ranked_on_polars.iter_rows(named=True)}
+    assert sum(on_duckdb[c] != on_polars[c] for c in on_duckdb) > 0

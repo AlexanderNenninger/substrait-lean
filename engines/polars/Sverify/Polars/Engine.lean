@@ -14,8 +14,9 @@ import Sverify.Engines.Sound
 result where the profile keeps the reference's raise (ruling 255): a wrapped
 integer, `NULL` for a zero divisor, NaN. `Polars.impl_within` proves those
 within Polars's table, and `Engine.polars_sound` that the run is sound under
-guard elimination's side condition (`Engine.GuardFreeSide`), by
-`Rel.polars_sound`.
+`Engine.PolarsSide` (ruling 277's form): guard-free for a plan lowered by
+exact entries (`Rel.polars_sound`), and with every guard kept where the
+lowered plan does not raise (`Rel.polars_sound_or_raises`).
 -/
 
 namespace Substrait
@@ -24,7 +25,7 @@ namespace Substrait
 def Profile.polarsExtras : List (Functions.Ctor × String) :=
   [(.bin .add, "overflow"), (.bin .sub, "overflow"), (.bin .mul, "overflow"),
    (.bin .idiv, "on_division_by_zero"), (.bin .imod, "on_division_by_zero"),
-   (.bin .idiv, "division_type"), (.bin .imod, "division_type"),
+   (.bin .idiv, "division_type"), (.bin .imod, "division_type"), (.bin .dmod, "division_type"),
    (.bin .fpow, "on_domain_error"), (.bin .fadd, "nan_creation"), (.bin .fsub, "nan_creation"),
    (.bin .fmul, "nan_creation"), (.bin .fdiv, "nan_creation"), (.bin .fmod, "nan_creation")]
 
@@ -217,8 +218,6 @@ theorem Profile.polars_bin_ok {f : BinFn} {t : Expr} (ht : f.polarsTmpl = some t
   simp only [Profile.polars, ht] at h
   exact Expr.evalP_reference_ok h
 
-theorem Polars.apply_lt_int (x y : Int) :
-    BinFn.apply .lt (.int x) (.int y) = .bool (decide (x < y)) := rfl
 theorem Polars.apply_add_int (x y : Int) : BinFn.apply .add (.int x) (.int y) = .int (x + y) := rfl
 theorem Polars.apply_sub_int (x y : Int) : BinFn.apply .sub (.int x) (.int y) = .int (x - y) := rfl
 theorem Polars.apply_idiv_ne {x y : Int} (hy : y ≠ 0) :
@@ -290,6 +289,12 @@ omit [Boxes.Ambient] in
 /-- A floored quotient or remainder is the truncated one, or the call is in
 `division_type`'s scope (`floorDiffers`: the signs differ and the division is
 not exact). -/
+theorem Polars.floorDiffers_unscaled {v w : Value} {a b : Int} (hv : v.unscaled? = some a)
+    (hw : w.unscaled? = some b) :
+    floorDiffers [v, w] = (decide (a * b < 0) && a.tmod b != 0) := by
+  cases v <;> cases w <;> simp_all [floorDiffers]
+
+omit [Boxes.Ambient] in
 theorem Polars.floor_or_differs {a b : Int} (h : floorDiffers [.int a, .int b] = false) :
     a.fdiv b = a.tdiv b ∧ a.fmod b = a.tmod b := by
   have hd : a * b < 0 → b ∣ a := fun hab => by
@@ -325,11 +330,36 @@ theorem Profile.polars_bin_within (f : BinFn) (v w x : Value) (h : Profile.polar
   | none => simp only [Profile.polars, hf] at h; exact .inl (raiseIf_ok h)
   | some t =>
     have hx := Profile.polars_bin_ok hf h
-    have hfc : f = .idiv ∨ f = .imod ∨ f = .fmod := by
+    have hfc : f = .idiv ∨ f = .imod ∨ f = .fmod ∨ f = .dmod := by
       cases f <;> simp only [BinFn.polarsTmpl, reduceCtorEq] at hf <;> simp
-    rcases hfc with rfl | rfl | rfl
+    rcases hfc with rfl | rfl | rfl | rfl
     rotate_left 2
     · exact absurd rfl hne
+    · -- Decimal `%`: Polars floors it (D62), so it differs from the reference where `FLOOR` does.
+      simp only [BinFn.polarsTmpl, Option.some.injEq] at hf; subst hf
+      cases hv : v.unscaled? with
+      | none =>
+        rw [Profile.polars_dmod_null (.inl hv)] at h; cases h
+        exact .inl (by simp only [BinFn.apply, hv])
+      | some a =>
+        cases hw : w.unscaled? with
+        | none =>
+          rw [Profile.polars_dmod_null (.inr hw)] at h; cases h
+          exact .inl (by simp only [BinFn.apply, hv, hw])
+        | some b =>
+          by_cases hb : b = 0
+          · subst hb; rw [Profile.polars_dmod_zero hv hw] at h; cases h
+          · rw [Profile.polars_dmod hv hw hb] at h; cases h
+            by_cases hd : floorDiffers [v, w]
+            · exact .inr (callExtra_of_at (o := "division_type")
+                (extraAt_of_all Profile.polars_extras (by decide)) (by simp [optionScope, hd]))
+            · left
+              have hd' : floorDiffers [.int a, .int b] = false := by
+                have := Polars.floorDiffers_unscaled hv hw
+                simp only [hd] at this
+                simpa [floorDiffers] using this
+              simp only [BinFn.apply, hv, hw, hb, ↓reduceIte, Polars.floorMod,
+                (Polars.floor_or_differs hd').2]
     · simp only [BinFn.polarsTmpl, Option.some.injEq] at hf; subst hf
       cases v
       case int a =>
@@ -383,9 +413,13 @@ theorem Lowering.polars_un_tmpl (f : UnFn) (en : UnEntry Profile.polars f)
 
 theorem Lowering.polars_bin_tmpl (f : BinFn) (en : BinEntry Profile.polars f)
     (h : Lowering.polars.bin f = some en) : Functions.Ctor.bin .fmod ∉ en.tmpl.ctors := by
-  cases f <;> simp only [Lowering.polars, polarsOn, Option.some.injEq, reduceCtorEq] at h <;>
+  cases f <;> (try cases ‹BitOp›) <;>
+    simp only [Lowering.polars, polarsOn, Option.some.injEq, reduceCtorEq] at h <;>
     subst h <;>
-    simp [BinEntry.native, BinEntry.ofAgree, Expr.ctors, Polars.idivTemplate, Polars.imodTemplate]
+    simp [BinEntry.native, BinEntry.ofAgree, Expr.ctors, Polars.idivTemplate, Polars.imodTemplate,
+      Polars.bitAndT, Polars.bitOrT, Polars.bitXorT, Polars.shlTemplate, Polars.shrTemplate,
+      Polars.shlLow, Polars.shlK, Polars.shrOutside, Polars.shrPow,
+      Polars.dmodTemplate]
 
 /-- **Polars's lowering calls no `%` of doubles** (R1): the table has no entry
 for it (`refusing`), and no template calls it, so no expression of a plan it
@@ -394,6 +428,21 @@ theorem Lowering.polars_no_fmod {r r' : Rel} (hr : Lowering.polars.lowerRel? r =
     ∀ e ∈ r'.mappedExprs, Functions.Ctor.bin .fmod ∉ e.ctors := fun e' he' => by
   obtain ⟨e, t, ht, rfl⟩ := Lowering.mem_lowerRel? hr he'
   exact Lowering.lower_not_mem_ctors (Lowering.polars_un_tmpl) (Lowering.polars_bin_tmpl) ht
+
+-- Ruling 282's T1: Polars's Int128 `*` (`dmul`) is exact below `2¹²⁷` only, and no
+-- template of the table calls it but `dmul`'s own, whose bound is proved
+-- (`Polars.dmul_bound`).
+#guard letI := Boxes.Ambient.none
+  (LoweringExport.unFns.all fun f => (Lowering.polars.un f).all fun e =>
+    !e.tmpl.ctors.contains (Functions.Ctor.bin .dmul)) &&
+  LoweringExport.binFns.all fun f => f == .dmul || (Lowering.polars.bin f).all fun e =>
+    !e.tmpl.ctors.contains (Functions.Ctor.bin .dmul)
+
+omit [Boxes.Ambient] in
+/-- The same for the decimal casts' entry, whose parameter the check above
+cannot list (`Polars.droundEntry`). -/
+example (k : Nat) : Functions.Ctor.bin .dmul ∉ (Polars.droundAwayT k).ctors := by
+  simp [Polars.droundAwayT, Expr.ctors]
 
 /-- **`Polars.impl` is within Polars's table**: where the profile gives a
 value, the profile's (`Profile.polars_un_within`, `Profile.polars_bin_within`),
@@ -412,25 +461,16 @@ theorem Polars.impl_within : Polars.impl.Within Profile.polars.table := by
     | ok x => exact Profile.polars_bin_within f v w x hb (by simpa [Polars.implExceptions] using hx)
     | error _ => exact Polars.errBin_within f v w
 
-/-- **A verified plan runs on Polars.** When `Rel.mayIssues` reports nothing
-but assumed issues (whose guards the translation keeps), on every catalog
-that satisfies the preconditions, the plan lowered by Polars's table, run
-with Polars's functions and without its other guards, gives `Rel.eval`'s
-rows. The reference raises nowhere (`Rel.not_raises_of_assumed`), so the
-lowered plan raises nowhere under Polars's profile
-(`Lowering.lowerRel?_raises`), where `Polars.impl` is the profile's
-(`Expr.evalOkOr_of_evalP`) and the lowering exact (`Lowering.lowerRel?_sound`). -/
-theorem Rel.polars_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
-    {F : String → List Fact}
-    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
-    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
-    {r r' : Rel} (hr : Lowering.polars.lowerRel? r = .ok r') (hwf : r.WF cat)
-    (hsmall : r.Small cat) (hs : r.looseSub = true)
-    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) :
+/-- **A plan Polars's table lowers runs correctly on Polars, or raises**
+(ruling 277's second branch, 256 B; for Polars ruling 282): with every guard
+kept, the lowered plan gives `Rel.eval`'s rows wherever it does not raise
+under Polars's profile, where `Polars.impl` is the profile's
+(`Expr.evalOkOr_of_evalP`) and the lowering exact (`Lowering.lowerRel?_sound`).
+A raise is a template's own guard (a one-sided entry's, as `dmul`'s), which
+the translation checks: no guarantee rests on Polars raising (D70). -/
+theorem Rel.polars_sound_or_raises {cat : Catalog} {r r' : Rel}
+    (hr : Lowering.polars.lowerRel? r = .ok r') (h1 : ¬r'.Raises Profile.polars cat) :
     r'.eval cat Polars.impl = r.eval cat := by
-  have h0 := Rel.not_raises_of_assumed hcat hA hF hT hwf hsmall hs hm
-  have h1 : ¬r'.Raises Profile.polars cat := fun h =>
-    h0 (Lowering.lowerRel?_raises Lowering.polars_allExact Lowering.polars_noneOnDbl hr h)
   have hI : ∀ {e : Expr} {row : Row} {v : Value}, Functions.Ctor.bin .fmod ∉ e.ctors →
       e.evalP Profile.polars row = .ok v → e.eval row Polars.impl = v := fun he hv => by
     rw [Expr.evalI_congr (Polars.impl_agreeOn fun f hf => by
@@ -439,6 +479,29 @@ theorem Rel.polars_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AV
   rw [Rel.eval_congr_ok_on (Q := fun e => Functions.Ctor.bin .fmod ∉ e.ctors) hI
     (Lowering.polars_no_fmod hr) h1]
   exact Lowering.lowerRel?_sound Lowering.polars_noneOnDbl hr h1
+
+/-- **A verified plan runs on Polars, guards dropped** (ruling 277's first
+branch, 256 A). When `Rel.mayIssues` reports nothing but assumed issues
+(whose guards the translation keeps), on every catalog that satisfies the
+preconditions, a plan whose expressions Polars's table lowers exactly
+(`Rel.ExactOnB`, false where it multiplies decimals: `dmul`'s entry is
+one-sided) gives `Rel.eval`'s rows lowered, run with Polars's functions and
+without its other guards. The reference raises nowhere
+(`Rel.not_raises_of_assumed`), so the lowered plan raises nowhere under
+Polars's profile (`Lowering.lowerRel?_raises`), and
+`Rel.polars_sound_or_raises` gives the rows. -/
+theorem Rel.polars_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AVal}
+    {F : String → List Fact}
+    (hA : ∀ t, ∀ row ∈ (cat t).rows, EnvMem (A t) row)
+    (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
+    {r r' : Rel} (hr : Lowering.polars.lowerRel? r = .ok r') (hwf : r.WF cat)
+    (hsmall : r.Small cat) (hs : r.looseSub = true)
+    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true)
+    (hx : r.ExactOnB Lowering.polars = true) :
+    r'.eval cat Polars.impl = r.eval cat := by
+  have h0 := Rel.not_raises_of_assumed hcat hA hF hT hwf hsmall hs hm
+  exact Rel.polars_sound_or_raises hr fun h =>
+    h0 (Lowering.lowerRel?_raises Lowering.polars_noneOnDbl (Rel.exactOn_of_exactOnB hx) hr h)
 
 /-- Polars: the plan lowered by `Lowering.polars`, run with `Polars.impl`. -/
 def Engine.polars : Engine where
@@ -455,13 +518,21 @@ theorem Engine.polars_lower {r r' : Rel} (h : Engine.polars.lower r = some r') :
   simp only [Engine.polars] at h
   cases hr : Lowering.polars.lowerRel? r <;> simp_all [Except.toOption]
 
-/-- Polars under guard elimination's side condition: the lowered plan's
-functions compute `Rel.eval` (`Rel.polars_sound`). -/
-theorem Engine.polars_sound : Engine.polars.Sound Engine.GuardFreeSide := by
-  intro cat r r' hl ⟨_, _, _, ⟨hcat, hA, hF, hT, hsmall⟩, hwf, hs, hm⟩
+/-- **Polars's side condition** (ruling 277's form, `Engine.ExactOrNoRaiseSide`):
+the plan is lowered exactly (no decimal multiply) and runs guard-free, or the
+lowered plan, every guard kept, does not raise. -/
+def Engine.PolarsSide (cat : Catalog) (r : Rel) : Prop :=
+  Engine.polars.ExactOrNoRaiseSide Lowering.polars cat r
+
+/-- **Polars's run is sound** under `Engine.PolarsSide`: `Rel.polars_sound` on
+the first branch, `Rel.polars_sound_or_raises` on the second. -/
+theorem Engine.polars_sound : Engine.polars.Sound Engine.PolarsSide := by
+  intro cat r r' hl hb
+  have hr := Engine.polars_lower hl
   show r.Allowed cat (r'.eval cat Polars.impl)
-  rw [Rel.polars_sound hcat hA hF hT (Engine.polars_lower hl) hwf hsmall hs hm]
-  exact r.eval_allowed cat
+  rcases hb with ⟨hx, _, _, _, ⟨hcat, hA, hF, hT, hsmall⟩, hwf, hs, hm⟩ | hn
+  · rw [Rel.polars_sound hcat hA hF hT hr hwf hsmall hs hm hx]; exact r.eval_allowed cat
+  · rw [Rel.polars_sound_or_raises hr (hn r' hl)]; exact r.eval_allowed cat
 
 end Substrait
 
@@ -477,7 +548,7 @@ theorem Engine.polars_contract_example :
         (Engine.examplePlan.eval Engine.exampleCat Engine.polars.impl),
       ∀ v ∈ row, v = .bool true := by
   exact Engine.example_contract Engine.polars_sound (T' := Engine.examplePlan) rfl
-    Engine.guardFreeSide_example
+    (.inl ⟨rfl, Engine.guardFreeSide_example⟩)
 
 end Example
 
@@ -493,9 +564,7 @@ end Example
     [-- C4: zero-based characters and bytes.
      (.bin .strpos, "string_positions"), (.bin (.substr none true), "string_positions"),
      -- C4: Polars's `*` of decimals rounds to `max(s₁, s₂)` half to even.
-     (.bin .dmul, "decimal_rescale"),
-     -- C4: a loose row whose first behaviour is `ERROR`.
-     (.bin (.bit .shl), "shift_range"), (.bin (.bit .shr), "shift_range")]
+     (.bin .dmul, "decimal_rescale")]
     -- C7: `+` and `-` of decimals are at `max(s₁, s₂)` on Polars and never rescale.
     [(.bin .dadd, "decimal_rescale", "polars-decimal-arith"),
      (.bin .dsub, "decimal_rescale", "polars-decimal-arith")]

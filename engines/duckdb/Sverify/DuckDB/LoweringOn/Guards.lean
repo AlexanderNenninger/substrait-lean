@@ -65,6 +65,22 @@ theorem Substrait.duckdbOn.froundEven_guards : ∀ (x : Substrait.Value),
   guards_un_tac Substrait.duckdbOn.froundEven_agree
 
 set_option maxHeartbeats 1600000 in
+theorem Substrait.duckdbOn.ftoi_guards : ∀ (x : Substrait.Value),
+  Substrait.Expr.GuardsAt
+    (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+    (fun _ => Bool.false) (Substrait.UnFn.issue Substrait.UnFn.ftoi x) [x]
+    Substrait.Lowering.ftoiTemplate := by
+  guards_un_tac Substrait.duckdbOn.ftoi_agree
+
+set_option maxHeartbeats 1600000 in
+theorem Substrait.duckdbOn.ftoiOrNull_guards : ∀ (x : Substrait.Value),
+  Substrait.Expr.GuardsAt
+    (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+    (fun _ => Bool.false) (Substrait.UnFn.issue Substrait.UnFn.ftoiOrNull x) [x]
+    Substrait.Lowering.ftoiOrNullTemplate := by
+  guards_un_tac Substrait.duckdbOn.ftoiOrNull_agree
+
+set_option maxHeartbeats 1600000 in
 theorem Substrait.duckdbOn.dtextFull_guards : ∀ (x : Substrait.Value),
   Substrait.Expr.GuardsAt
     (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
@@ -693,9 +709,9 @@ theorem Substrait.duckdbOn.guardsUn : ∀ f : Substrait.UnFn,
     | Substrait.UnFn.fround  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, Substrait.duckdbOn.fround_guards⟩
     | Substrait.UnFn.froundEven  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, Substrait.duckdbOn.froundEven_guards⟩
     | Substrait.UnFn.froundTo _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
-    | Substrait.UnFn.ftoi  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
+    | Substrait.UnFn.ftoi  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, Substrait.duckdbOn.ftoi_guards⟩
     | Substrait.UnFn.narrow _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
-    | Substrait.UnFn.ftoiOrNull  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
+    | Substrait.UnFn.ftoiOrNull  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, Substrait.duckdbOn.ftoiOrNull_guards⟩
     | Substrait.UnFn.narrowOrNull _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.wrap _ => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
     | Substrait.UnFn.itos  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ => trivial⟩
@@ -807,6 +823,7 @@ theorem Substrait.duckdbOn.guardsBin : ∀ f : Substrait.BinFn,
     | Substrait.BinFn.dsub  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ _ => trivial⟩
     | Substrait.BinFn.dmul  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ _ => trivial⟩
     | Substrait.BinFn.ddiv  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ _ => trivial⟩
+    | Substrait.BinFn.dmod  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ _ => trivial⟩
     | Substrait.BinFn.pair  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ _ => trivial⟩
     | Substrait.BinFn.greatest  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ _ => trivial⟩
     | Substrait.BinFn.least  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ _ => trivial⟩

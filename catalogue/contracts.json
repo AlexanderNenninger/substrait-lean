@@ -24,34 +24,24 @@
   "avg-exact": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#1985)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the lenses' exact doubles: agg.fsum's sum_order: m has no bound on its distance to the reference, and the postcondition asks exact doubles: state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the lenses' exact doubles: agg.fsum's sum_order: m has no bound on its distance to the reference, and the postcondition asks exact doubles: state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified: no engine meets the lenses' exact doubles: agg.fsum's sum_order: m has no bound on its distance to the reference, and the postcondition asks exact doubles: state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the lenses' exact doubles: agg.fsum's sum_order: m has no bound on its distance to the reference, and the postcondition asks exact doubles: state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
       }
     },
     "pattern": "observation",
-    "proved": true
+    "proved": false
   },
   "avg-le-max": {
     "engines": {
@@ -707,6 +697,28 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
+        "reason": "not verified: no engine meets the lenses' exact doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks exact doubles: state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
+      },
+      "polars": {
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the lenses' exact doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks exact doubles: state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
+      },
+      "snowflake": {
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the lenses' exact doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks exact doubles: state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
+      },
+      "spark": {
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the lenses' exact doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks exact doubles: state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
+      }
+    },
+    "pattern": "top_n",
+    "proved": false
+  },
+  "rank-by-sum": {
+    "engines": {
+      "duckdb": {
+        "outcome": "refused",
         "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
       },
       "polars": {
@@ -720,31 +732,6 @@
       "spark": {
         "outcome": "refused",
         "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
-      }
-    },
-    "pattern": "top_n",
-    "proved": true
-  },
-  "rank-by-sum": {
-    "engines": {
-      "duckdb": {
-        "causes": [
-          "row tested: agg.fsum's float_overflow (#1985)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
-      },
-      "polars": {
-        "class": "observed",
-        "outcome": "proved"
-      },
-      "snowflake": {
-        "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
-      },
-      "spark": {
-        "class": "observed",
-        "outcome": "proved"
       }
     },
     "pattern": "top_n",
@@ -966,34 +953,24 @@
   "sum-exact": {
     "engines": {
       "duckdb": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)",
-          "row tested: agg.fsum's float_overflow (#1985)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the lenses' exact doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks exact doubles: state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
       },
       "polars": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the lenses' exact doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks exact doubles: state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified under semantics=\"snowflake\"; no translation from portable semantics to snowflake; no transfer from semantics=\"portable\" needed; no re-check: the checker cannot check under semantics=\"snowflake\" yet (#444); verify with semantics='portable' to reach every engine (pending: #852, https://github.com/AlexanderNenninger/substrait-lean/issues/852)"
+        "reason": "not verified: no engine meets the lenses' exact doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks exact doubles: state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
       },
       "spark": {
-        "causes": [
-          "no bound on the doubles (a SUM or AVG without sv.max_rows)"
-        ],
-        "class": "observed",
-        "outcome": "tested"
+        "outcome": "refused",
+        "reason": "not verified: no engine meets the lenses' exact doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks exact doubles: state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
       }
     },
     "pattern": "observation",
-    "proved": true
+    "proved": false
   },
   "sum-ge-max": {
     "engines": {
@@ -1142,19 +1119,19 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "not verified: no engine meets the lenses' tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (see report.details()); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: no engine meets the lenses' tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "not verified: no engine meets the lenses' tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (see report.details()); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: no engine meets the lenses' tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
       },
       "snowflake": {
         "outcome": "refused",
-        "reason": "not verified: no engine meets the lenses' tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (see report.details()); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: no engine meets the lenses' tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
       },
       "spark": {
         "outcome": "refused",
-        "reason": "not verified: no engine meets the lenses' tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\") or drop the tolerance (see report.details()); run(..., unverified=True) runs it anyway"
+        "reason": "not verified: no engine meets the lenses' tolerance on doubles: agg.fsum's sum_order: total has no bound on its distance to the reference, and the postcondition asks within(rel=1e-09): state sv.equivalent(floats=\"plan\"), bound the column with sv.max_rows(n) in requires, or run with unverified=True (see report.details()); run(..., unverified=True) runs it anyway"
       }
     },
     "pattern": "observation",
@@ -1211,11 +1188,11 @@
     "engines": {
       "duckdb": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on duckdb than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it; agg.fsum's sum_order: the postcondition _.m.between(0, 100) reads m, which has no bound on its distance to the reference: write it as sv.approx(_.m.between(0, 100)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "polars": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on polars than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it; agg.fsum's sum_order: the postcondition _.m.between(0, 100) reads m, which has no bound on its distance to the reference: write it as sv.approx(_.m.between(0, 100)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       },
       "snowflake": {
         "outcome": "refused",
@@ -1223,7 +1200,7 @@
       },
       "spark": {
         "outcome": "refused",
-        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it"
+        "reason": "a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values on spark than the reference: its threshold lies within the doubles' bound of their range; for a constant threshold, state a precondition that keeps the values away from it; for a threshold computed from the data (a mean, a sum), compare exact columns: for a mean of integers, `x * COUNT(y) > SUM(y)`, another query: it compares the exact mean, not the rounded one, and its product must fit BIGINT: a bound on y and a row cap (`sv.max_rows`) prove it; agg.fsum's sum_order: the postcondition _.m.between(0, 100) reads m, which has no bound on its distance to the reference: write it as sv.approx(_.m.between(0, 100)), or bound the column with sv.max_rows(n) in requires and state sv.equivalent(floats=sv.within(...)) in ensures"
       }
     },
     "pattern": "top_n",

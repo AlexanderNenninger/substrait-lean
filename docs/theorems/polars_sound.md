@@ -25,7 +25,8 @@ theorem Rel.polars_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AV
     (hF : ∀ t, ∀ row ∈ (cat t).rows, FactsHold (F t) row) {T : WindowKeys} (hT : T.SoundAll cat)
     {r r' : Rel} (hr : Lowering.polars.lowerRel? r = .ok r') (hwf : r.WF cat)
     (hsmall : r.Small cat) (hs : r.looseSub = true)
-    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true) :
+    (hm : (r.mayIssues cat A F T false).all (·.1.assumed) = true)
+    (hx : r.ExactOnB Lowering.polars = true) :
     r'.eval cat Polars.impl = r.eval cat
 ```
 
@@ -47,6 +48,12 @@ theorem Rel.polars_sound {cat : Catalog} (hcat : cat.WF) {A : String → List AV
   loses a filter and no `UNNEST` sits below the guards (`Rel.looseSub`).
 - `hm`: the checker's list of issues the plan may raise (`Rel.mayIssues`)
   holds nothing but issues assumed on the data, which the run checks first.
+- `hx`: every expression of the plan is lowered by an exact entry
+  (`Rel.ExactOnB`), which the checker reports as `exact_lowering`. It is
+  false where the plan multiplies decimals: that entry's guard raises before
+  the 128-bit product could wrap, where the reference has a value. Such a
+  plan keeps its guards on Polars, and `Rel.polars_sound_or_raises` covers it:
+  the lowered plan gives the reference's rows wherever it does not raise.
 - The conclusion: evaluating the lowered plan with Polars's functions (`Polars.impl`: its profile's
   values, and its own where the profile raises) gives the same rows as the reference's `Rel.eval`.
 

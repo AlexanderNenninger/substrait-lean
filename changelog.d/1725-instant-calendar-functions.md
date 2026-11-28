@@ -1,1 +1,0 @@
-In Ibis, the calendar functions of a UTC timestamp (`date()`, `time()`, the casts to a date and a time, `year()` and the other extracts, `epoch_seconds()`, `truncate`, `bucket` and `strftime`) now run on its UTC wall clock, whatever the session's time zone (D69, #1725). Arithmetic with intervals, the difference of two instants and the cast to a string stay refused.

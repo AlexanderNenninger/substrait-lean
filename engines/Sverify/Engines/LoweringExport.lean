@@ -28,7 +28,8 @@ def unName : UnFn → String
 
 def binName : BinFn → String
   | .eq => "eq" | .lt => "lt" | .and => "and" | .or => "or" | .add => "add" | .sub => "sub"
-  | .dadd => "dadd" | .dsub => "dsub" | .dmul => "dmul" | .imod => "imod" | .idiv => "idiv"
+  | .dadd => "dadd" | .dsub => "dsub" | .dmul => "dmul" | .dmod => "dmod" | .imod => "imod"
+  | .idiv => "idiv"
   | .fadd => "fadd" | .fsub => "fsub" | .fmul => "fmul" | .fdiv => "fdiv" | .fmod => "fmod"
   | .fdivIeee => "fdivIeee" | .fpow => "fpow" | .fatan2 => "fatan2" | .bit op => s!"bit:{op.name}"
   | f => reprStr f

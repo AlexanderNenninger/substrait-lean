@@ -108,6 +108,10 @@ def Profile.duckdb.obs : ObsTable := [
   (some "int.pow", "overflow", (ObsRow.shimmed "integer power as checked products"
     ["duckdb-int-pow"]).tracking 1985),
   (some "dec.arith", "overflow", (ObsRow.native ["duckdb-decimal-arith"]).tracking 1985),
+  -- Decimal `%` truncates and raises by zero as the reference (D62); its type
+  -- is wider, and the written plan casts it back (duckdb-decimal-modulus).
+  (some "dec.mod", "division_type", (ObsRow.native ["duckdb-decimal-modulus"]).tracking 1985),
+  (some "dec.mod", "on_division_by_zero", (ObsRow.native ["duckdb-decimal-modulus"]).tracking 1985),
   -- `SUM(BIGINT)` is a `HUGEINT`; the written plan casts it back, which raises
   -- where the reference does: a type, not a value, so no shim.
   (some "agg.isum", "overflow", (ObsRow.native ["duckdb-R6"]).tracking 1985),

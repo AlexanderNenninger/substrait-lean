@@ -4443,7 +4443,7 @@ wheels = [
 
 [[package]]
 name = "sverify"
-version = "0.9.0.dev0"
+version = "0.10.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "ibis-framework" },
@@ -4592,7 +4592,7 @@ docs = [{ name = "great-docs", specifier = ">=0.11.0" }]
 
 [[package]]
 name = "sverify-duckdb"
-version = "0.9.0.dev0"
+version = "0.10.0.dev0"
 source = { editable = "../engines/duckdb" }
 dependencies = [
     { name = "sverify" },
@@ -4612,7 +4612,7 @@ provides-extras = ["run"]
 
 [[package]]
 name = "sverify-polars"
-version = "0.9.0.dev0"
+version = "0.10.0.dev0"
 source = { editable = "../engines/polars" }
 dependencies = [
     { name = "sverify" },
@@ -4634,7 +4634,7 @@ provides-extras = ["run"]
 
 [[package]]
 name = "sverify-spark"
-version = "0.9.0.dev0"
+version = "0.10.0.dev0"
 source = { editable = "../engines/spark" }
 dependencies = [
     { name = "sverify" },
