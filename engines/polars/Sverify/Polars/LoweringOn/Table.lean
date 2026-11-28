@@ -133,6 +133,7 @@ def Substrait.polarsOn : Substrait.Lowering (Substrait.Profile.polars) :=
     | Substrait.BinFn.dmul  => some (Substrait.polarsOn.dmul )
     | Substrait.BinFn.ddiv  => some (Substrait.polarsOn.ddiv )
     | Substrait.BinFn.dmod  => some (Substrait.polarsOn.dmod )
+    | Substrait.BinFn.splitFirst  => some (Substrait.polarsOn.splitFirst )
     | Substrait.BinFn.pair  => some (Substrait.polarsOn.pair )
     | Substrait.BinFn.greatest  => some (Substrait.polarsOn.greatest )
     | Substrait.BinFn.least  => some (Substrait.polarsOn.least )
@@ -219,7 +220,7 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("BinFn.ipow", "native", 0),
   ("BinFn.fpow", "native", 0),
   ("BinFn.concat", "native", 0),
-  ("BinFn.strpos", "native", 0),
+  ("BinFn.strpos", "hand-built entry: Substrait.Polars.strposEntry", 0),
   ("BinFn.startsWith", "native", 0),
   ("BinFn.endsWith", "native", 0),
   ("BinFn.like", "native", 0),
@@ -242,6 +243,7 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("BinFn.dmul", "native", 0),
   ("BinFn.ddiv", "native", 0),
   ("BinFn.dmod", "hand-written schema: a % b of decimals truncated: Polars's % by -b where the signs differ", 0),
+  ("BinFn.splitFirst", "hand-written schema: split_first: #0 for an empty #1, else Polars's split", 0),
   ("BinFn.pair", "native", 0),
   ("BinFn.greatest", "native", 0),
   ("BinFn.least", "native", 0),

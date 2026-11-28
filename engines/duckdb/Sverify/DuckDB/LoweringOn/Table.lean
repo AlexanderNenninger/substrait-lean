@@ -160,6 +160,7 @@ def Substrait.duckdbOn : Substrait.Lowering (Substrait.Profile.duckdb (Substrait
     | Substrait.BinFn.dmul  => some (Substrait.duckdbOn.dmul )
     | Substrait.BinFn.ddiv  => some (Substrait.duckdbOn.ddiv )
     | Substrait.BinFn.dmod  => some (Substrait.duckdbOn.dmod )
+    | Substrait.BinFn.splitFirst  => none
     | Substrait.BinFn.pair  => some (Substrait.duckdbOn.pair )
     | Substrait.BinFn.greatest  => some (Substrait.duckdbOn.greatest )
     | Substrait.BinFn.least  => some (Substrait.duckdbOn.least )
@@ -286,15 +287,12 @@ def Substrait.duckdbOn.coverage : List (String × String × Nat) := [
   ("BinFn.dmul", "native", 0),
   ("BinFn.ddiv", "native", 0),
   ("BinFn.dmod", "native", 0),
+  ("BinFn.splitFirst", "refused", 0),
   ("BinFn.pair", "native", 0),
   ("BinFn.greatest", "native", 0),
   ("BinFn.least", "native", 0),
   ("BinFn.bbox2", "native", 0),
   ("BinFn.listFn", "native", 0)]
-
-theorem Substrait.duckdbOn.total : (Substrait.duckdbOn).Total :=
-  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
-   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩
 
 /-- Every entry is exact (`Lowering.AllExact`). -/
 theorem Substrait.duckdbOn.allExact : (Substrait.duckdbOn).AllExact :=

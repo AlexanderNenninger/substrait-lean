@@ -19,9 +19,9 @@
   },
   "description": [
     "`s.str.split(t).list.first()` is the part of `s` before the leftmost occurrence of `t`, or `s` where `t` does not occur, counted in characters on non-ASCII text, with `t` read literally (`.` and `*` are not patterns). A NULL `s` or `t` gives NULL.",
-    "An empty `t` splits `s` into its code points, so the first part is the first code point: `'abc'` gives `'a'`, `'日本'` `'日'`, `'😀a'` `'😀'`, and `'éx'` (a base letter followed by a combining mark) `'e'`. An empty `s` gives NULL. That is `substr(s, 1, 1)` of the reference, which counts code points (`Text.substr`), so `Profile.polars` states the split as `if t = '' then (if s = '' then NULL else substr(s, 1, 1)) else splitFirst(s, t)`."
+    "An empty `t` splits `s` into its code points, so the first part is the first code point: `'abc'` gives `'a'`, `'日本'` `'日'`, `'😀a'` `'😀'`, and `'éx'` (a base letter followed by a combining mark) `'e'`. An empty `s` gives NULL. That is `substr(s, 1, 1)` of the reference, which counts code points (`Text.substr`), and NULL for `''`."
   ],
-  "reference": "`sverify_split_first(s, t)` (`Text.splitFirst`, ruling 286) is the prefix before the leftmost `t`, `s` where `t` does not occur, and `s` for an empty `t`. The two agree for `t ≠ ''`. Polars's lowering writes `if t = '' then s else split` (ruling 286's K3 as amended).",
+  "reference": "`sverify_split_first(s, t)` (`Text.splitFirst`, ruling 286) is the prefix before the leftmost `t`, `s` where `t` does not occur, and `s` for an empty `t`. The two agree but for a string and an empty `t` (`Polars.splitExcepted`), which `Profile.polars` keeps as the reference's: the lowering writes `if t = '' then s else split` and never reaches the split there (ruling 290, `Polars.split_native_not_excepted`).",
   "status": "open",
   "evidence": "probe",
   "provenance": [

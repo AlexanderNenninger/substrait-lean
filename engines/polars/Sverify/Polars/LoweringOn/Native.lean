@@ -692,15 +692,6 @@ abbrev Substrait.polarsOn.concat : Substrait.BinEntry Substrait.Profile.polars S
   Substrait.BinEntry.native Substrait.BinFn.concat
   (Substrait.Lowering.bin_agree_of_eq Substrait.polarsOn.concat_native)
 
-theorem Substrait.polarsOn.strpos_native : ∀ (x y : Substrait.Value),
-  Substrait.Profile.bin Substrait.Profile.polars Substrait.BinFn.strpos x y =
-    Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.strpos x y := by
-  native_tac
-
-abbrev Substrait.polarsOn.strpos : Substrait.BinEntry Substrait.Profile.polars Substrait.BinFn.strpos :=
-  Substrait.BinEntry.native Substrait.BinFn.strpos
-  (Substrait.Lowering.bin_agree_of_eq Substrait.polarsOn.strpos_native)
-
 theorem Substrait.polarsOn.startsWith_native : ∀ (x y : Substrait.Value),
   Substrait.Profile.bin Substrait.Profile.polars Substrait.BinFn.startsWith x y =
     Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.startsWith x y := by

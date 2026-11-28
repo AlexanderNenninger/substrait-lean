@@ -824,6 +824,7 @@ theorem Substrait.duckdbOn.guardsBin : ∀ f : Substrait.BinFn,
     | Substrait.BinFn.dmul  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ _ => trivial⟩
     | Substrait.BinFn.ddiv  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ _ => trivial⟩
     | Substrait.BinFn.dmod  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ _ => trivial⟩
+    | Substrait.BinFn.splitFirst  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, Substrait.duckdbOn.splitFirst_guards⟩
     | Substrait.BinFn.pair  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ _ => trivial⟩
     | Substrait.BinFn.greatest  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ _ => trivial⟩
     | Substrait.BinFn.least  => ⟨fun ⟨_, h⟩ => absurd h Bool.false_ne_true, fun _ _ => trivial⟩

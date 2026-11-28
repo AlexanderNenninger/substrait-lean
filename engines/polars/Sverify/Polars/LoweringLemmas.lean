@@ -1065,9 +1065,11 @@ theorem bit_shl_agree (x y : Value) :
 
 /-! ## `sverify_split_first` and `strpos` (ruling 286)
 
-Polars's split (`Profile.polars`'s `splitFirstT`, polars-split-first) is the
-reference's `sverify_split_first` but for an empty pattern, which the split's
-entry passes through (`splitFirstSchemaT`). `strpos` is one more than the
+Polars's split (polars-split-first) is the reference's `sverify_split_first` but
+for a string and an empty pattern (`Polars.splitExcepted`), which `Profile.polars`
+keeps as the reference's (ruling 290): every template passes that case through
+before the split (`splitGuard`), so the split is reached only elsewhere
+(`split_native_not_excepted`). `strpos` is one more than the
 characters before the first `t` (`Polars.strpos_chars`), which the split gives
 without Polars's `str.find`: for a non-empty `t`, `t` occurs exactly when the
 prefix before it is not `s` itself (`splitFirstChars_eq_self`). -/
@@ -1152,33 +1154,47 @@ theorem eq_lenV_zero (v : Value) :
   · have : ¬Text.capped s.length = 0 := fun e => h ((capped_length_eq_zero s).mp e)
     simp [h, this]
 
-/-- **Polars's split**, as `Profile.polars` states it. -/
+/-- **Polars's split**, as `Profile.polars` states it: the reference's (ruling 290). -/
 theorem polars_splitFirst (x y : Value) :
     Profile.polars.bin .splitFirst x y = .ok (match x, y with
-      | .str s, .str t =>
-        if t = "" then (if s = "" then .null else .str (Text.substr s 1 (some 1)))
-        else .str (Text.splitFirst s t)
+      | .str s, .str t => .str (Text.splitFirst s t)
       | _, _ => .null) := by
-  simp only [Profile.polars, BinFn.polarsTmpl, splitFirstT, Expr.evalP, List.getD,
-    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, bind, Except.bind]
-  rw [show Profile.reference.un .length y = .ok (lenV y) from polars_length y,
-    show Profile.reference.un .length x = .ok (lenV x) from polars_length x]
-  simp only [Lowering.ref_eq, eq_lenV_zero]
-  cases y <;> cases x <;> simp [Value.isTrue] <;> first
-    | rfl
-    | (split <;> rfl)
-    | (rename_i s t; by_cases ht : t = "" <;> by_cases hs : s = "" <;> simp [ht, hs] <;> rfl)
+  show Profile.reference.bin .splitFirst x y = _
+  cases x <;> cases y <;> rfl
 
-/-- `CASE WHEN length(#0) IS AN INTEGER AND length(#1) = 0 THEN #0 ELSE split(#0, #1) END`:
-the reference's `sverify_split_first`, which gives `s` for an empty pattern. -/
-def splitFirstSchemaT : Expr :=
-  .ifThen (.bin .and (.un (.isNum .int) (.un .length (.field 0)))
-      (.bin .eq (.un .length (.field 1)) (.lit (.int 0))))
-    (.field 0) (.bin .splitFirst (.field 0) (.field 1))
+/-- `length(#0)` is an integer (`#0` is a string) and `length(#1) = 0`: the case where
+Polars's split is not the reference's (`Polars.splitExcepted`). -/
+def splitGuard : Expr :=
+  .bin .and (.un (.isNum .int) (.un .length (.field 0)))
+    (.bin .eq (.un .length (.field 1)) (.lit (.int 0)))
+
+/-- `CASE WHEN splitGuard THEN #0 ELSE split(#0, #1) END`: the reference's
+`sverify_split_first`, which gives `s` for an empty pattern. -/
+def splitFirstSchemaT : Expr := .ifThen splitGuard (.field 0) (.bin .splitFirst (.field 0) (.field 1))
+
+theorem splitGuard_eval (x y : Value) : splitGuard.evalP Profile.polars [x, y] = .ok (match x, y with
+    | .str _, .str t => .bool (decide (t = ""))
+    | .str _, _ => .null
+    | _, _ => .bool false) := by
+  simp only [splitGuard, Expr.evalP, List.getD, List.getElem?_cons_zero, List.getElem?_cons_succ,
+    Option.getD_some, bind, Except.bind, polars_length, polars_isNum, polars_eq, polars_and3,
+    eq_lenV_zero]
+  cases x <;> cases y <;> simp [lenV, Value.isNum, and3] <;> (try rename_i t) <;>
+    (try cases decide (t = "")) <;> rfl
+
+/-- **P1 (ruling 290): the native split is reached only where it is the reference's.**
+Where `splitGuard` does not hold, the arguments are not `Polars.splitExcepted`. -/
+theorem split_native_not_excepted {x y : Value}
+    (h : ∀ v, splitGuard.evalP Profile.polars [x, y] = .ok v → v.isTrue = false) :
+    splitExcepted x y = false := by
+  have := h _ (splitGuard_eval x y)
+  cases x <;> cases y <;> simp_all [splitExcepted, Value.isTrue]
+  rename_i t
+  intro ht; subst ht; simp at this
 
 omit [Boxes.Ambient] in
 theorem splitFirstSchemaT_must : 0 ∈ splitFirstSchemaT.must ∧ 1 ∈ splitFirstSchemaT.must := by
-  simp [Expr.must, splitFirstSchemaT]
+  simp [Expr.must, splitFirstSchemaT, splitGuard]
 
 theorem ref_splitFirst (x y : Value) :
     Profile.reference.bin .splitFirst x y = .ok (BinFn.apply .splitFirst x y) := by
@@ -1186,7 +1202,7 @@ theorem ref_splitFirst (x y : Value) :
 
 theorem splitFirst_agree (x y : Value) :
     (splitFirstSchemaT.evalP Profile.polars [x, y]).Agree (Profile.reference.bin .splitFirst x y) := by
-  simp only [splitFirstSchemaT, Expr.evalP, List.getD, List.getElem?_cons_zero,
+  simp only [splitFirstSchemaT, splitGuard, Expr.evalP, List.getD, List.getElem?_cons_zero,
     List.getElem?_cons_succ, Option.getD_some, bind, Except.bind, polars_length, polars_isNum,
     polars_eq, polars_and3, eq_lenV_zero, polars_splitFirst, ref_splitFirst]
   cases x <;> cases y <;> simp [lenV, Value.isNum, Value.isTrue, BinFn.apply, Outcome.Agree]
@@ -1201,15 +1217,13 @@ called. -/
 def strposTemplate : Expr :=
   let sf := Expr.bin .splitFirst (.field 0) (.field 1)
   let lsf := Expr.un .length sf
-  .ifThen (.bin .and (.un (.isNum .int) (.un .length (.field 0)))
-      (.bin .eq (.un .length (.field 1)) (.lit (.int 0))))
-    (.lit (.int 1))
+  .ifThen splitGuard (.lit (.int 1))
     (.ifThen (.bin .eq sf (.field 0)) (.lit (.int 0))
       (.ifThen (.bin .lt lsf (.lit (.int Text.sizeCap))) (.bin .add lsf (.lit (.int 1))) lsf))
 
 omit [Boxes.Ambient] in
 theorem strposTemplate_must : 0 ∈ strposTemplate.must ∧ 1 ∈ strposTemplate.must := by
-  simp [Expr.must, strposTemplate]
+  simp [Expr.must, strposTemplate, splitGuard]
 
 theorem ref_strpos (x y : Value) :
     Profile.reference.bin .strpos x y = .ok (BinFn.apply .strpos x y) := by
@@ -1238,7 +1252,7 @@ theorem apply_eq_str (a b : String) : BinFn.apply .eq (.str a) (.str b) = .bool 
 
 theorem strpos_agree (x y : Value) :
     (strposTemplate.evalP Profile.polars [x, y]).Agree (Profile.reference.bin .strpos x y) := by
-  simp only [strposTemplate, Expr.evalP, List.getD, List.getElem?_cons_zero,
+  simp only [strposTemplate, splitGuard, Expr.evalP, List.getD, List.getElem?_cons_zero,
     List.getElem?_cons_succ, Option.getD_some, bind, Except.bind, polars_length, polars_isNum,
     polars_eq, polars_and3, polars_ltV, eq_lenV_zero, polars_splitFirst, ref_strpos]
   cases x <;> cases y

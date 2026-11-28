@@ -146,6 +146,7 @@ def Substrait.sparkOn : Substrait.Lowering (Substrait.Profile.spark) :=
     | Substrait.BinFn.dmul  => some (Substrait.sparkOn.dmul )
     | Substrait.BinFn.ddiv  => some (Substrait.sparkOn.ddiv )
     | Substrait.BinFn.dmod  => some (Substrait.sparkOn.dmod )
+    | Substrait.BinFn.splitFirst  => none
     | Substrait.BinFn.pair  => some (Substrait.sparkOn.pair )
     | Substrait.BinFn.greatest  => some (Substrait.sparkOn.greatest )
     | Substrait.BinFn.least  => some (Substrait.sparkOn.least )
@@ -265,6 +266,7 @@ def Substrait.sparkOn.coverage : List (String × String × Nat) := [
   ("BinFn.dmul", "native", 0),
   ("BinFn.ddiv", "native", 0),
   ("BinFn.dmod", "native", 0),
+  ("BinFn.splitFirst", "refused", 0),
   ("BinFn.pair", "native", 0),
   ("BinFn.greatest", "native", 0),
   ("BinFn.least", "native", 0),
