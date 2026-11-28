@@ -4,8 +4,6 @@ the consumer requires, or the route is refused."""
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 import ibis
 import pyarrow as pa
 import pytest
@@ -17,6 +15,7 @@ from _pipelines import make_orders
 from sverify import routes
 from sverify.errors import RouteError
 from sverify.io import DeltaSink
+from sverify.observation import PLAN_BOUND
 
 
 @pytest.fixture
@@ -26,110 +25,90 @@ def con() -> sv.engine.Connection:
     return c
 
 
-def _tables(
-    monkeypatch: pytest.MonkeyPatch, rerun: dict | None, evidence: str | None = "proved"
-) -> None:
-    """Polars's `sum_order` row with run-to-run variation `rerun`."""
-    row = {
-        "group": None,
-        "option": "sum_order",
-        "choice": {"kind": "oneOf", "behaviours": ["ANY"]},
-        "class": "refines",
-        "evidence": "proved",
-        "facts": ["polars-sum-float-streaming"],
-    }
-    if rerun is not None:
-        row["rerun"] = rerun
-        row["rerun_evidence"] = evidence
-    tables = {"groups": {}, "choices": {"reference": [], "duckdb": [], "polars": [row]}}
-    monkeypatch.setattr(routes, "_options_json", lambda: tables)
-
-
 def _float_sum(con) -> sv.Report:
+    """A double sum with a row cap: Polars's `sum_order` varies between runs
+    within the plan's bound (`ObsRow.fsumOrder`), here abs=111.023 and
+    rel=2.22045e-10, both proved."""
     t = con.table("t")
-    report = sv.verify(
+    return sv.verify(
         t.group_by("k").aggregate(total=t.x.sum()),
         requires={"t": [_.x.between(0, 1e6), sv.max_rows(1_000_000)]},
     )
-    report._depends = [{"group": None, "option": "sum_order"}]
-    return report
 
 
-def test_a_float_sum_on_polars_streaming(monkeypatch, con) -> None:
+def test_a_float_sum_on_polars_streaming(con) -> None:
     """Polars's streaming engine sums in an order that varies between runs:
     a consumer that accepts the plan's bound gets the run, one that needs
-    exact values does not."""
-    _tables(monkeypatch, {"floats": {"bound": "plan"}})
+    exact values does not. The checker decides (`Realize.rerunCheck`); its
+    cases with made-up rows are `#guard`s there."""
     report = _float_sum(con)
-    # The plan's `ε` as the checker normalises it (`Realize.epsBounds`).
-    report._epsilon = {
-        "total": {
-            "bounds": {
-                "abs": {"value": 1e-3, "proved": True},
-                "rel": {"value": 1e-10, "proved": False},
-            },
-            "unbounded": False,
-            "why": None,
-        }
-    }
-    ok = routes.choose(report, "polars", reproducible=sv.equivalent(floats=sv.within(abs=1e-2)))
-    assert ok.taken == "translated" and ok.rerun_evidence == "proved"
+    ok = routes.choose(report, "polars", reproducible=sv.equivalent(floats=sv.within(abs=1e3)))
+    # The other options' reruns rest on their facts' tests (#900).
+    assert ok.taken == "translated" and ok.rerun_evidence == "tested"
     assert (
         routes.choose(
             report, "polars", reproducible=sv.equivalent(floats=sv.within(rel=1e-9))
-        ).rerun_evidence
-        == "tested"
-    ), "the relative bound is not proved"
+        ).taken
+        == "translated"
+    )
     exact = routes.choose(report, "polars", reproducible=sv.equivalent())
     assert exact.refused
     assert "a rerun must give the same result" in exact.why
-    assert "total is within abs=0.001, rel=1e-10 (tested) between runs" in exact.why
+    assert "total is within abs=111.023, rel=2.22045e-10 between runs" in exact.why
     assert exact.reproducible == sv.equivalent()
-    # `sv.equivalent()` asks for exact values too.
-    assert routes.choose(report, "polars", reproducible=sv.equivalent()).refused
     # Without a requirement, the route only reports.
     assert routes.choose(report, "polars").taken == "translated"
     with pytest.raises(RouteError, match="rerun must give the same result"):
         report.run(con, "polars", route="auto", reproducible=sv.equivalent())
 
 
-def test_a_fixed_variation(monkeypatch, con) -> None:
-    _tables(monkeypatch, {"rows": "multiset", "floats": {"rel": 1e-12}})
+def test_a_stated_tolerance_against_the_plans_bound(con) -> None:
+    """Ruling 281: a stated `reproducible=` stricter than the plan's bound is
+    refused, one looser is met, and the sinks' default asks nothing more."""
     report = _float_sum(con)
-    assert (
-        routes.choose(
-            report, "polars", reproducible=sv.equivalent(floats=sv.within(rel=1e-9))
-        ).rerun_evidence
-        == "proved"
+    strict = sv.equivalent(floats=sv.within(abs=1.0))
+    problems, _ = routes.reproducibility(report, "polars", strict)
+    assert len(problems) == 1 and "total is within abs=111.023" in problems[0]
+    assert "pass reproducible=sv.equivalent(floats=sv.within(rel=3e-10)) or looser" in problems[0]
+    loose = sv.equivalent(floats=sv.within(abs=1e3))
+    assert routes.reproducibility(report, "polars", loose) == ([], "tested")
+    assert routes.reproducibility(report, "polars", sv.equivalent(floats="plan")) == (
+        [],
+        "tested",
     )
-    r = routes.choose(report, "polars", reproducible=sv.equivalent(rows="sequence"))
-    assert r.refused and "must reproduce its rows, floats" in r.why
 
 
-def test_a_missing_variation_reads_as_exact_on_a_test(monkeypatch, con) -> None:
-    _tables(monkeypatch, None)
+def test_a_stated_lens_asks_the_checker_once(monkeypatch, con) -> None:
+    """The default lenses' answer is the report's own; another lens asks the
+    checker once per plan and lenses in a process."""
+    from sverify import engine
+
     report = _float_sum(con)
-    r = routes.choose(report, "polars", reproducible=sv.equivalent())
-    assert r.taken == "translated" and r.rerun_evidence == "tested"
+    routes._rerun_request.cache_clear()
+    calls: list[tuple[str, ...]] = []
+    run = engine.run_checker
 
+    def counted(flags, stdin):
+        calls.append(flags)
+        return run(flags, stdin)
 
-@pytest.mark.parametrize(
-    ("evidence", "expected"), [("proved", "proved"), ("tested", "tested"), (None, "tested")]
-)
-def test_an_exact_variation_with_its_evidence(monkeypatch, con, evidence, expected) -> None:
-    """`"rerun": {}` marks a row known exact; its evidence is the row's
-    `"rerun_evidence"`, "tested" where it says nothing."""
-    _tables(monkeypatch, {}, evidence)
-    report = _float_sum(con)
-    r = routes.choose(report, "polars", reproducible=sv.equivalent())
-    assert r.taken == "translated" and r.rerun_evidence == expected
+    monkeypatch.setattr(engine, "run_checker", counted)
+    routes.reproducibility(report, "polars", PLAN_BOUND)
+    assert calls == [], "the sinks' default is answered at verify time"
+    strict = sv.equivalent(floats=sv.within(abs=1.0))
+    first = routes.reproducibility(report, "polars", strict)
+    assert first == routes.reproducibility(report, "polars", strict)
+    routes.reproducibility(report, "duckdb", strict)
+    assert calls == [("--contract",)]
+    assert routes._rerun_request.cache_info().hits == 2
 
 
 def test_an_open_choice_fails_every_requirement(con) -> None:
     """A result not determined up to row order (a LIMIT without an ORDER
     BY, ties) is reproduced by no rerun, however coarse the requirement."""
     t = con.table("t")
-    report = replace(sv.verify(t.select("k")), deterministic=False)
+    report = sv.verify(t.limit(2))
+    assert not report.deterministic
     coarse = sv.equivalent(floats=sv.within(abs=1e9), zeros="canon", elements="multiset")
     for q in (sv.equivalent(), coarse):
         r = routes.choose(report, "duckdb", reproducible=q)
@@ -151,15 +130,21 @@ def mean_amount(orders):
     return orders.group_by("customer").aggregate(mean=orders.amount.cast("float64").mean())
 
 
-def test_a_sink_states_what_a_rerun_must_reproduce(monkeypatch, tmp_path) -> None:
+@sv.transform(requires={"orders": [_.amount >= 0, _.amount < 1_000, sv.max_rows(1_000)]})
+def capped_mean(orders):
+    return orders.group_by("customer").aggregate(mean=orders.amount.cast("float64").mean())
+
+
+def test_a_sink_states_what_a_rerun_must_reproduce(tmp_path) -> None:
     """A sink commits each epoch once: by default a rerun must reproduce
-    doubles within the plan's bound, which this plan has none of (no row
-    cap); a sink that asks exact values or accepts a tolerance says so."""
-    _tables(monkeypatch, {"floats": {"rel": 1e-12}})
+    doubles within the plan's bound, which a mean without a row cap meets
+    only on a test; a sink that asks exact values or a tolerance says so,
+    and a tolerance needs the bound a row cap gives."""
     orders = make_orders(tmp_path / "orders", [(1, "ada", 5), (2, "ada", 7)])
     unbounded = mean_amount(orders).write(DeltaSink(str(tmp_path / "unbounded")))
-    with pytest.raises(RouteError, match="no bound on the plan's doubles"):
-        unbounded.refresh(engine="polars")
+    out = unbounded.refresh(engine="polars", route="auto")
+    assert out["unbounded"].route is not None
+    assert out["unbounded"].route.rerun_evidence == "tested"
     exact = mean_amount(orders).write(
         DeltaSink(str(tmp_path / "exact"), reproducible=sv.equivalent())
     )
@@ -169,15 +154,19 @@ def test_a_sink_states_what_a_rerun_must_reproduce(monkeypatch, tmp_path) -> Non
         exact.refresh(engine="polars")
     with pytest.raises(Exception):  # noqa: B017 - nothing was written
         DeltaTable(str(tmp_path / "exact"))
-    loose = mean_amount(orders).write(
-        DeltaSink(str(tmp_path / "loose"), reproducible=sv.equivalent(floats=sv.within(rel=1e-9)))
+    tolerance = sv.equivalent(floats=sv.within(rel=1e-9))
+    uncapped = mean_amount(orders).write(
+        DeltaSink(str(tmp_path / "uncapped"), reproducible=tolerance)
     )
+    with pytest.raises(RouteError, match="mean has no bound on the plan's doubles"):
+        uncapped.refresh(engine="polars")
+    loose = capped_mean(orders).write(DeltaSink(str(tmp_path / "loose"), reproducible=tolerance))
     out = loose.refresh(engine="polars", route="auto")
     assert out["loose"].route is not None and out["loose"].route.reproducible is not None
     assert DeltaTable(str(tmp_path / "loose")).to_pyarrow_table().num_rows == 1
     # The refresh's own requirement replaces the sink's.
-    again = mean_amount(orders).write(DeltaSink(str(tmp_path / "again")))
-    again.refresh(engine="polars", reproducible=sv.equivalent(floats=sv.within(rel=1e-9)))
+    again = capped_mean(orders).write(DeltaSink(str(tmp_path / "again")))
+    again.refresh(engine="polars", reproducible=tolerance)
 
 
 def test_a_float_sum_on_polars_against_the_checkers_tables(con) -> None:
@@ -197,17 +186,22 @@ def test_a_float_sum_on_polars_against_the_checkers_tables(con) -> None:
     assert exact.refused and "sum_order" in exact.why
 
 
-def test_ties_permuted_sits_between_sequence_and_multiset(monkeypatch, con) -> None:
+def test_ties_permuted_sits_between_sequence_and_multiset(con) -> None:
     """#612's rows level: two runs agree up to permutations of tied rows."""
     ties = sv.equivalent(rows="ties permuted")
     assert sv.equivalent(rows="sequence").refines(ties)
     assert ties.refines(sv.equivalent(rows="multiset"))
     assert not ties.refines(sv.equivalent(rows="sequence"))
-    _tables(monkeypatch, {"rows": "ties permuted"})
-    report = _float_sum(con)
+    # Polars's `tie_order`: a list ordered by a key reruns up to tied rows.
+    con.put("u", pa.table({"k": [1, 1, 2], "n": [1, 2, 3]}))
+    u = con.table("u")
+    report = sv.verify(
+        u.group_by("k").aggregate(l=u.n.collect(order_by=u.n)),
+        requires={"u": [sv.unique("n")]},
+    )
     assert routes.choose(report, "polars", reproducible=sv.equivalent()).taken == "translated"
     r = routes.choose(report, "polars", reproducible=sv.equivalent(rows="sequence"))
-    assert r.refused and "rows" in r.why
+    assert r.refused and "two runs on polars agree only up to" in r.why and "rows" in r.why
 
 
 def test_deterministic_is_gone():

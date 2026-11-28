@@ -1,0 +1,3 @@
+### The checker decides what a rerun reproduces
+
+The rerun check (`reproducible=` on a run, a refresh or a sink) is decided by the checker now, in one Lean function (`Realize.rerunCheck`), and Python only words its answer. The report keeps the checker's answer for the sinks' default; a stated `reproducible=` asks the checker once per plan and lenses in a process. A rerun that must reproduce exact doubles is refused where a column has no bound on its distance to the reference, as a postcondition is since [#2486](https://github.com/AlexanderNenninger/substrait-lean/issues/2486), and stated tolerances compare exactly against the plan's bound ([#1071](https://github.com/AlexanderNenninger/substrait-lean/issues/1071)).

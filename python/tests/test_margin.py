@@ -207,7 +207,7 @@ def test_an_input_not_pinned_to_a_version_warns_or_refuses(having, tmp_path):
     with pytest.warns(InferredWarning, match="not pinned to one version"):
         assert having.run(c, "duckdb").to_pylist() == [{"customer_id": 2, "total": 5000.0}]
     with pytest.raises(PreconditionError, match="not pinned to one version"):
-        having.run(c, "duckdb", reproducible=sv.equivalent())
+        having.run(c, "duckdb", reproducible=sv.equivalent(floats="plan"))
     # The same files at a version: no warning.
     c.put("orders", Scan((str(path),), rows.schema, None, None, "orders@v3"))
     with warnings.catch_warnings():
