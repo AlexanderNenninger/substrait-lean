@@ -277,6 +277,7 @@ def BinFn.kindOf (f : BinFn) (a b : KT) : Option KT :=
   | .concat | .trim _ _ => need (a.okK .str && b.okK .str) (.kind .str)
   | .strpos | .levenshtein => need (a.okK .str && b.okK .str) (.kind .int)
   | .startsWith | .endsWith | .like | .ilike => need (a.okK .str && b.okK .str) (.kind .bool)
+  | .splitFirst => need (a.okK .str && b.okK .str) (.kind .str)
   | .substr _ _ | .strRepeat => need (a.okK .str && b.okI Kind.isInt) (.kind .str)
   | .dateAdd => need (a.okI Kind.isDate && b.okI Kind.isInt) (.kind .date)
   | .dateDiff => need (num Kind.isDate) (.kind .int)
@@ -473,7 +474,7 @@ theorem UnFn.kindOf_sound {f : UnFn} {t t' : KT} {v : Value} (h : f.kindOf t = s
 has one kind; `other` for the rest. -/
 def BinFn.out : BinFn → Kind
   | .eq | .lt | .and | .or | .startsWith | .endsWith | .like | .ilike | .listFn .contains => .bool
-  | .concat | .substr _ _ | .trim _ _ | .strRepeat => .str
+  | .concat | .substr _ _ | .trim _ _ | .strRepeat | .splitFirst => .str
   | .fadd | .fsub | .fmul | .fdiv | .fdivIeee | .fmod | .fpow | .fatan2 | .flogb => .float
   | .strpos | .levenshtein | .idiv | .ipow | .bit _ | .dateDiff | .dadd | .dsub | .dmul | .ddiv
   | .dmod | .listFn .position => .int

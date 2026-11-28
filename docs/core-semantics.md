@@ -306,7 +306,7 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | core | `fp.round` | `round` | `rounding`, `round_zero_sign`, `float_to_int` (where `round` returns a `BIGINT`) |
 | core | `fp.floor` | `floor`, `ceil` | `round_zero_sign` (`ceil` of a negative value above `-1`), `float_to_int` (where they return a `BIGINT`) |
 | core | `cmp` | `equal`, `lt`, `greatest`, `least`, `nanvl`, `is_null`, `not`, `and`, `or` | `nan_equality`, `nan_order`, `zero_sign` (doubles only) |
-| core | `sverify` | `sverify_raise`, `sverify_is_number` (a shim's guards, #185), `sverify_pair` (a two-argument aggregate's argument) | none |
+| core | `sverify` | `sverify_raise`, `sverify_is_number` (a shim's guards, #185), `sverify_pair` (a two-argument aggregate's argument), `sverify_split_first` (the prefix before the first match, which Polars's `strpos` template writes and no frontend produces, ruling 286) | none |
 | strings | `str.sub` | `substring` | `negative_start`, `substring_range`, `string_positions` |
 | strings | `str.match` | `like`, `strpos`, `starts_with`, `ends_with`, `replace` | `case_sensitivity`, `string_positions` |
 | strings | `str.case` | `upper`, `lower` | `char_set`, `case_mapping` |

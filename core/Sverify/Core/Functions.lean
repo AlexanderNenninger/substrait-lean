@@ -208,6 +208,10 @@ def core : List FnRow := [
     pretty := "%." },
   -- sverify's own: two values as the argument of a two-argument aggregate
   -- (`COVAR_SAMP(x, y)`, #54), written as the measure's two arguments.
+  -- sverify's own: the prefix before the first `t` (ruling 286), which a lowering's
+  -- template writes (Polars's `strpos`) and no frontend produces.
+  { name := "sverify_split_first", anchor := 127, group := "sverify",
+    ctor := some (.bin .splitFirst), reads := .plain },
   { name := "sverify_pair", anchor := 123, group := "sverify", ctor := some (.bin .pair),
     reads := .plain, pretty := "PAIR" },
   -- `GREATEST`/`LEAST` of two values, skipping `NULL`s (`BinFn.greatest`,

@@ -160,7 +160,7 @@ def UnFn.mayDouble : UnFn → Bool
 /-- Fail closed, as `UnFn.mayDouble`. -/
 def BinFn.mayDouble : BinFn → Bool
   | .add | .sub | .mul | .eq | .lt | .and | .or | .idiv | .imod | .ipow | .concat | .strpos
-  | .startsWith | .endsWith | .like | .substr _ _ | .trim _ _ | .strRepeat | .ilike
+  | .splitFirst | .startsWith | .endsWith | .like | .substr _ _ | .trim _ _ | .strRepeat | .ilike
   | .levenshtein | .dateAdd | .dateDiff | .bit _ | .dadd | .dsub | .dmul | .ddiv | .dmod
   | .greatest | .least => false
   | _ => true

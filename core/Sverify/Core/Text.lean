@@ -294,6 +294,19 @@ def strpos (s t : String) : Int :=
   | some i => i
   | none => 0)
 
+/-- The characters of `cs` before the leftmost `t`, or all of them where `t`
+does not occur; none for an empty `t`. -/
+def splitFirstChars (t : List Char) : List Char → List Char
+  | [] => []
+  | c :: cs => if t.isPrefixOf (c :: cs) then [] else c :: splitFirstChars t cs
+
+/-- `sverify_split_first(s, t)` (ruling 286): the prefix of `s` before the
+leftmost `t`, or `s` where `t` does not occur. For an empty `t` it is `s`: the
+empty string occurs at the start, but a template that calls it guards that
+case first (`Polars.strposTemplate`). -/
+def splitFirst (s t : String) : String :=
+  if t.isEmpty then s else String.mk (splitFirstChars t.toList s.toList)
+
 def startsWith (s t : String) : Bool := t.toList.isPrefixOf s.toList
 
 def endsWith (s t : String) : Bool := t.toList.reverse.isPrefixOf s.toList.reverse

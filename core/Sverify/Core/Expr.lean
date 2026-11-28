@@ -323,6 +323,11 @@ inductive BinFn where
   the unscaled integers, so it takes the dividend's sign. `NULL` for `b = 0`,
   where the parser's division-by-zero check raises, as for `imod`. -/
   | dmod
+  /-- sverify's own (ruling 286): the prefix of `s` before the leftmost `t`, or
+  `s` where `t` does not occur (`Text.splitFirst`); `s` for an empty `t`. No
+  frontend produces it: a lowering's template writes it, Polars's `strpos`
+  (`Polars.strposTemplate`). -/
+  | splitFirst
   /-- The two values as a list, `NULL` if either is: the argument of a
   two-argument aggregate (`COVAR_SAMP(x, y)`, #54), whose rows with a NULL
   are skipped. -/
@@ -845,6 +850,7 @@ def BinFn.apply : BinFn → Value → Value → Value
   | .fpow, .float a, .float b => .float (FloatCode.lift₂ Float.pow a b)
   | .concat, .str a, .str b => .str (a ++ b)
   | .strpos, .str a, .str b => .int (Text.strpos a b)
+  | .splitFirst, .str a, .str b => .str (Text.splitFirst a b)
   | .startsWith, .str a, .str b => .bool (Text.startsWith a b)
   | .endsWith, .str a, .str b => .bool (Text.endsWith a b)
   | .like, .str a, .str b => .bool (Text.like a b)
