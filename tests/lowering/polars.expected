@@ -7,7 +7,7 @@ UnFn.ffloor	native
 UnFn.fceil	hand-written schema: ceil: 0.0 for a negative value that rounds to zero
 UnFn.fround	hand-written schema: round: 0.0 for a negative value that rounds to zero
 UnFn.froundEven	hand-written schema: round(mode='half_to_even'): 0.0 for a negative value that rounds to zero
-UnFn.froundTo	native
+UnFn.froundTo	hand-built entry: Substrait.Polars.froundToEntry
 UnFn.ftoi	native
 UnFn.narrow	native
 UnFn.ftoiOrNull	native
