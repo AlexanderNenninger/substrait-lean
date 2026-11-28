@@ -1,0 +1,1409 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_arithmetic.py",
+  "license": "MIT",
+  "module": "operations__arithmetic__test_arithmetic",
+  "summary": {
+    "agree": 29,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 26,
+    "unproved": 3,
+    "skipped": 283
+  },
+  "results": {
+    "test_arithmetic_datetime": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_arithmetic_duration_div_multiply": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_i128[dtype0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_i128[dtype1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_i128[dtype2]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_i128[dtype3]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_i128[dtype4]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_i128[dtype5]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_i128[dtype6]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_i128[dtype7]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_i128[dtype8]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_i128[dtype9]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_i128_nonint": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_in_aggregation_3739": {
+      "outcome": "skipped",
+      "reason": "translator: an aggregate outside group_by"
+    },
+    "test_arithmetic_null_count": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_arithmetic_on_df": {
+      "outcome": "unproved",
+      "reason": "data: table polars_input_0 differs from the schema the plan was verified for: column … is null, the plan expects int64: refused before the run. Declare the colu",
+      "collects": 8
+    },
+    "test_arithmetic_series[s0]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_arithmetic_series[s1]": {
+      "outcome": "unproved",
+      "reason": "BIGINT(FLOOR(( / N)))",
+      "collects": 2
+    },
+    "test_arithmetic_sub[2.0-3.0--1.0-Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_sub[left0-right0-expected_value0-expected_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_arithmetic_sub[left1-right1-expected_value1-expected_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_arithmetic_sub[left2-right2-expected_value2-expected_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_arithmetic_supertype[Int128-Int128-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int128-UInt128-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int16-Int128-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int16-Int16-Int16]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int16-Int32-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int16-Int64-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int16-UInt128-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int16-UInt16-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int16-UInt32-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int16-UInt64-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int16-UInt8-Int16]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int32-Int128-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int32-Int32-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int32-Int64-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int32-UInt128-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int32-UInt16-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int32-UInt32-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int32-UInt64-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int32-UInt8-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int64-Int128-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int64-Int64-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int64-UInt128-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int64-UInt16-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int64-UInt32-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int64-UInt64-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int64-UInt8-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int8-Int128-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int8-Int16-Int16]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int8-Int32-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int8-Int64-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int8-Int8-Int8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int8-UInt128-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int8-UInt16-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int8-UInt32-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int8-UInt64-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[Int8-UInt8-Int16]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt128-UInt128-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt16-Int128-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt16-UInt128-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt16-UInt16-UInt16]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt16-UInt32-UInt32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt16-UInt64-UInt64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt32-Int128-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt32-UInt128-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt32-UInt32-UInt32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt32-UInt64-UInt64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt64-Int128-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt64-UInt128-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt64-UInt64-UInt64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt8-Int128-Int128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt8-UInt128-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt8-UInt16-UInt16]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt8-UInt32-UInt32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt8-UInt64-UInt64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_supertype[UInt8-UInt8-UInt8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_arithmetic_u128[dtype0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_u128[dtype1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_u128[dtype2]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_u128[dtype3]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_u128[dtype4]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_u128[dtype5]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_u128[dtype6]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_u128[dtype7]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_u128[dtype8]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_u128[dtype9]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_u128_nonint": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_arithmetic_with_logical_on_series_4920": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_array_arithmetic_same_size[expected0-<lambda>-column_names0]": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: ArrayConcat is not supported yet (see #60, https://github.com/AlexanderNenninger/substrait-lean/issues/N)",
+      "collects": 1
+    },
+    "test_array_arithmetic_same_size[expected1-<lambda>-column_names1]": {
+      "outcome": "skipped",
+      "reason": "translator: TypeError: unsupported operand type(s) for -: … and …"
+    },
+    "test_array_arithmetic_same_size[expected2-<lambda>-column_names2]": {
+      "outcome": "skipped",
+      "reason": "translator: SignatureValidationError: ArrayRepeat(r0 := DatabaseTable: polars_input_0"
+    },
+    "test_array_arithmetic_same_size[expected3-<lambda>-column_names3]": {
+      "outcome": "skipped",
+      "reason": "translator: TypeError: unsupported operand type(s) for /: … and …"
+    },
+    "test_array_arithmetic_same_size[expected4-<lambda>-column_names4]": {
+      "outcome": "skipped",
+      "reason": "translator: TypeError: unsupported operand type(s) for %: … and …"
+    },
+    "test_array_arithmetic_same_size[expected5-<lambda>-column_names5]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 1
+    },
+    "test_bitwise_6311": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_bitwise_bool_ops_unsupported[and]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_bitwise_bool_ops_unsupported[or]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_bitwise_bool_ops_unsupported[xor]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_bool_mul_float_literal_schema_28505": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_boolean_addition": {
+      "outcome": "skipped",
+      "reason": "translator: Function SumHorizontal"
+    },
+    "test_compound_duration_21389": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_date_datetime_sub": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_df_series_division": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_duration_division_schema": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_float_truediv_output_type": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_floor_division_float_int_consistency": {
+      "outcome": "unproved",
+      "reason": "BIGINT(FLOOR(( / N)))",
+      "collects": 2
+    },
+    "test_fma_unknown_type_coercion_28315": {
+      "outcome": "skipped",
+      "reason": "translator: IbisTypeError: Cannot compute precedence for … and … types"
+    },
+    "test_fused_arithm[in-memory]": {
+      "outcome": "agree",
+      "collects": 7
+    },
+    "test_fused_arithm[streaming]": {
+      "outcome": "agree",
+      "collects": 7
+    },
+    "test_int_operator_stability[dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_operator_stability[dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_operator_stability[dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_operator_stability[dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_operator_stability[dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_operator_stability[dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_operator_stability[dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_operator_stability[dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_operator_stability[dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_operator_stability[dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_integer_divide_scalar_zero_lhs_19142": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_invalid_shapes_err": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_literal_no_upcast": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: multiply of FLOAT (fp32) values is not modelled; cast them to DOUBLE first. Lean's model does not",
+      "collects": 1
+    },
+    "test_literal_subtract_schema_13284": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_log_broadcast[Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_log_broadcast[Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_log_exp[Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Log"
+    },
+    "test_log_exp[Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Log"
+    },
+    "test_log_exp[dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Log"
+    },
+    "test_null_column_arithmetic[add]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_null_column_arithmetic[mod]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_null_column_arithmetic[mul]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_null_column_arithmetic[sub]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_operator_arithmetic_with_nulls[dtype0-add]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype0-floordiv]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_operator_arithmetic_with_nulls[dtype0-mod]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype0-mul]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype0-sub]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype1-add]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype1-floordiv]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_operator_arithmetic_with_nulls[dtype1-mod]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype1-mul]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype1-sub]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype10-add]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_operator_arithmetic_with_nulls[dtype10-floordiv]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ExtendConstant"
+    },
+    "test_operator_arithmetic_with_nulls[dtype10-mod]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_operator_arithmetic_with_nulls[dtype10-mul]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_operator_arithmetic_with_nulls[dtype10-sub]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_operator_arithmetic_with_nulls[dtype11-add]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: add of FLOAT (fp32) values is not modelled; cast them to DOUBLE first. Lean's model does not cove",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype11-floordiv]": {
+      "outcome": "refused",
+      "construct": "run: refused on polars: a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values",
+      "collects": 8
+    },
+    "test_operator_arithmetic_with_nulls[dtype11-mod]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: modulus of FLOAT (fp32) values is not modelled; cast them to DOUBLE first. Lean's model does not ",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype11-mul]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: multiply of FLOAT (fp32) values is not modelled; cast them to DOUBLE first. Lean's model does not",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype11-sub]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: subtract of FLOAT (fp32) values is not modelled; cast them to DOUBLE first. Lean's model does not",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype12-add]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype12-floordiv]": {
+      "outcome": "refused",
+      "construct": "run: refused on polars: a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values",
+      "collects": 8
+    },
+    "test_operator_arithmetic_with_nulls[dtype12-mod]": {
+      "outcome": "refused",
+      "construct": "run: refused on polars: a filter, grouping key or sort on a double, or a projection that rounds, casts or compares one, may keep other rows or give other values",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype12-mul]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype12-sub]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype2-add]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype2-floordiv]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_operator_arithmetic_with_nulls[dtype2-mod]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype2-mul]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype2-sub]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype3-add]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype3-floordiv]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_operator_arithmetic_with_nulls[dtype3-mod]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype3-mul]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype3-sub]": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype4-add]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_operator_arithmetic_with_nulls[dtype4-floordiv]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ExtendConstant"
+    },
+    "test_operator_arithmetic_with_nulls[dtype4-mod]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_operator_arithmetic_with_nulls[dtype4-mul]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_operator_arithmetic_with_nulls[dtype4-sub]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_operator_arithmetic_with_nulls[dtype5-add]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype5-floordiv]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_operator_arithmetic_with_nulls[dtype5-mod]": {
+      "outcome": "skipped",
+      "reason": "translator: ZeroDivisionError: integer modulo by zero"
+    },
+    "test_operator_arithmetic_with_nulls[dtype5-mul]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype5-sub]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype6-add]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype6-floordiv]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_operator_arithmetic_with_nulls[dtype6-mod]": {
+      "outcome": "skipped",
+      "reason": "translator: ZeroDivisionError: integer modulo by zero"
+    },
+    "test_operator_arithmetic_with_nulls[dtype6-mul]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype6-sub]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype7-add]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype7-floordiv]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_operator_arithmetic_with_nulls[dtype7-mod]": {
+      "outcome": "skipped",
+      "reason": "translator: ZeroDivisionError: integer modulo by zero"
+    },
+    "test_operator_arithmetic_with_nulls[dtype7-mul]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype7-sub]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype8-add]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype8-floordiv]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_operator_arithmetic_with_nulls[dtype8-mod]": {
+      "outcome": "skipped",
+      "reason": "translator: ZeroDivisionError: integer modulo by zero"
+    },
+    "test_operator_arithmetic_with_nulls[dtype8-mul]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype8-sub]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_operator_arithmetic_with_nulls[dtype9-add]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_operator_arithmetic_with_nulls[dtype9-floordiv]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ExtendConstant"
+    },
+    "test_operator_arithmetic_with_nulls[dtype9-mod]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_operator_arithmetic_with_nulls[dtype9-mul]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_operator_arithmetic_with_nulls[dtype9-sub]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_power_series": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raise_invalid_shape": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_raise_invalid_temporal[Date-Duration-*]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raise_invalid_temporal[Date-Int32-+]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raise_invalid_temporal[Datetime-Duration-*]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raise_invalid_temporal[Duration-Date-*]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raise_invalid_temporal[Duration-Datetime-*]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raise_invalid_temporal[Duration-Int32-+]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raise_invalid_temporal[Duration-Time-*]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raise_invalid_temporal[Int32-Date-+]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raise_invalid_temporal[Int32-Duration-+]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raise_invalid_temporal[Int32-Time-+]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raise_invalid_temporal[Time-Duration-*]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_raise_invalid_temporal[Time-Int32-+]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_reflected_arithmetic_series_27752": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_rpow_name_20071": {
+      "outcome": "skipped",
+      "reason": "translator: Function Pow"
+    },
+    "test_schema_owned_arithmetic_5669": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_schema_true_divide_6643": {
+      "outcome": "skipped",
+      "reason": "translator: Selector ByDType"
+    },
+    "test_series_expr_arithm": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_simd_float_sum_determinism": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_sqrt_neg_inf": {
+      "outcome": "skipped",
+      "reason": "translator: Function Pow"
+    },
+    "test_string_add_concatenates[b-expected1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_string_add_concatenates[other0-expected0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_string_add_concatenates[other2-expected2]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_string_add_concatenates[other3-expected3]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_string_numeric_arithmetic_raises[2.0-rhs14-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[2.0-rhs14-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[2.0-rhs14-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[2.0-rhs14-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[2.0-rhs14-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[2.0-rhs14-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[4-rhs10-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[4-rhs10-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[4-rhs10-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[4-rhs10-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[4-rhs10-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[4-rhs10-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[4-rhs11-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[4-rhs11-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[4-rhs11-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[4-rhs11-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[4-rhs11-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[4-rhs11-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs0-rhs0-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs0-rhs0-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs0-rhs0-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs0-rhs0-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs0-rhs0-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs0-rhs0-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs1-rhs1-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs1-rhs1-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs1-rhs1-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs1-rhs1-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs1-rhs1-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs1-rhs1-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs13-2.0-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs13-2.0-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs13-2.0-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs13-2.0-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs13-2.0-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs13-2.0-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs2-rhs2-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs2-rhs2-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs2-rhs2-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs2-rhs2-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs2-rhs2-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs2-rhs2-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs3-rhs3-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs3-rhs3-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs3-rhs3-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs3-rhs3-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs3-rhs3-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs3-rhs3-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs4-rhs4-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs4-rhs4-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs4-rhs4-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs4-rhs4-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs4-rhs4-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs4-rhs4-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs5-rhs5-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs5-rhs5-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs5-rhs5-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs5-rhs5-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs5-rhs5-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs5-rhs5-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs6-4-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs6-4-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs6-4-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs6-4-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs6-4-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs6-4-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs7-4-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs7-4-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs7-4-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs7-4-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs7-4-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs7-4-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs8-t-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs8-t-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs8-t-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs8-t-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs8-t-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs8-t-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs9-4-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs9-4-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs9-4-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs9-4-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs9-4-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[lhs9-4-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[t-rhs12-add]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[t-rhs12-floordiv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[t-rhs12-mod]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[t-rhs12-mul]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[t-rhs12-sub]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_string_numeric_arithmetic_raises[t-rhs12-truediv]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_struct_arithmetic": {
+      "outcome": "skipped",
+      "reason": "translator: TypeError: unsupported operand type(s) for *: … and …"
+    },
+    "test_time_time_sub": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_truediv_decimal_schema_28372": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_truediv_float_decimal_schema[Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_truediv_float_decimal_schema[Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_truediv_float_decimal_schema[Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_truediv_float_string_raises[False-Float16]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_truediv_float_string_raises[False-Float32]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_truediv_float_string_raises[False-Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_truediv_float_string_raises[True-Float16]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_truediv_float_string_raises[True-Float32]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_truediv_float_string_raises[True-Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_truediv_int_literal_float_schema[Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_truediv_int_literal_float_schema[Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_truncdiv_decimal": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_truncdiv_dtype_matches_floordiv[Float32-UInt8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_truncdiv_dtype_matches_floordiv[Int32-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_truncdiv_dtype_matches_floordiv[Int32-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_truncdiv_dtype_matches_floordiv[Int8-UInt64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_truncdiv_dtype_matches_floordiv[Int8-UInt8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_truncdiv_dtype_matches_floordiv[left5-Int16]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_truncdiv_dtype_matches_floordiv[left6-right6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_truncdiv_dtype_matches_floordiv[left7-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_truncdiv_float": {
+      "outcome": "skipped",
+      "reason": "translator: BinaryExpr TruncDivide"
+    },
+    "test_truncdiv_int": {
+      "outcome": "skipped",
+      "reason": "translator: BinaryExpr TruncDivide"
+    },
+    "test_truncdiv_nested": {
+      "outcome": "skipped",
+      "reason": "translator: BinaryExpr TruncDivide"
+    },
+    "test_truncdiv_signed_min[Int128-128]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_truncdiv_signed_min[Int64-64]": {
+      "outcome": "skipped",
+      "reason": "translator: BinaryExpr TruncDivide"
+    }
+  }
+}

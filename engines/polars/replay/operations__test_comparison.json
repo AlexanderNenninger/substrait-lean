@@ -1,0 +1,2643 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/test_comparison.py",
+  "license": "MIT",
+  "module": "operations__test_comparison",
+  "summary": {
+    "agree": 207,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 146,
+    "unproved": 1,
+    "skipped": 266
+  },
+  "results": {
+    "test_array_struct_rank_rle_id": {
+      "outcome": "skipped",
+      "reason": "translator: Function RLEID"
+    },
+    "test_cat_compare_with_bool": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_compare_list_broadcast_empty_first_chunk_20165[dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_compare_list_broadcast_empty_first_chunk_20165[dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_comparison_expr_expr": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_comparison_expr_series": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int128-Int16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int128-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int128-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int128-Int8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int128-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int128-UInt16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int128-UInt32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int128-UInt64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int128-UInt8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int16-Int32]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int16-Int64]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int16-Int8]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int16-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int16-UInt16]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int16-UInt32]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int16-UInt64]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int16-UInt8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int32-Int64]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int32-Int8]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int32-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int32-UInt16]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int32-UInt32]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int32-UInt64]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int32-UInt8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int64-Int8]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int64-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int64-UInt16]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int64-UInt32]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int64-UInt64]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int64-UInt8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int8-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int8-UInt16]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int8-UInt32]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int8-UInt64]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-Int8-UInt8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-UInt128-UInt16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-UInt128-UInt32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-UInt128-UInt64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-UInt128-UInt8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-UInt16-UInt32]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-UInt16-UInt64]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-UInt16-UInt8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 4
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-UInt32-UInt64]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-UInt32-UInt8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 4
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[False-UInt64-UInt8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 4
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int128-Int16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int128-Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int128-Int64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int128-Int8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int128-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int128-UInt16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int128-UInt32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int128-UInt64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int128-UInt8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int16-Int32]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int16-Int64]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int16-Int8]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int16-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int16-UInt16]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int16-UInt32]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int16-UInt64]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int16-UInt8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int32-Int64]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int32-Int8]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int32-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int32-UInt16]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int32-UInt32]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int32-UInt64]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int32-UInt8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int64-Int8]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int64-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int64-UInt16]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int64-UInt32]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int64-UInt64]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int64-UInt8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int8-UInt128]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int8-UInt16]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int8-UInt32]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int8-UInt64]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-Int8-UInt8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 8
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-UInt128-UInt16]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-UInt128-UInt32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-UInt128-UInt64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-UInt128-UInt8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-UInt16-UInt32]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-UInt16-UInt64]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-UInt16-UInt8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 4
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-UInt32-UInt64]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-UInt32-UInt8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 4
+    },
+    "test_comparison_literal_behavior_matches_nonliteral_behavior[True-UInt64-UInt8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 4
+    },
+    "test_comparison_literal_downcast_flooring_datetime_ns": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: a cast to or from a timestamp in nanoseconds is not supported: a timestamp in nanoseconds (N-N-N ",
+      "collects": 8
+    },
+    "test_comparison_literal_downcast_flooring_datetime_us": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: casts of timestamps to strings are not supported: the engines print the fraction differently; wri",
+      "collects": 8
+    },
+    "test_comparison_literal_downcast_flooring_duration_ns": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_comparison_literal_downcast_flooring_duration_us": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_comparison_literal_downcast_rewrites": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_comparison_nulls_single": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_comparison_order_null_broadcasting": {
+      "outcome": "unproved",
+      "reason": "data: table polars_input_0 differs from the schema the plan was verified for: column … is null, the plan expects int64: refused before the run. Declare the colu",
+      "collects": 4
+    },
+    "test_comparison_series_expr": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_comparison_with_lower_precision_literal_matches_column[Datetime-ns-ms]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_comparison_with_lower_precision_literal_matches_column[Datetime-ns-us]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_comparison_with_lower_precision_literal_matches_column[Datetime-us-ms]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_comparison_with_lower_precision_literal_matches_column[Duration-ns-ms]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N,"
+    },
+    "test_comparison_with_lower_precision_literal_matches_column[Duration-ns-us]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N"
+    },
+    "test_comparison_with_lower_precision_literal_matches_column[Duration-us-ms]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N,"
+    },
+    "test_date_duration_comparison_error_25517": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_is_between_coerces_dynamic_float_bounds_28278": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsBetween"
+    },
+    "test_is_between_coerces_dynamic_numeric_bounds": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsBetween"
+    },
+    "test_is_between_rejects_datetime_string_28253[dtype0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_is_between_rejects_datetime_string_28253[dtype1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_missing_equality_on_bools": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_nested_binary_literal_super_type_12227": {
+      "outcome": "skipped",
+      "reason": "translator: IbisTypeError: Cannot compute precedence for … and … types"
+    },
+    "test_nested_struct_equality_per_row[dtype0-lhs0-rhs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_nested_struct_equality_per_row[dtype1-lhs1-rhs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_nested_struct_equality_per_row[dtype2-lhs2-rhs2]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_nested_struct_equality_per_row[dtype3-lhs3-rhs3]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_nested_struct_equality_per_row[dtype4-lhs4-rhs4]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_nested_struct_equality_per_row[dtype5-lhs5-rhs5]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_nested_struct_equality_per_row[dtype6-lhs6-rhs6]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_nested_struct_equality_values_under_null_rows": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N, N"
+    },
+    "test_offset_handling_arg_where_7863": {
+      "outcome": "skipped",
+      "reason": "translator: Function Append"
+    },
+    "test_schema_ne_missing_9256": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_struct_broadcasting_comparison": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Last"
+    },
+    "test_struct_equality_18870": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_struct_nested_equality": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_total_ordering_binary_series[-None]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[-]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[-bar]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[-foo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[-fooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[-fooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[-foooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[None-None]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[None-]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[None-bar]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[None-foo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[None-fooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[None-fooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[None-foooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[None-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[None-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[None-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[bar-None]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[bar-]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[bar-bar]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[bar-foo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[bar-fooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[bar-fooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[bar-foooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[bar-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[bar-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[bar-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foo-None]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foo-]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foo-bar]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foo-foo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foo-fooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foo-fooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foo-foooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooo-None]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooo-]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooo-bar]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooo-foo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooo-fooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooo-fooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooo-foooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooo-None]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooo-]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooo-bar]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooo-foo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooo-fooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooo-fooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooo-foooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooo-None]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooo-]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooo-bar]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooo-foo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooo-fooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooo-fooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooo-foooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-None]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-bar]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-foo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-foooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-None]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-bar]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-foo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-foooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-None]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-bar]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-foo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-foooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_binary_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: an opaque column (of a type sverify does not read, such as binary or a map) can only be carried t",
+      "collects": 3
+    },
+    "test_total_ordering_bool_series[False-False]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_bool_series[False-None]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_bool_series[False-True]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_bool_series[None-False]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_bool_series[None-None]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_bool_series[None-True]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_bool_series[True-False]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_bool_series[True-None]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_bool_series[True-True]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_cat_series[False--None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False--]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False--bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False--foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False--fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False--fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False--foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False--fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False--foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False--fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-None-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-None-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-None-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-None-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-None-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-None-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-None-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-None-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-None-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-bar-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-bar-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-bar-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-bar-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-bar-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-bar-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-bar-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-bar-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-bar-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-bar-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foo-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foo-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foo-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foo-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foo-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foo-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foo-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooo-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooo-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooo-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooo-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooo-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooo-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooo-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooo-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooo-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooo-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooo-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooo-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooo-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooo-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooo-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooo-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooo-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooo-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooo-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooo-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooo-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[False-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True--None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True--]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True--bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True--foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True--fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True--fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True--foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True--fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True--foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True--fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-None-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-None-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-None-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-None-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-None-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-None-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-None-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-None-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-None-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-bar-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-bar-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-bar-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-bar-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-bar-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-bar-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-bar-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-bar-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-bar-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-bar-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foo-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foo-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foo-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foo-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foo-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foo-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foo-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooo-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooo-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooo-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooo-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooo-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooo-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooo-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooo-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooo-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooo-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooo-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooo-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooo-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooo-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooo-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooo-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooo-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooo-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooo-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooo-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooo-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-bar]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-foo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-foooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_cat_series[True-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_total_ordering_float_series[-0.0--0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-0.0--1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-0.0--inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-0.0-0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-0.0-1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-0.0-None]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-0.0-inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-0.0-nan0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-0.0-nan1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-1.0--0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-1.0--1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-1.0--inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-1.0-0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-1.0-1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-1.0-None]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-1.0-inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-1.0-nan0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-1.0-nan1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-inf--0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-inf--1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-inf--inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-inf-0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-inf-1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-inf-None]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-inf-inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-inf-nan0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[-inf-nan1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[0.0--0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[0.0--1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[0.0--inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[0.0-0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[0.0-1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[0.0-None]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[0.0-inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[0.0-nan0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[0.0-nan1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[1.0--0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[1.0--1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[1.0--inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[1.0-0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[1.0-1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[1.0-None]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[1.0-inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[1.0-nan0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[1.0-nan1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[None--0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[None--1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[None--inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[None-0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[None-1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[None-None]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[None-inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[None-nan0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[None-nan1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[inf--0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[inf--1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[inf--inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[inf-0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[inf-1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[inf-None]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[inf-inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[inf-nan0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[inf-nan1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan0--0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan0--1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan0--inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan0-0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan0-1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan0-None]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan0-inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan0-nan0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan0-nan1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan1--0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan1--1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan1--inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan1-0.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan1-1.0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan1-None]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan1-inf]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan1-nan0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_float_series[nan1-nan1]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_total_ordering_string_series[-None]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[-]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[-bar]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[-foo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[-fooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[-fooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[-foooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[None-None]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[None-]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[None-bar]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[None-foo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[None-fooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[None-fooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[None-foooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[None-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[None-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[None-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[bar-None]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[bar-]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[bar-bar]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[bar-foo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[bar-fooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[bar-fooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[bar-foooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[bar-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[bar-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[bar-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foo-None]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foo-]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foo-bar]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foo-foo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foo-fooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foo-fooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foo-foooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooo-None]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooo-]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooo-bar]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooo-foo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooo-fooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooo-fooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooo-foooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooo-None]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooo-]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooo-bar]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooo-foo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooo-fooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooo-fooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooo-foooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooo-None]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooo-]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooo-bar]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooo-foo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooo-fooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooo-fooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooo-foooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-None]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-bar]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-foo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-foooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-None]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-bar]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-foo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-foooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-None]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-bar]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-foo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-foooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooom]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_total_ordering_string_series[fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop-fooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooop]": {
+      "outcome": "agree",
+      "collects": 3
+    }
+  }
+}

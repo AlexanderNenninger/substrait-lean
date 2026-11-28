@@ -1,0 +1,392 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/range/test_datetime_ranges.py",
+  "license": "MIT",
+  "module": "functions__range__test_datetime_ranges",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 94
+  },
+  "results": {
+    "test_datetime_ranges_broadcasting": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_lazy_with_expressions[high1-low1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_lazy_with_expressions[high1-start]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_lazy_with_expressions[stop-low1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_lazy_with_expressions[stop-start]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_lit_combinations_start_end_interval": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_no_alias_schema_9037": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_null_lit_combinations_start_end_interval": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_schema[ms-None-ms-Asia/Kathmandu-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-None-ms-Asia/Kathmandu-None-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-None-ms-None-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-None-ms-None-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-ms-ms-Asia/Kathmandu-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-ms-ms-Asia/Kathmandu-None-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-ms-ms-None-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-ms-ms-None-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-ns-ns-Asia/Kathmandu-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-ns-ns-Asia/Kathmandu-None-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-ns-ns-None-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-ns-ns-None-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-us-us-Asia/Kathmandu-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-us-us-Asia/Kathmandu-None-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-us-us-None-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ms-us-us-None-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-None-ns-Asia/Kathmandu-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-None-ns-Asia/Kathmandu-None-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-None-ns-None-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-None-ns-None-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-ms-ms-Asia/Kathmandu-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-ms-ms-Asia/Kathmandu-None-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-ms-ms-None-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-ms-ms-None-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-ns-ns-Asia/Kathmandu-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-ns-ns-Asia/Kathmandu-None-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-ns-ns-None-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-ns-ns-None-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-us-us-Asia/Kathmandu-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-us-us-Asia/Kathmandu-None-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-us-us-None-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[ns-us-us-None-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-None-us-Asia/Kathmandu-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-None-us-Asia/Kathmandu-None-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-None-us-None-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-None-us-None-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-ms-ms-Asia/Kathmandu-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-ms-ms-Asia/Kathmandu-None-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-ms-ms-None-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-ms-ms-None-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-ns-ns-Asia/Kathmandu-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-ns-ns-Asia/Kathmandu-None-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-ns-ns-None-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-ns-ns-None-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-us-us-Asia/Kathmandu-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-us-us-Asia/Kathmandu-None-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-us-us-None-Asia/Kathmandu-Asia/Kathmandu]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema[us-us-us-None-None-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_ranges_schema_upcasts_to_datetime[None-Asia/Kathmandu-output_dtype5-1s1d-expected_datetime_range5]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_datetime_ranges_schema_upcasts_to_datetime[None-Asia/Kathmandu-output_dtype6-1d1s-expected_datetime_range6]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_datetime_ranges_schema_upcasts_to_datetime[None-Asia/Kathmandu-output_dtype7-1d1ns-expected_datetime_range7]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_datetime_ranges_schema_upcasts_to_datetime[None-None-output_dtype0-1s1d-expected_datetime_range0]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_datetime_ranges_schema_upcasts_to_datetime[None-None-output_dtype1-1d1s-expected_datetime_range1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_datetime_ranges_schema_upcasts_to_datetime[None-None-output_dtype2-1d1ns-expected_datetime_range2]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_datetime_ranges_schema_upcasts_to_datetime[ms-Asia/Kathmandu-output_dtype8-1s1d-expected_datetime_range8]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_datetime_ranges_schema_upcasts_to_datetime[ms-Asia/Kathmandu-output_dtype9-1d1s-expected_datetime_range9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_datetime_ranges_schema_upcasts_to_datetime[ms-None-output_dtype3-1s1d-expected_datetime_range3]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_datetime_ranges_schema_upcasts_to_datetime[ms-None-output_dtype4-1d1s-expected_datetime_range4]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[Date-both-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[Date-left-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[Date-none-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[Date-right-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype1-both-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype1-left-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype1-none-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype1-right-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype2-both-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype2-left-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype2-none-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype2-right-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype3-both-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype3-left-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype3-none-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype3-right-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype4-both-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype4-left-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype4-none-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype4-right-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype5-both-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype5-left-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype5-none-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype5-right-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype6-both-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype6-left-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype6-none-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_ranges_start_end_interval_forwards[dtype6-right-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    }
+  }
+}

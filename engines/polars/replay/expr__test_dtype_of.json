@@ -1,0 +1,20 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/expr/test_dtype_of.py",
+  "license": "MIT",
+  "module": "expr__test_dtype_of",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 1
+  },
+  "results": {
+    "test_dtype_of_scalar_literal_collect_dtype_26271": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    }
+  }
+}

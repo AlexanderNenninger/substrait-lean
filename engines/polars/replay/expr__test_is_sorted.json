@@ -1,0 +1,84 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/expr/test_is_sorted.py",
+  "license": "MIT",
+  "module": "expr__test_is_sorted",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 17
+  },
+  "results": {
+    "test_is_sorted_all_equal": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_all_null": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_ascending": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_descending": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_descending_none_accepts_either": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_descending_with_nulls_first": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_empty": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_infer_ascending": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_infer_descending": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_infer_nulls_first": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_infer_nulls_last": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_nulls_interleaved": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_single_element": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_streaming_interleaved_across_chunks": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_streaming_nulls_after_null_free_chunk": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_unsorted": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    },
+    "test_is_sorted_with_nulls_last": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsSorted"
+    }
+  }
+}

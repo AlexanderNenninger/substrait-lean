@@ -1,0 +1,108 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/as_datatype/test_datetime.py",
+  "license": "MIT",
+  "module": "functions__as_datatype__test_datetime",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 23
+  },
+  "results": {
+    "test_date_datetime": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_date_invalid_component[components0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_date_invalid_component[components1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_date_invalid_component[components2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_datetime_ambiguous_time_zone": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_datetime_ambiguous_time_zone_earliest": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_datetime_from_empty_column": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_invalid_date_component[components0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_datetime_invalid_date_component[components1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_datetime_invalid_date_component[components2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_datetime_invalid_time_component[components0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_datetime_invalid_time_component[components1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_datetime_invalid_time_component[components2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_datetime_invalid_time_component[components3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_datetime_invalid_time_zone": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_datetime_name": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_time_unit[ms]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_datetime_time_unit[ns]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_datetime_time_unit[us]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_datetime_time_zone[Europe/Amsterdam]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_datetime_time_zone[None]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_datetime_time_zone[UTC]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_datetime_wildcard_expansion": {
+      "outcome": "skipped",
+      "reason": "translator: KeepName"
+    }
+  }
+}

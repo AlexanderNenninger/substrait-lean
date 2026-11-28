@@ -1,0 +1,36 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/test_horizontal.py",
+  "license": "MIT",
+  "module": "functions__test_horizontal",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 5
+  },
+  "results": {
+    "test_fold_reduce_output_dtype_24011": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_shape_mismatch_19336[max]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_shape_mismatch_19336[mean]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_shape_mismatch_19336[min]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_shape_mismatch_19336[sum]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    }
+  }
+}

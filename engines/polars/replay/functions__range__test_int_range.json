@@ -1,0 +1,148 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/range/test_int_range.py",
+  "license": "MIT",
+  "module": "functions__range__test_int_range",
+  "summary": {
+    "agree": 1,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 32
+  },
+  "results": {
+    "test_int_range": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_range_alias": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_int_range_decreasing": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_int_range_eager": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_int_range_expr": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_int_range_index_type_negative": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_range_input_shape_empty": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_int_range_input_shape_multiple_values": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_int_range_invalid_conversion": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_int_range_lazy": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_int_range_len_count": {
+      "outcome": "skipped",
+      "reason": "translator: Filter"
+    },
+    "test_int_range_non_int_dtype": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_int_range_non_integer_dtype": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_int_range_null_input": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_int_range_schema": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_int_range_short_syntax": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_range_start_default": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_ranges[-1-a-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_int_ranges[a-b-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_int_ranges[b-4-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_int_ranges_broadcasting": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_int_ranges_decreasing": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_ranges_eager": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_ranges_empty[0--5-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_ranges_empty[0-5--1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_ranges_empty[5-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_ranges_non_int_dtype": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_int_ranges_non_numeric_input_should_error": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_int_ranges_schema_dtype_arg": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_int_ranges_schema_dtype_default": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_int_ranges_short_syntax": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_int_ranges_start_default": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_int_ranges_zero_step": {
+      "outcome": "skipped",
+      "reason": "raises"
+    }
+  }
+}

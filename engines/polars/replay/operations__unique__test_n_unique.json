@@ -1,0 +1,62 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/unique/test_n_unique.py",
+  "license": "MIT",
+  "module": "operations__unique__test_n_unique",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 2,
+    "unproved": 0,
+    "skipped": 9
+  },
+  "results": {
+    "test_n_unique": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_n_unique_array": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Int64, shape=(N,)), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/Alexan",
+      "collects": 2
+    },
+    "test_n_unique_categorical[input0-0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_n_unique_categorical[input1-3]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_n_unique_categorical[input2-3]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_n_unique_empty": {
+      "outcome": "skipped",
+      "reason": "translator: IbisTypeError: You must select at least one column for a valid projection"
+    },
+    "test_n_unique_empty_subset": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_n_unique_list_of_struct_20341": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Struct({…: Int64, …: Int64})), the plan expects List(Struct({…: Int64, …: Int64})); run it with engine=… (see",
+      "collects": 1
+    },
+    "test_n_unique_multi_output_subset_28903": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_n_unique_null": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_n_unique_subsets": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    }
+  }
+}

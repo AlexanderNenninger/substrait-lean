@@ -1,0 +1,36 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/unique/test_unique_counts.py",
+  "license": "MIT",
+  "module": "operations__unique__test_unique_counts",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 5
+  },
+  "results": {
+    "test_unique_counts": {
+      "outcome": "skipped",
+      "reason": "translator: Function UniqueCounts"
+    },
+    "test_unique_counts_boolean_sorted_nulls_last": {
+      "outcome": "skipped",
+      "reason": "translator: Function UniqueCounts"
+    },
+    "test_unique_counts_null": {
+      "outcome": "skipped",
+      "reason": "translator: Function UniqueCounts"
+    },
+    "test_unique_counts_on_dates": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_unique_counts_parametric": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    }
+  }
+}

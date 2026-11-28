@@ -1,0 +1,578 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/expr/test_exprs.py",
+  "license": "MIT",
+  "module": "expr__test_exprs",
+  "summary": {
+    "agree": 7,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 1,
+    "unproved": 1,
+    "skipped": 131
+  },
+  "results": {
+    "test_append_no_upcast_27345": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_arg_true": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArgWhere"
+    },
+    "test_arr_contains": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_dot_in_group_by": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_dtype_col_selection": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column c: times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_entropy_dtypes[False-Float16-Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_entropy_dtypes[False-Float32-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_entropy_dtypes[False-Float64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_entropy_dtypes[False-Int32-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_entropy_dtypes[False-Int64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_entropy_dtypes[False-UInt8-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_entropy_dtypes[False-dtype_in6-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_entropy_dtypes[True-Float16-Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_entropy_dtypes[True-Float32-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_entropy_dtypes[True-Float64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_entropy_dtypes[True-Int32-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_entropy_dtypes[True-Int64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_entropy_dtypes[True-UInt8-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_entropy_dtypes[True-dtype_in6-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_entropy_invalid_dtype[s0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_entropy_invalid_dtype[s1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_entropy_invalid_dtype[s2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_entropy_invalid_dtype[s3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_entropy_invalid_dtype[s4]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_entropy_invalid_dtype[s5]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_erf_erfc[erf-erf-Boolean-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Erf"
+    },
+    "test_erf_erfc[erf-erf-Float16-Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_erf_erfc[erf-erf-Float32-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Erf"
+    },
+    "test_erf_erfc[erf-erf-Float64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Erf"
+    },
+    "test_erf_erfc[erf-erf-Int32-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Erf"
+    },
+    "test_erf_erfc[erf-erf-Int64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Erf"
+    },
+    "test_erf_erfc[erf-erf-dtype_in3-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Erf"
+    },
+    "test_erf_erfc[erfc-erfc-Boolean-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Erfc"
+    },
+    "test_erf_erfc[erfc-erfc-Float16-Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_erf_erfc[erfc-erfc-Float32-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Erfc"
+    },
+    "test_erf_erfc[erfc-erfc-Float64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Erfc"
+    },
+    "test_erf_erfc[erfc-erfc-Int32-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Erfc"
+    },
+    "test_erf_erfc[erfc-erfc-Int64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Erfc"
+    },
+    "test_erf_erfc[erfc-erfc-dtype_in3-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Erfc"
+    },
+    "test_exclude[input0-expected0]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_exclude[input1-expected1]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_exclude[input2-expected2]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_exclude[input3-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector ByDType"
+    },
+    "test_exclude[input4-expected4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector ByDType"
+    },
+    "test_exclude[input5-expected5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector ByDType"
+    },
+    "test_exclude_invalid_input[input0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_exclude_invalid_input[input1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_exclude_invalid_input[input2]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_exp_log1p[Float16-Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_exp_log1p[Float32-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Exp"
+    },
+    "test_exp_log1p[Float64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Exp"
+    },
+    "test_exp_log1p[Int32-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Exp"
+    },
+    "test_exp_log1p[Int64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Exp"
+    },
+    "test_exp_log1p[UInt8-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Exp"
+    },
+    "test_exp_log1p[dtype_in6-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Exp"
+    },
+    "test_exp_log1p_invalid_dtype_29102[s0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_exp_log1p_invalid_dtype_29102[s1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_exp_log1p_invalid_dtype_29102[s2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_exp_log1p_invalid_dtype_29102[s3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_expr_removed_classmethods[from_json-use `Expr.deserialize` instead]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_expression_appends": {
+      "outcome": "skipped",
+      "reason": "translator: Function Repeat"
+    },
+    "test_filter_where": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 3
+    },
+    "test_head": {
+      "outcome": "skipped",
+      "reason": "translator: Slice"
+    },
+    "test_incompatible_lit_dtype": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_len_expr": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_list_eval_expression": {
+      "outcome": "skipped",
+      "reason": "translator: Eval"
+    },
+    "test_lit_dtype_utc": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_lit_dtypes": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_lit_empty_tu": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_log[Float16-Float16-Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_log[Float16-Float32-Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_log[Float16-Float64-Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_log[Float16-Int32-Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_log[Float32-Float16-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_log[Float32-Float32-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Log"
+    },
+    "test_log[Float32-Float64-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Log"
+    },
+    "test_log[Float32-Int32-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Log"
+    },
+    "test_log[Float64-Float16-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_log[Float64-Float32-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Log"
+    },
+    "test_log[Float64-Float64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Log"
+    },
+    "test_log[Float64-Int32-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Log"
+    },
+    "test_log[Int32-Float16-Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_log[Int32-Float32-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Log"
+    },
+    "test_log[Int32-Float64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Log"
+    },
+    "test_log[Int32-Int32-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Log"
+    },
+    "test_log[dtype_a15-dtype_base15-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Log"
+    },
+    "test_log_broadcast[dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_log_broadcast[dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_log_broadcast[dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_log_broadcast_upcasting[Float16-Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_log_broadcast_upcasting[Float32-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_log_broadcast_upcasting[Float64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_log_broadcast_upcasting[Int32-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_log_broadcast_upcasting[Int64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_log_invalid_base_dtype_29189": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_log_invalid_dtype_29189[s0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_log_invalid_dtype_29189[s1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_log_invalid_dtype_29189[s2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_log_invalid_dtype_29189[s3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_logical_boolean": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_map_alias": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_null_count_expr": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_operators_vs_expressions": {
+      "outcome": "unproved",
+      "reason": "BIGINT(FLOOR((x / y)))",
+      "collects": 8
+    },
+    "test_pipe": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_pos_neg": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_power_by_expression": {
+      "outcome": "skipped",
+      "reason": "translator: Function Pow"
+    },
+    "test_prefix": {
+      "outcome": "skipped",
+      "reason": "translator: RenameAlias"
+    },
+    "test_reinterpret_decimal_int128": {
+      "outcome": "skipped",
+      "reason": "translator: Function Reinterpret"
+    },
+    "test_reinterpret_errors_13659": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_reinterpret_int128_decimal[10-2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Reinterpret"
+    },
+    "test_reinterpret_int128_decimal[38-0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Reinterpret"
+    },
+    "test_reinterpret_int128_decimal[38-9]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Reinterpret"
+    },
+    "test_reinterpret_int128_decimal_out_of_range[10--10000000000]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_reinterpret_int128_decimal_out_of_range[10-10000000000]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_reinterpret_int128_decimal_out_of_range[38--170141183460469231731687303715884105728]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_reinterpret_int128_decimal_out_of_range[38-170141183460469231731687303715884105727]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_reinterpret_numeric_dtype_13659[compatible_set0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_reinterpret_numeric_dtype_13659[compatible_set1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_reinterpret_numeric_dtype_13659[compatible_set2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_reinterpret_numeric_dtype_13659[compatible_set3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_reinterpret_numeric_dtype_13659[compatible_set4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_removed_methods[agg_groups-use `df.with_row_index().group_by(...).agg(pl.col('index'))`]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_removed_methods[flatten-use `Expr.list.explode(keep_nulls=False, empty_as_null=False)`]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_removed_methods[rechunk-Use `df.rechunk()` after collecting the results instead.]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_removed_methods[register_plugin-use `polars.plugins.register_plugin_function` instead]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_removed_methods[shrink_dtype-use `Series.shrink_dtype` instead]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_removed_methods[where-use `filter` instead]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_removed_to_struct_parameters": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_replace_no_cse": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_repr_gather": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_repr_long_expression": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_repr_miscellaneous": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_repr_short_expression": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_slice": {
+      "outcome": "skipped",
+      "reason": "translator: Slice"
+    },
+    "test_slice_rejects_non_integral": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_suffix": {
+      "outcome": "skipped",
+      "reason": "translator: RenameAlias"
+    },
+    "test_tail": {
+      "outcome": "skipped",
+      "reason": "translator: Slice"
+    },
+    "test_unique_stable": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_validate_format_argument_raises_chrono_format_warning[%Y-%m-%d %H:%M:%S%f-%f]": {
+      "outcome": "skipped",
+      "reason": "fails, skips or is xfailed in Polars's own run"
+    },
+    "test_validate_format_argument_raises_chrono_format_warning[%Y-%m-%d %H:%M:%S.%f-.%f]": {
+      "outcome": "skipped",
+      "reason": "fails, skips or is xfailed in Polars's own run"
+    }
+  }
+}

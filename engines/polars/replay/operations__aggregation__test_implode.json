@@ -1,0 +1,37 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/aggregation/test_implode.py",
+  "license": "MIT",
+  "module": "operations__aggregation__test_implode",
+  "summary": {
+    "agree": 1,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 1,
+    "unproved": 0,
+    "skipped": 3
+  },
+  "results": {
+    "test_implode_22192_22191": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_implode_agg_lit": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_implode_and_list_sort_aggregated_27252": {
+      "outcome": "skipped",
+      "reason": "translator: Sort"
+    },
+    "test_implode_explode_agg": {
+      "outcome": "skipped",
+      "reason": "translator: Explode"
+    },
+    "test_implode_unordered": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Struct({…: Int64, …: Int64})), the plan expects List(Struct({…: Int64, …: Int64})); run it with engine=… (see",
+      "collects": 4
+    }
+  }
+}

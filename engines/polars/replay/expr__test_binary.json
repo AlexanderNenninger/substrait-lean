@@ -1,0 +1,112 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/expr/test_binary.py",
+  "license": "MIT",
+  "module": "expr__test_binary",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 24
+  },
+  "results": {
+    "test_binary_all_nulls": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_empty": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_head_basic": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_head_default": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_head_larger_than_data": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_head_negative": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_head_then_tail": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_head_with_expression": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_head_zero": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_single_byte": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_slice_basic": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_slice_negative_offset": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_slice_out_of_bounds": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_slice_then_head": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_slice_to_end": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_slice_with_expression": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_slice_zero_length": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_tail_basic": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_tail_default": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_tail_larger_than_data": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_tail_negative": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_tail_then_slice": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_tail_with_expression": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    },
+    "test_binary_tail_zero": {
+      "outcome": "skipped",
+      "reason": "translator: Function BinaryExpr"
+    }
+  }
+}

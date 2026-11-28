@@ -1,0 +1,32 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/aggregation/test_folds.py",
+  "license": "MIT",
+  "module": "operations__aggregation__test_folds",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 4
+  },
+  "results": {
+    "test_alias_prune_in_fold_15438": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_cum_fold": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_cum_reduce": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_fold_reduce": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    }
+  }
+}

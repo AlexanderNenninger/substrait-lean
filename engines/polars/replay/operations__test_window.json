@@ -1,0 +1,535 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/test_window.py",
+  "license": "MIT",
+  "module": "operations__test_window",
+  "summary": {
+    "agree": 6,
+    "disagree": 0,
+    "unattributed": 1,
+    "refused": 5,
+    "unproved": 3,
+    "skipped": 111
+  },
+  "results": {
+    "test_aggregate_gather_over_dtype_24632[query0-explode]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_aggregate_gather_over_dtype_24632[query0-group_to_rows]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_aggregate_gather_over_dtype_24632[query0-join]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_aggregate_gather_over_dtype_24632[query1-explode]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_aggregate_gather_over_dtype_24632[query1-group_to_rows]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_aggregate_gather_over_dtype_24632[query1-join]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cached_windows_sync_8803": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: []}}"
+    },
+    "test_clear_cache_on_stacked_filters_24806": {
+      "outcome": "skipped",
+      "reason": "translator: Over of BinaryExpr"
+    },
+    "test_cumulative_eval_window_functions": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Eval"
+    },
+    "test_explode_over_group_length_mismatch[False]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_explode_over_group_length_mismatch[True]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_issue_2529": {
+      "outcome": "unproved",
+      "reason": "(val1 - avg(val1)) / std_dev(val1)",
+      "collects": 1
+    },
+    "test_len_window": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Len"
+    },
+    "test_lit_window_broadcast": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Literal"
+    },
+    "test_mapping_strategy_scalar_matrix[expr0-group_to_rows-result0]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_mapping_strategy_scalar_matrix[expr1-join-result1]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr10-join-result10]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr11-explode-result11]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr12-group_to_rows-result12]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of BinaryExpr"
+    },
+    "test_mapping_strategy_scalar_matrix[expr13-join-result13]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr14-explode-result14]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr15-group_to_rows-result15]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of BinaryExpr"
+    },
+    "test_mapping_strategy_scalar_matrix[expr16-join-result16]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr17-explode-result17]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr18-group_to_rows-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_mapping_strategy_scalar_matrix[expr19-join-result19]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr2-explode-result2]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr20-explode-result20]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr21-group_to_rows-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_mapping_strategy_scalar_matrix[expr22-join-result22]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr23-explode-result23]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr24-group_to_rows-result24]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Function"
+    },
+    "test_mapping_strategy_scalar_matrix[expr25-join-result25]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr26-explode-result26]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr3-group_to_rows-result3]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Function"
+    },
+    "test_mapping_strategy_scalar_matrix[expr4-join-result4]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr5-explode-result5]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr6-group_to_rows-result6]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_mapping_strategy_scalar_matrix[expr7-join-result7]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr8-explode-result8]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_mapping_strategy_scalar_matrix[expr9-group_to_rows-result9]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_nested_aggregation_window_expression": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Ternary"
+    },
+    "test_nested_window_keys": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_no_panic_on_nan_3067": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Function"
+    },
+    "test_order_by_sorted_keys_18943": {
+      "outcome": "skipped",
+      "reason": "translator: MapFunction Hint"
+    },
+    "test_over_args": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_over_literal_cum_sum_26800": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_over_literal_or_scalar_24756[over0-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_literal_or_scalar_24756[over0-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_over_literal_or_scalar_24756[over0-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_literal_or_scalar_24756[over0-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_over_literal_or_scalar_24756[over1-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_literal_or_scalar_24756[over1-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_over_literal_or_scalar_24756[over1-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_literal_or_scalar_24756[over1-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_over_literal_or_scalar_24756[over2-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_literal_or_scalar_24756[over2-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: an aggregate outside group_by"
+    },
+    "test_over_literal_or_scalar_24756[over2-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_literal_or_scalar_24756[over2-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: an aggregate outside group_by"
+    },
+    "test_over_literal_or_scalar_24756[over3-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_literal_or_scalar_24756[over3-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_over_literal_or_scalar_24756[over3-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_literal_or_scalar_24756[over3-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_over_literal_or_scalar_24756[over4-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_literal_or_scalar_24756[over4-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_over_literal_or_scalar_24756[over4-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_literal_or_scalar_24756[over4-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_over_literal_or_scalar_24756[over5-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_literal_or_scalar_24756[over5-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_over_literal_or_scalar_24756[over5-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_literal_or_scalar_24756[over5-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_over_literal_or_scalar_24756[over6-expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_literal_or_scalar_24756[over6-expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: an aggregate outside group_by"
+    },
+    "test_over_literal_or_scalar_24756[over6-expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_literal_or_scalar_24756[over6-expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: an aggregate outside group_by"
+    },
+    "test_quantile_as_window": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Function"
+    },
+    "test_quantile_as_window_date": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_as_window_datetime[Asia/Tokyo-ms]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_as_window_datetime[Asia/Tokyo-ns]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_as_window_datetime[Asia/Tokyo-us]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_as_window_datetime[None-ms]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_as_window_datetime[None-ns]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_as_window_datetime[None-us]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_as_window_duration[ms]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_as_window_duration[ns]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_as_window_duration[us]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_quantile_as_window_time": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_shape_mismatch[expr0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_shape_mismatch[expr1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_shape_mismatch[expr2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_shape_mismatch[expr3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_shape_mismatch[expr4]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_shape_mismatch_group_by_slice": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_shape_mismatch_group_by_unique_slice": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_sorted_window_expression": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_std[Float32]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: std_dev of FLOAT (fp32) values is not modelled; cast them to DOUBLE first. Lean's model does not ",
+      "collects": 3
+    },
+    "test_std[Float64]": {
+      "outcome": "unproved",
+      "reason": "values",
+      "collects": 3
+    },
+    "test_std[Int32]": {
+      "outcome": "skipped",
+      "reason": "lean: the data leaves a choice not listed"
+    },
+    "test_when_then_over_22478": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_window_10417": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_window_13173": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_window_17308": {
+      "outcome": "skipped",
+      "reason": "translator: a select of aggregates and columns (a broadcast)"
+    },
+    "test_window_21692": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Function"
+    },
+    "test_window_22006": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_window_5868": {
+      "outcome": "unattributed",
+      "reason": "8 rows, Polars 8",
+      "plan": "668b3636613baffb",
+      "triaged": {
+        "as": "fact",
+        "fact": "polars-sum-int",
+        "reason": "Polars's sum over a partition of NULLs is 0; semantics=\"polars\" gives the reference's NULL"
+      },
+      "collects": 8
+    },
+    "test_window_agg_list_null_15437": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Function"
+    },
+    "test_window_and_cse_10152": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Function"
+    },
+    "test_window_cached_keys_sorted_update_4183": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_window_chunked_std_17102": {
+      "outcome": "unproved",
+      "reason": "B",
+      "collects": 2
+    },
+    "test_window_filtered_aggregation": {
+      "outcome": "skipped",
+      "reason": "translator: Filter"
+    },
+    "test_window_filtered_false_15483": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Function"
+    },
+    "test_window_fold_22493": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_window_function_cache": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_window_function_implode_contention_8536": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_window_functions_list_types": {
+      "outcome": "skipped",
+      "reason": "translator: Function Shift"
+    },
+    "test_window_implode_explode": {
+      "outcome": "skipped",
+      "reason": "translator: Over of BinaryExpr"
+    },
+    "test_window_order_by_8662": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Function"
+    },
+    "test_window_order_by_multiple_keys_nulls_last_29390[False-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_window_order_by_multiple_keys_nulls_last_29390[False-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_window_order_by_multiple_keys_nulls_last_29390[True-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_window_order_by_multiple_keys_nulls_last_29390[True-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 4
+    },
+    "test_window_order_by_multiple_keys_scalar[key0]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_window_order_by_multiple_keys_scalar[key1]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_window_order_by_multiple_keys_scalar[key2]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_window_range_no_rows": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Function"
+    },
+    "test_windows_not_cached": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    }
+  }
+}

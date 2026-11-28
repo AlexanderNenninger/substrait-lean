@@ -1,0 +1,2370 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/test_join.py",
+  "license": "MIT",
+  "module": "operations__test_join",
+  "summary": {
+    "agree": 84,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 52,
+    "unproved": 2,
+    "skipped": 437
+  },
+  "results": {
+    "test_array_explode_join_19763": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_coalesce_full_join_upcast_key_schema_29903": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_computed_join_key_uses_own_input_schema[Int32-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Join on keys of different names, or keeping both keys"
+    },
+    "test_computed_join_key_uses_own_input_schema[Int32-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Join on keys of different names, or keeping both keys"
+    },
+    "test_computed_join_key_uses_own_input_schema[Int64-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Join on keys of different names, or keeping both keys"
+    },
+    "test_computed_join_key_uses_own_input_schema[Int64-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Join on keys of different names, or keeping both keys"
+    },
+    "test_cross_join": {
+      "outcome": "skipped",
+      "reason": "translator: Join Cross"
+    },
+    "test_cross_join_no_on_keys[on_args0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cross_join_no_on_keys[on_args1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cross_join_slice_pushdown": {
+      "outcome": "skipped",
+      "reason": "inputs: a plan over 256 KB"
+    },
+    "test_deprecated": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_empty_join_result_with_array_15474": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Int64, shape=(N,)), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/Alexan",
+      "collects": 1
+    },
+    "test_empty_join_result_with_chunked_array_29093": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Int64, shape=(N,)), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/Alexan",
+      "collects": 1
+    },
+    "test_empty_outer_join_22206": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_full_join_coalesce_computed_payload_filter_28264": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_full_join_coalesce_empty_suffix_non_key_collision_27368": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_full_join_coalesce_empty_suffix_succeeds_27368": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_full_join_rewrite_to_right_with_cast": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_full_join_slice_pushdown_no_maintain_order_28551[0-2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_full_join_slice_pushdown_no_maintain_order_28551[0-4]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_full_join_slice_pushdown_no_maintain_order_28551[1-2]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_full_join_slice_pushdown_no_maintain_order_28551[2-5]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_full_outer_join_bool": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_full_outer_join_coalesce_different_names_13450": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_full_outer_join_list_": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_jit_sort_joins": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_4_columns_with_all_null_validity": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_join_4_columns_with_validity": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_join_asof_by_i128": {
+      "outcome": "skipped",
+      "reason": "translator: TypeError: unhashable type: …"
+    },
+    "test_join_asof_by_key_predicate_other_time_unit[in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: TypeError: unhashable type: …"
+    },
+    "test_join_asof_by_key_predicate_other_time_unit[streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: TypeError: unhashable type: …"
+    },
+    "test_join_cast_type_coercion_23236": {
+      "outcome": "skipped",
+      "reason": "translator: Join on keys of different names, or keeping both keys"
+    },
+    "test_join_categorical_21815": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: {…: …, …: …, …: …}}}"
+    },
+    "test_join_chunks_alignment_4720": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_join_coalesce[inner]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_join_coalesce[left]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_join_coalesce_22498": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_coalesce_column_order_23177": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_coalesce_empty_suffix_28783": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_join_coalesce_not_supported_warning": {
+      "outcome": "skipped",
+      "reason": "translator: another number of columns"
+    },
+    "test_join_computed_key_no_temp_column_leak_28264[anti-expected5]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_join_computed_key_no_temp_column_leak_28264[full-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_computed_key_no_temp_column_leak_28264[inner-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_join_computed_key_no_temp_column_leak_28264[left-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_join_computed_key_no_temp_column_leak_28264[right-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Right"
+    },
+    "test_join_computed_key_no_temp_column_leak_28264[semi-expected4]": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: {…: [N, N, N, N,"
+    },
+    "test_join_concat_projection_pd_case_7071": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_join_duplicate_suffixed_columns_from_join_key_column_21048": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_join_empties[full]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_empties[inner]": {
+      "outcome": "unproved",
+      "reason": "data: table polars_input_0 differs from the schema the plan was verified for: column … is null, the plan expects int64; column … is null, the plan expects int64",
+      "collects": 1
+    },
+    "test_join_empties[left]": {
+      "outcome": "unproved",
+      "reason": "data: table polars_input_0 differs from the schema the plan was verified for: column … is null, the plan expects int64; column … is null, the plan expects int64",
+      "collects": 1
+    },
+    "test_join_empty_literal_17027": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_join_filter_pushdown_anti_join": {
+      "outcome": "skipped",
+      "reason": "translator: Function AllHorizontal"
+    },
+    "test_join_filter_pushdown_asof_join": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_filter_pushdown_categorical_28426": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_filter_pushdown_cross_join": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_filter_pushdown_full_join": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_filter_pushdown_full_join_rewrite": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_filter_pushdown_iejoin": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_filter_pushdown_iejoin_cse_23469": {
+      "outcome": "skipped",
+      "reason": "translator: Cache"
+    },
+    "test_join_filter_pushdown_inner_join": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_filter_pushdown_join_rewrite_equality_above_and": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_filter_pushdown_left_join": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_filter_pushdown_left_join_rewrite": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_filter_pushdown_left_join_rewrite_23133": {
+      "outcome": "skipped",
+      "reason": "translator: Function AllHorizontal"
+    },
+    "test_join_filter_pushdown_right_join": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_filter_pushdown_right_join_rewrite": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_filter_pushdown_semi_join": {
+      "outcome": "skipped",
+      "reason": "translator: Function AllHorizontal"
+    },
+    "test_join_frame_consistency": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_full_19814": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_i128_23688[False-False-anti-expected5]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[False-False-full-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_i128_23688[False-False-inner-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[False-False-left-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[False-False-right-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Right"
+    },
+    "test_join_i128_23688[False-False-semi-expected4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[False-True-anti-expected5]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[False-True-full-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_i128_23688[False-True-inner-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[False-True-left-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[False-True-right-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Right"
+    },
+    "test_join_i128_23688[False-True-semi-expected4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[True-False-anti-expected5]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[True-False-full-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_i128_23688[True-False-inner-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[True-False-left-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[True-False-right-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Right"
+    },
+    "test_join_i128_23688[True-False-semi-expected4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[True-True-anti-expected5]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[True-True-full-expected3]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_i128_23688[True-True-inner-expected0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[True-True-left-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_i128_23688[True-True-right-expected2]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Right"
+    },
+    "test_join_i128_23688[True-True-semi-expected4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_join_key_downgrade_follows_pushdown_through_projections": {
+      "outcome": "refused",
+      "construct": "ProducerUnsupported: WindowFunction is not supported yet (see #60, https://github.com/AlexanderNenninger/substrait-lean/issues/N)",
+      "collects": 8
+    },
+    "test_join_key_downgrade_ignores_the_unreachable_join_side": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_join_key_downgrades_outer_join_below[full-inner-amount-LEFT]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_key_downgrades_outer_join_below[full-inner-reason-RIGHT]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_key_downgrades_outer_join_below[left-anti-reason-LEFT]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_join_key_downgrades_outer_join_below[left-inner-amount-LEFT]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_join_key_downgrades_outer_join_below[left-inner-reason-INNER]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_join_key_downgrades_outer_join_below[left-inner-ticket-LEFT]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_join_key_downgrades_outer_join_below[left-right-reason-INNER]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_key_downgrades_outer_join_below[left-semi-reason-INNER]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_join_key_keeps_outer_join_when_nulls_match": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_key_predicate_keeps_key_dtype[in-memory-False-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_key_predicate_keeps_key_dtype[in-memory-False-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_key_predicate_keeps_key_dtype[in-memory-True-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_key_predicate_keeps_key_dtype[in-memory-True-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_key_predicate_keeps_key_dtype[streaming-False-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_key_predicate_keeps_key_dtype[streaming-False-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_key_predicate_keeps_key_dtype[streaming-True-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_key_predicate_keeps_key_dtype[streaming-True-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_key_type_coercion_19597": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_lazy_frame_on_expression": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_join_lazyframe_with_itself_after_sort_25395": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_join_list_non_numeric": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_join_lit_panic_11410": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_join_negative_integers": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_nested_key_nulls_not_equal_28584[dtype0-present0-None-inner_null0]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_nested_key_nulls_not_equal_28584[dtype1-present1-None-inner_null1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Int64, shape=(N,)), the plan expects List(Int64); run it with engine=… (see #2540, https://github.com/Alexan",
+      "collects": 8
+    },
+    "test_join_nested_key_nulls_not_equal_28584[dtype2-present2-None-inner_null2]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_non_elementwise_keys_raises[left_on0-right_on0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_join_non_elementwise_keys_raises[left_on1-right_on1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_join_non_elementwise_keys_raises[left_on2-right_on2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_join_non_expanding_key_count_mismatch_errors_at_construction[False-a-right_on0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_non_expanding_key_count_mismatch_errors_at_construction[False-left_on1-right_on1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_non_expanding_key_count_mismatch_errors_at_construction[False-left_on2-right_on2]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_non_expanding_key_count_mismatch_errors_at_construction[False-left_on3-right_on3]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_non_expanding_key_count_mismatch_errors_at_construction[True-a-right_on0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_non_expanding_key_count_mismatch_errors_at_construction[True-left_on1-right_on1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_non_expanding_key_count_mismatch_errors_at_construction[True-left_on2-right_on2]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_non_expanding_key_count_mismatch_errors_at_construction[True-left_on3-right_on3]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_null_equal[left_right]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_null_equal[none]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_null_equal[right_left]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes0]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes10]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes11]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes12]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes13]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes14]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes15]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes16]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes17]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes18]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes19]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes1]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes20]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes21]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes22]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes23]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes24]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes25]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes26]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes27]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes28]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes29]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes2]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes30]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes31]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes32]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes33]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes34]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes35]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes36]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes37]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes38]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes39]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes3]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes40]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes41]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes42]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes43]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes44]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes45]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes4]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes5]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes6]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes7]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[False-dtypes9]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes0]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes10]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes11]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes12]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes13]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes14]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes15]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes16]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes17]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes18]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes19]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes1]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes20]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes21]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes22]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes23]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes24]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes25]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes26]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes27]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes28]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes29]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes2]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes30]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes31]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes32]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes33]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes34]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes35]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes36]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes37]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes38]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes39]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes3]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes40]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes41]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes42]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes43]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes44]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes45]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes4]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes5]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes6]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes7]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_join_numeric_key_upcast_15338[True-dtypes9]": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_numeric_key_upcast_forbid_float_int": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_join_numeric_key_upcast_order": {
+      "outcome": "refused",
+      "construct": "run: add of Int64 and Int16; run it with engine=… (see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/N)",
+      "collects": 8
+    },
+    "test_join_on_and_left_right_on[on_args0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_on_and_left_right_on[on_args1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_on_and_left_right_on[on_args2]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_on_cast": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 3
+    },
+    "test_join_on_expressions": {
+      "outcome": "skipped",
+      "reason": "translator: Function Pow"
+    },
+    "test_join_on_multi_column_string_selectors": {
+      "outcome": "skipped",
+      "reason": "translator: Join on keys of different names, or keeping both keys"
+    },
+    "test_join_on_nested[List-data1]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_on_nested[Struct-data0]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_on_nested[dtype2-data2]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_join_on_nth": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_join_on_regex_string": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_join_on_selectors[selector0]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_join_on_selectors[selector1]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_join_on_selectors[selector2]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_join_on_selectors[selector3]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_join_on_selectors[selector4]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_join_on_selectors[selector5]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_join_on_wildcard": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_join_only_left_or_right_on[on_args0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_only_left_or_right_on[on_args1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_overlapping_and_aliased_selectors": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_join_panic_on_binary_expr_5915": {
+      "outcome": "skipped",
+      "reason": "translator: Join on keys of different names, or keeping both keys"
+    },
+    "test_join_preserve_order_full": {
+      "outcome": "skipped",
+      "reason": "translator: Join Full"
+    },
+    "test_join_preserve_order_inner": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_join_preserve_order_left": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_join_projection_invalid_name_contains_suffix_15243": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_join_raise_on_redundant_keys": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_join_raise_on_repeated_expression_key_names[False]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_join_raise_on_repeated_expression_key_names[True]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_join_results_in_duplicate_names": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_join_rewrite_forbid_exprs[expr_first_input0-<lambda>]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_rewrite_forbid_exprs[expr_first_input1-<lambda>]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_rewrite_forbid_exprs[expr_first_input2-<lambda>]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_rewrite_null_preserving_exprs[1-<lambda>]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsClose"
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input0-<lambda>]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input1-<lambda>]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input10-<lambda>]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsNotNan"
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input11-<lambda>]": {
+      "outcome": "skipped",
+      "reason": "translator: AttributeError: … object has no attribute …"
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input12-<lambda>]": {
+      "outcome": "skipped",
+      "reason": "translator: AttributeError: … object has no attribute …"
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input13-<lambda>]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input14-<lambda>]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsNotNan"
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input15-<lambda>]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input16-<lambda>]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input2-<lambda>]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input3-<lambda>]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input4-<lambda>]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input5-<lambda>]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input6-<lambda>]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsBetween"
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input7-<lambda>]": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsClose"
+    },
+    "test_join_rewrite_null_preserving_exprs[expr_first_input9-<lambda>]": {
+      "outcome": "skipped",
+      "reason": "translator: AttributeError: … object has no attribute …"
+    },
+    "test_join_rewrite_panic_23307": {
+      "outcome": "agree",
+      "collects": 7
+    },
+    "test_join_right_predicate_pushdown_21142": {
+      "outcome": "skipped",
+      "reason": "translator: Join Right"
+    },
+    "test_join_right_with_cast_predicate_pushdown": {
+      "outcome": "skipped",
+      "reason": "translator: Join Right"
+    },
+    "test_join_same_cat_src": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_join_selector_coalescing": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_join_selector_empty_expansion": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_join_selector_empty_expansion_side[a-right_on1-right]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_selector_empty_expansion_side[left_on0-a-left]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_selector_expansion[casted-selectors-with-plain-key]": {
+      "outcome": "skipped",
+      "reason": "translator: Join on keys of different names, or keeping both keys"
+    },
+    "test_join_selector_expansion[mixed-selector-positions]": {
+      "outcome": "skipped",
+      "reason": "translator: Join on keys of different names, or keeping both keys"
+    },
+    "test_join_selector_expansion[nested-selector-unequal-raw-counts]": {
+      "outcome": "skipped",
+      "reason": "translator: Join on keys of different names, or keeping both keys"
+    },
+    "test_join_selector_expansion[selector-left]": {
+      "outcome": "skipped",
+      "reason": "translator: Join on keys of different names, or keeping both keys"
+    },
+    "test_join_selector_expansion[selector-right]": {
+      "outcome": "skipped",
+      "reason": "translator: Join on keys of different names, or keeping both keys"
+    },
+    "test_join_selector_expansion[single-selector]": {
+      "outcome": "skipped",
+      "reason": "translator: Join on keys of different names, or keeping both keys"
+    },
+    "test_join_selector_expansion_count_mismatch": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_join_selector_keyed_variants[anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_selector_keyed_variants[full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_selector_keyed_variants[inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_selector_keyed_variants[left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_selector_keyed_variants[right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_selector_keyed_variants[semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_selector_order_is_positional": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_join_slice_maintain_order_28419_28448": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_join_slice_maintain_order_negative_offset_overshoot_28538": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-left_right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-left_right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-left_right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-left_right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-left_right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-left_right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-right_left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-right_left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-right_left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-right_left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-right_left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-1-1-right_left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-left_right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-left_right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-left_right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-left_right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-left_right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-left_right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-right_left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-right_left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-right_left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-right_left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-right_left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-100-3-right_left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-left_right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-left_right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-left_right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-left_right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-left_right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-left_right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-right_left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-right_left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-right_left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-right_left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-right_left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[-3-2-right_left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-left_right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-left_right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-left_right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-left_right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-left_right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-left_right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-right_left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-right_left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-right_left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-right_left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-right_left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-1-right_left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-left_right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-left_right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-left_right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-left_right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-left_right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-left_right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-right_left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-right_left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-right_left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-right_left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-right_left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-100-right_left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-left_right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-left_right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-left_right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-left_right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-left_right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-left_right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-right_left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-right_left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-right_left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-right_left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-right_left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[0-3-right_left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-left_right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-left_right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-left_right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-left_right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-left_right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-left_right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-right_left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-right_left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-right_left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-right_left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-right_left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[1-2-right_left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-left_right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-left_right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-left_right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-left_right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-left_right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-left_right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-right_left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-right_left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-right_left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-right_left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-right_left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[2-4-right_left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-left_right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-left_right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-left_right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-left_right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-left_right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-left_right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-right-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-right-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-right-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-right-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-right-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-right-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-right_left-anti]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-right_left-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-right_left-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-right_left-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-right_left-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_slice_pushdown_maintain_order_matrix_28551[3-10-right_left-semi]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_join_sorted_fast_paths_null_8269": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_join_validation": {
+      "outcome": "agree",
+      "collects": 76
+    },
+    "test_join_validation_many_keys": {
+      "outcome": "agree",
+      "collects": 20
+    },
+    "test_join_where_categorical_string_compare": {
+      "outcome": "skipped",
+      "reason": "translator: Join without an equi condition"
+    },
+    "test_join_where_dtype_upcast": {
+      "outcome": "skipped",
+      "reason": "translator: Join without an equi condition"
+    },
+    "test_join_where_eager_perf_21145": {
+      "outcome": "skipped",
+      "reason": "translator: Join without an equi condition"
+    },
+    "test_join_where_invalid_dtype_upcast_different_side": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_join_where_literals[Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: Join without an equi condition"
+    },
+    "test_join_where_literals[Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: Join without an equi condition"
+    },
+    "test_join_where_nested_boolean": {
+      "outcome": "skipped",
+      "reason": "translator: Join without an equi condition"
+    },
+    "test_join_where_nested_expr_21066": {
+      "outcome": "skipped",
+      "reason": "translator: Join without an equi condition"
+    },
+    "test_join_where_nonboolean_predicate": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_join_where_predicate_type_coercion_21009": {
+      "outcome": "skipped",
+      "reason": "translator: Join without an equi condition"
+    },
+    "test_join_where_valid_dtype_upcast_same_side": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_joins_dispatch": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_left_join_slice_pushdown_19405[False]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_left_join_slice_pushdown_19405[True]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_merge_join_coalesce_right_payload_name_collision[False-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_merge_join_coalesce_right_payload_name_collision[False-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_merge_join_coalesce_right_payload_name_collision[False-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_merge_join_coalesce_right_payload_name_collision[False-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_merge_join_coalesce_right_payload_name_collision[True-full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_merge_join_coalesce_right_payload_name_collision[True-inner]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_merge_join_coalesce_right_payload_name_collision[True-left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_merge_join_coalesce_right_payload_name_collision[True-right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_multi_leftjoin_empty_right_21701": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_no_collapse_join_when_maintain_order_20725": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_redundant_join_key_filter_does_not_filter_anti_join_21710": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_redundant_join_key_filter_does_not_filter_preserved_side_21710[full]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_redundant_join_key_filter_does_not_filter_preserved_side_21710[left]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_redundant_join_key_filter_does_not_filter_preserved_side_21710[right]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_redundant_join_key_filter_inner_join_21710": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_redundant_join_key_filter_partial_reduction_21710": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_redundant_join_key_filter_respects_nulls_equal_21710": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_redundant_join_key_filter_restores_schema_21710": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_redundant_join_key_filter_semi_join_duplicate_left_21710": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_redundant_join_key_filter_semi_join_duplicate_left_nulls_equal_21710[False-FILTER col(\"x\") == col(\"y\")]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_redundant_join_key_filter_semi_join_duplicate_left_nulls_equal_21710[True-FILTER col(\"x\") ==v col(\"y\")]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_redundant_join_key_filter_semi_join_duplicate_right_21710": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_redundant_join_key_filter_semi_join_nulls_equal_21710[False-FILTER col(\"a\") == col(\"b\")]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_redundant_join_key_filter_semi_join_nulls_equal_21710[True-FILTER col(\"a\") ==v col(\"b\")]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_right_join_schema_maintained_22516": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_right_join_to_inner_keeps_right_key_dtype[in-memory-False]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_right_join_to_inner_keeps_right_key_dtype[in-memory-True]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_right_join_to_inner_keeps_right_key_dtype[streaming-False]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_right_join_to_inner_keeps_right_key_dtype[streaming-True]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_select_after_join_where_20831": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_select_len_after_semi_anti_join_21343": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_semi_anti_join": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_semi_join_projection_pushdown_6423": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_semi_join_projection_pushdown_6455": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_sorted_merge_joins[False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_sorted_merge_joins[True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 8
+    },
+    "test_update": {
+      "outcome": "agree",
+      "collects": 8
+    }
+  }
+}

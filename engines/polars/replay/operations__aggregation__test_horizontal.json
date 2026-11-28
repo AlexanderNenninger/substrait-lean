@@ -1,0 +1,378 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/aggregation/test_horizontal.py",
+  "license": "MIT",
+  "module": "operations__aggregation__test_horizontal",
+  "summary": {
+    "agree": 23,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 4,
+    "unproved": 2,
+    "skipped": 60
+  },
+  "results": {
+    "test_all_any_accept_expr": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_all_any_horizontally": {
+      "outcome": "skipped",
+      "reason": "translator: Function AllHorizontal"
+    },
+    "test_all_any_single_input": {
+      "outcome": "skipped",
+      "reason": "translator: Function AllHorizontal"
+    },
+    "test_any_expr": {
+      "outcome": "skipped",
+      "reason": "translator: Function AnyHorizontal"
+    },
+    "test_cum_sum_horizontal": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_empty_all_any_horizontally": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_empty_inputs_raise": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_expanding_sum": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_expected_horizontal_dtype_errors[all_horizontal]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_expected_horizontal_dtype_errors[any_horizontal]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_expected_horizontal_dtype_errors[max_horizontal]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_expected_horizontal_dtype_errors[mean_horizontal]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_expected_horizontal_dtype_errors[min_horizontal]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_expected_horizontal_dtype_errors[sum_horizontal]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_fold_all_schema": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_horizontal_broadcasting": {
+      "outcome": "skipped",
+      "reason": "translator: Function MeanHorizontal"
+    },
+    "test_horizontal_expr_use_left_name": {
+      "outcome": "skipped",
+      "reason": "translator: Function AllHorizontal"
+    },
+    "test_horizontal_mean_with_null_col_ignore_strategy[Boolean-Float64-False]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_mean_with_null_col_ignore_strategy[Boolean-Float64-True]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_mean_with_null_col_ignore_strategy[Float32-Float32-False]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_mean_with_null_col_ignore_strategy[Float32-Float32-True]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_mean_with_null_col_ignore_strategy[Float64-Float64-False]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_mean_with_null_col_ignore_strategy[Float64-Float64-True]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_mean_with_null_col_ignore_strategy[Null-Float64-False]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_mean_with_null_col_ignore_strategy[Null-Float64-True]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_mean_with_null_col_ignore_strategy[UInt8-Float64-False]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_mean_with_null_col_ignore_strategy[UInt8-Float64-True]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_sum_boolean_with_null": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_horizontal_sum_with_null_col_ignore_strategy[Boolean-dtype_out1-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 2
+    },
+    "test_horizontal_sum_with_null_col_ignore_strategy[Boolean-dtype_out1-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 2
+    },
+    "test_horizontal_sum_with_null_col_ignore_strategy[Float32-Float32-False]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_sum_with_null_col_ignore_strategy[Float32-Float32-True]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_sum_with_null_col_ignore_strategy[Float64-Float64-False]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_sum_with_null_col_ignore_strategy[Float64-Float64-True]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_sum_with_null_col_ignore_strategy[Null-Null-False]": {
+      "outcome": "unproved",
+      "reason": "data: table polars_input_0 differs from the schema the plan was verified for: column … is null, the plan expects int64: refused before the run. Declare the colu",
+      "collects": 2
+    },
+    "test_horizontal_sum_with_null_col_ignore_strategy[Null-Null-True]": {
+      "outcome": "unproved",
+      "reason": "data: table polars_input_0 differs from the schema the plan was verified for: column … is null, the plan expects int64: refused before the run. Declare the colu",
+      "collects": 2
+    },
+    "test_horizontal_sum_with_null_col_ignore_strategy[UInt8-UInt8-False]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 2
+    },
+    "test_horizontal_sum_with_null_col_ignore_strategy[UInt8-UInt8-True]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 2
+    },
+    "test_horizontal_sum_with_null_col_ignore_strategy[dtype_in5-dtype_out5-False]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_sum_with_null_col_ignore_strategy[dtype_in5-dtype_out5-True]": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_horizontal_untyped_literal_cast_regression_26723": {
+      "outcome": "skipped",
+      "reason": "translator: Function SumHorizontal"
+    },
+    "test_max_horizontal_multi_input[inputs0-expected_data0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxHorizontal"
+    },
+    "test_max_horizontal_multi_input[inputs1-expected_data1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxHorizontal"
+    },
+    "test_max_horizontal_multi_input[inputs2-expected_data2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxHorizontal"
+    },
+    "test_max_horizontal_single_input[5.0-expected_data4]": {
+      "outcome": "skipped",
+      "reason": "translator: a select of literals only: one row in Polars"
+    },
+    "test_max_horizontal_single_input[input0-expected_data0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_max_horizontal_single_input[input1-expected_data1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_max_horizontal_single_input[input2-expected_data2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxHorizontal"
+    },
+    "test_max_horizontal_single_input[input3-expected_data3]": {
+      "outcome": "skipped",
+      "reason": "translator: a select of literals only: one row in Polars"
+    },
+    "test_max_min_multiple_columns": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxHorizontal"
+    },
+    "test_max_min_nulls_consistency": {
+      "outcome": "skipped",
+      "reason": "translator: Function MaxHorizontal"
+    },
+    "test_max_min_wildcard_columns": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_mean_horizontal": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_mean_horizontal_all_null": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_mean_horizontal_bool": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_mean_horizontal_no_columns": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_mean_horizontal_no_rows": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_min_horizontal_multi_input[inputs0-expected_data0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinHorizontal"
+    },
+    "test_min_horizontal_multi_input[inputs1-expected_data1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinHorizontal"
+    },
+    "test_min_horizontal_multi_input[inputs2-expected_data2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinHorizontal"
+    },
+    "test_min_horizontal_single_input[5.0-expected_data4]": {
+      "outcome": "skipped",
+      "reason": "translator: a select of literals only: one row in Polars"
+    },
+    "test_min_horizontal_single_input[input0-expected_data0]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_min_horizontal_single_input[input1-expected_data1]": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_min_horizontal_single_input[input2-expected_data2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinHorizontal"
+    },
+    "test_min_horizontal_single_input[input3-expected_data3]": {
+      "outcome": "skipped",
+      "reason": "translator: a select of literals only: one row in Polars"
+    },
+    "test_min_max_horizontal_scalar_column_29082": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_min_max_horizontal_with_nan_28682": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinHorizontal"
+    },
+    "test_nested_min_max": {
+      "outcome": "skipped",
+      "reason": "translator: Function MinHorizontal"
+    },
+    "test_raise_invalid_types_21835": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_schema_boolean_sum_horizontal": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_schema_mean_horizontal_single_column[Boolean-Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_schema_mean_horizontal_single_column[Float32-Float32]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_schema_mean_horizontal_single_column[Float64-Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_schema_mean_horizontal_single_column[Int16-Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_schema_mean_horizontal_single_column[Int32-Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_schema_mean_horizontal_single_column[Int64-Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_schema_mean_horizontal_single_column[Int8-Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_schema_mean_horizontal_single_column[UInt16-Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_schema_mean_horizontal_single_column[UInt32-Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_schema_mean_horizontal_single_column[UInt64-Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_schema_mean_horizontal_single_column[UInt8-Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_str_primitive_sum_horizontal": {
+      "outcome": "skipped",
+      "reason": "translator: Function SumHorizontal"
+    },
+    "test_str_sum_horizontal": {
+      "outcome": "skipped",
+      "reason": "translator: Function SumHorizontal"
+    },
+    "test_sum_correct_supertype[False]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_sum_correct_supertype[True]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_sum_dtype_12028": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_sum_max_min": {
+      "outcome": "skipped",
+      "reason": "translator: Function SumHorizontal"
+    },
+    "test_sum_null_dtype": {
+      "outcome": "skipped",
+      "reason": "translator: Function SumHorizontal"
+    },
+    "test_sum_single_col": {
+      "outcome": "skipped",
+      "reason": "translator: Function SumHorizontal"
+    }
+  }
+}

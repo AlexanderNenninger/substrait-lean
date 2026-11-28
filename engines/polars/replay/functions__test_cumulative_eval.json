@@ -1,0 +1,40 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/test_cumulative_eval.py",
+  "license": "MIT",
+  "module": "functions__test_cumulative_eval",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 6
+  },
+  "results": {
+    "test_cumulative_eval_deny_non_scalar": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_cumulative_eval_empty": {
+      "outcome": "skipped",
+      "reason": "translator: Eval"
+    },
+    "test_cumulative_eval_group_by": {
+      "outcome": "skipped",
+      "reason": "translator: Eval"
+    },
+    "test_cumulative_eval_length_preserving_streaming_25293": {
+      "outcome": "skipped",
+      "reason": "translator: no JSON plan"
+    },
+    "test_cumulative_eval_samples": {
+      "outcome": "skipped",
+      "reason": "translator: Eval"
+    },
+    "test_cumulative_eval_sum": {
+      "outcome": "skipped",
+      "reason": "translator: Eval"
+    }
+  }
+}

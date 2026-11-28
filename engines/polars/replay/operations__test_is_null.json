@@ -1,0 +1,29 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/test_is_null.py",
+  "license": "MIT",
+  "module": "operations__test_is_null",
+  "summary": {
+    "agree": 1,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 1,
+    "skipped": 1
+  },
+  "results": {
+    "test_is_null_null": {
+      "outcome": "unproved",
+      "reason": "data: table polars_input_0 differs from the schema the plan was verified for: column … is null, the plan expects int64: refused before the run. Declare the colu",
+      "collects": 2
+    },
+    "test_is_null_parametric": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_is_null_struct": {
+      "outcome": "agree",
+      "collects": 1
+    }
+  }
+}

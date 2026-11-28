@@ -1,0 +1,28 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/arithmetic/test_pos.py",
+  "license": "MIT",
+  "module": "operations__arithmetic__test_pos",
+  "summary": {
+    "agree": 1,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 2
+  },
+  "results": {
+    "test_pos": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_pos_datetime": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_pos_string": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    }
+  }
+}
