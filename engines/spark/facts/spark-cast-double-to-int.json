@@ -162,6 +162,20 @@
         "A double holding an integer below `2^53` (`±(2^53 - 1)`, `2^52 + 1`, 1, `-0.0`, `2^21 - 1`) casts to that `BIGINT` exactly, with ANSI on and off: the exact limbs' mantissa cast (#1447).",
         "`sverify_dev.probe_spark`'s `_writer_probes`, run locally with `--only`, ANSI on and off, on the folded and the codegen path. pyspark 4.3.0, Java 21.0.13, macOS arm64, session time zone UTC; probes.json's header records the earlier homelab run."
       ]
+    },
+    {
+      "checked_at": "2026-11-28",
+      "method": "probe",
+      "checked_by": "#2630 session (pyspark 4.3.0, local[1], spark.sql.ansi.enabled=true, a DOUBLE column, Java 21.0.13, macOS arm64)",
+      "evidence": [
+        {
+          "file": "engines/spark/probes/cast_double_to_bigint_edges.py"
+        }
+      ],
+      "notes": [
+        "`CAST(x AS BIGINT)` and `TRY_CAST(x AS BIGINT)` at the edges of the 64-bit range (ruling 290, S1): 2^63, the next double above it, the largest double below it, -2^63, the next double below it, the smallest above it, NaN, +inf, -inf, -0.0, -1.5 and 2.5, against the reference's truncating cast.",
+        "Only 2^63 differs: both casts give 9223372036854775807 where the reference raises (`CAST`) or gives NULL (`TRY_CAST`). The next double above 2^63, the next below -2^63, NaN and both infinities raise `ArithmeticException` (`CAST`) or give NULL (`TRY_CAST`), as the reference does; -2^63 casts to `MIN`, and the rest truncate."
+      ]
     }
   ],
   "issues": [
