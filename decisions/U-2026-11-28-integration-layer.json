@@ -1,0 +1,14 @@
+{
+  "id": "U-2026-11-28-integration-layer",
+  "date": "2026-11-28",
+  "decided_by": "user",
+  "scope": "architecture",
+  "status": "in-force",
+  "summary": "Sverify is an integration layer between engines and data-warehouse tools, and doesn't own the end-user experience. The user's words: \"I don't want to own the end user experience. I want sverify to be an integration layer between engines, dwh tools, etc.\" Prefer what other tools consume: stable machine-readable outputs (the report's JSON, SARIF, OpenLineage, ODCS, the Substrait export, the sink's contract record), plugin points (ProfilePlugin, SQLFrontEnd) and integrations that feed an existing tool (dbt, orchestrators, catalogs, editors). Decline end-user surfaces of sverify's own: dashboards, a runtime, a phone flow, generated UIs. The Python API and the CLI stay, as the integration surface. Scope, the user's answer \"Yes, both out\": #771 (pipelines from the phone) and #772's metrics and dashboards layers are out; #772's catalog export and describe stay.",
+  "issues": [
+    771,
+    772
+  ],
+  "source": "https://github.com/AlexanderNenninger/substrait-lean/issues/771",
+  "note": "Given to the theory advisor and confirmed to the coordinator, 2026-11-28. Bears on the 2026-11-05 product vision (pipelines from the phone, an ontology layer), which was recorded on #771 and #772, not as a ledger entry, so it has no amends link."
+}
