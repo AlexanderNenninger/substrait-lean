@@ -14,6 +14,7 @@ Python: their outside evidence is the replay of Spark's golden files (#2615).
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Mapping
 from typing import Any
 
@@ -21,18 +22,39 @@ from ibis.backends.sql.datatypes import PySparkType
 
 from sverify.sql_lift import Lifted, Profile, Surface, lift
 
-#: What Spark's functions do, as the lift reads them: the values `Profile.spark`
-#: states (`substrait-check --options`, `choices.spark`; tied by
-#: `engines/spark/tests/test_sql_lift_spark.py`). The other fields keep the
-#: reference's value and no rule that reads them is in `RULES`: Spark's choice
-#: is not one value there (`domain_error`, `log_zero`, `corr_degenerate`).
-SPARK = Profile(
-    "spark",
-    overflow="ERROR",
-    on_division_by_zero="ERROR",
-    min_mod_neg_one="ZERO",
-    float_division_by_zero="ERROR",
-)
+#: The `Profile` fields the lift reads from `Profile.spark`, by the (group,
+#: option) of their row in `substrait-check --options`'s `choices.spark`.
+PROFILE_OPTIONS: Mapping[str, tuple[str | None, str]] = {
+    "overflow": (None, "overflow"),
+    "on_division_by_zero": (None, "on_division_by_zero"),
+    "min_mod_neg_one": (None, "min_mod_neg_one"),
+    "float_division_by_zero": ("fp.div", "on_division_by_zero"),
+}
+
+
+@functools.cache
+def spark_profile() -> Profile:
+    """What Spark's functions do, as the lift reads them: `Profile.spark`'s
+    one choice for each field of `PROFILE_OPTIONS`, read from the checker
+    (ruling 288 H4). The other fields keep the reference's value and no rule
+    that reads them is in `RULES`, since Spark's choice there is not one value
+    (`domain_error`, `log_zero`, `corr_degenerate`).
+
+    Raises:
+        ValueError: The checker gives no single value for one of them.
+    """
+    from sverify.routes import _options_json
+
+    rows = {(r["group"], r["option"]): r["choice"] for r in _options_json()["choices"]["spark"]}
+    values = {}
+    for name, (group, option) in PROFILE_OPTIONS.items():
+        choice = rows.get((group, option)) or rows[(None, option)]
+        found = choice.get("behaviours", [])
+        if len(found) != 1:
+            raise ValueError(f"Profile.spark's {option} ({group}) is not one value: {choice}")
+        values[name] = found[0]
+    return Profile("spark", **values)
+
 
 #: The constructs the lift reads in Spark's SQL, by SQLGlot node class, each
 #: with the Spark fact (`engines/spark/facts/`) that states what Spark computes.
@@ -127,26 +149,29 @@ def orders(t: Any) -> bool:
     return t.is_integer()
 
 
-#: Spark's SQL as the lift reads it.
-SPARK_SQL = Surface(
-    "spark",
-    "Spark",
-    SPARK,
-    null_ordering="nulls_are_small",
-    types=PySparkType,
-    catalog="spark_catalog",
-    db="default",
-    rules=RULES,
-    syntax=SYNTAX,
-    values=values,
-    coerces=coerces,
-    orders=orders,
-    case_sensitive=True,
-)
+@functools.cache
+def spark_sql() -> Surface:
+    """Spark's SQL as the lift reads it, with `spark_profile` as its own
+    semantics."""
+    return Surface(
+        "spark",
+        "Spark",
+        spark_profile(),
+        null_ordering="nulls_are_small",
+        types=PySparkType,
+        catalog="spark_catalog",
+        db="default",
+        rules=RULES,
+        syntax=SYNTAX,
+        values=values,
+        coerces=coerces,
+        orders=orders,
+        case_sensitive=True,
+    )
 
 
 def lift_spark(query: str, schemas: Mapping[str, Any], semantics: str = "spark") -> Lifted:
     """Spark's SQL `query` lifted to a plan over the Ibis schemas `schemas`
     (by table name), under the profile `semantics` names (`"spark"` or
     `"portable"`)."""
-    return lift(query, schemas, semantics, surface=SPARK_SQL)
+    return lift(query, schemas, semantics, surface=spark_sql())

@@ -22,7 +22,7 @@ from sverify._lean_eval import with_tables
 from sverify.plan_json import Unsupported
 from sverify.testing import LeanRaised, canonical, lean_values
 from sverify_spark import ASSUMES, SETTINGS
-from sverify_spark.sql import RULES, SPARK, SPARK_SQL, lift_spark
+from sverify_spark.sql import RULES, lift_spark, spark_profile, spark_sql
 
 pytestmark = pytest.mark.backend("spark")
 
@@ -124,10 +124,11 @@ def test_the_profile_is_lean_profile_spark() -> None:
         assert len(choice["behaviours"]) == 1, (group, option, choice)
         return choice["behaviours"][0]
 
-    assert SPARK.overflow == one(None, "overflow")
-    assert SPARK.on_division_by_zero == one(None, "on_division_by_zero")
-    assert SPARK.min_mod_neg_one == one(None, "min_mod_neg_one")
-    assert SPARK.float_division_by_zero == one("fp.div", "on_division_by_zero")
+    spark = spark_profile()
+    assert spark.overflow == one(None, "overflow") == "ERROR"
+    assert spark.on_division_by_zero == one(None, "on_division_by_zero") == "ERROR"
+    assert spark.min_mod_neg_one == one(None, "min_mod_neg_one") == "ZERO"
+    assert spark.float_division_by_zero == one("fp.div", "on_division_by_zero") == "ERROR"
     # `domain_error`, `log_zero` and `corr_degenerate` are open in `Profile.spark`.
     assert not set(RULES) & {"Sqrt", "Ln", "Log", "Exp", "Pow", "Sin", "Cos", "Corr"}
     assert ASSUMES.startswith(f"Spark {data['versions']['spark']} SQL")
@@ -143,7 +144,7 @@ def test_spark_has_no_generated_lift_yet() -> None:
     """H5: Spark has no generated Lean table, so every construct DuckDB's lift
     reads from one is refused under Spark until #866's Lean part (C): its
     doubles, its `/`, `avg` and the casts between BIGINT and DOUBLE among them."""
-    assert SPARK_SQL.generated == {}
+    assert spark_sql().generated == {}
     for q in (
         "SELECT a / 2 AS r FROM t",
         "SELECT CAST(a AS DOUBLE) AS r FROM t",
