@@ -1527,7 +1527,7 @@ theorem BinFn.abs_sound (f : BinFn) {a b : AVal} {v w : Value} (ha : a.Mem v) (h
     cases hs : BinFn.domainSafe (.bit op) (some x) (some y)
     · rfl
     · have := BinFn.domainSafe_bit (i := i) hs hj; rw [hr] at this; cases this
-  case concat | trim =>
+  case concat | trim | splitFirst =>
     exact str₂_sound (fun v w => by cases v <;> cases w <;> rfl) rfl
       (fun hs ht _ _ => by simp [BinFn.abs, BinFn.apply, AVal.Mem, hs, ht]) ha hb
   case strpos =>

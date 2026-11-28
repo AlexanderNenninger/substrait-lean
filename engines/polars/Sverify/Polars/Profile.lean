@@ -124,6 +124,17 @@ def droundEvenT (k : Nat) : Expr :=
       (.bin .eq (.bin .imod t (.lit (.int 2))) (.lit (.int 0))))
     t (.un (.dround k) (.field 0))
 
+/-- Polars's `s.str.split(t).list.first()` (polars-split-first), the arguments as
+fields 0 and 1: the reference's `sverify_split_first` (`Text.splitFirst`) except
+for an empty `t`, where Polars splits into code points and gives the first, NULL
+for an empty `s` (ruling 286's K3 as amended). -/
+def splitFirstT : Expr :=
+  .ifThen (.bin .and (.un (.isNum .int) (.un .length (.field 0)))
+      (.bin .eq (.un .length (.field 1)) (.lit (.int 0))))
+    (.ifThen (.bin .eq (.un .length (.field 0)) (.lit (.int 0))) (.lit .null)
+      (.bin (.substr (some 1) false) (.field 0) (.lit (.int 1))))
+    (.bin .splitFirst (.field 0) (.field 1))
+
 end Polars
 
 /-- The unary functions where Polars's profile differs from the reference: its
@@ -139,12 +150,15 @@ def UnFn.polarsTmpl : UnFn → Option Expr
   | _ => none
 
 /-- The functions where Polars's profile differs from the reference: its
-template, in the reference's operations. -/
+template, in the reference's operations. `strpos` is the reference's: Polars's
+`str.find` counts bytes from 0 (polars-strpos), and the lowering never renders
+it (`Polars.strposTemplate`, ruling 286). -/
 def BinFn.polarsTmpl : BinFn → Option Expr
   | .idiv => some Polars.floorDivT
   | .imod => some Polars.floorModT
   | .fmod => some Polars.floorFmodT
   | .dmod => some Polars.floorDModT
+  | .splitFirst => some Polars.splitFirstT
   | _ => none
 
 variable [Boxes.Ambient]
@@ -152,7 +166,8 @@ variable [Boxes.Ambient]
 `FLOOR`), of integers and, for `%`, of doubles and decimals; `round` and `ceil` give `-0.0`
 for a negative value that rounds to zero (`round_zero_sign`); a double cast to a
 decimal rounds the product half to even, and a decimal cast to a smaller scale
-rounds half to even (`decimal_rescale`); every other function is the
+rounds half to even (`decimal_rescale`); `sverify_split_first` of an empty
+pattern is the first code point (polars-split-first); every other function is the
 reference's. -/
 def Profile.polars : Profile where
   un f v := match f.polarsTmpl with
@@ -518,6 +533,11 @@ theorem untmpl_subst_eval {f : UnFn} {t : Expr} (h : f.polarsTmpl = some t) (a :
     exact Expr.evalP_subst (vs := [x]) (fun i => by
       rcases i with _ | i <;> simp [ha, Expr.evalP]) t
 
+/-- `length` raises nowhere: a string's capped count of characters, `NULL` otherwise. -/
+theorem ref_length (v : Value) : Profile.reference.un .length v =
+    .ok (match v with | .str s => .int (Text.capped s.length) | _ => .null) := by
+  cases v <;> rfl
+
 /-- A template evaluates its first argument, then its second, before
 anything that may raise: substituting expressions is binding their
 outcomes. -/
@@ -529,16 +549,16 @@ theorem tmpl_subst_eval {f : BinFn} {t : Expr} (h : f.polarsTmpl = some t) (a b 
   cases ha : a.evalP Profile.reference row with
   | error k =>
     cases f <;> simp only [BinFn.polarsTmpl, reduceCtorEq, Option.some.injEq] at h <;> subst h <;>
-      simp [floorDivT, floorModT, floorFmodT, floorDModT, Expr.floorDivOf, Expr.floorModOf,
+      simp [floorDivT, floorModT, floorFmodT, floorDModT, splitFirstT, Expr.floorDivOf, Expr.floorModOf,
         Expr.floorFmodOf, Expr.floorDModOf, Expr.subst, Expr.evalP,
         ha, bind, Except.bind]
   | ok x =>
     cases hb : b.evalP Profile.reference row with
     | error k =>
       cases f <;> simp only [BinFn.polarsTmpl, reduceCtorEq, Option.some.injEq] at h <;> subst h <;>
-        simp [floorDivT, floorModT, floorFmodT, floorDModT, Expr.floorDivOf, Expr.floorModOf,
+        simp [floorDivT, floorModT, floorFmodT, floorDModT, splitFirstT, Expr.floorDivOf, Expr.floorModOf,
           Expr.floorFmodOf, Expr.floorDModOf, Expr.subst, Expr.evalP,
-          ha, hb, bind, Except.bind, Lowering.ref_lt]
+          ha, hb, bind, Except.bind, Lowering.ref_lt, ref_length, Lowering.ref_isNum]
       all_goals split <;> rfl
     | ok y =>
       simp only [bind, Except.bind]

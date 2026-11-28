@@ -1063,6 +1063,219 @@ theorem bit_shl_agree (x y : Value) :
     all_goals exact shl_notInt (.inr fun _ h => by cases h)
   all_goals exact shl_notInt (.inl fun _ h => by cases h)
 
+/-! ## `sverify_split_first` and `strpos` (ruling 286)
+
+Polars's split (`Profile.polars`'s `splitFirstT`, polars-split-first) is the
+reference's `sverify_split_first` but for an empty pattern, which the split's
+entry passes through (`splitFirstSchemaT`). `strpos` is one more than the
+characters before the first `t` (`Polars.strpos_chars`), which the split gives
+without Polars's `str.find`: for a non-empty `t`, `t` occurs exactly when the
+prefix before it is not `s` itself (`splitFirstChars_eq_self`). -/
+
+omit [Boxes.Ambient] in
+theorem splitFirstChars_length (t : List Char) :
+    ∀ cs, (Text.splitFirstChars t cs).length = splitFirstLen t cs
+  | [] => rfl
+  | c :: cs => by
+    unfold Text.splitFirstChars splitFirstLen
+    split <;> simp [splitFirstChars_length t cs]
+
+omit [Boxes.Ambient] in
+/-- The prefix before a non-empty `t` is `cs` itself exactly when `t` does not occur. -/
+theorem splitFirstChars_eq_self {t : List Char} (ht : t ≠ []) :
+    ∀ cs, Text.splitFirstChars t cs = cs ↔ occurs t cs = false
+  | [] => by
+    cases t with
+    | nil => exact absurd rfl ht
+    | cons _ _ => simp [Text.splitFirstChars, occurs, List.isPrefixOf]
+  | c :: cs => by
+    unfold Text.splitFirstChars occurs
+    by_cases hp : t.isPrefixOf (c :: cs)
+    · simp [hp]
+    · simp only [hp, ite_false, Bool.false_or, List.cons.injEq, true_and, Bool.false_eq_true]
+      exact splitFirstChars_eq_self ht cs
+
+omit [Boxes.Ambient] in
+theorem splitFirst_eq_self {s t : String} (ht : t ≠ "") :
+    Text.splitFirst s t = s ↔ occurs t.toList s.toList = false := by
+  have ht' : t.toList ≠ [] := fun h => ht (String.toList_eq_nil_iff.mp h)
+  unfold Text.splitFirst
+  simp only [String.isEmpty_iff, ht, ite_false]
+  rw [← splitFirstChars_eq_self ht' s.toList]
+  constructor
+  · intro h; simpa using congrArg String.toList h
+  · intro h; rw [h]; simp
+
+omit [Boxes.Ambient] in
+theorem splitFirst_length {s t : String} (ht : t ≠ "") :
+    (Text.splitFirst s t).length = splitFirstLen t.toList s.toList := by
+  unfold Text.splitFirst
+  simp only [String.isEmpty_iff, ht, ite_false, String.length_ofList, splitFirstChars_length]
+
+omit [Boxes.Ambient] in
+theorem capped_length_eq_zero (s : String) : Text.capped s.length = 0 ↔ s = "" := by
+  unfold Text.capped Text.sizeCap
+  constructor
+  · intro h; have : s.length = 0 := by omega
+    exact String.length_eq_zero_iff.mp this
+  · rintro rfl; rfl
+
+/-- `length` of a value: the capped count of a string's characters, `NULL` otherwise. -/
+def lenV : Value → Value
+  | .str s => .int (Text.capped s.length)
+  | _ => .null
+
+theorem polars_length (v : Value) : Profile.polars.un .length v = .ok (lenV v) := by
+  cases v <;> rfl
+
+theorem polars_eq (x y : Value) : Profile.polars.bin .eq x y = .ok (BinFn.apply .eq x y) :=
+  Lowering.ref_eq x y
+
+theorem polars_isNum (k : NumKind) (x : Value) :
+    Profile.polars.un (.isNum k) x = .ok (.bool (x.isNum k)) := Lowering.ref_isNum k x
+
+theorem polars_and3 (x y : Value) : Profile.polars.bin .and x y = .ok (and3 x y) :=
+  Lowering.ref_and x y
+
+theorem polars_ltV (x y : Value) : Profile.polars.bin .lt x y = .ok (BinFn.apply .lt x y) :=
+  Lowering.ref_lt x y
+
+theorem eq_lenV_zero (v : Value) :
+    BinFn.apply .eq (lenV v) (.int 0) = match v with
+      | .str s => .bool (decide (s = ""))
+      | _ => .null := by
+  cases v <;> try rfl
+  rename_i s
+  simp only [lenV, BinFn.apply, Value.numPair]
+  by_cases h : s = ""
+  · subst h; rfl
+  · have : ¬Text.capped s.length = 0 := fun e => h ((capped_length_eq_zero s).mp e)
+    simp [h, this]
+
+/-- **Polars's split**, as `Profile.polars` states it. -/
+theorem polars_splitFirst (x y : Value) :
+    Profile.polars.bin .splitFirst x y = .ok (match x, y with
+      | .str s, .str t =>
+        if t = "" then (if s = "" then .null else .str (Text.substr s 1 (some 1)))
+        else .str (Text.splitFirst s t)
+      | _, _ => .null) := by
+  simp only [Profile.polars, BinFn.polarsTmpl, splitFirstT, Expr.evalP, List.getD,
+    List.getElem?_cons_zero, List.getElem?_cons_succ, Option.getD_some, bind, Except.bind]
+  rw [show Profile.reference.un .length y = .ok (lenV y) from polars_length y,
+    show Profile.reference.un .length x = .ok (lenV x) from polars_length x]
+  simp only [Lowering.ref_eq, eq_lenV_zero]
+  cases y <;> cases x <;> simp [Value.isTrue] <;> first
+    | rfl
+    | (split <;> rfl)
+    | (rename_i s t; by_cases ht : t = "" <;> by_cases hs : s = "" <;> simp [ht, hs] <;> rfl)
+
+/-- `CASE WHEN length(#0) IS AN INTEGER AND length(#1) = 0 THEN #0 ELSE split(#0, #1) END`:
+the reference's `sverify_split_first`, which gives `s` for an empty pattern. -/
+def splitFirstSchemaT : Expr :=
+  .ifThen (.bin .and (.un (.isNum .int) (.un .length (.field 0)))
+      (.bin .eq (.un .length (.field 1)) (.lit (.int 0))))
+    (.field 0) (.bin .splitFirst (.field 0) (.field 1))
+
+omit [Boxes.Ambient] in
+theorem splitFirstSchemaT_must : 0 ∈ splitFirstSchemaT.must ∧ 1 ∈ splitFirstSchemaT.must := by
+  simp [Expr.must, splitFirstSchemaT]
+
+theorem ref_splitFirst (x y : Value) :
+    Profile.reference.bin .splitFirst x y = .ok (BinFn.apply .splitFirst x y) := by
+  cases x <;> cases y <;> rfl
+
+theorem splitFirst_agree (x y : Value) :
+    (splitFirstSchemaT.evalP Profile.polars [x, y]).Agree (Profile.reference.bin .splitFirst x y) := by
+  simp only [splitFirstSchemaT, Expr.evalP, List.getD, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, bind, Except.bind, polars_length, polars_isNum,
+    polars_eq, polars_and3, eq_lenV_zero, polars_splitFirst, ref_splitFirst]
+  cases x <;> cases y <;> simp [lenV, Value.isNum, Value.isTrue, BinFn.apply, Outcome.Agree]
+  all_goals first
+    | rfl
+    | (rename_i s t; by_cases ht : t = "" <;> simp [ht, and3, Text.splitFirst])
+
+/-- **`strpos` from the split** (ruling 286, amended): `1` for an empty `t` (of a
+string `s`), `0` where the prefix before `t` is `s` itself, else one more than its
+characters, capped as the reference caps positions. Polars's `str.find` is not
+called. -/
+def strposTemplate : Expr :=
+  let sf := Expr.bin .splitFirst (.field 0) (.field 1)
+  let lsf := Expr.un .length sf
+  .ifThen (.bin .and (.un (.isNum .int) (.un .length (.field 0)))
+      (.bin .eq (.un .length (.field 1)) (.lit (.int 0))))
+    (.lit (.int 1))
+    (.ifThen (.bin .eq sf (.field 0)) (.lit (.int 0))
+      (.ifThen (.bin .lt lsf (.lit (.int Text.sizeCap))) (.bin .add lsf (.lit (.int 1))) lsf))
+
+omit [Boxes.Ambient] in
+theorem strposTemplate_must : 0 ∈ strposTemplate.must ∧ 1 ∈ strposTemplate.must := by
+  simp [Expr.must, strposTemplate]
+
+theorem ref_strpos (x y : Value) :
+    Profile.reference.bin .strpos x y = .ok (BinFn.apply .strpos x y) := by
+  cases x <;> cases y <;> rfl
+
+theorem polars_add_int (a b : Int) (h1 : -2 ^ 63 ≤ a + b) (h2 : a + b ≤ 2 ^ 63 - 1) :
+    Profile.polars.bin .add (.int a) (.int b) = .ok (.int (a + b)) := ref_add_int a b h1 h2
+
+omit [Boxes.Ambient] in
+theorem strpos_empty (s : String) : Text.strpos s "" = 1 := by
+  rw [strpos_chars]; rfl
+
+omit [Boxes.Ambient] in
+theorem strpos_absent {s t : String} (ht : t ≠ "") (h : occurs t.toList s.toList = false) :
+    Text.strpos s t = 0 := by
+  have ht' : t.toList ≠ [] := fun e => ht (String.toList_eq_nil_iff.mp e)
+  rw [strpos_chars]; simp [strposChars, ht', h, Text.capped, Text.sizeCap]; decide
+
+omit [Boxes.Ambient] in
+theorem strpos_found {s t : String} (ht : t ≠ "") (h : occurs t.toList s.toList = true) :
+    Text.strpos s t = Text.capped ((Text.splitFirst s t).length + 1) := by
+  have ht' : t.toList ≠ [] := fun e => ht (String.toList_eq_nil_iff.mp e)
+  rw [strpos_chars, splitFirst_length ht]; simp [strposChars, ht', h]
+
+theorem apply_eq_str (a b : String) : BinFn.apply .eq (.str a) (.str b) = .bool (a == b) := rfl
+
+theorem strpos_agree (x y : Value) :
+    (strposTemplate.evalP Profile.polars [x, y]).Agree (Profile.reference.bin .strpos x y) := by
+  simp only [strposTemplate, Expr.evalP, List.getD, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, bind, Except.bind, polars_length, polars_isNum,
+    polars_eq, polars_and3, polars_ltV, eq_lenV_zero, polars_splitFirst, ref_strpos]
+  cases x <;> cases y
+  case str.str s t =>
+    simp only [lenV, Value.isNum]
+    by_cases ht : t = ""
+    · subst ht
+      simp [and3, Value.isTrue, Outcome.Agree, BinFn.apply, strpos_empty]
+    · simp only [ht, decide_false, show and3 (.bool true) (.bool false) = .bool false from rfl,
+        Polars.isTrue_bool, Bool.false_eq_true, ite_false, apply_eq_str]
+      cases ho : occurs t.toList s.toList
+      · have he : Text.splitFirst s t = s := (splitFirst_eq_self ht).mpr ho
+        simp [he, Outcome.Agree, BinFn.apply, strpos_absent ht ho]
+      · have he : Text.splitFirst s t ≠ s := fun e => by
+          rw [(splitFirst_eq_self ht).mp e] at ho; cases ho
+        simp only [beq_iff_eq, he, ite_false, apply_lt_int, Polars.isTrue_bool, decide_eq_true_eq]
+        have hp : BinFn.apply .strpos (.str s) (.str t) = .int (Text.strpos s t) := rfl
+        rw [hp, strpos_found ht ho]
+        have h0 : (0 : Int) ≤ ((Text.splitFirst s t).length : Int) := Int.natCast_nonneg _
+        generalize ((Text.splitFirst s t).length : Int) = n at h0 ⊢
+        unfold Text.capped Text.sizeCap
+        by_cases hn : n < 2 ^ 32
+        · have hm : min n (2 ^ 32) = n := Int.min_eq_left (Int.le_of_lt hn)
+          simp only [hm, hn, ↓reduceIte]
+          rw [polars_add_int n 1 (by omega) (by omega)]
+          simp only [Outcome.Agree, Value.int.injEq]
+          omega
+        · have hm : min n (2 ^ 32) = 2 ^ 32 := Int.min_eq_right (by omega)
+          simp only [hm, Int.lt_irrefl, ↓reduceIte]
+          simp only [Outcome.Agree, Value.int.injEq]
+          omega
+  all_goals simp [lenV, Value.isNum, and3, Value.isTrue, BinFn.apply, Outcome.Agree]
+
+/-- **Polars's entry for `strpos`**, hand-built: `strposTemplate`, exact. -/
+def strposEntry : BinEntry Profile.polars .strpos :=
+  .ofAgree strposTemplate strposTemplate_must strpos_agree
+
 end Polars
 
 end Substrait
