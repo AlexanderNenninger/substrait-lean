@@ -59,6 +59,7 @@ Semantics are pinned to `Rel.eval` rather than left to Polars:
 
 from __future__ import annotations
 
+import functools
 import itertools
 import json
 import math
@@ -780,6 +781,24 @@ def substr(s: Val, a: Val, n: int | None) -> pl.Expr:
     return pl.when(a.expr.is_null()).then(None).otherwise(s.expr.str.slice(lo, length))
 
 
+def rust_replacement(r: str) -> str:
+    """The reference's replacement `r` (`Text.rewriteOk`: `\\0` … `\\9` name
+    groups and `\\\\` is a backslash) as the `regex` crate's, which names
+    groups `${0}` … `${9}` and writes a literal `$` as `$$` (polars-regex)."""
+    out, k = [], 0
+    while k < len(r):
+        c = r[k]
+        if c == "\\" and k + 1 < len(r):
+            k += 1
+            c = r[k]
+            out.append(f"${{{c}}}" if c.isdigit() else c)
+        else:
+            out.append("$$" if c == "$" else c)
+        k += 1
+    return "".join(out)
+
+
+@functools.cache
 def regex_groups(p: str) -> int | None:
     """Entries of `regexp_match(s, p)` on a match (`_plan_read.regex_groups`).
     `None` if the pattern does not compile, asked of Polars, which compiles
@@ -1094,6 +1113,8 @@ class Exprs:
                 return self.round_to(self(arg_js[0]), arg_js[1])
             if name == "array_length" and len(arg_js) == 1:
                 return self.regex_match(arg_js[0])
+            if name in ("regexp_extract", "regexp_replace") and len(arg_js) >= 2:
+                return self.regex_rewrite(name, arg_js)
             if name == "replace" and len(arg_js) == 3:
                 # `Text.replace` is Python's `str.replace`, except that an empty
                 # pattern matches nowhere (D44).
@@ -1263,16 +1284,54 @@ class Exprs:
         args = [a["value"] for a in f.get("arguments", [])]
         if len(args) != 2:
             raise Unsupported("regexp_match with flags is not supported")
-        s, p = self(args[0]), self.constant(args[1], "a regular expression")
-        if s.dtype not in (pl.String, pl.Null) or not isinstance(p, str):
-            raise Unsupported(f"regexp_match of {s.dtype} and {p!r}")
-        groups = regex_groups(p)
-        if groups is None:
-            # The pattern is compiled whatever the input (`UnFn.issue`).
-            bad = issue(pl.lit(True), BadRegex, f"invalid regular expression {p!r}")
-            return Val(pl.lit(None, pl.Int64), pl.Int64, (*s.issues, bad))
+        s, p, groups, bad = self.regex_args("regexp_match", args, pl.Int64)
+        if bad is not None:
+            return bad
         found = s.expr.str.contains(p)
         return Val(pl.when(found).then(pl.lit(groups, pl.Int64)), pl.Int64, s.issues)
+
+    def regex_args(
+        self, name: str, args: list[dict], dtype: DType
+    ) -> tuple[Val, str, int, Val | None]:
+        """The text, the constant pattern and its group count
+        (`regex_groups`) of a regular expression's call, and the call's
+        value of type `dtype` where the pattern does not compile: NULL, with
+        the issue that raises it (`UnFn.issue`), since the pattern is
+        compiled whatever the input."""
+        s, p = self(args[0]), self.constant(args[1], "a regular expression")
+        if s.dtype not in (pl.String, pl.Null) or not isinstance(p, str):
+            raise Unsupported(f"{name} of {s.dtype} and {p!r}")
+        groups = regex_groups(p)
+        if groups is None:
+            bad = issue(pl.lit(True), BadRegex, f"invalid regular expression {p!r}")
+            return s, p, 0, Val(pl.lit(None, dtype), dtype, (*s.issues, bad))
+        return s, p, groups, None
+
+    def regex_rewrite(self, name: str, arg_js: list[dict]) -> Val:
+        """`regexp_extract(s, p, g)` and `regexp_replace(s, p, r[, 'g'])` of a
+        constant pattern (`UnFn.regexExtract`, `UnFn.regexReplace`, #50), with
+        the `regex` crate (polars-regex). Polars's `extract` is NULL where the
+        reference's is `''`: no match, a group that took no part, or no such
+        group. Its replacement names groups `${1}` where the reference's names
+        them `\\1`."""
+        s, p, _, bad = self.regex_args(name, arg_js, pl.String)
+        if bad is not None:
+            return bad
+        rest = [self.constant(a, f"{name}'s argument") for a in arg_js[2:]]
+        if name == "regexp_extract":
+            g = rest[0] if rest else 0
+            if not isinstance(g, int) or isinstance(g, bool) or g < 0:
+                raise Unsupported(f"regexp_extract's group {g!r}")
+            out = s.expr.str.extract(p, g).fill_null("")
+        else:
+            r, *flags = rest
+            if not isinstance(r, str) or flags not in ([], ["g"]):
+                raise Unsupported(f"regexp_replace with {r!r} and flags {flags!r}")
+            if flags:
+                out = s.expr.str.replace_all(p, rust_replacement(r))
+            else:
+                out = s.expr.str.replace(p, rust_replacement(r), n=1)
+        return Val(pl.when(s.expr.is_null()).then(None).otherwise(out), pl.String, s.issues)
 
     def substring(self, s: Val, a: Val, n: int | None, wrap: bool = True) -> Val:
         if s.dtype not in (pl.String, pl.Null) or a.dtype not in (pl.Int64, pl.Null):

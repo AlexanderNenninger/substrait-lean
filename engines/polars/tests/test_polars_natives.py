@@ -1,6 +1,7 @@
 """#1270: operations the Polars translation computes natively, against the
 Python and numpy code they replace, on the streaming engine."""
 
+import json
 import math
 import random
 import re
@@ -9,6 +10,7 @@ import ibis
 import polars as pl
 import pytest
 
+from sverify._lean_eval import inline_tables, lean_rows
 from sverify.engine import connect, run_plan, substrait_json, written_plan
 from sverify.ibis_substrait import to_substrait_json
 from sverify_polars import engine as E
@@ -161,3 +163,30 @@ def test_string_functions_polars_cannot_match_are_refused(build, message):
     before Polars by both front ends; its Polars refusal guards raw plans.)"""
     t = ibis.table(_TEXTS, name="r")
     _refused(_TEXTS, [("ab", "a%")], to_substrait_json(t.select(o=build(t))), message)
+
+
+_REGEX_TEXTS = ["abc", "bab", "", "aXbY", "a\nb", "日ab", "$1", "aaa", "bbb", "cab", None]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    ["SELECT regexp_extract(s, '^(a|b)(.)', 2) AS o FROM r",
+     "SELECT regexp_extract(s, '(x)?b', 1) AS o FROM r",
+     "SELECT regexp_extract(s, 'a+', 0) AS o FROM r",
+     "SELECT regexp_replace(s, '[aeiou]', '<\\0>', 'g') AS o FROM r",
+     "SELECT regexp_replace(s, 'b*', '-', 'g') AS o FROM r",
+     "SELECT regexp_replace(s, '(a)(b)?', '\\2$\\1\\\\') AS o FROM r",
+     "SELECT regexp_replace(s, '.$', '$$') AS o FROM r"],
+)  # fmt: skip
+def test_regex_rewrites_are_the_reference(sql):
+    """`regexp_extract` and `regexp_replace` (#2540) on Polars give the rows
+    `Rel.eval` gives: `''` where Polars's `extract` is NULL, and the
+    reference's `\\1` and `$` in the replacement as the `regex` crate's
+    `${1}` and `$$` (polars-regex)."""
+    con = connect()
+    rows = [(s, None) for s in _REGEX_TEXTS]
+    con.create("r", _TEXTS, rows)
+    plan = written_plan(substrait_json(con, sql, "portable"))
+    want = lean_rows(json.dumps(inline_tables(json.loads(plan), {"r": rows})))
+    got = [tuple(r.values()) for r in run_plan(con, plan, "polars").to_pylist()]
+    assert got == want

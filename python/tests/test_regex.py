@@ -212,12 +212,15 @@ def test_refused(build, message):
         written_plan(to_substrait_json(t.select(x=build(t))))
 
 
-@pytest.mark.parametrize("engine", ["polars"])
-def test_other_engines_refuse_until_271(engine):
+def test_polars_runs_regexes_and_refuses_digests():
+    """Polars runs `regexp_extract` and `regexp_replace` (#2540) and has no
+    `md5` (polars-string-functions-missing)."""
     con = connect()
     put_table(con, "r", pa.table({"s": ["abc"]}))
     t = ibis.table(R, name="r")
-    for e in (t.s.re_extract("b", 0), t.s.re_replace("b", "c"), t.s.hexdigest("md5")):
+    for e, want in ((t.s.re_extract("b", 0), "b"), (t.s.re_replace("b", "c"), "acc")):
         plan = written_plan(to_substrait_json(t.select(x=e)))
-        with pytest.raises(Exception, match="see #2540"):
-            run_plan(con, plan, engine)
+        assert run_plan(con, plan, "polars").column("x").to_pylist() == [want]
+    plan = written_plan(to_substrait_json(t.select(x=t.s.hexdigest("md5"))))
+    with pytest.raises(Exception, match="see #2540"):
+        run_plan(con, plan, "polars")

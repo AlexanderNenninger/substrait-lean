@@ -9,6 +9,7 @@ import ibis.expr.types as ir
 
 from sverify_dev.coverage_cases._common import (
     DUCKDB_ONLY,
+    NOT_ON_SPARK,
     Case,
     R,
     V,
@@ -64,9 +65,8 @@ CASE_MAPPING = {"snowflake": "case mapping is recorded privately"}
 REFUSED: dict[str, dict[str, str]] = {
     "upper": CASE_MAPPING,
     "capitalize": CASE_MAPPING,
-    # DuckDB only until the generated lowerings (#271).
-    "re_extract": DUCKDB_ONLY,
-    "re_replace": DUCKDB_ONLY,
+    "re_extract": NOT_ON_SPARK,
+    "re_replace": NOT_ON_SPARK,
     "hexdigest": DUCKDB_ONLY,
     # Polars has no levenshtein (polars-string-functions-missing, #1270).
     "levenshtein": {"polars": "no levenshtein"},

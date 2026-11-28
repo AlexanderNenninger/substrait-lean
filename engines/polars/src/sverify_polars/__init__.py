@@ -172,7 +172,7 @@ PLUGIN = ProfilePlugin(
     run_tables=_run_tables,
     guard_free_theorem="Rel.polars_sound",
     fallbacks=_fallbacks,
-    functions=frozenset({"array_agg"}),
+    functions=frozenset({"array_agg", "regexp_extract", "regexp_replace"}),
     # Only the integer `%` guard (#2058); the date and RANGE guards stay refused.
     guards=(MIN_MOD_GUARD,),
     shim_text={
