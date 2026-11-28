@@ -1,0 +1,46 @@
+{
+  "id": "duckdb-decimal-trunc",
+  "engine": "duckdb",
+  "engine_version": "2.0.1",
+  "title": "`trunc(x)` of a decimal: exact, toward zero, a `DECIMAL(p', 0)` for every type",
+  "verdict": "`trunc` of a decimal is the truncated integer at scale 0, never a DOUBLE; `CAST(trunc(x) AS HUGEINT)` is exact on 38 digits",
+  "area": "decimals",
+  "options": [
+    "float_to_int"
+  ],
+  "rows": [
+    {
+      "group": "cast.num",
+      "option": "float_to_int",
+      "types": [
+        "any"
+      ],
+      "evidence": "probe"
+    }
+  ],
+  "constructs": [
+    "trunc",
+    "CAST(… AS HUGEINT)"
+  ],
+  "settings": {},
+  "description": [
+    "`trunc(x)` of a `DECIMAL(p, s)` is `x` truncated toward zero, as a decimal of scale 0, for every one of the 779 types (1 ≤ p ≤ 38, 0 ≤ s ≤ p): 38 result types `DECIMAL(p', 0)`, never a DOUBLE, `DECIMAL(38,38)` included, where `x % 1` falls back to DOUBLE (duckdb-decimal-modulus). `trunc` of `0.99…9` (38 nines) at `DECIMAL(38,38)` is `0`.",
+    "`CAST(trunc(x) AS HUGEINT)` is the truncated integer, exactly, at ±0.5, ±1.5, ±2.5, -0.0 and each type's largest and smallest values, and NULL for NULL: 38 digits fit a HUGEINT, so the cast never raises."
+  ],
+  "reference": "`dtrunc k` (`UnFn.dtrunc`) is the unscaled value divided by 10^k, truncating toward zero. The lowering's template `dtrunc k (dsub x (dmod x 10^k))` (ruling 284, as amended) is rendered as `CAST(trunc(x) AS HUGEINT)`: `trunc(x)` is `x - x tmod 1` at every scale, and DuckDB's own cast of a decimal to an integer rounds half away from zero (duckdb-R9), which keeps an integer.",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-28",
+      "method": "probe",
+      "checked_by": "#2572 session (duckdb 2.0.1, Python, 7 410 cases over 779 types)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/probes/decimal_trunc.py"
+        }
+      ],
+      "notes": "For every DECIMAL(p, s): typeof(trunc(x)) (a DECIMAL(p', 0) for each, 38 kinds), and CAST(trunc(x) AS HUGEINT) at ±0.5, ±1.5, ±2.5, -0.0, the largest and smallest values of the type, and NULL, against Python's ROUND_DOWN: 0 mismatches."
+    }
+  ]
+}
