@@ -333,9 +333,9 @@ in `int.arith`, `fp.arith`, `dec.arith` and `time.arith`).
 | windows | `win.agg` | aggregates over a frame | the aggregate's group's, and `window_sum_algo` (how the frame's sum is kept) |
 | casts | `cast.num` | double or decimal to integer (`CAST`, `TRY_CAST`) | `float_to_int` |
 | casts | `cast.dec` | a decimal to a smaller scale, a double to a decimal | `decimal_rescale` |
-| relations | `rel.sort` | `orderBy`, a window's order | `null_order`, `clustered`, `tie_order` |
-| relations | `rel.fetch` | `fetch` | `tie_order` (the rows taken of a tie) |
+| relations | `rel.sort` | `orderBy`, a window's order, a measure's order (`string_agg`, `first`, … with `ORDER BY`) | `null_order`, `clustered` (ties in any order: one behaviour, read by none) |
 | relations | `rel.keys` | `aggregate`'s keys, `distinct`, joins, `UNION DISTINCT`, `INTERSECT`, `EXCEPT` | `nan_equality`, `zero_sign` |
+| relations | `rel.join` | joins | `null_join_keys`, and the keys' (`rel.keys`) |
 
 `cast.num` holds `ftoi`, `ftoiOrNull` and `dtrunc` (`Functions.casts`): Substrait leaves
 the rounding of these casts open ([ST-6](../upstream/bugs/ST-6.json)), and the
@@ -962,6 +962,17 @@ A sort key's NULL placement shows each case of the table. Take a plan with
 - A `CLUSTERED` key allows any order with equal keys adjacent, under the
   reference as under Substrait. An engine without clustering realizes it by
   sorting on the keys: a sorted order is clustered, at the cost of a sort.
+
+A window's sort and a measure's sort (`string_agg`, `first`, … with an `ORDER
+BY`) read `null_order` as an `ORDER BY` does, and `Rel.reads` lists it for them
+(`NullsSortedP`, ruling 289 N1); a clustered key keeps its direction there, as
+the reference has it. Every other relational option a plan reads (a key's
+`zero_sign` and `nan_equality`, a join's `null_join_keys`) takes the
+reference's behaviour in `Rel.AllowedP`, so an engine's table must be within
+the reference there. `ProfileTable.unmodelled` lists where it is not, and each
+engine's registry entry states that list (`--options`' `unmodelled`): Polars's
+`zero_sign` at keys is on it until its fact is probed
+([#2539](https://github.com/AlexanderNenninger/substrait-lean/issues/2539)).
 
 `obligations reference duckdb` holds the last three of these, generated from
 the `null_order` and `clustered` rows of the two profiles. The first is the

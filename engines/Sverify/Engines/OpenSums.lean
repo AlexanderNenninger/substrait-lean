@@ -70,6 +70,15 @@ theorem ProfileTable.refSums_allows_of_ne {t : ProfileTable} {g : String} (hg : 
   simp only [allows, refSums_choice?_of_ne hg]
 
 omit [Boxes.Ambient] in
+/-- A window's or a measure's sort reads `rel.sort`, which `refSums` keeps. -/
+theorem NullsSortedP.refSums {t : ProfileTable} {keys : List SortKey} {out : Relation}
+    (h : NullsSortedP t keys out) : NullsSortedP t.refSums keys out := by
+  obtain ⟨nfs, hn, hs⟩ := h
+  refine ⟨nfs, Forall2.imp (fun k nf hk => ?_) hn, hs⟩
+  unfold NullOk at hk ⊢
+  rwa [ProfileTable.refSums_allows_of_ne (by decide)]
+
+omit [Boxes.Ambient] in
 theorem ProfileTable.refSums_allows_sum (t : ProfileTable) :
     t.refSums.allows "agg.fsum" "sum_order" [] = ["EXACT"] := rfl
 
@@ -192,7 +201,9 @@ theorem Measure.AllowedP.refSums (hc : ctx.ReflAt q) (hI : I.Within t) (hi : r.A
     {grp : Relation} (hg : (gs = [] ∧ grp = i) ∨ ∃ x ∈ i, grp = groupRows gs i (groupKey gs x I) I) {col : Nat} {m : Measure}
     (hn : m.SumNear q ctx t cat r gs col) {v : Value} (h : m.AllowedP t I grp v) :
     ∃ v₀, m.AllowedP t.refSums I grp v₀ ∧ Value.Equiv q ctx col v₀ v := by
-  obtain ⟨s, hs, hsort, hv⟩ := h
+  obtain ⟨s, hs, hsort₀, hv⟩ := h
+  have hsort : m.fn.sorts = true → NullsSortedP t.refSums m.sort s := fun hm =>
+    NullsSortedP.refSums (hsort₀ hm)
   have hgi : r.GroupInputs t cat gs m (m.inputs s I) := ⟨I, hI, i, hi, grp, hg, s, hs, rfl⟩
   have hexact : "EXACT" ∈ t.refSums.allows "agg.fsum" "sum_order" [] := by
     rw [ProfileTable.refSums_allows_sum]; exact List.mem_singleton_self _

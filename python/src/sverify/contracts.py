@@ -76,49 +76,47 @@ import weakref
 from collections.abc import Callable, Collection, Container, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, Literal, get_args
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 import ibis
 import ibis.expr.datatypes as dt
 import ibis.expr.operations as ops
 import ibis.expr.types as ir
 from ibis.common.deferred import Deferred
-from ibis.common.graph import Node
 
 from sverify import _engines, _hooks, _pipe, _stages
 from sverify import observation as _observation
 from sverify._checker import INF_MAG, MAX_MAG, NAN_MAG, NEG_ZERO, decode_double  # noqa: F401
-from sverify._dialect import DialectDifference
 from sverify._hooks import COLLECTING, Collected
 from sverify._quarantine import Policy, check_policy
-from sverify._unsupported import ConditionError, SverifyWarning
+from sverify._unsupported import ConditionError as _ConditionError
+from sverify._unsupported import SverifyWarning as _SverifyWarning
 from sverify._unsupported import Unsupported as _Unsupported
 from sverify._user_text import did_you_mean
 from sverify._verdict import split_assumed, verdict
 from sverify.conditions import (
     ON_DATA,
-    Approx,
-    ArrivesWithin,
-    Discharged,
     Inferred,
-    Key,
-    MaxRows,
-    NonOverlapping,
-    Postcondition,
-    PreconditionError,
-    References,
-    RowsPer,
     TableCondition,
     TextFact,
-    Unique,
     _positions,
     expand_keys,
     label,
     q,
     resolve,
-    unique,
 )
-from sverify.counterexample import Counterexample
+from sverify.conditions import Approx as _Approx
+from sverify.conditions import ArrivesWithin as _ArrivesWithin
+from sverify.conditions import Discharged as _Discharged
+from sverify.conditions import Key as _Key
+from sverify.conditions import MaxRows as _MaxRows
+from sverify.conditions import NonOverlapping as _NonOverlapping
+from sverify.conditions import Postcondition as _Postcondition
+from sverify.conditions import PreconditionError as _PreconditionError
+from sverify.conditions import References as _References
+from sverify.conditions import RowsPer as _RowsPer
+from sverify.conditions import Unique as _Unique
+from sverify.conditions import unique as _unique
 from sverify.engine import (
     Connection,
     Engine,
@@ -126,7 +124,6 @@ from sverify.engine import (
     plan_and_differences,
     run_checker,
 )
-from sverify.observation import Lenses
 from sverify.proposers import (
     _EPOCH,
     INFER,
@@ -141,17 +138,10 @@ from sverify.report import (
     SOURCE_THRESHOLD,
     SOURCE_THRESHOLD_HINT,
     TRUNC_HINT,
-    ColumnFacts,
     Condition,
-    InferredWarning,
-    Issue,
-    Needed,
     OnInferred,
-    PostconditionError,
-    Report,
     Semantics,
     Transform,
-    VerificationError,
     _by_table,
     _needed,
     _sum,
@@ -164,6 +154,22 @@ from sverify.report import (
     violation_counts,
     violations,
 )
+from sverify.report import InferredWarning as _InferredWarning
+from sverify.report import Issue as _Issue
+from sverify.report import PostconditionError as _PostconditionError
+from sverify.report import VerificationError as _VerificationError
+
+# The public types this module uses, under private names at run time and bare
+# in annotations, so that it re-exports none of them (#2622): import them from
+# `sverify` and `sverify.types`.
+if TYPE_CHECKING:
+    from ibis.common.graph import Node
+
+    from sverify._dialect import DialectDifference
+    from sverify.conditions import Discharged, Postcondition
+    from sverify.counterexample import Counterexample
+    from sverify.observation import Lenses
+    from sverify.report import ColumnFacts, Issue, Needed, Report, VerificationError
 
 type Policies = dict[str, dict[str, set[Policy | None]]]
 """By table and condition label, the `on_violation` of each transform that
@@ -304,26 +310,6 @@ def _result_schema(transform: Transform, schemas: Mapping[str, Any], semantics: 
     return transform.schema()
 
 
-def _observation_json(obs: _observation.Lenses) -> dict[str, Any]:
-    """The observation as the checker reads it (`Seen.ofJson?`): each component by name,
-    a tolerance on doubles as the exact decimal of each double the run compares with."""
-    from decimal import Decimal
-
-    out: dict[str, Any] = {
-        name: getattr(obs, name) for name, _ in _observation._COMPONENTS if name != "floats"
-    }
-    f = obs.floats
-    out["floats"] = (
-        f
-        if isinstance(f, str)
-        else {
-            **{k: str(Decimal(v)) for k in ("abs", "rel") if (v := getattr(f, k)) is not None},
-            **({"ulps": f.ulps} if f.ulps is not None else {}),
-        }
-    )
-    return out
-
-
 def _declared_text(columns: Sequence[str], conds: Sequence[Condition]) -> dict[str, list[str]]:
     """The facts `conds` declare about the text columns, by column position, for the
     request (#1506, D51): the inferred conditions', or those of the user's own copy of
@@ -448,7 +434,7 @@ def requires_by_input(
         return {}
     if not isinstance(requires, Mapping):
         conds: list[Any] = (
-            [requires] if isinstance(requires, str | TableCondition | Key) else list(requires)
+            [requires] if isinstance(requires, str | TableCondition | _Key) else list(requires)
         )
         if len(inputs) != 1:
             raise error(
@@ -760,7 +746,7 @@ def infer_bounds(
         out.ties = _confirmed_ties(transform, requires, out, tables, params, inputs, semantics)
     if on_inferred == "warn" and out._inferred:
         warnings.warn(
-            InferredWarning(
+            _InferredWarning(
                 "assumed inferred precondition(s): "
                 + "; ".join(
                     n.split(": declare")[0]
@@ -778,13 +764,13 @@ def infer_bounds(
 OnUnproved = Literal["error", "check", "warn"]
 
 
-class ProfilePendingWarning(SverifyWarning):
+class ProfilePendingWarning(_SverifyWarning):
     """`verify` was asked for an engine's own profile (`semantics="spark"`)
     that the checker has no report under yet (#1288): the report is the
     reference's, and says so (`Report.semantics` is `"portable"`)."""
 
 
-class UnprovedWarning(SverifyWarning):
+class UnprovedWarning(_SverifyWarning):
     """A transform with `on_unproved="warn"` is built although its contract
     is not proved; its refreshes run unverified (`UnverifiedRunWarning`).
 
@@ -859,7 +845,7 @@ def _observed(report: Report, observed: Lenses, ensures: Sequence[Condition]) ->
             replace(
                 c,
                 reads=None if r is None else tuple(r),
-                approx=isinstance(cond, Approx),
+                approx=isinstance(cond, _Approx),
                 nullable=None
                 if r is None or any(c not in report.facts for c in r)
                 else tuple(c for c in r if report.facts[c].nullable),
@@ -871,17 +857,17 @@ def _observed(report: Report, observed: Lenses, ensures: Sequence[Condition]) ->
 
 def _reads(cond: Condition, columns: Mapping[str, Any]) -> list[str] | None:
     """The output columns `cond` reads; None where that is not known."""
-    if isinstance(cond, Unique | RowsPer):
+    if isinstance(cond, _Unique | _RowsPer):
         return list(cond.cols)
-    if isinstance(cond, NonOverlapping):
+    if isinstance(cond, _NonOverlapping):
         return [cond.lo, cond.hi, *cond.by]
-    if isinstance(cond, References):
+    if isinstance(cond, _References):
         return list(cond.cols)
-    if isinstance(cond, ArrivesWithin):
+    if isinstance(cond, _ArrivesWithin):
         return [cond.col]
-    if isinstance(cond, MaxRows):
+    if isinstance(cond, _MaxRows):
         return []
-    if isinstance(cond, Approx):
+    if isinstance(cond, _Approx):
         return _reads(cond.cond, columns)
     if isinstance(cond, str):
         import sqlglot
@@ -1012,7 +998,7 @@ def _null_preconditions(
             if label(new) in {label(x) for x in [*requires.get(t, []), *found.get(t, [])]}:
                 continue
             found.setdefault(t, []).append(new)
-            source[label(new)] = Issue(NULL_KIND, c.label, False, shown=c.label)
+            source[label(new)] = _Issue(NULL_KIND, c.label, False, shown=c.label)
     if not found:
         return report
     widened = {t: list(cs) for t, cs in requires.items()}
@@ -1116,7 +1102,7 @@ def _key_reasons(
     terms of the input it comes from (#688): declare the input's key where
     that proves it (checked), say the key is lost on the way where it is
     already declared, or that no key on an input reaches the column."""
-    keys = {label(c): c for c in ensures if isinstance(c, Unique)}
+    keys = {label(c): c for c in ensures if isinstance(c, _Unique)}
     ensured = []
     for c in report.ensures:
         key = keys.get(c.label)
@@ -1133,7 +1119,7 @@ def _key_reasons(
             )
         else:
             t, base = src
-            want = unique(*base)
+            want = _unique(*base)
             where = ", ".join(f"{t}.{b}" for b in base)
             stated = {label(x) for x in requires.get(t, [])}
             came = f"{out} {'comes' if len(key.cols) == 1 else 'come'} from {where}"
@@ -1358,9 +1344,9 @@ def _prove_once(
     req_conds = [(t, c) for t, cs in requires.items() for c in cs if planned(c)]
     for t, cs in requires.items():
         for c in cs:
-            if isinstance(c, NonOverlapping) and t in schemas:
+            if isinstance(c, _NonOverlapping) and t in schemas:
                 c.check_types(t, schemas[t])
-            elif isinstance(c, References):
+            elif isinstance(c, _References):
                 c.check_types(t, schemas)
 
     unreadable: dict[str, _Unsupported] = {}
@@ -1395,7 +1381,7 @@ def _prove_once(
             p["relations"][0]["root"]["names"] = [label(c)]
             ens_plans.append(p)
     if unreadable:
-        raise ConditionError(unreadable)
+        raise _ConditionError(unreadable)
     transform_plan = plan(transform)
     out_cols: list[str] = transform_plan["relations"][0]["root"]["names"]
     out_types = _output_types(transform, schemas) if counterexamples else None
@@ -1414,7 +1400,7 @@ def _prove_once(
         }
 
     keys = entries("keys")
-    ensures_keys = [_positions(c.cols, out_cols) for c in ensures if isinstance(c, Unique)]
+    ensures_keys = [_positions(c.cols, out_cols) for c in ensures if isinstance(c, _Unique)]
     foreign_keys = entries("references")
     caps = {t: min(ns) for t, ns in entries("max_rows").items() if ns}
     per_key = {t: ps for t, ps in entries("rows_per").items() if ps}
@@ -1445,20 +1431,20 @@ def _prove_once(
         # as written up to the order of rows only under `multiset` (#1787).
         "rows": obs.rows,
         "floats_plan": obs.floats == "plan",
-        "approx": [isinstance(c, Approx) for c in ensures if not isinstance(c, TableCondition)],
+        "approx": [isinstance(c, _Approx) for c in ensures if not isinstance(c, TableCondition)],
         "sql": isinstance(transform, str),
         # The observation the checker meets each engine's rows against, and what each
         # postcondition reads (`Realize.lean`, #1071). A tolerance goes as the exact
         # decimal of the double the run compares with.
-        "lenses": _observation_json(obs),
+        "lenses": obs.checker_json(),
         "ensures_meta": [
             {
                 "kind": "unique"
-                if isinstance(c, Unique)
+                if isinstance(c, _Unique)
                 else "other"
                 if isinstance(c, TableCondition)
                 else "expr",
-                "approx": isinstance(c, Approx),
+                "approx": isinstance(c, _Approx),
                 "reads": None
                 if (r := _reads(c, dict(result_schema.items()))) is None
                 else [out_cols.index(n) for n in r if n in out_cols],
@@ -1579,7 +1565,7 @@ def _prove_once(
             )
             depends = e.get("depends")
             checked.append(
-                Postcondition(
+                _Postcondition(
                     e["name"],
                     e["proved"],
                     e["value"],
@@ -1847,7 +1833,7 @@ def _issues(
                 + " (or tighter bounds your data keeps)"
             )
         out.append(
-            Issue(
+            _Issue(
                 kind,
                 expr,
                 error,
@@ -2041,7 +2027,7 @@ def _confirmed_ties(
         for k in ks:
             cols = re.fullmatch(r"unique\((.*)\)", k)
             if cols:
-                widened.setdefault(t, []).append(unique(*cols[1].split(", ")))
+                widened.setdefault(t, []).append(_unique(*cols[1].split(", ")))
     again = _infer_bounds(transform, widened, [], tables, 0, params, False, inputs, semantics)
     return keys if again.deterministic else {}
 
@@ -2058,7 +2044,7 @@ def tie_keys(expr: ir.Table) -> dict[str, list[str]]:
         if len(tables) != 1 or len(cols) != len(fields):
             return
         (t,) = tables
-        lab = label(unique(*dict.fromkeys(c for _t, c in cols)))
+        lab = label(_unique(*dict.fromkeys(c for _t, c in cols)))
         if lab not in out.setdefault(t, []):
             out[t].append(lab)
 
@@ -2239,7 +2225,7 @@ def _sum_hint(op: Node, requires: Mapping[str, Sequence[Condition]]) -> str | No
     sub = rels[0].to_expr().select(x=arg.to_expr())
     leaves = leaf_tables(sub)
     known = {
-        t: [c for c in cs if not isinstance(c, References)]
+        t: [c for c in cs if not isinstance(c, _References)]
         for t, cs in requires.items()
         if t in leaves
     }
@@ -2384,7 +2370,7 @@ def discharge(
         for source in [next((s for n, s in counts if c.capped_by(n)), None)]
         if source is not None
     }
-    out += [Discharged(name, label(c), counted[id(c)]) for c in todo if id(c) in counted]
+    out += [_Discharged(name, label(c), counted[id(c)]) for c in todo if id(c) in counted]
     todo = [c for c in todo if id(c) not in counted]
     if facts is not None:
         stages: dict[str, list[str]] = {SCHEMA: []}
@@ -2399,7 +2385,7 @@ def discharge(
             assumed += extra
             proved = _prove_from(table, assumed, rowwise)
             out += [
-                Discharged(name, label(c), source, isinstance(c, Inferred))
+                _Discharged(name, label(c), source, isinstance(c, Inferred))
                 for c in rowwise
                 if label(c) in proved
             ]
@@ -2410,13 +2396,13 @@ def discharge(
         if error is not None:
             n = violations(table, c, engine)
         if n:
-            raise PreconditionError(
+            raise _PreconditionError(
                 f"{n} {what} violate {label(c)}",
                 source=name,
                 condition=c,
                 rows=violating_rows(table, c),
             )
-        out.append(Discharged(name, label(c), ON_DATA, isinstance(c, Inferred)))
+        out.append(_Discharged(name, label(c), ON_DATA, isinstance(c, Inferred)))
     return out
 
 
@@ -2428,7 +2414,7 @@ def is_bound(table: ir.Table) -> bool:
     return True
 
 
-class CompositionError(VerificationError):
+class CompositionError(_VerificationError):
     """A contracted transformation's precondition on an input is not implied
     by what the contracted transformation producing that input guarantees.
 
@@ -2635,7 +2621,10 @@ def view_contract(expr: ir.Table) -> ViewContract:
             "transformation that produces those inputs, so they are proved"
         )
     if per_key := [
-        label(c) for cs in requires.values() for c in cs if isinstance(c, RowsPer | NonOverlapping)
+        label(c)
+        for cs in requires.values()
+        for c in cs
+        if isinstance(c, _RowsPer | _NonOverlapping)
     ]:
         raise ValueError(
             "cannot maintain incrementally: batches are not checked against rows_per or "
@@ -2990,7 +2979,7 @@ class ContractedTransform:
         self._counterexamples = counterexamples
         try:
             self._build(bound.args, bound.kwargs, node=False, raise_unproved=False)
-        except VerificationError as e:  # from a link of a composed input
+        except _VerificationError as e:  # from a link of a composed input
             self.report = e.report
         finally:
             self._counterexamples = before
@@ -3092,14 +3081,14 @@ class ContractedTransform:
                 report = self.report = _marked_checked(report)
                 for c in [] if node else checked:
                     if n := violations(result, c, self.check_engine):
-                        raise PostconditionError(f"{n} output row(s) violate {label(c)}")
+                        raise _PostconditionError(f"{n} output row(s) violate {label(c)}")
             elif entry is not None:
                 pass  # collected: the caller reads the report
             elif self.on_unproved == "warn":
-                error = VerificationError(report)
+                error = _VerificationError(report)
                 warnings.warn(UnprovedWarning(_warning_text(error), report), stacklevel=3)
             else:
-                raise VerificationError(report)
+                raise _VerificationError(report)
         if entry is not None:
             entry.report = report
             entry.params = {t: p for t, (p, _) in {**bound_inputs, **plain}.items()}

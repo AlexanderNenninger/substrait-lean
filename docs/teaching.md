@@ -117,7 +117,7 @@ on 2026-11-07.
 | "the E writer does not write integer division yet" and other writer hooks | SQL for an engine | `engine="duckdb"`; lifted by [#2540] |
 | "the E writer does not write overflow = X yet" | SQL for an engine | `engine="duckdb"`; lifted by [#241] |
 | "tables have no row order" on Spark | SQL for an engine with `rows="sequence"` | the default `rows="multiset"`, or `deterministic=True` |
-| "window functions need an ORDER BY" on Spark and Snowflake | SQL for an engine | `engine="duckdb"`; lifted by [#2540] |
+| "window functions need an ORDER BY" on Spark and Snowflake, for ranking and offset functions and, on Snowflake, a frame | SQL for an engine | `engine="duckdb"`; lifted by [#2540] |
 | Spark's POWER, ATAN2 | Engines | `engine="duckdb"` (spark-elem-rounding) |
 | Spark decimals past 38 digits | Engines | Cast an operand to fewer digits |
 | Spark decimal negation, an AVG past 12 decimal places or 32 integer digits, double to DECIMAL | Engines | A cast to fewer digits, or `engine="duckdb"`; lifted by [#27] |

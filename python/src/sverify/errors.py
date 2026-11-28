@@ -93,6 +93,8 @@ Warnings:
   a `ProfilePlugin`, and is skipped.
 """
 
+from typing import TYPE_CHECKING
+
 from sverify._unsupported import (
     ConditionError,
     MemoryLimitError,
@@ -153,3 +155,11 @@ __all__ = [
     "UnverifiedRunWarning",
     "VerificationError",
 ]
+
+
+if not TYPE_CHECKING:  # a type checker keeps flagging names the module lacks
+
+    def __getattr__(name: str) -> object:
+        from sverify._renamed import missing
+
+        raise missing(__name__, name)

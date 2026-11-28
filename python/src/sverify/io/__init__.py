@@ -49,6 +49,7 @@ from __future__ import annotations
 import importlib
 from typing import TYPE_CHECKING, Any
 
+from sverify._renamed import missing
 from sverify.contracts import Fact
 from sverify.incremental import (
     Changes,
@@ -81,7 +82,7 @@ _MODULES = {
 
 def __getattr__(name: str) -> Any:
     if name not in _MODULES:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+        raise missing(__name__, name)
     return getattr(importlib.import_module(f"sverify.io.{_MODULES[name]}"), name)
 
 

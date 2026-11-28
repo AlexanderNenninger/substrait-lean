@@ -483,3 +483,25 @@ def test_a_bound_on_abs_bounds_the_value():
             )
             assert not report.issues
             assert str(report.facts["x"]) == shown
+
+
+def test_contracts_re_exports_no_public_name():
+    """`sverify.contracts` is internal and re-exports nothing it imports
+    (#2622): a public name of `sverify`, `sverify.types`, `sverify.io` or
+    `sverify.errors` is importable from it only where it is defined there."""
+    import sverify.contracts
+    import sverify.errors
+    import sverify.io
+    import sverify.types
+
+    public = {*sv.__all__, *sverify.types.__all__, *sverify.io.__all__, *sverify.errors.__all__}
+    imported = {
+        name
+        for name in public
+        if hasattr(sverify.contracts, name)
+        and getattr(getattr(sverify.contracts, name), "__module__", None) != "sverify.contracts"
+    }
+    assert imported == set()
+    for name in ("unique", "Report", "Unique", "Lenses", "Issue"):
+        with pytest.raises(ImportError, match=f"cannot import name '{name}'"):
+            exec(f"from sverify.contracts import {name}")

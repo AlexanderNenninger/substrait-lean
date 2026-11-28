@@ -1,0 +1,10 @@
+{
+  "id": "U-2026-11-28-api-breaks-for-uniformity",
+  "date": "2026-11-28",
+  "decided_by": "user",
+  "scope": "api",
+  "status": "in-force",
+  "summary": "Public APIs may break where that makes them more uniform or easier to use. The user's words: \"We can break apis where necessary for uniformity and ease of use\". A break needs no deprecation period; it carries a changelog fragment and an entry in docs/upgrading.md.",
+  "source": "https://github.com/AlexanderNenninger/substrait-lean/issues/757",
+  "note": "Given to the coordinator, 2026-11-28. Consistent with the 1.0 API design's removal of deprecation aliases (#1288)."
+}
