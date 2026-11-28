@@ -191,6 +191,17 @@ def QuantInterp (b : Behaviour) (num scale : Nat) (vs : List Value) (v : Value) 
 /-- The options `AggFn.AllowedP` interprets. -/
 def aggInterpreted : List String := ["sum_order", "stat_algo", "quantile_interp"]
 
+/-- The relational options `Rel.AllowedI` reads a table at, by group: each
+sort's `null_order` and `clustered` (`SortedP`, `NullsSortedP`), and a window
+sum's `window_sum_algo` (`SlidingSum`). A function group's options are all read,
+a call's through `CallExtra`, an aggregate's through `AggExtra` and
+`aggInterpreted`. At every other option a plan reads (a key's `zero_sign` and
+`nan_equality`, a join's `null_join_keys`), `AllowedI` takes the reference's
+behaviour, so a table must be within the reference there
+(`ProfileTable.unmodelled`, ruling 289 N2). -/
+def relInterpreted : List (String × String) :=
+  [("rel.sort", "null_order"), ("rel.sort", "clustered"), ("win.agg", "window_sum_algo")]
+
 /-- Does `t` allow an aggregate of `vs` a behaviour the reference does not,
 at an option `AggFn.AllowedP` does not interpret (`overflow`, `avg_int_result`,
 `empty_group_aggregates`, …), with `vs` in that option's scope (D34)? Then it
@@ -199,6 +210,32 @@ def AggExtra (t : ProfileTable) (f : AggFn) (vs : List Value) : Prop :=
   ∃ r, Functions.rowOf (.agg f) = some r ∧ ∃ os, Functions.groups.lookup r.group = some os ∧
     ∃ o ∈ os, o ∉ aggInterpreted ∧ (∃ b ∈ t.allows r.group o [],
       b ∉ Profile.reference.table.allows r.group o []) ∧ optionScope o (.agg f) vs = true
+
+/-! ## Sorts -/
+
+/-- The NULL placement a key asks for: none where it leaves it open. -/
+def SortKey.nullPrefs (k : SortKey) : List Behaviour :=
+  if k.nullsOpen then [] else [if k.nullsFirst then "NULLS_FIRST" else "NULLS_LAST"]
+
+/-- May the key put NULLs first (`nf`) under `t`? -/
+def NullOk (t : ProfileTable) (k : SortKey) (nf : Bool) : Prop :=
+  (if nf then "NULLS_FIRST" else "NULLS_LAST") ∈ t.allows "rel.sort" "null_order" k.nullPrefs
+
+/-- The orders `t` allows for a window's or a measure's sort on `keys`: a NULL
+placement per key that `t` allows (`null_order`, as an `ORDER BY` reads it),
+ties in any order. A clustered key's groups keep the key's direction, as
+`Rel.Allowed` has them there (`sortLe`). -/
+def NullsSortedP (t : ProfileTable) (keys : List SortKey) (out : Relation) : Prop :=
+  ∃ nfs, Forall2 (NullOk t) keys nfs ∧
+    out.Pairwise (sortLeWith Value.le (keys.zip nfs) · · = true)
+
+/-- The orders `t` allows for an `ORDER BY` on `keys`: a NULL placement per
+key that `t` allows, a clustered key's groups in any order (where `t` allows
+clustering), ties in any order. -/
+def SortedP (t : ProfileTable) (keys : List SortKey) (out : Relation) : Prop :=
+  ∃ cmp, ValidCmp cmp ∧ ∃ nfs, Forall2 (NullOk t) keys nfs ∧
+    (∀ k ∈ keys, k.clustered = true → "ADJACENT" ∈ t.allows "rel.sort" "clustered" []) ∧
+    out.Pairwise (sortLeWith cmp (keys.zip nfs) · · = true)
 
 /-! ## Aggregates -/
 
@@ -223,7 +260,7 @@ def AggFn.AllowedP (t : ProfileTable) (f : AggFn) (vs : List Value) (v : Value) 
 /-- `Measure.Allowed` with the choices of `t` and the functions of `I`. -/
 def Measure.AllowedP (t : ProfileTable) (I : Impl) (m : Measure) (rows : Relation)
     (v : Value) : Prop :=
-  ∃ s, s.Perm rows ∧ (m.fn.sorts = true → s.Pairwise (sortLe m.sort · · = true)) ∧
+  ∃ s, s.Perm rows ∧ (m.fn.sorts = true → NullsSortedP t m.sort s) ∧
     m.fn.AllowedP t (m.inputs s I) v
 
 /-- `aggAllowed` with the choices of `t` and the functions of `I`. -/
@@ -262,24 +299,6 @@ def WinFn.AllowedP (t : ProfileTable) (pb : List Row) (x : Row) (pa : List Row) 
 /-- `windowRows` with each function's value one `WinFn.AllowedP` allows. -/
 abbrev windowRowsP (t : ProfileTable) := windowRowsWith (WinFn.AllowedP t)
 
-/-! ## Sorts -/
-
-/-- The NULL placement a key asks for: none where it leaves it open. -/
-def SortKey.nullPrefs (k : SortKey) : List Behaviour :=
-  if k.nullsOpen then [] else [if k.nullsFirst then "NULLS_FIRST" else "NULLS_LAST"]
-
-/-- May the key put NULLs first (`nf`) under `t`? -/
-def NullOk (t : ProfileTable) (k : SortKey) (nf : Bool) : Prop :=
-  (if nf then "NULLS_FIRST" else "NULLS_LAST") ∈ t.allows "rel.sort" "null_order" k.nullPrefs
-
-/-- The orders `t` allows for an `ORDER BY` on `keys`: a NULL placement per
-key that `t` allows, a clustered key's groups in any order (where `t` allows
-clustering), ties in any order. -/
-def SortedP (t : ProfileTable) (keys : List SortKey) (out : Relation) : Prop :=
-  ∃ cmp, ValidCmp cmp ∧ ∃ nfs, Forall2 (NullOk t) keys nfs ∧
-    (∀ k ∈ keys, k.clustered = true → "ADJACENT" ∈ t.allows "rel.sort" "clustered" []) ∧
-    out.Pairwise (sortLeWith cmp (keys.zip nfs) · · = true)
-
 /-! ## Calls -/
 
 /-- Does `t` allow a call of `c` on `args` a behaviour the reference does
@@ -317,7 +336,7 @@ def Rel.AllowedI (t : ProfileTable) (I : Impl) (cat : Catalog) : Rel → Relatio
       | some n => (i.drop off).take n
   | .unionAll a b, out => ∃ x y, a.AllowedI t I cat x ∧ b.AllowedI t I cat y ∧ out.Perm (x ++ y)
   | .window r part sort fns, out => ∃ i, r.AllowedI t I cat i ∧ ∃ s, s.Perm i ∧
-      s.Pairwise (sortLe sort · · = true) ∧ ∃ o, out.Perm o ∧ windowRowsP t part fns [] s o
+      NullsSortedP t sort s ∧ ∃ o, out.Perm o ∧ windowRowsP t part fns [] s o
   | .semi a b anti on, out => ∃ x y, a.AllowedI t I cat x ∧ b.AllowedI t I cat y ∧
       out.Perm (x.filter fun row => hasMatch on y row I != anti)
   | .orderBy r keys, out => ∃ i, r.AllowedI t I cat i ∧ out.Perm i ∧ SortedP t keys out
@@ -366,9 +385,14 @@ theorem AggFn.AllowedP.mono {f : AggFn} {vs : List Value} {v : Value} :
     f.AllowedP t vs v → f.AllowedP u vs v :=
   Or.imp (AggFn.AllowedChoice.mono h) (AggExtra.mono h)
 
+omit [Boxes.Ambient] in
+theorem NullsSortedP.mono {keys : List SortKey} {out : Relation} :
+    NullsSortedP t keys out → NullsSortedP u keys out := fun ⟨nfs, hn, hs⟩ =>
+  ⟨nfs, Forall2.imp (fun _ _ hk => h _ _ _ _ hk) hn, hs⟩
+
 theorem Measure.AllowedP.mono {I : Impl} {m : Measure} {rows : Relation} {v : Value} :
     m.AllowedP t I rows v → m.AllowedP u I rows v := fun ⟨s, hs, hsort, hf⟩ =>
-  ⟨s, hs, hsort, AggFn.AllowedP.mono h hf⟩
+  ⟨s, hs, fun hm => NullsSortedP.mono h (hsort hm), AggFn.AllowedP.mono h hf⟩
 
 theorem aggAllowedP.mono {I : Impl} {gs : List Expr} {ms : List Measure} {rows out : Relation} :
     aggAllowedP t I gs ms rows out → aggAllowedP u I gs ms rows out := by
@@ -418,7 +442,7 @@ theorem Rel.AllowedI.mono {I : Impl} {cat : Catalog} :
   | .join _ _ .left _, _, ⟨x, y, hx, hy, ho⟩ =>
     ⟨x, y, Rel.AllowedI.mono hx, Rel.AllowedI.mono hy, ho⟩
   | .window _ _ _ _, _, ⟨i, hi, s, hs, hsort, o, hp, ho⟩ =>
-    ⟨i, Rel.AllowedI.mono hi, s, hs, hsort, o, hp, windowRowsP.mono h ho⟩
+    ⟨i, Rel.AllowedI.mono hi, s, hs, NullsSortedP.mono h hsort, o, hp, windowRowsP.mono h ho⟩
   | .orderBy _ _, _, ⟨i, hi, hp, hs⟩ => ⟨i, Rel.AllowedI.mono hi, hp, SortedP.mono h hs⟩
   | .aggregate _ _ _, _, ⟨i, hi, o, hp, ha⟩ =>
     ⟨i, Rel.AllowedI.mono hi, o, hp, aggAllowedP.mono h ha⟩
@@ -474,9 +498,50 @@ theorem AggFn.allowedP_reference (f : AggFn) (vs : List Value) (v : Value) :
   all_goals simp [AggFn.AllowedChoice, AggFn.Allowed, reference_allows_var,
     reference_allows_stat, StatAlgo, AggFn.Picks, AggFn.classPick]
 
+omit [Boxes.Ambient] in
+theorem NullOk.reference (k : SortKey) (nf : Bool) :
+    NullOk Profile.reference.table k nf ↔ nf = k.firstNulls := by
+  unfold NullOk SortKey.nullPrefs SortKey.firstNulls
+  cases k.nullsOpen <;> cases k.nullsFirst <;> cases nf <;> decide
+
+omit [Boxes.Ambient] in
+theorem zip_map_self {α β : Type} (f : α → β) : ∀ l : List α, l.zip (l.map f) = l.map fun a => (a, f a)
+  | [] => rfl
+  | a :: l => by simp only [List.map_cons, List.zip_cons_cons, zip_map_self f l]
+
+omit [Boxes.Ambient] in
+theorem SortedP.reference (keys : List SortKey) (out : Relation) :
+    SortedP Profile.reference.table keys out ↔ SortAllowed keys out := by
+  constructor
+  · rintro ⟨cmp, hc, nfs, hn, _, hs⟩
+    have : nfs = keys.map (·.firstNulls) :=
+      eq_map_of_forall₂ (Forall2.imp (fun k nf h => (NullOk.reference k nf).mp h) hn)
+    subst this
+    rw [zip_map_self] at hs
+    exact ⟨cmp, hc, hs⟩
+  · rintro ⟨cmp, hc, hs⟩
+    refine ⟨cmp, hc, keys.map (·.firstNulls),
+      forall₂_map_self keys fun k _ => (NullOk.reference k _).mpr rfl,
+      fun _ _ _ => by rw [reference_allows_clustered]; exact List.mem_singleton_self _, ?_⟩
+    rw [zip_map_self]; exact hs
+
+omit [Boxes.Ambient] in
+theorem NullsSortedP.reference (keys : List SortKey) (out : Relation) :
+    NullsSortedP Profile.reference.table keys out ↔ out.Pairwise (sortLe keys · · = true) := by
+  constructor
+  · rintro ⟨nfs, hn, hs⟩
+    have : nfs = keys.map (·.firstNulls) :=
+      eq_map_of_forall₂ (Forall2.imp (fun k nf h => (NullOk.reference k nf).mp h) hn)
+    subst this
+    rwa [zip_map_self, sortLeWith_le] at hs
+  · intro hs
+    refine ⟨keys.map (·.firstNulls),
+      forall₂_map_self keys fun k _ => (NullOk.reference k _).mpr rfl, ?_⟩
+    rwa [zip_map_self, sortLeWith_le]
+
 theorem Measure.allowedP_reference (m : Measure) (rows : Relation) (v : Value) :
     m.AllowedP Profile.reference.table Impl.lean rows v ↔ m.Allowed rows v := by
-  simp only [Measure.AllowedP, Measure.Allowed, AggFn.allowedP_reference]
+  simp only [Measure.AllowedP, Measure.Allowed, AggFn.allowedP_reference, NullsSortedP.reference]
 
 omit [Boxes.Ambient] in
 theorem forall₂_iff {α β : Type} {R S : α → β → Prop} (h : ∀ a b, R a b ↔ S a b) {l : List α}
@@ -543,33 +608,6 @@ theorem windowRowsP_reference (part : List Nat) (fns : List WinFn) :
       (forall₂_iff fun f v => WinFn.allowedP_reference _ _ _ f v) ?_
     exact windowRowsP_reference part fns _ after rest
 
-omit [Boxes.Ambient] in
-theorem NullOk.reference (k : SortKey) (nf : Bool) :
-    NullOk Profile.reference.table k nf ↔ nf = k.firstNulls := by
-  unfold NullOk SortKey.nullPrefs SortKey.firstNulls
-  cases k.nullsOpen <;> cases k.nullsFirst <;> cases nf <;> decide
-
-omit [Boxes.Ambient] in
-theorem zip_map_self {α β : Type} (f : α → β) : ∀ l : List α, l.zip (l.map f) = l.map fun a => (a, f a)
-  | [] => rfl
-  | a :: l => by simp only [List.map_cons, List.zip_cons_cons, zip_map_self f l]
-
-omit [Boxes.Ambient] in
-theorem SortedP.reference (keys : List SortKey) (out : Relation) :
-    SortedP Profile.reference.table keys out ↔ SortAllowed keys out := by
-  constructor
-  · rintro ⟨cmp, hc, nfs, hn, _, hs⟩
-    have : nfs = keys.map (·.firstNulls) :=
-      eq_map_of_forall₂ (Forall2.imp (fun k nf h => (NullOk.reference k nf).mp h) hn)
-    subst this
-    rw [zip_map_self] at hs
-    exact ⟨cmp, hc, hs⟩
-  · rintro ⟨cmp, hc, hs⟩
-    refine ⟨cmp, hc, keys.map (·.firstNulls),
-      forall₂_map_self keys fun k _ => (NullOk.reference k _).mpr rfl,
-      fun _ _ _ => by rw [reference_allows_clustered]; exact List.mem_singleton_self _, ?_⟩
-    rw [zip_map_self]; exact hs
-
 /-- Under the reference's table and Lean's functions, `AllowedI` is `Rel.Allowed`. -/
 theorem Rel.allowedI_reference (cat : Catalog) :
     ∀ (r : Rel) (out : Relation), r.AllowedI Profile.reference.table Impl.lean cat out ↔ r.Allowed cat out
@@ -590,9 +628,9 @@ theorem Rel.allowedI_reference (cat : Catalog) :
   | .fetch r _ _, _ => exists_congr fun i => and_congr_left' (Rel.allowedI_reference cat r i)
   | .unionAll a b, out => by
     simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a, Rel.allowedI_reference cat b]
-  | .window r part _ fns, out => by
+  | .window r part sort fns, out => by
     simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat r,
-      windowRowsP_reference part fns]
+      windowRowsP_reference part fns, NullsSortedP.reference sort]
   | .semi a b _ _, out => by
     simp only [Rel.AllowedI, Rel.Allowed, Rel.allowedI_reference cat a,
       Rel.allowedI_reference cat b]

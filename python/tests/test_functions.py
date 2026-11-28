@@ -194,20 +194,23 @@ def test_core_semantics_groups_are_lean() -> None:
     row for row: each group of a function area has a row, and its Options column
     names exactly the group's options (#2438: `cast.num` named `float_to_int`
     where Lean read nothing). A cell that starts with "none" names none; its
-    note may mention an option out of reach. The relations' rows are read by
-    `Rel.reads`, outside the function groups, and are left out. `cast.dec` named
-    `decimal_rescale` where `dround` and `ftod` read nothing (rulings 273 and 278)."""
+    note may mention an option out of reach. The relations' rows are
+    `Rel.reads`' relational options (`relationalReads`, `--options`'
+    `relations`), outside the function groups: `rel.sort` named `tie_order`, and a
+    `rel.fetch` row did, where no relation reads it (ruling 289 N1). `cast.dec`
+    named `decimal_rescale` where `dround` and `ftod` read nothing (rulings 273
+    and 278)."""
     doc = (ROOT / "docs" / "core-semantics.md").read_text(encoding="utf-8")
     lean = lean_options()
     options = {o["id"] for o in lean["options"]}
+    relations = {g: os for g, os in lean["relations"].items() if g not in lean["groups"]}
     rows = re.findall(r"^\| ([a-z]+) \| `([a-z0-9._]+)` \| .* \| (.*) \|$", doc, re.M)
-    doc_groups = {g for area, g, _ in rows if area != "relations"}
-    assert doc_groups == set(lean["groups"])
+    assert {g for area, g, _ in rows if area != "relations"} == set(lean["groups"])
+    assert {g for area, g, _ in rows if area == "relations"} == set(relations)
     for area, group, cell in rows:
-        if area == "relations":
-            continue
         named = [] if cell.startswith("none") else re.findall(r"`([a-z0-9_]+)`", cell)
-        assert {o for o in named if o in options} == set(lean["groups"][group]), group
+        lean_group = relations if area == "relations" else lean["groups"]
+        assert {o for o in named if o in options} == set(lean_group[group]), group
 
 
 @needs_repo
