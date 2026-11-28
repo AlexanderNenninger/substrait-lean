@@ -17,11 +17,13 @@ the output type of every function, the options Substrait defines for them
 key. SQLGlot is trusted for parsing and name resolution only; the types of
 expressions come from the profile, not from SQLGlot's typing.
 
-How the SQL text reads is DuckDB's in both modes (`engines/duckdb/
-facts/`, F1–F3): `/` divides as doubles, `//` divides integers, NULLs sort
-last, an integer literal has the narrowest type that holds it, `1.5` is a
-`DECIMAL(2, 1)`. The **semantics** (`Profile`) is what the functions then do
-where DuckDB and the reference (#185, #209) differ:
+How the SQL text reads is the dialect's `Surface`, which the dialect's front end
+passes to `lift` (`DUCKDB_SQL` by default; #866): the lift reads every dialect fact
+from it and from its profiles, never a dialect's name. DuckDB's text reads the
+same in both modes (`engines/duckdb/facts/`, F1–F3): `/` divides as doubles,
+`//` divides integers, NULLs sort last, an integer literal has the narrowest
+type that holds it, `1.5` is a `DECIMAL(2, 1)`. The **semantics** (`Profile`) is
+what the functions then do where DuckDB and the reference (#185, #209) differ:
 
 * `semantics="duckdb"` (`DUCKDB`): DuckDB's own. A double `/` by zero is
   `±inf` or NaN (`on_division_by_zero: IEEE`), even with
@@ -62,14 +64,14 @@ import importlib
 
 # Re-exported: what other modules, tests and tools import from `sverify.sql_lift`.
 from sverify.sql_lift._base import (  # noqa: F401
-    DIALECT,
     DUCKDB,
+    DUCKDB_SQL,
     PORTABLE,
-    PROFILES,
     RULES,
     Lifted,
     LiftTable,
     Profile,
+    Surface,
     expand_table_shorthand,
     full_name,
     lift,
@@ -78,7 +80,7 @@ from sverify.sql_lift._base import (  # noqa: F401
     register,
 )
 
-__all__ = ["DUCKDB", "PORTABLE", "PROFILES", "Lifted", "Profile", "lift", "parse"]
+__all__ = ["DUCKDB", "DUCKDB_SQL", "PORTABLE", "Lifted", "Profile", "Surface", "lift", "parse"]
 
 #: The areas, each a module that registers its rules in `RULES`, imported in
 #: this order.

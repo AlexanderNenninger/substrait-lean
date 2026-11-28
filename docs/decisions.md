@@ -2150,3 +2150,27 @@ floors), so the reference picks the floor, which is `date_trunc`
 [polars-ts-us-to-ns-range](../engines/polars/facts/polars-ts-us-to-ns-range.json)).
 Nanoseconds get kinds of their own so that every `.time` pattern keeps meaning
 microseconds, and a function that does not name the new kinds refuses them.
+
+### D73. Every in-tree dialect's SQL means what its engine's profile computes
+
+Decided 2026-11-28 (theory advisor, ruling 288, on the maintainer's ruling of the same day that
+Spark SQL input is 1.0; [#866](https://github.com/AlexanderNenninger/substrait-lean/issues/866)).
+Amends [D54](#d54-the-lift-refines-the-dialect).
+
+D54 holds for every SQL dialect sverify reads in its own tree, with no decision per dialect: a
+dialect's lifted SQL means what that engine's profile computes, at the profile's probed version
+and settings, and under `semantics="portable"` the lift refines it as D54 says. Spark SQL is the
+second instance, read under every setting of the Spark profile (`SETTINGS`, `SPARK_CONF`),
+ANSI mode among them; any other setting is refused, with no option.
+
+D54's rounding-cast clause is DuckDB's and does not carry over. Each construct's lift follows
+its own dialect's fact: Spark's `CAST(double AS INT)` truncates and raises under ANSI
+([spark-cast-double-to-int](../engines/spark/facts/spark-cast-double-to-int.json)), which is the
+reference's cast. Where a dialect's value is not the reference's and no exact reference term
+gives it, the construct is refused or listed, as D54 says (Spark's `CAST(double AS DECIMAL)`
+rounds the double's shortest text, ruling 278).
+
+Recomputes sinks: no
+
+Why: D54's rule names the dialect, not DuckDB, so a second dialect is a second instance of it,
+and one entry covers a third.
