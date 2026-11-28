@@ -42,6 +42,14 @@ structure EngineEntry where
   /-- The named predicate `side` is, applied or not (`Engine.NoRaiseSide`,
   `Engine.GuardFreeSide`): written by `engine_entry%` from `sound`'s type. -/
   sideName : Lean.Name
+  /-- The relational options at which the engine's table says more than
+  `Rel.AllowedI` reads (`ProfileTable.unmodelled`), each pending a fact or a
+  shim (ruling 289 N2). It only shrinks: `modelled` fails on a new one and on
+  one fixed. -/
+  unmodelled : List (String × String)
+  /-- `unmodelled` is the table's list, decided when the entry is built, at
+  `Boxes.Ambient.none` as `EngineEntry.rows` reads the table. -/
+  modelled : (letI := Boxes.Ambient.none; engine.table.unmodelled) = unmodelled
   /-- Each shim of the engine's rows, by name, with its cost. -/
   shims : List (String × ShimCost) := []
   /-- Where the engine executes, as `--options` reports it (`"streaming"`,
@@ -54,11 +62,8 @@ structure EngineEntry where
   elemUlps : List (String × Rat) := []
 
 open Lean Elab Term Meta in
-/-- `engine_entry% thm`: the entry whose proof is `thm`, with `soundName` the
-constant `thm` resolves to and `sideName` the head of the side condition in
-its type, which must be a named predicate. The engine and the side condition
-are unified from `thm`'s type. -/
-elab "engine_entry% " thm:ident : term => do
+/-- The entry whose proof is the constant `thm`, with `ps` its unmodelled list. -/
+def elabEngineEntry (thm : Ident) (ps : TSyntax `term) : TermElabM Lean.Expr := do
   let n ← realizeGlobalConstNoOverloadWithInfo thm
   let side? ← forallTelescope (← getConstInfo n).type fun _ body => do
     let body ← whnfR body
@@ -67,8 +72,22 @@ elab "engine_entry% " thm:ident : term => do
     return body.getAppArgs.back!.getAppFn.constName?
   let some side := side? | throwError
     "engine_entry%: the side condition of {n} is no named predicate; state it as a definition"
-  let stx ← `(EngineEntry.mk _ _ @$(mkCIdent n) $(quote n) $(quote side) [] "" true [])
+  let stx ← `(EngineEntry.mk _ _ @$(mkCIdent n) $(quote n) $(quote side) $ps
+    (by decide +kernel) [] "" true [])
   elabTermEnsuringType stx (some (mkConst ``EngineEntry))
+
+/-- `engine_entry% thm`: the entry whose proof is `thm`, with `soundName` the
+constant `thm` resolves to and `sideName` the head of the side condition in
+its type, which must be a named predicate. The engine and the side condition
+are unified from `thm`'s type. Its table says more than the model reads at no
+relational option (`ProfileTable.unmodelled`); where it does,
+`engine_entry% thm unmodelled ps` names them, and the entry type-checks only
+where `ps` is the table's list. -/
+elab "engine_entry% " thm:ident : term => do
+  elabEngineEntry thm (← `(([] : List (String × String))))
+
+@[inherit_doc elabEngineEntry]
+elab "engine_entry% " thm:ident " unmodelled " ps:term:max : term => elabEngineEntry thm ps
 
 /-- A name as the checker reports it, without the `Substrait` namespace. -/
 def reportedName (n : Lean.Name) : String :=

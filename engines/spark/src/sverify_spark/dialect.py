@@ -513,6 +513,13 @@ class SparkDialect(Dialect):
             raise self.to_duckdb("Spark window functions need an ORDER BY")
         return super().over(partition, order)
 
+    def over_frame(self, partition: Sequence[str], order: Sequence[str], frame: str) -> str:
+        # An aggregate over the whole partition needs no ORDER BY: Spark
+        # aggregates the partition once (spark-window-agg).
+        if not order and frame.endswith("BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING"):
+            return super().over(partition, order)[:-1] + f" {frame})"
+        return super().over_frame(partition, order, frame)
+
     def lag(self, x: str, offset: int, default: str, over: str) -> str:
         return x if offset == 0 else super().lag(x, offset, default, over)
 

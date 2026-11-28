@@ -29,7 +29,9 @@ built over them (`checkerMain`). -/
 def builtinEntries : List EngineEntry := [
   { (engine_entry% Engine.duckdb_sound) with
     shims := duckdbRows.shims, elemUlps := duckdbRows.elemUlps },
-  { (engine_entry% Engine.polars_sound) with
+  -- A key's `zero_sign`: Polars's is `IEEE`, the model's keys compare `-0.0` and `0.0`
+  -- equal; the fact is ruling 289 I1's, in #2539.
+  { (engine_entry% Engine.polars_sound unmodelled [("rel.keys", "zero_sign")]) with
     shims := polarsRows.shims, executes := polarsRows.executes,
     elemUlps := polarsRows.elemUlps },
   { (engine_entry% Engine.spark_sound) with

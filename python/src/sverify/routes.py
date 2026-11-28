@@ -669,112 +669,6 @@ def _bounds(eps: Mapping[str, Any]) -> dict[str, tuple[float, bool]]:
     return {k: (_up(b["value"]), bool(b["proved"])) for k, b in eps["bounds"].items()}
 
 
-def _plan_bound(
-    q: Mapping[str, Any],
-    observed: Lenses,
-    epsilon: Mapping[str, Mapping[str, Any]] | None,
-    against: str = "of the reference, and the postcondition asks",
-    fix: str = (
-        "state sv.equivalent(floats={tol}) or looser in ensures, "
-        "or sv.equivalent({plan}) for the plan's own bound"
-    ),
-) -> tuple[dict[str, Any], list[str], bool]:
-    """An observation without a plan-dependent float bound (`{"floats": {"bound":
-    "plan"}}`), the problems with that bound, and whether the bound that
-    meets the postcondition rests on an unproved bound.
-
-    The contract's result gives each double output column's `ε`
-    (`Report._epsilon`): bounds of several kinds, each of which holds on its
-    own. The postcondition's tolerance (`sv.within`) is met when one of
-    them is no larger than the stated bound of the same kind (#568's
-    propagation, B1)."""
-    from sverify.observation import Within
-
-    floats = q.get("floats")
-    if not (isinstance(floats, Mapping) and floats.get("bound") == "plan"):
-        return dict(q), [], False
-    rest = {k: v for k, v in q.items() if k != "floats"}
-    if epsilon is None:
-        return rest, ["the checker gave no per-plan bound (ε) on the doubles"], False
-    stated = observed.floats
-    problems = []
-    unproved = False
-    for col, eps in epsilon.items():
-        bounds = _bounds(eps)
-        if eps["unbounded"]:
-            # No bound on the column (a double `SUM` without a row cap, a value
-            # computed from one, a window aggregate of doubles): nothing proves
-            # it, and a stated tolerance is not met. `why` names what lifts it.
-            # A postcondition that holds of every value near the reference's
-            # (`robust`: a sign, which a sum of values of one sign keeps in
-            # every order but Kahan's, `FloatBounds.StdModel.TreeSum.sign`; a
-            # variance by its clamp) is not held, and runs. One that reads the
-            # value (`avg <= 100`, proved of the exact mean) is held, as for a
-            # column with a bound: the engine's value is only near it.
-            unproved = True
-            why = f" ({eps['why']})" if eps.get("why") else ""
-            if isinstance(stated, Within):
-                problems.append(
-                    f"{col} has no bound on its distance to the reference{why}, and the "
-                    f'postcondition asks {stated}: state sv.equivalent(floats="plan"), bound '
-                    "the column with sv.max_rows(n) in requires, or drop the tolerance"
-                )
-            continue
-        if not any(v for v, _ in bounds.values()):
-            continue
-        shown = ", ".join(
-            f"{k}={v:g}" + ("" if proved else " (tested)") for k, (v, proved) in bounds.items()
-        )
-        met = [
-            proved
-            for k, (v, proved) in bounds.items()
-            if stated == "plan"
-            or isinstance(stated, Within)
-            and getattr(stated, k) is not None
-            and v <= getattr(stated, k)
-        ]
-        if not met:
-            want = "exact doubles" if not isinstance(stated, Within) else str(stated)
-            tol = _smallest(bounds)
-            problems.append(
-                f"{col} is within {shown} {against} {want}: "
-                + fix.format(tol=tol, plan='floats="plan"')
-            )
-        elif not any(met):
-            unproved = True
-    return rest, problems, unproved
-
-
-def _resolve(observed: Lenses, epsilon: Mapping[str, Mapping[str, Any]] | None) -> Lenses:
-    """`observed` with `floats="plan"` replaced by the plan's bound: per
-    kind of bound, the smallest of the double columns' `ε` (every column
-    meets it), exact where no column has one. Unchanged where the checker
-    gave no `ε`."""
-    from sverify.observation import Within
-
-    if observed.floats != "plan" or epsilon is None:
-        return observed
-    if any(e["unbounded"] for e in epsilon.values()):
-        # A column without a bound: the plan's bound is unknown.
-        return observed
-    found = [_bounds(e) for e in epsilon.values()]
-    found = [b for b in found if any(v for v, _ in b.values())]
-    if not found:
-        return replace(observed, floats="exact")
-    kinds = [k for k in _KINDS if all(k in b for b in found)]
-    if not kinds:
-        return observed
-    least = {k: min(b[k][0] for b in found) for k in kinds}
-    return replace(
-        observed,
-        floats=Within(
-            least.get("abs"),
-            least.get("rel"),
-            None if "ulps" not in least else int(least["ulps"]),
-        ),
-    )
-
-
 def _smallest(bounds: Mapping[str, tuple[float, bool]]) -> str:
     """The smallest round tolerance a column's `ε` meets, as code."""
     kind = "rel" if "rel" in bounds else next(iter(bounds))
@@ -1163,96 +1057,116 @@ def engine_name(engine: Any) -> str:
     return p.engine
 
 
-def reproducibility(
-    report: Report,
-    engine: str,
-    required: Lenses,
-    depends: Sequence[Mapping[str, Any]] | None = None,
-) -> tuple[list[str], Evidence]:
+def reproducibility(report: Report, engine: str, required: Lenses) -> tuple[list[str], Evidence]:
     """Whether a rerun of the plan on `engine` reproduces its result up to
-    `required` (what a rerun must reproduce).
+    `required` (what a rerun must reproduce), as the checker decides it
+    (`Realize.rerunCheck`, ruling 281): the result must be determined up to
+    row order and the member of each class of doubles (D48); a place that
+    picks a member of a class (`-0.0` or `0.0`, a NaN) fails lenses that read
+    the members (`Lenses.reads_members`); and on each option the plan depends
+    on, the engine's run-to-run variation must refine `required`, its
+    doubles within the plan's `ε` where they vary per plan. The evidence is
+    "proved" only where every option's variation is.
 
-    The result must be determined up to row order and the member of each
-    class of doubles (`Report.deterministic`, D48): an open choice (ties in
-    an ORDER BY, a LIMIT without one) fails every requirement, and the
-    problem names each place. A place that only picks a member of a class
-    (`-0.0` or `0.0`, a NaN: a group key over doubles, `MIN`, `MAX`) fails a
-    requirement that reads the members (`Lenses.reads_members`): the
-    reference leaves the member open, and the check is the plan's, reading
-    no engine fact; the problem names each pick and the two ways out. Then,
-    on each option the plan depends on, the engine's run-to-run
-    variation (the `"rerun_observation"` column of its
-    choices, `"rerun"` from an older checker, component
-    levels as in an observation, `{}` where it is exact; `{"floats": {"bound":
-    "plan"}}` for a summation order that varies between runs, bounded by the
-    plan's `ε`) must refine `required`. The evidence is the row's
-    `"rerun_evidence"`: "tested" unless it says "proved". A row without the
-    column is read as exact, on the evidence of a test.
+    The report keeps the checker's answer for the sinks' default
+    (`PLAN_BOUND`). Other lenses ask the checker again with the report's
+    contract (`_rerun`), once per plan and lenses in a process.
 
     Returns:
         The problems (empty: reproduced), and the evidence.
     """
+    got = _rerun(report, engine, required)
+    if isinstance(got, str):
+        return [got], "tested"
+    problems = [_rerun_problem(engine, p, report, required) for p in got.get("problems", ())]
+    return problems, "proved" if got.get("evidence") == "proved" else "tested"
+
+
+def _rerun(report: Report, engine: str, required: Lenses) -> Mapping[str, Any] | str:
+    """The checker's rerun answer on `engine` for `required`: the report's
+    own for the default lenses, else that of a request with `"rerun_lenses"`;
+    or why there is none."""
+    from sverify.observation import PLAN_BOUND
+
+    if replace(required, bound=None) == PLAN_BOUND:
+        got = (verdict(report, engine) or {}).get("rerun")
+    elif report._contract is None:
+        return "the report keeps no contract to check a rerun against: verify the plan again"
+    else:
+        out = _rerun_request(
+            json.dumps(report._contract, sort_keys=True),
+            json.dumps(required.checker_json(), sort_keys=True),
+        )
+        got = ((out.get("engines") or {}).get(engine) or {}).get("rerun")
+    if got is None:
+        return f"the checker gave no rerun answer on {engine} for this plan: verify it again"
+    return got
+
+
+@functools.lru_cache(maxsize=64)
+def _rerun_request(contract: str, lenses: str) -> Mapping[str, Any]:
+    """The checker's response to a report's contract with `lenses` as what a
+    rerun must reproduce (`"rerun_lenses"`), once per plan and lenses."""
+    from sverify.engine import checker_failed, run_checker
+
+    request = {**json.loads(contract), "rerun_lenses": json.loads(lenses)}
+    code, stdout, stderr = run_checker(("--contract",), json.dumps(request))
+    if code not in (0, 4):
+        raise checker_failed("--contract", stderr)
+    return json.loads(stdout, parse_float=Printed)
+
+
+def _rerun_problem(engine: str, p: Mapping[str, Any], report: Report, required: Lenses) -> str:
+    """A problem of the checker's rerun check (`Realize.rerunCheck`) in words."""
     from sverify.observation import from_json
 
-    problems: list[str] = []
-    if not report.deterministic:
-        problems.append(
+    code = p.get("code")
+    if code == "not_determined":
+        return (
             "the result is not determined up to row order: the plan leaves open "
             + ("; ".join(map(str, report._class_places)) or "a place the report does not name")
             + ", so no rerun is sure to reproduce it"
         )
-    elif not report._exact and required.reads_members:
-        # Before `_resolve`: `"plan"` reads one zero and one NaN, also where
-        # the plan has no bound and `_resolve` makes it exact (D48).
-        picks = [p for p in report._tie_places if p.kind == "class"]
-        problems.append(
+    if code == "class_picks":
+        picks = [t for t in report._tie_places if t.kind == "class"]
+        return (
             f"{required} reads the members of a class of doubles, and the plan picks one at "
             + ("; ".join(map(str, picks)) or "a place the report does not name")
             + f", which the reference leaves open: {CLASS_PICKS}"
         )
-    if depends is None:
-        depends = report._depends
-    if depends is None:
-        problems.append(
-            "the report has no dependency report from the checker to check a rerun against: "
-            "verify the plan again"
+    where = _where(p.get("group"), p["option"])
+    if code == "rerun_missed":
+        return (
+            f"{where}: two runs on {engine} agree only up to {from_json(p['observed'])}, and a "
+            f"rerun must reproduce its {', '.join(p['components'])} ({required})"
         )
-        depends = ()
-    tested = False
-    for d in depends:
-        g, o = d.get("group"), d["option"]
-        r = row(engine, g, o)
-        varied = None if r is None else row_rerun(r)
-        if r is None or varied is None:
-            tested = True
-            continue
-        rest, bounded, unproved = _plan_bound(
-            varied,
-            required,
-            report._epsilon,
-            "between runs, and a rerun must reproduce",
-            "pass reproducible=sv.equivalent(floats={tol}) or looser, "
-            "or sv.equivalent({plan}) (the sinks' default) for the plan's own bound",
+    want = str(required.floats) if isinstance(required.floats, Within) else "exact doubles"
+    if code == "unbounded":
+        why = f" ({p['why']})" if p.get("why") else ""
+        need = (
+            f"exact doubles on a rerun need doubles that are exact on {engine}"
+            if want == "exact doubles"
+            else f"{want} needs a bound on the column"
         )
-        # The row's own evidence for its variation (`{}` where it is known
-        # exact); the class's evidence says nothing about reruns.
-        tested = tested or unproved or r.get("rerun_evidence") != "proved"
-        varies = from_json(rest)
-        missed = varies.coarser_than(_resolve(required, report._epsilon))
-        if missed:
-            unknown = (
-                "; the checker gives no bound on the plan's doubles: bound the inputs "
-                "(a range, and sv.max_rows) or pass "
-                "reproducible=sv.equivalent(floats=sv.within(...))"
-                if "floats" in missed and _resolve(required, report._epsilon).floats == "plan"
-                else ""
-            )
-            problems.append(
-                f"{_where(g, o)}: two runs on {engine} agree only up to {varies}, and a rerun "
-                f"must reproduce its {', '.join(missed)} ({required}){unknown}"
-            )
-        problems += [f"{_where(g, o)}: {p}" for p in bounded]
-    return problems, "tested" if tested else "proved"
+        return (
+            f"{where}: {p['column']} has no bound on its distance to the reference{why}, and "
+            f"a rerun must reproduce {want}: {need}; pass "
+            'reproducible=sv.equivalent(floats="plan") (the sinks\' default), or bound the '
+            "column with sv.max_rows(n) in requires and state a tolerance, "
+            "reproducible=sv.equivalent(floats=sv.within(...))"
+        )
+    if code == "not_met":
+        bounds = {b["kind"]: (_up(b["value"]), bool(b["proved"])) for b in p["bounds"]}
+        shown = ", ".join(
+            f"{k}={v:g}" + ("" if ok else " (tested)") for k, (v, ok) in bounds.items()
+        )
+        return (
+            f"{where}: each run's {p['column']} is within {shown} of the reference, and a "
+            f"rerun must reproduce {want}: pass "
+            f"reproducible=sv.equivalent(floats={_smallest(bounds)}) or looser, or "
+            "sv.equivalent(floats=\"plan\") (the sinks' default) for the plan's own bound"
+        )
+    return f"{where}: {code} on {engine}"
 
 
 def verified(report: Report) -> bool:

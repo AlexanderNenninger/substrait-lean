@@ -70,12 +70,19 @@ example : builtinEngines.all fun e => e.sameLibm ||
 variable [Boxes.Ambient]
 example : builtinEngines.all (·.rowsWf) := by decide +kernel
 
+/-- The relational options a plan reads (`relationalReads`), by group. -/
+def relationsJson : Lean.Json :=
+  Lean.Json.mkObj <| (relationalReads.map (·.1)).eraseDups.map fun g =>
+    (g, Lean.toJson ((relationalReads.filter (·.1 == g)).map (·.2)))
+
 open Lean (Json toJson) in
-/-- `substrait-check --options`: the options, the groups' options, each
-profile's choices and observation rows (the engines `es`), the profiles'
-versions, and the tool table. -/
+/-- `substrait-check --options`: the options, the groups' options and the
+relations' (`relations`), each profile's choices and observation rows (the
+engines `es`), the profiles' versions with the relational options their tables
+say more at than the model reads (`unmodelled`), and the tool table. -/
 def tablesJson (es : List EngineProfile) : Json :=
   optionsJson
+    |>.setObjVal! "relations" relationsJson
     |>.setObjVal! "choices" (Json.mkObj ([
         ("reference", profileRowsJson Profile.reference.table Profile.reference.obs true),
         ("core", choicesJson Profile.core.table),
@@ -88,6 +95,7 @@ def tablesJson (es : List EngineProfile) : Json :=
       es.map fun e => (e.name, Json.mkObj [
         ("engine", toJson e.name), ("versions", toJson (e.table.version :: e.table.alsoProbed)),
         ("executes", toJson e.executes),
+        ("unmodelled", toJson (e.table.unmodelled.map fun (g, o) => [g, o])),
         ("missing", Json.arr <| (e.table.missing.map fun (f, ids) =>
           Json.mkObj [("function", toJson f), ("facts", toJson ids)]).toArray)])))
     |>.setObjVal! "observations" (Json.mkObj ([("reference", obsTableJson Profile.reference.obs),

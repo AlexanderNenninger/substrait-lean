@@ -41,7 +41,7 @@ def test_the_others_get_a_message_naming_the_way_out(hook, plat, machine):
 def _initialize(hook, monkeypatch, version, plat, machine, env=None):
     monkeypatch.setattr(sys, "platform", plat)
     monkeypatch.setattr(hook.platform, "machine", lambda: machine)
-    for k in ("SVERIFY_BUILD_FROM_SOURCE", "SVERIFY_PREBUILT_CHECKER"):
+    for k in ("SVERIFY_BUILD_FROM_SOURCE", "SVERIFY_PREBUILT_CHECKER", "SVERIFY_PREBUILT_CHECK"):
         monkeypatch.delenv(k, raising=False)
     if env:
         monkeypatch.setenv(*env)
@@ -66,3 +66,12 @@ def test_the_variable_asks_for_the_build(hook, monkeypatch):
 def test_an_editable_install_is_not_refused(hook, monkeypatch):
     with pytest.raises(RuntimeError, match="not supported on win32"):
         _initialize(hook, monkeypatch, "editable", "win32", "AMD64")
+
+
+def test_the_old_prebuilt_variable_names_the_new_one(hook, monkeypatch):
+    """0.9.0 renamed `SVERIFY_PREBUILT_CHECK` (#2081, #2577): set, it stops
+    the build and names `SVERIFY_PREBUILT_CHECKER`."""
+    with pytest.raises(RuntimeError, match="set SVERIFY_PREBUILT_CHECKER"):
+        _initialize(
+            hook, monkeypatch, "editable", "darwin", "arm64", ("SVERIFY_PREBUILT_CHECK", "/x")
+        )

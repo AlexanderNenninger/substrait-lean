@@ -67,6 +67,10 @@ def platform_tag() -> str:
 
 class LakeBuildHook(BuildHookInterface):
     def initialize(self, version: str, build_data: dict) -> None:
+        if os.environ.get("SVERIFY_PREBUILT_CHECK"):  # 0.8's name, removed in 0.9.0 (#2081)
+            raise RuntimeError(
+                "SVERIFY_PREBUILT_CHECK is no longer read: set SVERIFY_PREBUILT_CHECKER"
+            )
         if (
             version != "editable"
             and not os.environ.get("SVERIFY_BUILD_FROM_SOURCE")

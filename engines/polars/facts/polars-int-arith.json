@@ -9,33 +9,9 @@
     "overflow"
   ],
   "rows": [
-    {
-      "group": "int.arith",
-      "option": "overflow",
-      "types": [
-        "i8",
-        "i16",
-        "i32",
-        "i64"
-      ]
-    },
-    {
-      "group": "int.pow",
-      "option": "overflow",
-      "types": [
-        "i64"
-      ]
-    },
-    {
-      "group": "int.pow",
-      "option": "overflow",
-      "types": [
-        "i8",
-        "i16",
-        "i32"
-      ],
-      "evidence": "probe"
-    }
+    {"group": "int.arith", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]},
+    {"group": "int.pow", "option": "overflow", "types": ["i64"]},
+    {"group": "int.pow", "option": "overflow", "types": ["i8", "i16", "i32"], "evidence": "probe"}
   ],
   "constructs": [
     "+",

@@ -8,7 +8,7 @@ import ibis
 
 from sverify_dev.coverage_cases._common import (
     DUCKDB_ONLY,
-    NO_ORDER_BY,
+    NOT_ON_POLARS,
     Case,
     V,
     case,
@@ -154,13 +154,9 @@ CASES: list[Case] = [
 ]
 
 REFUSED: dict[str, dict[str, str]] = {
-    # A window with no ORDER BY has no SQL form on these dialects yet (#271); it
-    # surfaced when the row-order refusal, which came first, went.
-    "sum over group": NO_ORDER_BY,
-    "window sum of an expression": NO_ORDER_BY,
     "group_concat over a window": DUCKDB_ONLY,
-    "stddev over group": DUCKDB_ONLY,
-    "rolling variance (rows)": DUCKDB_ONLY,
+    "stddev over group": NOT_ON_POLARS,
+    "rolling variance (rows)": NOT_ON_POLARS,
 }
 
 

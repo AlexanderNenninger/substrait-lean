@@ -11,48 +11,16 @@
     "overflow"
   ],
   "rows": [
-    {
-      "group": "int.div",
-      "option": "overflow",
-      "types": [
-        "i8",
-        "i16",
-        "i32",
-        "i64"
-      ]
-    },
-    {
-      "group": "int.div",
-      "option": "on_division_by_zero",
-      "types": [
-        "i8",
-        "i16",
-        "i32",
-        "i64"
-      ]
-    },
-    {
-      "group": "int.div",
-      "option": "division_type",
-      "types": [
-        "i8",
-        "i16",
-        "i32",
-        "i64"
-      ]
-    }
+    {"group": "int.div", "option": "overflow", "types": ["i8", "i16", "i32", "i64"]},
+    {"group": "int.div", "option": "on_division_by_zero", "types": ["i8", "i16", "i32", "i64"]},
+    {"group": "int.div", "option": "division_type", "types": ["i8", "i16", "i32", "i64"]}
   ],
   "constructs": [
     "//",
     "floordiv",
     "truncdiv"
   ],
-  "settings": {
-    "engine": [
-      "in-memory",
-      "streaming"
-    ]
-  },
+  "settings": {"engine": ["in-memory", "streaming"]},
   "description": [
     "`//` on integers is floor division (`wrapping_floor_div_mod`): `-7 // 2` is -4, `1 // -2` is -1. A zero divisor gives NULL (the result's validity masks it), and `MIN // -1` wraps to `MIN`.",
     "`Expr.truncdiv` divides rounding toward zero (`Operator::TruncDivide`, the kernel `prim_wrapping_trunc_div`), on both engines: `-7 truncdiv 2` is -3. It shares the rest with `//`: a zero divisor gives NULL and `MIN truncdiv -1` wraps to `MIN`. The result type is that of `//`.",

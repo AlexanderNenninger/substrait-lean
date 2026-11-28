@@ -320,8 +320,10 @@ Task recipes live in `.claude/skills/` and load when needed: `add-function`
 (functions and coverage cases; older comments call it CLAUDE.md's "Adding
 functions"), `engine-fact` (formerly "Engine facts"), `upstream-bug`,
 `upstream-report`, `prove-lean`, `chaos-run`, `query-semantics`,
-`release-sverify` and `create-pull-request` (branch, checks, `Fixes #N`, the
-review and mergeq).
+`release-sverify`, `create-pull-request` (branch, checks, `Fixes #N`, the
+review), `mergeq` (the labels, admission, refusals and batches) and
+`write-docs` (any change to a README, `docs/`, the tour's markdown cells or
+a docstring).
 
 ## sverify-dbt
 
@@ -394,36 +396,12 @@ changes coverage commits it, after `sverify_dev.catalogue --write`.
 
 ## Voice
 
-The READMEs, `docs/` and the tour's markdown cells (`notebooks/`) share one
-voice: light, direct and concise.
-
-- Sverify is the subject ("Sverify proves…"). Write "Sverify" at the start of
-  a sentence and `sverify` for the package elsewhere.
-- No bold, emojis, exclamation marks, "simply" or "just". Drop filler and
-  hedges.
-- No opposing pairs ("X, not Y", "proved, not tested", "instead of"). State the
-  claim and stop.
-- Claims about objective facts link to what supports them: a doc, test,
-  issue, table or number.
-- Keep every fact, identifier, link and number.
-
-The tour's notebooks add three things for the data engineer with a stake in
-the outcome:
-
-- An opening of two or three sentences in the second person that sets the
-  scene and the stakes (the customer charged twice, whoever gets paged at
-  3 a.m.), then the rule or feature.
-- Walkthrough steps say "we": "We'll write the rule in Ibis, state what it
-  assumes and what it promises, and have the checker prove it before any data
-  runs." Openings and recaps speak to the reader as "you".
-- A closing paragraph about what the reader can now do, leading into the next
-  notebook with its link. No humour.
-
-An opening: "Say you're on the payments team. A customer was charged twice for
-the same coffee, and by the time support hears about it, they've already
-tweeted. You want to catch these double charges, the same card paying the
-same amount at the same merchant twice within five minutes, and refund them
-first."
+The READMEs, `docs/`, the tour's markdown cells and the docstrings share one
+voice: light, direct and concise. Sverify is the subject; no bold, emojis,
+exclamation marks or opposing pairs; claims link to their support. The
+`write-docs` skill (`.claude/skills/write-docs/reference/voice.md`) holds the
+full rules, the notebooks' opening and closing, and the workflow; load it for
+any docs change.
 
 ## Changelog
 

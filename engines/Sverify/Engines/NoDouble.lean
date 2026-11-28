@@ -133,6 +133,18 @@ theorem Measure.mayDouble_parts {m : Measure} (hm : m.mayDouble = false) :
   rw [hc] at h
   simpa using h
 
+omit [Boxes.Ambient] in
+/-- A sort reads no option of `floatOnlyOptions`. -/
+theorem sortReads_not_floatOnly {keys : List SortKey} : ∀ p ∈ sortReads keys,
+    p.2.1 ∉ floatOnlyOptions := by
+  intro p hp
+  simp only [sortReads, List.mem_append, List.mem_map] at hp
+  rcases hp with ⟨k, -, rfl⟩ | hp
+  · simp [floatOnlyOptions, aggInterpreted]
+  · split at hp
+    · rw [List.mem_singleton.mp hp]; simp [floatOnlyOptions, aggInterpreted]
+    · simp at hp
+
 theorem Measure.inputsI_noDouble (hI : I.Within t) {m : Measure} (hm : m.mayDouble = false)
     (hl : ∀ p ∈ m.reads, NearRef t p) {rows : Relation} (hr : NoDoubles rows) :
     m.inputs rows I = m.inputs rows := by
@@ -174,9 +186,13 @@ theorem Measure.allowedP_noDouble (hI : I.Within t) {m : Measure} (hm : m.mayDou
   have hsr := hr.perm hs
   rw [Measure.inputsI_noDouble hI hm hl hsr] at ha
   have hf := (Measure.mayDouble_parts hm).1
-  obtain ⟨h1, h2⟩ := AggFn.allowedP_noDouble hf (fun p hp => hl p (List.mem_append_right _ hp))
+  obtain ⟨h1, h2⟩ := AggFn.allowedP_noDouble hf
+    (fun p hp => hl p (List.mem_append_right _ (List.mem_append_left _ hp)))
     (Measure.inputs_hasDouble (Measure.mayDouble_parts hm).2.1 hsr) ha
-  exact ⟨⟨s, hs, hsort, h1⟩, h2⟩
+  refine ⟨⟨s, hs, fun hso => NullsSortedP.monoOn (fun p hp => ?_) (hsort hso), h1⟩, h2⟩
+  exact (hl p (List.mem_append_right _ (List.mem_append_right _
+    (by simp only [Measure.sortReads, hso, ↓reduceIte]; exact hp)))).of_refAt
+    (sortReads_not_floatOnly p hp)
 
 omit [Boxes.Ambient] in
 theorem Row.canon_of_noDouble {row : Row} (h : ∀ v ∈ row, v.hasDouble = false) : row.canon = row := by
@@ -310,18 +326,6 @@ theorem windowRowsP_noDouble {part : List Nat} {fns : List WinFn}
       · obtain ⟨f, hmem, hfv⟩ := Forall2.mem_right h2 h
         exact (hfn f hmem v hfv).2
     · exact h5 row hrow
-
-omit [Boxes.Ambient] in
-/-- A sort reads no option of `floatOnlyOptions`. -/
-theorem sortReads_not_floatOnly {keys : List SortKey} : ∀ p ∈ sortReads keys,
-    p.2.1 ∉ floatOnlyOptions := by
-  intro p hp
-  simp only [sortReads, List.mem_append, List.mem_map] at hp
-  rcases hp with ⟨k, -, rfl⟩ | hp
-  · simp [floatOnlyOptions, aggInterpreted]
-  · split at hp
-    · rw [List.mem_singleton.mp hp]; simp [floatOnlyOptions, aggInterpreted]
-    · simp at hp
 
 omit [Boxes.Ambient] in
 theorem any_congr_mem {α : Type} {l : List α} {f g : α → Bool} (h : ∀ a ∈ l, f a = g a) :
@@ -487,7 +491,10 @@ theorem Rel.allowedI_noDouble (hI : I.Within t) (hcat : cat.WF) (hk : cat.HasKin
     obtain ⟨hw', hno⟩ := windowRowsP_noDouble hd.2
       (fun p hp => hl p (by simp only [Rel.reads, windowReads, List.mem_append]; exact .inr (.inl (.inl hp))))
       (before := []) (fun _ h => by simp at h) (hn.perm hs) hw
-    exact ⟨⟨i, hi', s, hs, hsort, o, hp, hw'⟩, hno.perm hp⟩
+    have hsort' := NullsSortedP.monoOn (fun p hp' =>
+      (hl p (by simp only [Rel.reads, windowReads, List.mem_append]; exact .inr (.inl (.inr hp')))).of_refAt
+        (sortReads_not_floatOnly p hp')) hsort
+    exact ⟨⟨i, hi', s, hs, hsort', o, hp, hw'⟩, hno.perm hp⟩
   | .semi a b anti on, hd, hl, _, ⟨x, y, hx, hy, ho⟩ => by
     simp only [Rel.mayDouble, Bool.or_eq_false_iff] at hd
     obtain ⟨hx', hnx⟩ := Rel.allowedI_noDouble hI hcat hk hd.1.1

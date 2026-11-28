@@ -316,7 +316,7 @@ def test_a_broken_link_is_reported(tmp_path, capsys):
     assert second.links and "amount" in second.links[0]
 
 
-def test_usage_errors_exit_2_and_errors_6(tmp_path, capsys):
+def test_usage_errors_exit_2_and_errors_8(tmp_path, capsys):
     code, doc = run_json(capsys, "check", str(tmp_path / "missing.py"))
     assert code == 2 and doc["status"] == "usage"
     path = write(tmp_path, PROVED)
@@ -445,7 +445,7 @@ stored = orders.pipe(ids).write(DeltaSink(SINK))
 """
 
 
-def test_a_duckdb_memory_breach_exits_4_and_writes_nothing(tmp_path):
+def test_a_duckdb_memory_breach_exits_5_and_writes_nothing(tmp_path):
     """In a process of its own: the limit is the process's DuckDB's."""
     sink = tmp_path / "lake" / "ids"
     path = tmp_path / "big.py"
