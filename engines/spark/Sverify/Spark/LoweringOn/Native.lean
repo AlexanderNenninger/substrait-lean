@@ -100,15 +100,6 @@ abbrev Substrait.sparkOn.froundTo : (d : Int) → Substrait.UnEntry Substrait.Pr
   Substrait.UnEntry.native (Substrait.UnFn.froundTo d)
     (Substrait.Lowering.un_agree_of_eq (Substrait.sparkOn.froundTo_native d))
 
-theorem Substrait.sparkOn.ftoi_native : ∀ (x : Substrait.Value),
-  Substrait.Profile.un Substrait.Profile.spark Substrait.UnFn.ftoi x =
-    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.ftoi x := by
-  native_tac
-
-abbrev Substrait.sparkOn.ftoi : Substrait.UnEntry Substrait.Profile.spark Substrait.UnFn.ftoi :=
-  Substrait.UnEntry.native Substrait.UnFn.ftoi
-  (Substrait.Lowering.un_agree_of_eq Substrait.sparkOn.ftoi_native)
-
 theorem Substrait.sparkOn.narrow_native : ∀ (bits : Nat) (x : Substrait.Value),
   Substrait.Profile.un Substrait.Profile.spark (Substrait.UnFn.narrow bits) x =
     Substrait.Profile.un Substrait.Profile.reference (Substrait.UnFn.narrow bits) x := by
@@ -118,15 +109,6 @@ abbrev Substrait.sparkOn.narrow : (bits : Nat) → Substrait.UnEntry Substrait.P
   fun bits =>
   Substrait.UnEntry.native (Substrait.UnFn.narrow bits)
     (Substrait.Lowering.un_agree_of_eq (Substrait.sparkOn.narrow_native bits))
-
-theorem Substrait.sparkOn.ftoiOrNull_native : ∀ (x : Substrait.Value),
-  Substrait.Profile.un Substrait.Profile.spark Substrait.UnFn.ftoiOrNull x =
-    Substrait.Profile.un Substrait.Profile.reference Substrait.UnFn.ftoiOrNull x := by
-  native_tac
-
-abbrev Substrait.sparkOn.ftoiOrNull : Substrait.UnEntry Substrait.Profile.spark Substrait.UnFn.ftoiOrNull :=
-  Substrait.UnEntry.native Substrait.UnFn.ftoiOrNull
-  (Substrait.Lowering.un_agree_of_eq Substrait.sparkOn.ftoiOrNull_native)
 
 theorem Substrait.sparkOn.narrowOrNull_native : ∀ (bits : Nat) (x : Substrait.Value),
   Substrait.Profile.un Substrait.Profile.spark (Substrait.UnFn.narrowOrNull bits) x =

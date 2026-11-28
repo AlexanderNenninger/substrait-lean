@@ -273,4 +273,18 @@ end Example
   nativeOffIs Profile.spark.table Profile.spark.obs Lowering.spark.nativeUn Lowering.spark.nativeBin
     []
 
+/-- The functions `Profile.spark` states as the reference's where Spark differs, with
+their fact and the entry that keeps them unreached (P2, P3). -/
+def Spark.trueWhereReached : List (Functions.Ctor × String × Expr) :=
+  [(.un .ftoi, "spark-cast-double-to-int", Spark.ftoiTemplate),
+   (.un .ftoiOrNull, "spark-cast-double-to-int", Spark.ftoiOrNullTemplate)]
+
+-- Ruling 290's P4: only the guarded entries call Spark's casts of a double to `BIGINT`.
+#guard letI := Boxes.Ambient.none
+  Spark.trueWhereReached.all fun (c, _, t) =>
+      (LoweringExport.unFns.all fun f => (Lowering.spark.un f).all fun e =>
+        e.tmpl == t || !e.tmpl.ctors.contains c) &&
+      LoweringExport.binFns.all fun f => (Lowering.spark.bin f).all fun e => !e.tmpl.ctors.contains c
+
+
 end Substrait

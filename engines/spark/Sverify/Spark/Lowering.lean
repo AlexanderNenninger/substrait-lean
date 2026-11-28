@@ -80,21 +80,12 @@ saturates (`Spark.ftoiExcepted`, spark-cast-double-to-int). The table's entries 
 are the guarded templates (`Spark.ftoiEntry`, `Spark.ftoiOrNullEntry`), whose native cast
 is reached only below `2⁶³` (`Spark.ftoi_native_not_excepted`), and no other entry calls
 them: a regeneration that drops `excluding [UnFn.ftoi, UnFn.ftoiOrNull]`
-(`scripts/RegenLoweringSpark.lean`) fails here (P4). -/
-
-/-- The functions `Profile.spark` states as the reference's where Spark differs, with
-their fact and the entry that keeps them unreached (P2, P3). -/
-def Spark.trueWhereReached : List (Functions.Ctor × String × Expr) :=
-  [(.un .ftoi, "spark-cast-double-to-int", Spark.ftoiTemplate),
-   (.un .ftoiOrNull, "spark-cast-double-to-int", Spark.ftoiOrNullTemplate)]
+(`scripts/RegenLoweringSpark.lean`) fails here; that no other entry calls them is
+`Spark/Engine.lean`'s guard (P4). -/
 
 #guard letI := Boxes.Ambient.none
   (Lowering.spark.un .ftoi).any (·.tmpl == Spark.ftoiTemplate) &&
-    (Lowering.spark.un .ftoiOrNull).any (·.tmpl == Spark.ftoiOrNullTemplate) &&
-    Spark.trueWhereReached.all fun (c, _, t) =>
-      (LoweringExport.unFns.all fun f => (Lowering.spark.un f).all fun e =>
-        e.tmpl == t || !e.tmpl.ctors.contains c) &&
-      LoweringExport.binFns.all fun f => (Lowering.spark.bin f).all fun e => !e.tmpl.ctors.contains c
+    (Lowering.spark.un .ftoiOrNull).any (·.tmpl == Spark.ftoiOrNullTemplate)
 
 /-! ## Tests (rulings 248 G6, 249 H5)
 

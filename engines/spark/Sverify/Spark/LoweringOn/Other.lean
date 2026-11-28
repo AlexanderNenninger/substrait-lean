@@ -31,6 +31,12 @@ local macro "bin_tac" : tactic =>
 abbrev Substrait.sparkOn.ffloor : Substrait.UnEntry Substrait.Profile.spark Substrait.UnFn.ffloor :=
   Substrait.Spark.ffloorEntry
 
+abbrev Substrait.sparkOn.ftoi : Substrait.UnEntry Substrait.Profile.spark Substrait.UnFn.ftoi :=
+  Substrait.Spark.ftoiEntry
+
+abbrev Substrait.sparkOn.ftoiOrNull : Substrait.UnEntry Substrait.Profile.spark Substrait.UnFn.ftoiOrNull :=
+  Substrait.Spark.ftoiOrNullEntry
+
 theorem Substrait.sparkOn.dateAdd_agree : ∀ (x y : Substrait.Value),
   Substrait.Outcome.Agree
     (Substrait.Expr.evalP Substrait.Profile.spark [x, y] Substrait.Spark.dateAddTemplate)
