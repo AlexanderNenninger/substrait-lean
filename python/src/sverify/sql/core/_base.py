@@ -1009,6 +1009,10 @@ class Dialect:
         """`BinFn.pair`: the two doubles as a list, NULL if either is (#54)."""
         raise self.refused("sverify_pair")
 
+    def pair_item(self, v: str, i: int) -> str:
+        """The first (`i` = 1) or second double of the pair `v`."""
+        return f"{v}[{i}]"
+
     def covar(self, fn: str, v: str) -> str:
         """`AggFn.cov`/`corr` of the pairs `v` (`pair`'s lists), the engine's own
         algorithm (#54); NULL cases are the caller's."""
@@ -5208,7 +5212,7 @@ class _Writer:
                 # the canonical zero stands for it.
                 return d.zero_rep(sql, "extreme") if kind == "float" else sql
             case "covar_samp" | "covar_pop" | "corr":
-                x, y = f"{v}[1]", f"{v}[2]"
+                x, y = d.pair_item(v, 1), d.pair_item(v, 2)
                 n = f"COUNT({v})"
                 if m.fn == "corr":
                     # Fewer than two pairs, or a side whose values are all equal:

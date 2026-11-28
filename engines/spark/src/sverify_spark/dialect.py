@@ -186,6 +186,17 @@ class SparkDialect(Dialect):
     def cardinality(self, x: str) -> str:
         return f"cardinality({x})"
 
+    def pair(self, a: str, b: str) -> str:
+        return f"(CASE WHEN {a} IS NULL OR {b} IS NULL THEN NULL ELSE array({a}, {b}) END)"
+
+    def pair_item(self, v: str, i: int) -> str:
+        # `element_at` counts from 1, as the reference's pair does; `v[i]` from 0.
+        return f"element_at({v}, {i})"
+
+    def covar(self, fn: str, v: str) -> str:
+        # Spark's own Welford co-moment and Chan merge (spark-covar, spark-corr).
+        return f"{fn.upper()}({self.pair_item(v, 1)}, {self.pair_item(v, 2)})"
+
     def collect(self, v: str, order: Sequence[str]) -> str:
         if order:
             raise self.refused("array_agg")

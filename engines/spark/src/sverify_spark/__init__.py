@@ -239,6 +239,6 @@ PLUGIN = ProfilePlugin(
     },
     guards=(RANGE_GUARD, MIN_MOD_GUARD),
     # `collect()` of an unordered list (the dialect refuses an ordered one).
-    functions=frozenset({"array_agg"}),
+    functions=frozenset({"array_agg", "covar_samp", "covar_pop", "corr", "sverify_pair"}),
     shim_text={"null_order": "NULLs sorted as the reference sorts them"},
 )
