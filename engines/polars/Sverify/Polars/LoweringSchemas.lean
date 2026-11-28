@@ -45,7 +45,7 @@ def polarsSchemas : Schemas where
         "shl: error outside 0-63, else the low 63-k bits of #0 & -1 times 2^k, the next bit the sign")
     | .bit .shr => some (.expr Polars.shrTemplate (mkConst ``Polars.shrTemplate)
         "shr: error outside 0-63, else (#0 & -1) // 2^#1 floored")
-    | .splitFirst => some (.expr Polars.splitFirstSchemaT (mkConst ``Polars.splitFirstSchemaT)
+    | .splitFirst => some (.expr Lowering.splitFirstSchemaT (mkConst ``Lowering.splitFirstSchemaT)
         "split_first: #0 for an empty #1, else Polars's split")
     | _ => none
   proofs := `Substrait.Polars

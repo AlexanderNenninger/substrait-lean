@@ -262,4 +262,13 @@ end Example
      -- `ftoi` and `ftoiOrNull` truncate first in the lowering (`Lowering.ftoi_agree`).
      (.un (.dtrunc 0), "float_to_int")]
 
+-- Ruling 290's P4: DuckDB's `split_part` is called only by the split's entry, behind
+-- `Lowering.splitGuard` (`Lowering.split_native_not_excepted`, duckdb-split-part).
+#guard letI := Boxes.Ambient.none
+  (Lowering.duckdb.bin .splitFirst).any (·.tmpl == Lowering.splitFirstSchemaT) &&
+    (LoweringExport.unFns.all fun f => (Lowering.duckdb.un f).all fun e =>
+      !e.tmpl.ctors.contains (Functions.Ctor.bin .splitFirst)) &&
+    LoweringExport.binFns.all fun f => (Lowering.duckdb.bin f).all fun e =>
+      f == .splitFirst || !e.tmpl.ctors.contains (Functions.Ctor.bin .splitFirst)
+
 end Substrait

@@ -124,15 +124,6 @@ def droundEvenT (k : Nat) : Expr :=
       (.bin .eq (.bin .imod t (.lit (.int 2))) (.lit (.int 0))))
     t (.un (.dround k) (.field 0))
 
-/-- **Where `Profile.polars`'s `sverify_split_first` keeps the reference's value though
-Polars computes another** (ruling 290's P2): a string and an empty pattern, where
-Polars's `str.split('').list.first()` gives the first code point, NULL for `''`
-(polars-split-first), and the reference `s`. The lowering never calls the split there
-(`Polars.split_native_not_excepted`). -/
-def splitExcepted : Value → Value → Bool
-  | .str _, .str t => t.isEmpty
-  | _, _ => false
-
 end Polars
 
 /-- The unary functions where Polars's profile differs from the reference: its
@@ -153,7 +144,7 @@ where Polars computes another, which the lowering never reaches (ruling 290, "tr
 where reached"): `strpos`, as Polars's `str.find` counts bytes from 0
 (polars-strpos), which the lowering never calls (`Polars.strposTemplate`), and
 `sverify_split_first` of a string and an empty pattern, which Polars splits into
-code points (`Polars.splitExcepted`, polars-split-first). -/
+code points (`Lowering.splitExcepted`, polars-split-first). -/
 def BinFn.polarsTmpl : BinFn → Option Expr
   | .idiv => some Polars.floorDivT
   | .imod => some Polars.floorModT

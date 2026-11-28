@@ -409,7 +409,7 @@ theorem Lowering.polars_bin_tmpl (f : BinFn) (en : BinEntry Profile.polars f)
     simp [BinEntry.native, BinEntry.ofAgree, Expr.ctors, Polars.idivTemplate, Polars.imodTemplate,
       Polars.bitAndT, Polars.bitOrT, Polars.bitXorT, Polars.shlTemplate, Polars.shrTemplate,
       Polars.shlLow, Polars.shlK, Polars.shrOutside, Polars.shrPow,
-      Polars.dmodTemplate, Polars.strposEntry, Polars.strposTemplate, Polars.splitFirstSchemaT]
+      Polars.dmodTemplate, Polars.strposEntry, Polars.strposTemplate, Lowering.splitFirstSchemaT, Lowering.splitGuard]
 
 /-- **Polars's lowering calls no `%` of doubles** (R1): the table has no entry
 for it (`refusing`), and no template calls it, so no expression of a plan it
@@ -418,6 +418,17 @@ theorem Lowering.polars_no_fmod {r r' : Rel} (hr : Lowering.polars.lowerRel? r =
     ∀ e ∈ r'.mappedExprs, Functions.Ctor.bin .fmod ∉ e.ctors := fun e' he' => by
   obtain ⟨e, t, ht, rfl⟩ := Lowering.mem_lowerRel? hr he'
   exact Lowering.lower_not_mem_ctors (Lowering.polars_un_tmpl) (Lowering.polars_bin_tmpl) ht
+
+-- Ruling 290's P4: Polars's `str.find` (native `strpos`) is called by no entry, and its
+-- split only by the split's entry and `strpos`'s template, each behind
+-- `Lowering.splitGuard` (`Polars.split_native_not_excepted`).
+#guard letI := Boxes.Ambient.none
+  (LoweringExport.unFns.all fun f => (Lowering.polars.un f).all fun e =>
+    !e.tmpl.ctors.contains (Functions.Ctor.bin .strpos) &&
+      !e.tmpl.ctors.contains (Functions.Ctor.bin .splitFirst)) &&
+  LoweringExport.binFns.all fun f => (Lowering.polars.bin f).all fun e =>
+    !e.tmpl.ctors.contains (Functions.Ctor.bin .strpos) &&
+      (f == .splitFirst || f == .strpos || !e.tmpl.ctors.contains (Functions.Ctor.bin .splitFirst))
 
 /-- **`Polars.impl` is within Polars's table**: where the profile gives a
 value, the profile's (`Profile.polars_un_within`, `Profile.polars_bin_within`),

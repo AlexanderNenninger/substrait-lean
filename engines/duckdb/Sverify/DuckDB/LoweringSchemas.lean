@@ -88,6 +88,10 @@ def schemaBin? (f : BinFn) : Option Tm :=
   -- (`Lowering.bit_shl_agree`): the tactic does not reach it in time.
   | .bit .shl => some (.expr Lowering.shlTemplate (Lean.mkConst ``Lowering.shlTemplate)
       "shl: error outside 0-63, else wrap64(#0 * 2^#1)")
+  -- `sverify_split_first` (ruling 286): `split_part(#0, #1, 1)`, but `#0` itself for an
+  -- empty `#1`, where DuckDB splits into code points (duckdb-split-part, ruling 290).
+  | .splitFirst => some (.expr Lowering.splitFirstSchemaT (Lean.mkConst ``Lowering.splitFirstSchemaT)
+      "split_first: #0 for an empty #1, else split_part(#0, #1, 1)")
   | .bit .shr => some (.ite (andFn (isNumFn .int (.field 0))
       (orFn (ltFn (.field 1) (.lit (.int 0))) (notFn (ltFn (.field 1) (.lit (.int 64))))))
       (.raise "domain error" (.field 1)) self)

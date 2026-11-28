@@ -1066,10 +1066,10 @@ theorem bit_shl_agree (x y : Value) :
 /-! ## `sverify_split_first` and `strpos` (ruling 286)
 
 Polars's split (polars-split-first) is the reference's `sverify_split_first` but
-for a string and an empty pattern (`Polars.splitExcepted`), which `Profile.polars`
+for a string and an empty pattern (`Lowering.splitExcepted`), which `Profile.polars`
 keeps as the reference's (ruling 290): every template passes that case through
-before the split (`splitGuard`), so the split is reached only elsewhere
-(`split_native_not_excepted`). `strpos` is one more than the
+before the split (`Lowering.splitGuard`), so the split is reached only elsewhere
+(`Lowering.split_native_not_excepted`). `strpos` is one more than the
 characters before the first `t` (`Polars.strpos_chars`), which the split gives
 without Polars's `str.find`: for a non-empty `t`, `t` occurs exactly when the
 prefix before it is not `s` itself (`splitFirstChars_eq_self`). -/
@@ -1114,21 +1114,8 @@ theorem splitFirst_length {s t : String} (ht : t ≠ "") :
   unfold Text.splitFirst
   simp only [String.isEmpty_iff, ht, ite_false, String.length_ofList, splitFirstChars_length]
 
-omit [Boxes.Ambient] in
-theorem capped_length_eq_zero (s : String) : Text.capped s.length = 0 ↔ s = "" := by
-  unfold Text.capped Text.sizeCap
-  constructor
-  · intro h; have : s.length = 0 := by omega
-    exact String.length_eq_zero_iff.mp this
-  · rintro rfl; rfl
-
-/-- `length` of a value: the capped count of a string's characters, `NULL` otherwise. -/
-def lenV : Value → Value
-  | .str s => .int (Text.capped s.length)
-  | _ => .null
-
-theorem polars_length (v : Value) : Profile.polars.un .length v = .ok (lenV v) := by
-  cases v <;> rfl
+theorem polars_length (v : Value) : Profile.polars.un .length v = .ok (Lowering.lenV v) :=
+  Lowering.ref_length v
 
 theorem polars_eq (x y : Value) : Profile.polars.bin .eq x y = .ok (BinFn.apply .eq x y) :=
   Lowering.ref_eq x y
@@ -1142,18 +1129,6 @@ theorem polars_and3 (x y : Value) : Profile.polars.bin .and x y = .ok (and3 x y)
 theorem polars_ltV (x y : Value) : Profile.polars.bin .lt x y = .ok (BinFn.apply .lt x y) :=
   Lowering.ref_lt x y
 
-theorem eq_lenV_zero (v : Value) :
-    BinFn.apply .eq (lenV v) (.int 0) = match v with
-      | .str s => .bool (decide (s = ""))
-      | _ => .null := by
-  cases v <;> try rfl
-  rename_i s
-  simp only [lenV, BinFn.apply, Value.numPair]
-  by_cases h : s = ""
-  · subst h; rfl
-  · have : ¬Text.capped s.length = 0 := fun e => h ((capped_length_eq_zero s).mp e)
-    simp [h, this]
-
 /-- **Polars's split**, as `Profile.polars` states it: the reference's (ruling 290). -/
 theorem polars_splitFirst (x y : Value) :
     Profile.polars.bin .splitFirst x y = .ok (match x, y with
@@ -1162,54 +1137,6 @@ theorem polars_splitFirst (x y : Value) :
   show Profile.reference.bin .splitFirst x y = _
   cases x <;> cases y <;> rfl
 
-/-- `length(#0)` is an integer (`#0` is a string) and `length(#1) = 0`: the case where
-Polars's split is not the reference's (`Polars.splitExcepted`). -/
-def splitGuard : Expr :=
-  .bin .and (.un (.isNum .int) (.un .length (.field 0)))
-    (.bin .eq (.un .length (.field 1)) (.lit (.int 0)))
-
-/-- `CASE WHEN splitGuard THEN #0 ELSE split(#0, #1) END`: the reference's
-`sverify_split_first`, which gives `s` for an empty pattern. -/
-def splitFirstSchemaT : Expr := .ifThen splitGuard (.field 0) (.bin .splitFirst (.field 0) (.field 1))
-
-theorem splitGuard_eval (x y : Value) : splitGuard.evalP Profile.polars [x, y] = .ok (match x, y with
-    | .str _, .str t => .bool (decide (t = ""))
-    | .str _, _ => .null
-    | _, _ => .bool false) := by
-  simp only [splitGuard, Expr.evalP, List.getD, List.getElem?_cons_zero, List.getElem?_cons_succ,
-    Option.getD_some, bind, Except.bind, polars_length, polars_isNum, polars_eq, polars_and3,
-    eq_lenV_zero]
-  cases x <;> cases y <;> simp [lenV, Value.isNum, and3] <;> (try rename_i t) <;>
-    (try cases decide (t = "")) <;> rfl
-
-/-- **P1 (ruling 290): the native split is reached only where it is the reference's.**
-Where `splitGuard` does not hold, the arguments are not `Polars.splitExcepted`. -/
-theorem split_native_not_excepted {x y : Value}
-    (h : ∀ v, splitGuard.evalP Profile.polars [x, y] = .ok v → v.isTrue = false) :
-    splitExcepted x y = false := by
-  have := h _ (splitGuard_eval x y)
-  cases x <;> cases y <;> simp_all [splitExcepted, Value.isTrue]
-  rename_i t
-  intro ht; subst ht; simp at this
-
-omit [Boxes.Ambient] in
-theorem splitFirstSchemaT_must : 0 ∈ splitFirstSchemaT.must ∧ 1 ∈ splitFirstSchemaT.must := by
-  simp [Expr.must, splitFirstSchemaT, splitGuard]
-
-theorem ref_splitFirst (x y : Value) :
-    Profile.reference.bin .splitFirst x y = .ok (BinFn.apply .splitFirst x y) := by
-  cases x <;> cases y <;> rfl
-
-theorem splitFirst_agree (x y : Value) :
-    (splitFirstSchemaT.evalP Profile.polars [x, y]).Agree (Profile.reference.bin .splitFirst x y) := by
-  simp only [splitFirstSchemaT, splitGuard, Expr.evalP, List.getD, List.getElem?_cons_zero,
-    List.getElem?_cons_succ, Option.getD_some, bind, Except.bind, polars_length, polars_isNum,
-    polars_eq, polars_and3, eq_lenV_zero, polars_splitFirst, ref_splitFirst]
-  cases x <;> cases y <;> simp [lenV, Value.isNum, Value.isTrue, BinFn.apply, Outcome.Agree]
-  all_goals first
-    | rfl
-    | (rename_i s t; by_cases ht : t = "" <;> simp [ht, and3, Text.splitFirst])
-
 /-- **`strpos` from the split** (ruling 286, amended): `1` for an empty `t` (of a
 string `s`), `0` where the prefix before `t` is `s` itself, else one more than its
 characters, capped as the reference caps positions. Polars's `str.find` is not
@@ -1217,13 +1144,28 @@ called. -/
 def strposTemplate : Expr :=
   let sf := Expr.bin .splitFirst (.field 0) (.field 1)
   let lsf := Expr.un .length sf
-  .ifThen splitGuard (.lit (.int 1))
+  .ifThen Lowering.splitGuard (.lit (.int 1))
     (.ifThen (.bin .eq sf (.field 0)) (.lit (.int 0))
       (.ifThen (.bin .lt lsf (.lit (.int Text.sizeCap))) (.bin .add lsf (.lit (.int 1))) lsf))
 
 omit [Boxes.Ambient] in
 theorem strposTemplate_must : 0 ∈ strposTemplate.must ∧ 1 ∈ strposTemplate.must := by
-  simp [Expr.must, strposTemplate, splitGuard]
+  simp [Expr.must, strposTemplate, Lowering.splitGuard]
+
+/-- Polars's `length`, `isNum`, `=`, `AND` and split are the reference's. -/
+theorem splitOps : Lowering.SplitOps Profile.polars :=
+  ⟨polars_length, fun v => Lowering.ref_isNum .int v, fun v => Lowering.ref_eq v _,
+    Lowering.ref_and, fun _ _ => rfl⟩
+
+/-- **P1 (ruling 290) on Polars**: the native split is reached only where it is the
+reference's (`Lowering.split_native_not_excepted`). -/
+theorem split_native_not_excepted {x y : Value}
+    (h : ∀ v, Lowering.splitGuard.evalP Profile.polars [x, y] = .ok v → v.isTrue = false) :
+    Lowering.splitExcepted x y = false := Lowering.split_native_not_excepted splitOps h
+
+theorem splitFirst_agree (x y : Value) :
+    (Lowering.splitFirstSchemaT.evalP Profile.polars [x, y]).Agree
+      (Profile.reference.bin .splitFirst x y) := Lowering.splitFirst_agree_of splitOps x y
 
 theorem ref_strpos (x y : Value) :
     Profile.reference.bin .strpos x y = .ok (BinFn.apply .strpos x y) := by
@@ -1252,12 +1194,12 @@ theorem apply_eq_str (a b : String) : BinFn.apply .eq (.str a) (.str b) = .bool 
 
 theorem strpos_agree (x y : Value) :
     (strposTemplate.evalP Profile.polars [x, y]).Agree (Profile.reference.bin .strpos x y) := by
-  simp only [strposTemplate, splitGuard, Expr.evalP, List.getD, List.getElem?_cons_zero,
+  simp only [strposTemplate, Lowering.splitGuard, Expr.evalP, List.getD, List.getElem?_cons_zero,
     List.getElem?_cons_succ, Option.getD_some, bind, Except.bind, polars_length, polars_isNum,
-    polars_eq, polars_and3, polars_ltV, eq_lenV_zero, polars_splitFirst, ref_strpos]
+    polars_eq, polars_and3, polars_ltV, Lowering.eq_lenV_zero, polars_splitFirst, ref_strpos]
   cases x <;> cases y
   case str.str s t =>
-    simp only [lenV, Value.isNum]
+    simp only [Lowering.lenV, Value.isNum]
     by_cases ht : t = ""
     · subst ht
       simp [and3, Value.isTrue, Outcome.Agree, BinFn.apply, strpos_empty]
@@ -1284,7 +1226,7 @@ theorem strpos_agree (x y : Value) :
           simp only [hm, Int.lt_irrefl, ↓reduceIte]
           simp only [Outcome.Agree, Value.int.injEq]
           omega
-  all_goals simp [lenV, Value.isNum, and3, Value.isTrue, BinFn.apply, Outcome.Agree]
+  all_goals simp [Lowering.lenV, Value.isNum, and3, Value.isTrue, BinFn.apply, Outcome.Agree]
 
 /-- **Polars's entry for `strpos`**, hand-built: `strposTemplate`, exact. -/
 def strposEntry : BinEntry Profile.polars .strpos :=

@@ -337,6 +337,17 @@ Sverify's words claim no more than these theorems give
   (`engines/<engine>/facts/`, [how they are judged](../characterization/README.md)).
   DuckDB's own tests are replayed and fuzzed against the model; the profiles
   are tested on the engines and trusted.
+- Where a profile keeps the reference's value though the engine computes
+  another ("true where reached", ruling 290). The lowering never reaches those
+  inputs, which a lemma proves, and a `#guard` fails if an entry calls the
+  engine's function without it:
+
+  | Function | Inputs | The engine's behaviour | Fact | Unreached by |
+  |---|---|---|---|---|
+  | Polars's `str.split(t).list.first()` (`sverify_split_first`) | a string and an empty `t` (`Lowering.splitExcepted`) | the first code point, NULL for `''`, where the reference gives `s` | polars-split-first | `Lowering.split_native_not_excepted` |
+  | DuckDB's `split_part(s, t, 1)` (`sverify_split_first`) | a string and an empty `t` (`Lowering.splitExcepted`) | the first code point, where the reference gives `s` | duckdb-split-part | `Lowering.split_native_not_excepted` |
+  | Polars's `str.find` (`strpos`) | every input | a 0-based byte offset, NULL when absent | polars-strpos | no entry calls it (`Polars/Engine.lean`'s `#guard`) |
+
 - The table formats' change feeds (`ChangeFeed`, `TableFormat.lean`), a
   hypothesis of `Rel.cdf_sound` wherever Sverify reads a Delta change data
   feed; it is proved when the change is computed from two snapshots.

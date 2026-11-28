@@ -1364,4 +1364,107 @@ theorem Lowering.zeroTemplate_float {p : Profile} {f : UnFn} {g : Int → Int}
       simp [Outcome.ok_bind, heq', h0, hr, hneg, hr0, hb, FloatCode.canon_zero,
         FloatCode.canon_negZero', and3, Value.isTrue, Outcome.Agree]
 
+/-! ## `sverify_split_first`'s entry (ruling 286, ruling 290)
+
+Polars's `str.split(t).list.first()` and DuckDB's `split_part(s, t, 1)` are the
+reference's `sverify_split_first` but for a string and an empty pattern
+(`Lowering.splitExcepted`; polars-split-first, duckdb-split-part), where they give the
+first code point. Their profiles keep the reference's split (ruling 290, "true where
+reached"), and the entry passes that case through before the split (`splitGuard`), so
+the native split is reached only elsewhere (`Lowering.split_native_not_excepted`). -/
+
+/-- **Where an engine's split is not the reference's** (ruling 290's P2): a string
+and an empty pattern. -/
+def Lowering.splitExcepted : Value → Value → Bool
+  | .str _, .str t => t.isEmpty
+  | _, _ => false
+
+/-- `length` of a value: the capped count of a string's characters, `NULL` otherwise. -/
+def Lowering.lenV : Value → Value
+  | .str s => .int (Text.capped s.length)
+  | _ => .null
+
+theorem Lowering.ref_length (v : Value) : Profile.reference.un .length v = .ok (Lowering.lenV v) := by
+  cases v <;> rfl
+
+omit [Boxes.Ambient] in
+theorem Lowering.capped_length_eq_zero (s : String) : Text.capped s.length = 0 ↔ s = "" := by
+  unfold Text.capped Text.sizeCap
+  constructor
+  · intro h; have : s.length = 0 := by omega
+    exact String.length_eq_zero_iff.mp this
+  · rintro rfl; rfl
+
+theorem Lowering.eq_lenV_zero (v : Value) :
+    BinFn.apply .eq (Lowering.lenV v) (.int 0) = match v with
+      | .str s => .bool (decide (s = ""))
+      | _ => .null := by
+  cases v <;> try rfl
+  rename_i s
+  simp only [Lowering.lenV, BinFn.apply, Value.numPair]
+  by_cases h : s = ""
+  · subst h; rfl
+  · have : ¬Text.capped s.length = 0 := fun e => h ((Lowering.capped_length_eq_zero s).mp e)
+    simp [h, this]
+
+/-- An engine whose `length`, `isNum`, `=`, `AND` and split are the reference's, as the
+split's entry uses them. -/
+structure Lowering.SplitOps (p : Profile) : Prop where
+  length : ∀ v, p.un .length v = .ok (Lowering.lenV v)
+  isNum : ∀ v, p.un (.isNum .int) v = .ok (.bool (v.isNum .int))
+  eq : ∀ v, p.bin .eq v (.int 0) = .ok (BinFn.apply .eq v (.int 0))
+  and : ∀ x y, p.bin .and x y = .ok (and3 x y)
+  split : ∀ x y, p.bin .splitFirst x y = Profile.reference.bin .splitFirst x y
+
+/-- `length(#0)` is an integer (`#0` is a string) and `length(#1) = 0`. -/
+def Lowering.splitGuard : Expr :=
+  .bin .and (.un (.isNum .int) (.un .length (.field 0)))
+    (.bin .eq (.un .length (.field 1)) (.lit (.int 0)))
+
+/-- `CASE WHEN splitGuard THEN #0 ELSE split(#0, #1) END`: the reference's
+`sverify_split_first`, which gives `s` for an empty pattern. -/
+def Lowering.splitFirstSchemaT : Expr :=
+  .ifThen Lowering.splitGuard (.field 0) (.bin .splitFirst (.field 0) (.field 1))
+
+omit [Boxes.Ambient] in
+theorem Lowering.splitFirstSchemaT_must :
+    0 ∈ Lowering.splitFirstSchemaT.must ∧ 1 ∈ Lowering.splitFirstSchemaT.must := by
+  simp [Expr.must, Lowering.splitFirstSchemaT, Lowering.splitGuard]
+
+theorem Lowering.splitGuard_eval {p : Profile} (h : Lowering.SplitOps p) (x y : Value) :
+    Lowering.splitGuard.evalP p [x, y] = .ok (match x, y with
+      | .str _, .str t => .bool (decide (t = ""))
+      | .str _, _ => .null
+      | _, _ => .bool false) := by
+  simp only [Lowering.splitGuard, Expr.evalP, List.getD, List.getElem?_cons_zero,
+    List.getElem?_cons_succ, Option.getD_some, bind, Except.bind, h.length, h.isNum, h.eq, h.and,
+    Lowering.eq_lenV_zero]
+  cases x <;> cases y <;> simp [Lowering.lenV, Value.isNum, and3] <;> (try rename_i t) <;>
+    (try cases decide (t = "")) <;> rfl
+
+/-- **P1 (ruling 290): the native split is reached only where it is the reference's.**
+Where `splitGuard` does not hold, the arguments are not `Lowering.splitExcepted`. -/
+theorem Lowering.split_native_not_excepted {p : Profile} (hp : Lowering.SplitOps p) {x y : Value}
+    (h : ∀ v, Lowering.splitGuard.evalP p [x, y] = .ok v → v.isTrue = false) :
+    Lowering.splitExcepted x y = false := by
+  have := h _ (Lowering.splitGuard_eval hp x y)
+  cases x <;> cases y <;> simp_all [Lowering.splitExcepted, Value.isTrue]
+  rename_i t
+  intro ht; subst ht; simp at this
+
+theorem Lowering.ref_splitFirst (x y : Value) :
+    Profile.reference.bin .splitFirst x y = .ok (BinFn.apply .splitFirst x y) := by
+  cases x <;> cases y <;> rfl
+
+/-- **The split's entry is the reference's**, on any engine of `SplitOps`. -/
+theorem Lowering.splitFirst_agree_of {p : Profile} (hp : Lowering.SplitOps p) (x y : Value) :
+    (Lowering.splitFirstSchemaT.evalP p [x, y]).Agree (Profile.reference.bin .splitFirst x y) := by
+  rw [Lowering.splitFirstSchemaT, Expr.evalP, Lowering.splitGuard_eval hp]
+  simp only [Expr.evalP, List.getD, List.getElem?_cons_zero, List.getElem?_cons_succ,
+    Option.getD_some, bind, Except.bind, hp.split, Lowering.ref_splitFirst]
+  cases x <;> cases y <;> simp [Value.isTrue, BinFn.apply, Outcome.Agree]
+  all_goals first
+    | rfl
+    | (rename_i s t; by_cases ht : t = "" <;> simp [ht, Text.splitFirst])
+
 end Substrait

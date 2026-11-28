@@ -125,3 +125,24 @@ def test_a_double_to_bigint_truncates(monkeypatch, table):
         assert got == [(w,) for w in want], write.__name__
     nan = "CAST('NaN' AS DOUBLE)"
     assert con.execute(f"SELECT {D.float_to_int_or_null(nan)}").fetchone() == (None,)
+
+
+def test_the_split_entry_is_the_reference_on_duckdb():
+    """`sverify_split_first`'s entry (ruling 286, ruling 290): `split_part(s, t, 1)`,
+    with an empty `t` passed through as `s`, where DuckDB would give the first code
+    point (duckdb-split-part)."""
+    sql = lowering.render(
+        "Substrait.BinFn.splitFirst",
+        ["s", "t"],
+        lambda m, dep: D.raise_(m, dep, "str", "raised"),
+        D.float_lit,
+        D.int_lit,
+    )
+    assert sql is not None and "split_part(s, t, 1)" in sql
+    cases = [("héllo wörld", "ö"), ("aaa", "aa"), ("abc", "d"), ("abc", ""), ("", ""),
+             ("éx", ""), (None, "a"), ("abc", None), (None, "")]  # fmt: skip
+    con = duckdb.connect()
+    for s, t in cases:
+        got = con.execute(f"SELECT {sql} FROM (SELECT ?::VARCHAR AS s, ?::VARCHAR AS t)", [s, t])
+        want = None if s is None or t is None else (s if t == "" or t not in s else s[: s.find(t)])
+        assert got.fetchone()[0] == want, (s, t)

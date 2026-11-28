@@ -557,4 +557,22 @@ theorem Lowering.ftoiOrNull_agree (s : DuckDBSettings) (x : Value) :
     exact Outcome.agree_refl _
   all_goals rfl
 
+/-! ## `sverify_split_first` (ruling 286, ruling 290)
+
+DuckDB's `split_part(s, t, 1)` is the reference's `sverify_split_first` but for a
+string and an empty pattern (`Lowering.splitExcepted`, duckdb-split-part), which
+`Profile.duckdb` keeps as the reference's: the entry passes that case through before
+the split, which is reached only elsewhere (`Lowering.split_native_not_excepted`). -/
+
+/-- DuckDB's `length`, `isNum`, `=`, `AND` and split are the reference's. -/
+theorem Lowering.duck_splitOps (s : DuckDBSettings) : Lowering.SplitOps (Profile.duckdb s) :=
+  ⟨fun v => by cases v <;> rfl, fun v => by cases v <;> rfl, fun v => Lowering.duck_eq s v _,
+    Lowering.duck_and s, fun x y => by cases x <;> cases y <;> rfl⟩
+
+/-- **DuckDB's split entry is the reference's.** -/
+theorem Lowering.splitFirst_agree (s : DuckDBSettings) (x y : Value) :
+    (Lowering.splitFirstSchemaT.evalP (Profile.duckdb s) [x, y]).Agree
+      (Profile.reference.bin .splitFirst x y) :=
+  Lowering.splitFirst_agree_of (Lowering.duck_splitOps s) x y
+
 end Substrait

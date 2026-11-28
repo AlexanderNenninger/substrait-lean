@@ -1,0 +1,34 @@
+{
+  "id": "duckdb-split-part",
+  "engine": "duckdb",
+  "engine_version": "2.0.1",
+  "title": "`split_part(s, t, 1)`: the prefix before the leftmost `t`, the first code point for an empty `t`",
+  "verdict": "`sverify_split_first` for `t ≠ ''`; for `t = ''` the first code point, `''` for `''`",
+  "area": "strings",
+  "options": [],
+  "rows": [],
+  "constructs": [
+    "split_part"
+  ],
+  "settings": {},
+  "description": [
+    "`split_part(s, t, 1)` is the part of `s` before the leftmost occurrence of `t`, or `s` where `t` does not occur, counted in characters on non-ASCII text, with `t` read literally (`.` and `%` are not patterns). A NULL `s` or `t` gives NULL.",
+    "An empty `t` splits `s` into its code points, so the first part is the first code point: `'日本'` gives `'日'`, `'😀a'` `'😀'`, and `'éx'` (a base letter followed by a combining mark) `'e'`. An empty `s` gives `''`."
+  ],
+  "reference": "`sverify_split_first(s, t)` (`Text.splitFirst`, ruling 286) is the prefix before the leftmost `t`, `s` where `t` does not occur, and `s` for an empty `t`. The two agree but for a non-empty string and an empty `t` (inside `Lowering.splitExcepted`), which `Profile.duckdb` keeps as the reference's: the lowering writes `if t = '' then s else split_part(s, t, 1)` and never reaches `split_part` there (ruling 290, `Lowering.split_native_not_excepted`).",
+  "status": "open",
+  "evidence": "probe",
+  "provenance": [
+    {
+      "checked_at": "2026-11-28",
+      "method": "probe",
+      "checked_by": "#2586 session (duckdb 2.0.1, Python, 21 rows)",
+      "evidence": [
+        {
+          "file": "engines/duckdb/probes/split_part.py"
+        }
+      ],
+      "notes": "14 rows compared with a model of Text.splitFirst: non-ASCII text and needles, several and overlapping occurrences (the leftmost wins), a needle at the start, pattern metacharacters, an absent needle, one longer than s, the empty s, the whole string, NULLs: 0 mismatches. Seven rows with an empty t (first characters of three and four bytes, a base letter and a combining mark, one character, the empty s, a NULL s, a NULL t) compared with the first code point: 0 mismatches."
+    }
+  ]
+}
