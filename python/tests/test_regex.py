@@ -222,5 +222,5 @@ def test_polars_runs_regexes_and_refuses_digests():
         plan = written_plan(to_substrait_json(t.select(x=e)))
         assert run_plan(con, plan, "polars").column("x").to_pylist() == [want]
     plan = written_plan(to_substrait_json(t.select(x=t.s.hexdigest("md5"))))
-    with pytest.raises(Exception, match="see #2540"):
+    with pytest.raises(Exception, match="polars-string-functions-missing"):
         run_plan(con, plan, "polars")

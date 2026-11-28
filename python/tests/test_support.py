@@ -46,7 +46,7 @@ def plan(name: str, key: str = "scalarFunction", anchor: int = 7) -> dict:
 
 @pytest.mark.parametrize("dialect", ["spark", "snowflake", "Polars"])
 @pytest.mark.parametrize(
-    "name", ["regexp_extract", "md5", "first", "median", "corr", "list_prepend", "flatten"]
+    "name", ["string_agg", "first", "median", "corr", "list_prepend", "flatten"]
 )
 def test_duckdb_only(name: str, dialect: str) -> None:
     label = re.escape(_support._LABELS.get(name, name))
@@ -58,6 +58,23 @@ def test_duckdb_only(name: str, dialect: str) -> None:
     ):
         _support.check(plan(name, "measure"), dialect, Unsupported)
     _support.check(plan(name, "measure"), "duckdb", Unsupported)
+
+
+def test_some_engines() -> None:
+    """A function DuckDB and Polars run (#2540), and a digest Polars has none of."""
+    with pytest.raises(
+        Unsupported,
+        match=r"^re_extract\(\) \(SQL regexp_extract\) runs on duckdb and polars only: "
+        r"run it with engine='duckdb' \(spark does not run it yet; ",
+    ):
+        _support.check(plan("regexp_extract"), "spark", Unsupported)
+    _support.check(plan("regexp_extract"), "polars", Unsupported)
+    with pytest.raises(
+        Unsupported,
+        match=r"^hexdigest\('md5'\) \(SQL md5\): Polars has no md5 "
+        r"\(polars-string-functions-missing\); run it with engine='duckdb' ",
+    ):
+        _support.check(plan("md5"), "polars", Unsupported)
 
 
 def test_messages() -> None:

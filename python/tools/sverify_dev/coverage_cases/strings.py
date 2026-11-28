@@ -8,7 +8,6 @@ import ibis
 import ibis.expr.types as ir
 
 from sverify_dev.coverage_cases._common import (
-    DUCKDB_ONLY,
     NOT_ON_SPARK,
     Case,
     R,
@@ -67,9 +66,10 @@ REFUSED: dict[str, dict[str, str]] = {
     "capitalize": CASE_MAPPING,
     "re_extract": NOT_ON_SPARK,
     "re_replace": NOT_ON_SPARK,
-    "hexdigest": DUCKDB_ONLY,
-    # Polars has no levenshtein (polars-string-functions-missing, #1270).
-    "levenshtein": {"polars": "no levenshtein"},
+    # Polars has no digests (polars-string-functions-missing).
+    "hexdigest": {**NOT_ON_SPARK, "polars": "polars-string-functions-missing"},
+    # Polars has no levenshtein (#1270).
+    "levenshtein": {"polars": "polars-string-functions-missing"},
 }
 
 NO_DUCKDB_SQL = {
