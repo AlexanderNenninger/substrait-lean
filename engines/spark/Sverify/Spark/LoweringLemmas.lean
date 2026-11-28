@@ -498,7 +498,8 @@ it is the reference's. The soundness does not rest on Spark evaluating only the 
 branch a row takes (S4): the native branch's value is discarded where the guard holds.
 There the native cast returns at `2⁶³` (spark-cast-double-to-int, ruling 290's P6), and it
 raises only where the reference raises, past `2⁶³`, at NaN and `±∞`; `TRY_CAST` raises
-nowhere. -/
+nowhere. There Spark reports the guard's error, the reference's `badCast`, never the
+cast's own, on a column and on a folded constant (the fact's guard probe, S3). -/
 
 /-- `#0` is a double of `2⁶³` or more, or NaN (canonical codes order NaN above `+∞`). -/
 def ftoiGuard : Expr :=
