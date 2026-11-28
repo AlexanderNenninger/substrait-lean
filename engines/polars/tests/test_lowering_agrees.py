@@ -216,8 +216,10 @@ def test_round_to_digits_is_the_partial_entry():
     `267.5` as a double, a tie, so it rounds up; `±0.125 · 100` is the tie
     `±12.5`, which half to even would send to `±0.12`."""
     assert table_export.round_digits("polars") == 22
+    r = lowering.round_to(pl.col("x"), 2)
+    assert r is not None
     got = run(
-        {"r": lowering.round_to(pl.col("x"), 2)},
+        {"r": r},
         {"x": pl.Series([1.005, 2.675, 0.125, -0.125] * 400)},
     )
     assert 1.005 * 100 < 100.5 and 2.675 * 100 == 267.5
