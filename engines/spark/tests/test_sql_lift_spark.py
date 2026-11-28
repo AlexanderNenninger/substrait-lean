@@ -49,7 +49,7 @@ QUERIES = {
     "Join": "SELECT t.a, u.v FROM t JOIN u ON t.a = u.k",
     "Join left": "SELECT t.a, u.v FROM t LEFT JOIN u ON t.a = u.k",
     "Order": "SELECT a, b FROM t ORDER BY a",
-    "Ordered": "SELECT a, b FROM t ORDER BY b DESC, a",
+    "Ordered": "SELECT a, c FROM t ORDER BY c DESC, a",
     "Limit": "SELECT a FROM t ORDER BY a DESC LIMIT 2",
     "Distinct": "SELECT DISTINCT b FROM t",
     "Union": "SELECT a FROM t UNION ALL SELECT k FROM u",
@@ -67,9 +67,9 @@ QUERIES = {
     "NEQ": "SELECT a <> c AS r FROM t",
     "NullSafeEQ": "SELECT a <=> c AS r FROM t",
     "NullSafeNEQ": "SELECT NOT (a <=> c) AS r FROM t",
-    "LT": "SELECT a < c AS r, b < 'y' AS s FROM t",
+    "LT": "SELECT a < c AS r FROM t",
     "LTE": "SELECT a <= c AS r FROM t",
-    "GT": "SELECT b > 'x' AS r FROM t",
+    "GT": "SELECT c > 3 AS r FROM t",
     "GTE": "SELECT a >= c AS r FROM t",
     "Case": "SELECT CASE WHEN a > 1 THEN 'big' WHEN a IS NULL THEN 'none' ELSE b END AS r FROM t",
     "If": "SELECT if(p, a, c) AS r FROM t",
@@ -83,7 +83,7 @@ QUERIES = {
     "DPipe": "SELECT b || '!' AS r FROM t",
     "Length": "SELECT length(b) AS r FROM t",
     "Count": "SELECT count(*) AS n, count(b) AS m, count(DISTINCT c) AS d FROM t",
-    "Min": "SELECT min(a) AS r, min(b) AS s FROM t",
+    "Min": "SELECT min(a) AS r FROM t",
     "Max": "SELECT max(c) AS r FROM t",
 }
 
@@ -156,13 +156,26 @@ def test_spark_has_no_generated_lift_yet() -> None:
 
 @pytest.mark.parametrize(
     "query",
-    ["SELECT A FROM t", "SELECT a FROM T", "SELECT X.a FROM t x", "SELECT sum(a) AS s FROM t"],
+    [
+        "SELECT A FROM t",
+        "SELECT a FROM T",
+        "SELECT X.a FROM t x",
+        "SELECT sum(a) AS s FROM t",
+        # String and boolean order: no Spark fact states it yet (#2629).
+        "SELECT b < 'y' AS r FROM t",
+        "SELECT min(b) AS r FROM t",
+        "SELECT a FROM t ORDER BY b",
+        "SELECT max(p) AS r FROM t",
+        # A TINYINT: Spark widens `n + 100`, DuckDB's literal rule would not.
+        "SELECT n + 100 AS r FROM s",
+    ],
 )
 def test_refused(query: str) -> None:
-    """C2 (names that resolve only in another case) and a construct with no
-    fact (`sum`: a partial sum of BIGINT raises in Spark, spark-sum-int)."""
+    """C2 (names that resolve only in another case), a construct with no
+    fact (`sum`: a partial sum of BIGINT raises in Spark, spark-sum-int), an
+    order no fact states and a narrow integer."""
     with pytest.raises(Unsupported):
-        lift_spark(query, SCHEMAS)
+        lift_spark(query, {**SCHEMAS, "s": ibis.schema({"n": "int8"})})
 
 
 def test_reading_imports_no_pyspark() -> None:

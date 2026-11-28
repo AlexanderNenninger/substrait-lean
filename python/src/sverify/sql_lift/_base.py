@@ -159,6 +159,9 @@ class Surface:
         coerces: Whether the dialect converts a value of the first Ibis type
             to the second where the text does not say so (C4: each such
             coercion rests on a fact); None converts as the lift's rules do.
+        orders: Whether the dialect's facts state the order of an Ibis type,
+            which `<`, `>`, `min`, `max` and a sort key read; None orders
+            every type the lift's rules do.
         case_sensitive: Whether the engine resolves names by their exact
             case (Spark's profile sets `spark.sql.caseSensitive`). SQLGlot
             resolves them case-insensitively, so a name that matches an
@@ -180,6 +183,7 @@ class Surface:
     syntax: frozenset[str] = frozenset()
     values: Callable[[Any], bool] | None = None
     coerces: Callable[[Any, Any], bool] | None = None
+    orders: Callable[[Any], bool] | None = None
     case_sensitive: bool = False
 
     @property
@@ -1269,6 +1273,7 @@ class _Lift:
                         )
                     extra_keys.append(self.expr(o.this, scope, aliased))
                     i = len(outs) + len(extra_keys) - 1
+                self.ordered_by((outs + extra_keys)[i].type, o)
                 desc = bool(o.args.get("desc"))
                 nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
                 direction = f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}"
@@ -1383,6 +1388,7 @@ class _Lift:
                 if i is None:
                     extra.append(self.expr(o.this, cols, Bound()))
                     i = n + len(extra) - 1
+                self.ordered_by(cols[i].type if i < n else extra[i - n].type, o)
                 desc = bool(o.args.get("desc"))
                 nulls = "FIRST" if o.args.get("nulls_first") else "LAST"
                 direction = f"SORT_DIRECTION_{'DESC' if desc else 'ASC'}_NULLS_{nulls}"
@@ -2080,6 +2086,7 @@ class _Lift:
             elif name == "count":
                 out = dt.int64
             elif name in ("min", "max"):
+                self.ordered_by(t, node)
                 if isinstance(node, sge.LogicalAnd | sge.LogicalOr) and not t.is_boolean():
                     raise SqlUnsupported(
                         f"{_shown(node)} of {t} is not supported",
@@ -2501,6 +2508,17 @@ class _Lift:
                 construct=_category(node),
             )
         return e
+
+    def ordered_by(self, t: Any, node: sge.Expression) -> None:
+        """Refuse an order of `t`, `node`'s, that the dialect's facts do not
+        state (`Surface.orders`)."""
+        if self.surface.orders is not None and not self.surface.orders(t):
+            raise SqlUnsupported(
+                f"{_shown(node)} orders {t} values, an order {self.surface.title} SQL is not "
+                "read with yet",
+                issue=866,
+                construct=_category(node),
+            )
 
     def column(self, node: sge.Column, scope: list[Column]) -> E:
         table, name = node.table, node.name

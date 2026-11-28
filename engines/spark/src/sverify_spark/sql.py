@@ -81,6 +81,7 @@ RULES: Mapping[str, str] = {
     "DPipe": "spark-concat",
     "Length": "spark-string-plain",
     # Aggregates
+    # `count(x)` skips NULLs and is 0 on no rows (spark-sum-int, second note).
     "Count": "spark-sum-int",
     "Min": "spark-nan-order",
     "Max": "spark-nan-order",
@@ -106,17 +107,24 @@ SYNTAX = frozenset(
 
 
 def values(t: Any) -> bool:
-    """The types the lift reads Spark's SQL over: signed integers, booleans
-    and strings (and NULL)."""
-    return t.is_signed_integer() or t.is_boolean() or t.is_string() or t.is_null()
+    """The types the lift reads Spark's SQL over: `INT`, `BIGINT`, booleans
+    and strings (and NULL). A narrower integer is refused: the lift types an
+    integer literal beside one as DuckDB does (`TINYINT + 100` overflows at
+    127), where Spark widens the literal (spark-literal-types)."""
+    return t.is_int32() or t.is_int64() or t.is_boolean() or t.is_string() or t.is_null()
 
 
 def coerces(source: Any, target: Any) -> bool:
     """The conversions Spark makes where the text says none that the lift
-    reads: an integer to a wider one (spark-implicit-casts)."""
-    return (
-        source.is_signed_integer() and target.is_signed_integer() and source.nbytes <= target.nbytes
-    )
+    reads: an `INT` to a `BIGINT` (spark-implicit-casts)."""
+    return source.is_int32() and target.is_int64()
+
+
+def orders(t: Any) -> bool:
+    """The types whose order a Spark fact states, for `<`, `min`, `max` and
+    sort keys: integers. Strings wait for spark-string-order (#2629), booleans
+    for a fact of their own."""
+    return t.is_integer()
 
 
 #: Spark's SQL as the lift reads it.
@@ -132,6 +140,7 @@ SPARK_SQL = Surface(
     syntax=SYNTAX,
     values=values,
     coerces=coerces,
+    orders=orders,
     case_sensitive=True,
 )
 
