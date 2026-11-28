@@ -73,8 +73,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)",
-   "snowflake": "refused: re_replace() (SQL regexp_replace) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
+   "polars": "refused: re_replace() (SQL regexp_replace) runs on duckdb and spark only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)",
+   "snowflake": "refused: re_replace() (SQL regexp_replace) runs on duckdb and spark only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   },
   "contract": {
    "proved": true,
@@ -713,8 +713,8 @@
   "native": "runs",
   "engines": {
    "duckdb": "runs",
-   "polars": "refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)",
-   "snowflake": "refused: hexdigest('md5') (SQL md5) runs on duckdb only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
+   "polars": "refused: hexdigest('md5') (SQL md5) runs on duckdb and spark only: run it with engine='duckdb' (Polars does not run it yet; see #2540, https://github.com/AlexanderNenninger/substrait-lean/issues/2540)",
+   "snowflake": "refused: hexdigest('md5') (SQL md5) runs on duckdb and spark only: run it with engine='duckdb' (snowflake does not run it yet; Snowflake is out of tree (private profile))"
   }
  },
  "dbt-union-sources": {
