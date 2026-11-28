@@ -35,7 +35,7 @@ if getattr(_meta, "PLUGIN_API", None) != 5:
     )
 
 from sverify._unsupported import ISSUE_2540, MIN_MOD_GUARD, RANGE_GUARD
-from sverify.profiles import Finite, ProfilePlugin, Setting
+from sverify.profiles import Finite, ProfilePlugin, Setting, SQLFrontEnd
 from sverify_spark.store import SparkStore
 
 #: The settings Spark's profile assumes.
@@ -213,8 +213,26 @@ def _dialect() -> Any:
 #: no row order, so ties and the rows of a `LIMIT` are open.
 ROWS: Literal["sequence", "multiset"] = "multiset"
 
+
+def _lift(query: str, schemas: Any, semantics: str) -> Any:
+    """Spark's SQL lifted to a plan (`sverify_spark.sql`, no JVM), under the
+    profile `semantics` names (`"spark"` or `"portable"`)."""
+    from sverify_spark.sql import lift_spark
+
+    return lift_spark(query, schemas, semantics)
+
+
+def _assumed(s: Setting) -> str:
+    value = s.expected[0]
+    return f"{s.name}={str(value).lower() if isinstance(value, bool) else value}"
+
+
+#: What Spark's SQL is read as (C1): the version and every setting the profile assumes.
+ASSUMES = "Spark 4.3.0 SQL under " + ", ".join(_assumed(s) for s in SETTINGS)
+
 PLUGIN = ProfilePlugin(
     "spark",
+    sql=SQLFrontEnd("spark", _lift, assumes=ASSUMES),
     store=SparkStore,
     title="Spark",
     profile=True,

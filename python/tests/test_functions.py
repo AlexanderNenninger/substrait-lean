@@ -14,7 +14,7 @@ from _repo import needs_repo
 from sverify import _functions as fns
 from sverify._engines import DIALECTS as SQL_DIALECTS
 from sverify.engine import checker_path
-from sverify.sql_lift import DUCKDB_SQL
+from sverify_duckdb.sql import DUCKDB_SQL
 
 
 def _facts():

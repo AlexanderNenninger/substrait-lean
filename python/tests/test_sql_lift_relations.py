@@ -13,8 +13,8 @@ import sverify as sv
 from _sql_lift import SCHEMAS, TABLES
 from sverify.engine import run_checker
 from sverify.plan_json import Unsupported as Refused
-from sverify.sql_lift import lift
 from sverify_dev.lift import check
+from sverify_duckdb.sql import lift_duckdb as lift
 
 pytestmark = pytest.mark.backend("duckdb")
 
@@ -351,9 +351,11 @@ def test_set_operations_keep_duckdbs_multiplicities(a, b):
 )
 def test_table_shorthand(sql, expanded):
     """SQLGlot does not parse DuckDB's `TABLE t` (upstream/bugs/SG-6.json)."""
-    from sverify.sql_lift import expand_table_shorthand
+    from sverify.sql_lift import expand_table_shorthand, reading
+    from sverify_duckdb.sql import DUCKDB_SQL
 
-    assert expand_table_shorthand(sql) == expanded
+    with reading(DUCKDB_SQL):
+        assert expand_table_shorthand(sql) == expanded
 
 
 def test_all_set_operations_are_determined_by_keys():

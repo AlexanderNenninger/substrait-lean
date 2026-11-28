@@ -8,10 +8,10 @@ import ibis
 import pyarrow as pa
 import pytest
 
-from sverify.sql_lift import lift
 from sverify.testing import LeanRaised, lean_values
 from sverify_dev import slt
 from sverify_dev.lift import duckdb_result
+from sverify_duckdb.sql import lift_duckdb as lift
 
 pytestmark = pytest.mark.backend("duckdb")
 

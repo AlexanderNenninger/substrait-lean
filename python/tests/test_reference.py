@@ -29,8 +29,8 @@ from sverify.engines import ENGINES
 from sverify.errors import PreconditionError, RouteError
 from sverify.ibis_substrait import to_substrait_json
 from sverify.incremental import arrow_rows
-from sverify.sql_lift import lift
 from sverify.testing import duckdb_sql, inline_tables, lean_values
+from sverify_duckdb.sql import lift_duckdb as lift
 
 DAY = 86_400_000_000
 NAN = float("nan")

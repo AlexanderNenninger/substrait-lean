@@ -26,7 +26,6 @@ import ibis.expr.operations as ops
 import ibis.expr.types as ir
 import pyarrow as pa
 import pyarrow.compute as pc
-import sqlglot as sg
 
 from sverify import _engines, _stages
 from sverify._checker import (  # noqa: F401  (re-exported: `sverify.engine.checker_path` and others)
@@ -420,14 +419,12 @@ def lift_sql_plan(schemas: Mapping[str, ibis.Schema], sql: str, semantics: str =
     """The lift of `sql`, DuckDB's SQL (`sverify.sql_lift.Lifted`), over the
     tables of `schemas` it reads. A string of `verify` is DuckDB's; `sverify.sql`
     reads other dialects through their front-ends (`ProfilePlugin.sql`)."""
-    from sverify.sql_lift import full_name, lift
+    from sverify_duckdb.sql import full_name_duckdb, lift_duckdb, read_tables
 
-    try:
-        # By DuckDB's resolution: `shop.main.orders` reads the input of that key.
-        read = {full_name(t) for t in sg.parse_one(sql, read="duckdb").find_all(sg.exp.Table)}
-    except sg.errors.ParseError:
-        read = set()  # the lift says why
-    return lift(sql, {n: s for n, s in schemas.items() if full_name(n) in read}, semantics)
+    read = read_tables(sql)
+    return lift_duckdb(
+        sql, {n: s for n, s in schemas.items() if full_name_duckdb(n) in read}, semantics
+    )
 
 
 def quote(name: str) -> str:

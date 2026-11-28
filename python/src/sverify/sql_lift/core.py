@@ -338,6 +338,9 @@ def _list_order(lf: _Lift, node: sge.Expression, operands: list[sge.Expression])
 def _compare(lf: _Lift, node: sge.Expression, sub: Sub, scope: list[Column]) -> E:
     name = _COMPARISONS[type(node)]
     a, b = sub(node.this), sub(node.expression)
+    if name not in ("equal", "not_equal"):
+        for x in (a, b):
+            lf.ordered_by(x.type, node)
     if name not in ("equal", "not_equal") and any(_has_struct(x.type) for x in (a, b)):
         # DuckDB orders structs field by field, NULLs last; the model's order
         # of structs is not that one yet. (Lists it orders as DuckDB does.)

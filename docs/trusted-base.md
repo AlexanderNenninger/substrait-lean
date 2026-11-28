@@ -165,6 +165,14 @@ Sverify's words claim no more than these theorems give
   or where nothing reads the precision (a comparison's side,
   `UnFn.apply_dkind_precision`).
 - DuckDB's implicit coercions are its facts and the lift's tests.
+- Spark's SQL (`sverify_spark.sql`, #866) is read as DuckDB's is, by the
+  same hand-written rules: tested Python, with no generated entry yet. SQLGlot
+  reads the text (`read="spark"`), and each construct the lift reads names the
+  Spark fact that states what Spark computes (`RULES`). The lift's results are
+  compared with Spark 4.3's own on a local session
+  (`engines/spark/tests/test_sql_lift_spark.py`), and the replay of Spark's
+  golden files ([#2615](https://github.com/AlexanderNenninger/substrait-lean/issues/2615))
+  is their outside evidence, as oracle A is DuckDB's.
 - `Report.output` is Ibis's schema, and integer widths live in the parser.
 - A generated lift or lowering entry proves that its template agrees with
   the engine's model (`DuckFn.eval .duckdb f`, the profiles), written from the

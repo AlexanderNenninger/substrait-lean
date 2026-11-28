@@ -9,7 +9,7 @@ import pyarrow as pa
 import pytest
 
 from sverify.plan_json import Unsupported as Refused
-from sverify.sql_lift import lift
+from sverify_duckdb.sql import lift_duckdb as lift
 
 pytestmark = pytest.mark.backend("duckdb")
 

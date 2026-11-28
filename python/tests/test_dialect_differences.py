@@ -16,8 +16,8 @@ from _repo import needs_repo
 from sverify import _dialect
 from sverify._unsupported import UnsupportedError
 from sverify.report import Report
-from sverify.sql_lift import lift
 from sverify.sql_lift._base import DUCKDB, PORTABLE
+from sverify_duckdb.sql import lift_duckdb as lift
 
 SCHEMA = {"t": ibis.schema({"x": "float64", "d": "decimal(10,2)", "y": "float64"})}
 
