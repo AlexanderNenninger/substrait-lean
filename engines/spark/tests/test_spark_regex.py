@@ -74,7 +74,10 @@ def test_classes_on_ascii_text_are_the_reference(spark, call):
      ("regexp_extract(s, '(?:(b?)c?)+', 1)", "one more, empty, iteration"),
      ("regexp_replace(s, 'b*', '-', 'g')", "can match ''"),
      ("regexp_replace(s, '$', '!', 'g')", "can match ''"),
-     ("regexp_replace(s, '(x|)', '-', 'g')", "can match ''")],
+     ("regexp_replace(s, '(x|)', '-', 'g')", "can match ''"),
+     ("regexp_replace(s, '[\\]]*', '-', 'g')", "can match ''"),
+     ("regexp_replace(s, '[\\](]*', '-', 'g')", "can match ''"),
+     ("regexp_extract(s, '([\\]]*)*', 1)", "one more, empty, iteration")],
 )  # fmt: skip
 def test_empty_matches_java_treats_otherwise_are_refused(spark, call, message):
     con = connect()

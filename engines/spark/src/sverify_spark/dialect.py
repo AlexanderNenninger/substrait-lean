@@ -142,7 +142,11 @@ def _empty_shapes(p: str) -> tuple[bool, bool]:
                 atom_empty = p[k + 1] in "bB"
                 k += 2
             elif c == "[":
-                k = p.index("]", k + 2 if p[k + 1 : k + 2] == "^" else k + 1) + 1
+                # To the closing `]`, past escapes (`\\]` is a member).
+                k += 2 if p[k + 1 : k + 2] == "^" else 1
+                while p[k] != "]":
+                    k += 2 if p[k] == "\\" else 1
+                k += 1
             elif c == "(":
                 capturing = p[k + 1 : k + 2] != "?"
                 k += 1 if capturing else 3
