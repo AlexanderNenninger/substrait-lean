@@ -5891,6 +5891,14 @@ class _Writer:
                 consts = [_int_lit(a), _int_lit(b)]
                 if (low := d.lowered(op, [sa, sb], "int", consts)) is not None:
                     return low
+                k = consts[1]
+                if isinstance(k, int) and k != 0:
+                    # A constant divisor other than 0 needs no zero guard, which
+                    # would repeat the dividend: nested, as the lift's calendar
+                    # arithmetic nests them, the SQL grows exponentially.
+                    if op == "idiv":
+                        return d.trunc_div(sa, sb)
+                    return d.int_mul(sa, d.int_lit(0)) if k == -1 else d.trunc_mod(sa, sb)
                 return d.int_div(sa, sb) if op == "idiv" else d.int_mod(sa, sb)
             case Bin(op="ipow", left=a, right=b):
                 if isinstance(b, Lit) and b.value is None:
