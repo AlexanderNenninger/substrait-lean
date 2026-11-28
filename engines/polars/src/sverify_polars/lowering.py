@@ -66,6 +66,9 @@ _BINARY: dict[str, Callable[[pl.Expr, pl.Expr], pl.Expr]] = {
     "Substrait.BinFn.mul": lambda a, b: a * b,
     "bit:bitwise_and": lambda a, b: a & b,
     "Substrait.BinFn.ipow": lambda a, b: a.pow(b),
+    # `sverify_split_first` (ruling 286): the first part of a split on the literal `t`
+    # (polars-split-first).
+    "Substrait.BinFn.splitFirst": lambda a, b: a.str.split(b).list.first(),
 }
 _UNARY: dict[str, Callable[[pl.Expr], pl.Expr]] = {
     "not": lambda a: ~a,
@@ -74,6 +77,7 @@ _UNARY: dict[str, Callable[[pl.Expr], pl.Expr]] = {
     "isNum": lambda a: a.is_not_null(),
     "Substrait.UnFn.fround": lambda a: a.round(0, mode=_asked_mode("Substrait.UnFn.fround")),
     "Substrait.UnFn.fceil": lambda a: a.ceil(),
+    "Substrait.UnFn.length": lambda a: a.str.len_chars().cast(pl.Int64),
 }
 
 
