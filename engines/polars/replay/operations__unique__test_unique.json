@@ -1,0 +1,190 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/unique/test_unique.py",
+  "license": "MIT",
+  "module": "operations__unique__test_unique",
+  "summary": {
+    "agree": 6,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 2,
+    "skipped": 35
+  },
+  "results": {
+    "test_array_unique": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArgUnique"
+    },
+    "test_categorical_unique_19409": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: {…: …, …: …, …: …}}}"
+    },
+    "test_categorical_updated_revmap_unique_20233": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_list_unique": {
+      "outcome": "skipped",
+      "reason": "translator: Function ArgUnique"
+    },
+    "test_predicate_pushdown_unique": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_sliced_unique_maintain_order_27841": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_sorted_unique_dates": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_struct_unique_df": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_unique": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_unique_and_drop_stability": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unique_booleans_22753": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unique_categorical[input0-output0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_unique_categorical[input1-output1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_unique_categorical[input2-output2]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_unique_check_order_20480[key]": {
+      "outcome": "skipped",
+      "reason": "translator: Distinct with a subset or a keep strategy"
+    },
+    "test_unique_check_order_20480[subset1]": {
+      "outcome": "skipped",
+      "reason": "translator: Distinct with a subset or a keep strategy"
+    },
+    "test_unique_check_order_20480[subset2]": {
+      "outcome": "skipped",
+      "reason": "translator: Distinct with a subset or a keep strategy"
+    },
+    "test_unique_check_order_20480[subset3]": {
+      "outcome": "skipped",
+      "reason": "translator: Distinct with a subset or a keep strategy"
+    },
+    "test_unique_check_order_20480[subset4]": {
+      "outcome": "skipped",
+      "reason": "translator: Distinct with a subset or a keep strategy"
+    },
+    "test_unique_check_order_20480[subset5]": {
+      "outcome": "skipped",
+      "reason": "translator: Distinct with a subset or a keep strategy"
+    },
+    "test_unique_column_subset_25233": {
+      "outcome": "unproved",
+      "reason": "overflow",
+      "collects": 5
+    },
+    "test_unique_empty": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unique_enum_19338": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_unique_i128_24231": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_unique_keep_last_with_slice_22470": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_unique_keep_none_24260": {
+      "outcome": "skipped",
+      "reason": "translator: Distinct with a subset or a keep strategy"
+    },
+    "test_unique_lengths_21654": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_unique_list_arr_non_numeric[False]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unique_list_arr_non_numeric[True]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unique_nan_12950": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_unique_null[False]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unique_null[True]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unique_on_list_df": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_unique_on_literal_in_agg[False-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unique_on_literal_in_agg[False-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unique_on_literal_in_agg[True-False]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unique_on_literal_in_agg[True-True]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Unique"
+    },
+    "test_unique_predicate_pd": {
+      "outcome": "skipped",
+      "reason": "translator: Distinct with a subset or a keep strategy"
+    },
+    "test_unique_with_bad_subset[input_json_data0-input_schema0-id]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_unique_with_bad_subset[input_json_data1-input_schema1-subset1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_unique_with_bad_subset[input_json_data2-input_schema2-id]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_unique_with_bad_subset[input_json_data3-input_schema3-subset3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_unique_with_null": {
+      "outcome": "unproved",
+      "reason": "data: table polars_input_0 differs from the schema the plan was verified for: column … is null, the plan expects int64: refused before the run. Declare the colu",
+      "collects": 1
+    }
+  }
+}

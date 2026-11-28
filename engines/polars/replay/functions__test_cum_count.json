@@ -1,0 +1,40 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/test_cum_count.py",
+  "license": "MIT",
+  "module": "functions__test_cum_count",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 6
+  },
+  "results": {
+    "test_cum_count": {
+      "outcome": "skipped",
+      "reason": "translator: Function CumCount"
+    },
+    "test_cum_count_multi_arg": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_cum_count_multi_arg_reverse": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_cum_count_single_arg[False-output0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function CumCount"
+    },
+    "test_cum_count_single_arg[True-output1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function CumCount"
+    },
+    "test_series_cum_count": {
+      "outcome": "skipped",
+      "reason": "translator: Function CumCount"
+    }
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/as_datatype/test_concat_arr.py",
+  "license": "MIT",
+  "module": "functions__as_datatype__test_concat_arr",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 10
+  },
+  "results": {
+    "test_concat_arr": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_concat_arr_broadcast": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_concat_arr_expansion_23267": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_concat_arr_logical_types_20917": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_concat_arr_scalar": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_concat_arr_validity_combination[inner_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_concat_arr_validity_combination[inner_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_concat_arr_validity_combination_zwa[inner_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_concat_arr_validity_combination_zwa[inner_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_concat_arr_zero_fields": {
+      "outcome": "skipped",
+      "reason": "translator: ComputeError: not yet implemented: Cannot read zero sized arrays from IPC"
+    }
+  }
+}

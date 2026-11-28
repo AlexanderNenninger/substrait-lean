@@ -1,0 +1,28 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/test_ewm_by.py",
+  "license": "MIT",
+  "module": "functions__test_ewm_by",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 3
+  },
+  "results": {
+    "test_ewm_by": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_length_mismatch_22084[1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_length_mismatch_22084[3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    }
+  }
+}

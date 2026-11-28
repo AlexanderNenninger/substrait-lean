@@ -349,7 +349,7 @@ jobs:
           # code can move them; its I/O, CLI, skills and schemas cannot.
           vsrc=$(grep -E '^python/src/sverify/' <<< "$files" | grep -vE '^python/src/sverify/(io|cli|skills|schemas)/' || true)
           engsrc=$(grep -E '^engines/[^/]+/src/' <<< "$files" || true)
-          ibis_in="^(python/tools/sverify_dev/(ibis_replay|substrait_validator)\.py$|python/tests/(ibis_replay/|substrait_validator\.json$)|python/uv\.lock$|\.github/workflows/ci\.yml$)|$lean"
+          ibis_in="^(python/tools/sverify_dev/(ibis_replay|substrait_validator|polars_tests)\.py$|python/tests/(ibis_replay/|substrait_validator\.json$)|engines/polars/replay/|python/uv\.lock$|\.github/workflows/ci\.yml$)|$lean"
           dbt_in="^(dbt/|python/uv\.lock$|\.github/workflows/ci\.yml$)|$lean"
           gate() { [ "$batch" = true ] || [ -n "$vsrc" ] || [ -n "$engsrc" ] || grep -qE "$1" <<< "$files"; }
           out "evidence=$(gate "$ibis_in" && echo true || echo false)"
@@ -991,6 +991,10 @@ jobs:
   # Ibis's backend tests (#860): `sverify_dev.ibis_replay` runs them on
   # DuckDB with sverify as a plugin, and compares with the ledgers.
   #
+  # Polars's unit tests (#2615): `sverify_dev.polars_tests` runs a slice of
+  # them with sverify as a plugin, translating each query to Ibis, and
+  # compares the model, sverify's run and Polars's result with the ledgers.
+  #
   # substrait-validator (#862): no release reads the Substrait sverify
   # writes, so the job builds it at the commit `sverify_dev.substrait_validator`
   # pins (Rust, protoc 28.3 as its own CI uses), caches the wheel by that
@@ -1107,6 +1111,25 @@ jobs:
           fi
           cat "$RUNNER_TEMP/ibis.txt"
           { echo "### Ibis's backend tests (#860)"; echo '```'; cat "$RUNNER_TEMP/ibis.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      # Polars's own unit tests (#2615): a slice of the suite at the Polars
+      # release uv.lock pins (8 MB of sources), cached by its tag.
+      - id: polars
+        run: echo "key=$(sed -n 's/^TAG = "\(.*\)"$/\1/p' python/tools/sverify_dev/polars_tests.py)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/sverify/polars-tests
+          key: polars-tests-${{ steps.polars.outputs.key }}-${{ runner.environment }}
+      - name: Polars's unit tests (#2615)
+        working-directory: python
+        run: |
+          # A sample of the modules: the full replay is a homelab run (15 minutes).
+          sample="operations/test_filter.py operations/test_group_by.py operations/test_join.py operations/test_sort.py operations/test_window.py operations/test_over.py"
+          # shellcheck disable=SC2086
+          if ! uv run --no-sync python -m sverify_dev.polars_tests $sample --check > "$RUNNER_TEMP/polars.txt" 2>&1; then
+            echo "::warning title=Polars replay gate::outcomes differ from engines/polars/replay/; see the step's log and the summary"
+          fi
+          cat "$RUNNER_TEMP/polars.txt"
+          { echo "### Polars's unit tests (#2615)"; echo '```'; cat "$RUNNER_TEMP/polars.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   # sverify-dbt (dbt/): lint, typecheck and tests, then its check of the
   # sample project, `dbt build` without the tests it proved, and `dbt test`

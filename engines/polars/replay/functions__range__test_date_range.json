@@ -1,0 +1,76 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/range/test_date_range.py",
+  "license": "MIT",
+  "module": "functions__range__test_date_range",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 15
+  },
+  "results": {
+    "test_date_range": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_date_range_24h_interval_raises": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_date_range_datetime_input": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_date_range_eager": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_date_range_end_of_month_5441": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_date_range_expr_scalar": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_date_range_input_shape_empty": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_date_range_input_shape_multiple_values": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_date_range_invalid_time_unit": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_date_range_name": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_date_range_start_end_interval_forwards": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_date_range_start_later_than_end": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_date_range_with_subclass_18470_18447": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_date_ranges_datetime_input": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_long_date_range_12461": {
+      "outcome": "skipped",
+      "reason": "inputs: a plan over 256 KB"
+    }
+  }
+}

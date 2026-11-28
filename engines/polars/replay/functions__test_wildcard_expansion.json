@@ -1,0 +1,56 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/test_wildcard_expansion.py",
+  "license": "MIT",
+  "module": "functions__test_wildcard_expansion",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 10
+  },
+  "results": {
+    "test_all_horizontal_expansion": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_any_horizontal_expansion": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_coalesce_expansion": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_concat_list_expansion": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_concat_str_expansion": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_cum_sum_horizontal_expansion": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_max_horizontal_expansion": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_mean_horizontal_expansion": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_min_horizontal_expansion": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    },
+    "test_sum_horizontal_expansion": {
+      "outcome": "skipped",
+      "reason": "translator: Selector"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/expr/test_dunders.py",
+  "license": "MIT",
+  "module": "expr__test_dunders",
+  "summary": {
+    "agree": 2,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 0
+  },
+  "results": {
+    "test_add_parse_str_input_as_literal": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_truediv_parse_str_input_as_col_name": {
+      "outcome": "agree",
+      "collects": 1
+    }
+  }
+}

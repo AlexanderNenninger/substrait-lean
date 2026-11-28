@@ -1,0 +1,1505 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/range/test_linear_space.py",
+  "license": "MIT",
+  "module": "functions__range__test_linear_space",
+  "summary": {
+    "agree": 9,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 121,
+    "unproved": 0,
+    "skipped": 212
+  },
+  "results": {
+    "test_linear_space_date": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_linear_space_expr": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_linear_space_expr_wrong_length": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_linear_space_incompatible_dtypes[Date-dtype20-Date-Datetime('ms')]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_linear_space_incompatible_dtypes[Int32-String-Int32-String]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_linear_space_incompatible_dtypes[dtype11-dtype21-Datetime('ms')-Datetime('ns')]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_linear_space_incompatible_dtypes[dtype12-Time-Datetime('\\u03bcs')-Time]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_linear_space_incompatible_dtypes[dtype13-dtype23-Duration('\\u03bcs')-Duration('ms')]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_linear_space_invalid_as_array[1.0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_linear_space_invalid_as_array[bad_num_samples0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_linear_space_invalid_as_array[num_samples]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_linear_space_invalid_num_samples_expr": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_linear_space_num_samples_expr": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_linear_space_numeric_dtype[Float32-Float32-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_numeric_dtype[Float32-Float64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_numeric_dtype[Float64-Float32-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_numeric_dtype[Float64-Float64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_numeric_dtype[Int16-Int128-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_numeric_dtype[Int8-Float64-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_numeric_dtype[UInt8-UInt32-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_temporal[Time]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_temporal[dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_temporal[dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_temporal[dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_temporal[dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_temporal[dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_temporal[dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_temporal[dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_temporal[dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-0--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-0--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-0-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-0-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-1--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-1--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-1-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-1-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-1000--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-1000--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-1000-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-1000-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-2--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-2--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-2-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-5--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-5--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-5-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-both-5-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-0--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-0--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-0-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-0-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-1--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-1--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-1-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-1-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-1000--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-1000--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-1000-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-1000-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-2--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-2--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-2-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-5--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-5--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-5-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-left-5-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-0--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-0--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-0-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-0-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-1--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-1--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-1-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-1-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-1000--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-1000--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-1000-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-1000-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-2--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-2--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-2-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-5--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-5--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-5-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-none-5-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-0--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-0--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-0-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-0-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-1--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-1--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-1-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-1-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-1000--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-1000--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-1000-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-1000-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-2--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-2--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-2-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-5--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-5--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-5-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[False-right-5-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-0--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-0--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-0-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-0-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-1--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-1--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-1-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-1-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-1000--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-1000--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-1000-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-1000-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-2--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-2--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-2-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-5--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-5--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-5-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-both-5-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-0--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-0--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-0-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-0-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-1--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-1--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-1-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-1-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-1000--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-1000--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-1000-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-1000-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-2--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-2--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-2-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-5--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-5--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-5-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-left-5-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-0--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-0--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-0-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-0-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-1--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-1--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-1-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-1-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-1000--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-1000--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-1000-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-1000-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-2--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-2--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-2-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-5--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-5--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-5-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-none-5-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-0--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-0--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-0-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-0-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-1--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-1--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-1-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-1-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-1000--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-1000--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-1000-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-1000-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-2--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-2--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-2-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-2-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-5--1-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-5--2.1-3.4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-5-0-0]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_space_values[True-right-5-0-1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_spaces_as_array[Datetime-both-5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-both-num_samples1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-both-num_samples2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-both-num_samples3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-both-num_samples4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-both-num_samples5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-both-num_samples6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-both-num_samples7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-both-num_samples8]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-both-num_samples9]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-left-5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-left-num_samples1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-left-num_samples2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-left-num_samples3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-left-num_samples4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-left-num_samples5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-left-num_samples6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-left-num_samples7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-left-num_samples8]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-left-num_samples9]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-none-5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-none-num_samples1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-none-num_samples2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-none-num_samples3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-none-num_samples4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-none-num_samples5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-none-num_samples6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-none-num_samples7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-none-num_samples8]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-none-num_samples9]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-right-5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-right-num_samples1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-right-num_samples2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-right-num_samples3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-right-num_samples4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-right-num_samples5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-right-num_samples6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-right-num_samples7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-right-num_samples8]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Datetime-right-num_samples9]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Datetime(time_unit=…, time_zone=None), shape=(N,)), the plan expects List(Datetime(time_unit=…, time_zone=No",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-both-5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-both-num_samples1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-both-num_samples2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-both-num_samples3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-both-num_samples4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-both-num_samples5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-both-num_samples6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-both-num_samples7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-both-num_samples8]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-both-num_samples9]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-left-5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-left-num_samples1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-left-num_samples2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-left-num_samples3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-left-num_samples4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-left-num_samples5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-left-num_samples6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-left-num_samples7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-left-num_samples8]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-left-num_samples9]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-none-5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-none-num_samples1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-none-num_samples2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-none-num_samples3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-none-num_samples4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-none-num_samples5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-none-num_samples6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-none-num_samples7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-none-num_samples8]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-none-num_samples9]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-right-5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-right-num_samples1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-right-num_samples2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-right-num_samples3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-right-num_samples4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-right-num_samples5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-right-num_samples6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-right-num_samples7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-right-num_samples8]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float32-right-num_samples9]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float32, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-both-5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-both-num_samples1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-both-num_samples2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-both-num_samples3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-both-num_samples4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-both-num_samples5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-both-num_samples6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-both-num_samples7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-both-num_samples8]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-both-num_samples9]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-left-5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-left-num_samples1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-left-num_samples2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-left-num_samples3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-left-num_samples4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-left-num_samples5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-left-num_samples6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-left-num_samples7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-left-num_samples8]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-left-num_samples9]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-none-5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-none-num_samples1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-none-num_samples2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-none-num_samples3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-none-num_samples4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-none-num_samples5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-none-num_samples6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-none-num_samples7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-none-num_samples8]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-none-num_samples9]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-right-5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-right-num_samples1]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-right-num_samples2]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-right-num_samples3]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-right-num_samples4]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-right-num_samples5]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-right-num_samples6]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-right-num_samples7]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-right-num_samples8]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_as_array[Float64-right-num_samples9]": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type Array(Float64, shape=(N,)), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/Al",
+      "collects": 4
+    },
+    "test_linear_spaces_date": {
+      "outcome": "agree",
+      "collects": 4
+    },
+    "test_linear_spaces_eager": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_spaces_f32": {
+      "outcome": "refused",
+      "construct": "run: polars_input_0 column N: column has type List(Float32), the plan expects List(Float64); run it with engine=… (see #2540, https://github.com/AlexanderNennin",
+      "collects": 2
+    },
+    "test_linear_spaces_incompatible_dtypes[Date-dtype20-Date-Datetime('ms')]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_linear_spaces_incompatible_dtypes[Int32-String-Int32-String]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_linear_spaces_incompatible_dtypes[dtype11-dtype21-Datetime('ms')-Datetime('ns')]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_linear_spaces_incompatible_dtypes[dtype12-Time-Datetime('\\u03bcs')-Time]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_linear_spaces_incompatible_dtypes[dtype13-dtype23-Duration('\\u03bcs')-Duration('ms')]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_linear_spaces_numeric_input[both]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_spaces_numeric_input[left]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_spaces_numeric_input[none]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_spaces_numeric_input[right]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_linear_spaces_one_numeric[both]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_linear_spaces_one_numeric[left]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_linear_spaces_one_numeric[none]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_linear_spaces_one_numeric[right]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_linear_spaces_temporal[Time]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: …}"
+    },
+    "test_linear_spaces_temporal[dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, None]}}"
+    },
+    "test_linear_spaces_temporal[dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, {…: …}]}}"
+    },
+    "test_linear_spaces_temporal[dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, None]}}"
+    },
+    "test_linear_spaces_temporal[dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, {…: …}]}}"
+    },
+    "test_linear_spaces_temporal[dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, {…: …}]}}"
+    },
+    "test_linear_spaces_temporal[dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: …}}"
+    },
+    "test_linear_spaces_temporal[dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: …}}"
+    },
+    "test_linear_spaces_temporal[dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: …}}"
+    },
+    "test_linear_spaces_two_numeric[both]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_linear_spaces_two_numeric[left]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_linear_spaces_two_numeric[none]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_linear_spaces_two_numeric[right]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_linear_spaces_values[both]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_linear_spaces_values[left]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_linear_spaces_values[none]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_linear_spaces_values[right]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    }
+  }
+}

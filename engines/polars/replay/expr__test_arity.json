@@ -1,0 +1,65 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/expr/test_arity.py",
+  "license": "MIT",
+  "module": "expr__test_arity",
+  "summary": {
+    "agree": 3,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 1,
+    "unproved": 0,
+    "skipped": 8
+  },
+  "results": {
+    "test_broadcast_string_ops_12632[df0-False-needs_broadcast0-expect_contains0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_broadcast_string_ops_12632[df0-False-needs_broadcast1-expect_contains1]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice"
+    },
+    "test_broadcast_string_ops_12632[df0-False-needs_broadcast2-expect_contains2]": {
+      "outcome": "skipped",
+      "reason": "translator: AttributeError: … object has no attribute …"
+    },
+    "test_broadcast_string_ops_12632[df0-False-needs_broadcast3-expect_contains3]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice"
+    },
+    "test_broadcast_string_ops_12632[df0-True-needs_broadcast0-expect_contains0]": {
+      "outcome": "agree",
+      "collects": 6
+    },
+    "test_broadcast_string_ops_12632[df0-True-needs_broadcast1-expect_contains1]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice"
+    },
+    "test_broadcast_string_ops_12632[df0-True-needs_broadcast2-expect_contains2]": {
+      "outcome": "skipped",
+      "reason": "translator: AttributeError: … object has no attribute …"
+    },
+    "test_broadcast_string_ops_12632[df0-True-needs_broadcast3-expect_contains3]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice"
+    },
+    "test_expression_literal_series_order": {
+      "outcome": "skipped",
+      "reason": "translator: Literal {…: [N, N, N, N, N, N,"
+    },
+    "test_negate_inlined_14278": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 2
+    },
+    "test_nested_level_literals_17377": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_when_then_broadcast_nulls_12665": {
+      "outcome": "agree",
+      "collects": 1
+    }
+  }
+}

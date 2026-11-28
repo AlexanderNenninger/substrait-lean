@@ -1,0 +1,322 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/test_functions.py",
+  "license": "MIT",
+  "module": "functions__test_functions",
+  "summary": {
+    "agree": 11,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 2,
+    "skipped": 63
+  },
+  "results": {
+    "test_align_frames": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_align_frames_duplicate_key": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_align_frames_misc": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_align_frames_single_row_20445": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_align_frames_with_nulls": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_approx_n_unique[dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_approx_n_unique[dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype13]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype14]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype15]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype16]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype17]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype18]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype19]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype20]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column a: times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_approx_n_unique[dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_approx_n_unique[dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_approx_n_unique[dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: ArrowInvalid"
+    },
+    "test_approx_n_unique_null": {
+      "outcome": "skipped",
+      "reason": "translator: Function ApproxNUnique"
+    },
+    "test_coalesce": {
+      "outcome": "agree",
+      "collects": 2
+    },
+    "test_coalesce_broadcast_first_input[in-memory]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_coalesce_broadcast_first_input[streaming]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_coalesce_eager": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_coalesce_length_mismatch[in-memory]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_coalesce_length_mismatch[streaming]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_coalesce_null_and_scalar_inputs[in-memory]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_coalesce_null_and_scalar_inputs[streaming]": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_concat_align": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_concat_align_no_common_cols[align]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_align_no_common_cols[align_full]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_align_no_common_cols[align_left]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_align_no_common_cols[align_right]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_diagonal[a0-b0-c0-diagonal]": {
+      "outcome": "skipped",
+      "reason": "translator: Union, diagonal or to supertypes"
+    },
+    "test_concat_diagonal[a1-b1-c1-diagonal_relaxed]": {
+      "outcome": "skipped",
+      "reason": "translator: Union, diagonal or to supertypes"
+    },
+    "test_concat_diagonal_relaxed_with_empty_frame": {
+      "outcome": "skipped",
+      "reason": "translator: Union, diagonal or to supertypes"
+    },
+    "test_concat_horizontal[False]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_horizontal[True]": {
+      "outcome": "skipped",
+      "reason": "translator: HConcat"
+    },
+    "test_concat_horizontal_duplicate_col": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_concat_horizontal_single_df[False]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_horizontal_single_df[True]": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_concat_horizontal_three_dfs[False]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_concat_horizontal_three_dfs[True]": {
+      "outcome": "skipped",
+      "reason": "translator: HConcat"
+    },
+    "test_concat_vertical": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_corr": {
+      "outcome": "skipped",
+      "reason": "translator: Function Correlation"
+    },
+    "test_corr_spearman_float_dtype_26335[pearson-Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_corr_spearman_float_dtype_26335[pearson-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Correlation"
+    },
+    "test_corr_spearman_float_dtype_26335[pearson-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Correlation"
+    },
+    "test_corr_spearman_float_dtype_26335[spearman-Float16]": {
+      "outcome": "skipped",
+      "reason": "translator: NotImplementedException: Not implemented Error: Unsupported Internal Arrow Type e"
+    },
+    "test_corr_spearman_float_dtype_26335[spearman-Float32]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Correlation"
+    },
+    "test_corr_spearman_float_dtype_26335[spearman-Float64]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Correlation"
+    },
+    "test_count": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_cov": {
+      "outcome": "skipped",
+      "reason": "translator: Function Correlation"
+    },
+    "test_escape_regex": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_extend_ints": {
+      "outcome": "skipped",
+      "reason": "translator: a select of literals only: one row in Polars"
+    },
+    "test_fill_null_unknown_output_type": {
+      "outcome": "agree",
+      "collects": 7
+    },
+    "test_first_last[Boolean]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_first_last[Categorical]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a categorical column"
+    },
+    "test_first_last[Int32]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_first_last[List]": {
+      "outcome": "agree",
+      "collects": 8
+    },
+    "test_first_last[String]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_head_tail": {
+      "outcome": "skipped",
+      "reason": "translator: Slice"
+    },
+    "test_lazy_functions": {
+      "outcome": "skipped",
+      "reason": "translator: RenameAlias"
+    },
+    "test_null_handling_correlation": {
+      "outcome": "skipped",
+      "reason": "translator: Function Correlation"
+    },
+    "test_overflow_diff": {
+      "outcome": "skipped",
+      "reason": "translator: Function Diff"
+    },
+    "test_row_index_expr": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_spearman_propagate_nans_with_all_nulls_does_not_panic": {
+      "outcome": "skipped",
+      "reason": "translator: Function Correlation"
+    },
+    "test_var_std_lit_23156[std]": {
+      "outcome": "unproved",
+      "reason": "data: table polars_input_0 differs from the schema the plan was verified for: column … is null, the plan expects int64: refused before the run. Declare the colu",
+      "collects": 8
+    },
+    "test_var_std_lit_23156[var]": {
+      "outcome": "unproved",
+      "reason": "data: table polars_input_0 differs from the schema the plan was verified for: column … is null, the plan expects int64: refused before the run. Declare the colu",
+      "collects": 8
+    }
+  }
+}

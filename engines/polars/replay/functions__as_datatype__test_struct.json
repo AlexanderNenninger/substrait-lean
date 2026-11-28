@@ -1,0 +1,828 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/as_datatype/test_struct.py",
+  "license": "MIT",
+  "module": "functions__as_datatype__test_struct",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 128,
+    "unproved": 0,
+    "skipped": 43
+  },
+  "results": {
+    "test_eager_struct": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_error_on_duplicate_field_name_22959": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_resolved_names_15442": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs0-lhs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs0-lhs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs0-lhs2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs0-lhs3]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs1-lhs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs1-lhs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs1-lhs2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs1-lhs3]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs2-lhs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs2-lhs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs2-lhs2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs2-lhs3]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs3-lhs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs3-lhs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs3-lhs2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-0-rhs3-lhs3]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs0-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs0-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs0-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs0-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs1-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs1-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs1-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs1-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs2-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs2-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs2-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs2-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs3-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs3-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs3-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-1-rhs3-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs0-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs0-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs0-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs0-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs1-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs1-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs1-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs1-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs2-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs2-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs2-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs2-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs3-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs3-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs3-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-2-rhs3-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs0-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs0-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs0-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs0-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs1-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs1-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs1-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs1-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs2-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs2-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs2-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs2-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs3-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs3-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs3-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[False-3-rhs3-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs0-lhs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs0-lhs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs0-lhs2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs0-lhs3]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs1-lhs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs1-lhs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs1-lhs2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs1-lhs3]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs2-lhs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs2-lhs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs2-lhs2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs2-lhs3]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs3-lhs0]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs3-lhs1]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs3-lhs2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-0-rhs3-lhs3]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs0-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs0-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs0-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs0-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs1-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs1-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs1-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs1-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs2-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs2-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs2-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs2-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs3-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs3-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs3-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-1-rhs3-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs0-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs0-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs0-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs0-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs1-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs1-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs1-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs1-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs2-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs2-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs2-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs2-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs3-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs3-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs3-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-2-rhs3-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 5
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs0-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs0-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs0-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs0-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs1-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs1-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs1-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs1-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs2-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs2-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs2-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs2-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs3-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs3-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs3-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_in_apply_expr_24168[True-3-rhs3-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs0-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs0-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs0-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs0-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs1-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs1-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs1-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs1-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs2-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs2-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs2-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs2-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs3-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs3-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs3-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[False-rhs3-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs0-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs0-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs0-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs0-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs1-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs1-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs1-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs1-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs2-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs2-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs2-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs2-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs3-lhs0]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs3-lhs1]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs3-lhs2]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_aggstates_partial_sort_in_apply_expr_24499[True-rhs3-lhs3]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 6
+    },
+    "test_struct_args_kwargs": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_struct_broadcasting": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_struct_from_schema_only": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_struct_list_cat_8235": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_struct_lit_cast": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_struct_nested_naming_in_group_by_23701": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_struct_with_lit": {
+      "outcome": "skipped",
+      "reason": "translator: Function AsStruct"
+    },
+    "test_suffix_in_struct_creation": {
+      "outcome": "skipped",
+      "reason": "translator: MapFunction Unnest"
+    }
+  }
+}

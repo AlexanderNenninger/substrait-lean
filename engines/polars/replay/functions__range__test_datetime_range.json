@@ -1,0 +1,168 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/functions/range/test_datetime_range.py",
+  "license": "MIT",
+  "module": "functions__range__test_datetime_range",
+  "summary": {
+    "agree": 0,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 38
+  },
+  "results": {
+    "test_datetime_range": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_end_of_month_5441[both-expected_values3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_end_of_month_5441[left-expected_values1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_end_of_month_5441[none-expected_values2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_end_of_month_5441[right-expected_values0]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_expr_scalar[Date]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_range_expr_scalar[dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_range_expr_scalar[dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_range_expr_scalar[dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_range_expr_scalar[dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_range_expr_scalar[dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_range_expr_scalar[dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: Function Range"
+    },
+    "test_datetime_range_fast_slow_paths": {
+      "outcome": "skipped",
+      "reason": "a Hypothesis test: its inputs change each run"
+    },
+    "test_datetime_range_interval_too_small": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_datetime_range_invalid_time_unit": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_invalid_time_zone": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_lazy_time_zones": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_output_ns_due_to_interval": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_precision[None-986759]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_precision[ms-986000]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_precision[ns-986759]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_precision[us-986759]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_specifying_ambiguous_11713": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_start_end_interval_forwards[Date]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_datetime_range_start_end_interval_forwards[dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_datetime_range_start_end_interval_forwards[dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_datetime_range_start_end_interval_forwards[dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_datetime_range_start_end_interval_forwards[dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_start_end_interval_forwards[dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_start_end_interval_forwards[dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_datetime_range_with_nanoseconds_overflow_15735": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_datetime_range_with_unsupported_datetimes": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_dt_range_with_nanosecond_interval_19931": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_timezone_aware_datetime_range": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_tzaware_datetime_range_crossing_dst_daily": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_tzaware_datetime_range_crossing_dst_hourly": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_tzaware_datetime_range_crossing_dst_monthly": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_tzaware_datetime_range_crossing_dst_weekly": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    }
+  }
+}

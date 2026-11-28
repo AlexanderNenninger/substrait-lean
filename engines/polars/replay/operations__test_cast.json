@@ -1,0 +1,3911 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/test_cast.py",
+  "license": "MIT",
+  "module": "operations__test_cast",
+  "summary": {
+    "agree": 4,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 25,
+    "unproved": 10,
+    "skipped": 926
+  },
+  "results": {
+    "test_all_null_cast_5826": {
+      "outcome": "unproved",
+      "reason": "VARCHAR_BOOLEAN(a)",
+      "collects": 1
+    },
+    "test_bool_numeric_supertype[dtype0]": {
+      "outcome": "unproved",
+      "reason": "cast out of range",
+      "collects": 1
+    },
+    "test_bool_numeric_supertype[dtype1]": {
+      "outcome": "unproved",
+      "reason": "cast out of range",
+      "collects": 1
+    },
+    "test_bool_numeric_supertype[dtype2]": {
+      "outcome": "unproved",
+      "reason": "cast out of range",
+      "collects": 1
+    },
+    "test_bool_numeric_supertype[dtype3]": {
+      "outcome": "unproved",
+      "reason": "division by zero",
+      "collects": 1
+    },
+    "test_bool_numeric_supertype[dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: …}"
+    },
+    "test_bool_numeric_supertype[dtype5]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 1
+    },
+    "test_bool_numeric_supertype[dtype6]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 1
+    },
+    "test_bool_numeric_supertype[dtype7]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 1
+    },
+    "test_bool_numeric_supertype[dtype8]": {
+      "outcome": "refused",
+      "construct": "Unsupported: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table",
+      "collects": 1
+    },
+    "test_bool_numeric_supertype[dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: …}"
+    },
+    "test_cast_array_to_different_width": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_categorical_name_retention[Categorical-Categorical]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_categorical_name_retention[Categorical-dtype_in1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_categorical_name_retention[String-Categorical]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_categorical_name_retention[String-dtype_in1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_categorical_name_retention[dtype_out2-Categorical]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_categorical_name_retention[dtype_out2-dtype_in1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_categorical_to_int_unsupported[dtype0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_categorical_to_int_unsupported[dtype1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_consistency[String]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.float to Substrait.Kind.str. Lean's model does not cover it ",
+      "collects": 2
+    },
+    "test_cast_consistency[dtype0]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.float to Substrait.Kind.str. Lean's model does not cover it ",
+      "collects": 2
+    },
+    "test_cast_consistency[str]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.float to Substrait.Kind.str. Lean's model does not cover it ",
+      "collects": 2
+    },
+    "test_cast_date_to_time": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_decimal_to_boolean": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from DECIMAL to Substrait.Kind.bool. Lean's model does not cover it yet: rewrite",
+      "collects": 1
+    },
+    "test_cast_decimal_to_decimal_high_precision": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_int[-1-Int16-UInt16-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_int[-1-Int32-UInt32-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_int[-1-Int64-UInt64-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_int[-1-Int8-UInt8-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_int[127-UInt8-Int8-127]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_int[128-UInt8-Int8-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_int[2147483647-UInt32-Int32-2147483647]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_int[2147483648-UInt32-Int32-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_int[32767-UInt16-Int16-32767]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_int[32768-UInt16-Int16-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_int[9223372036854775807-UInt64-Int64-9223372036854775807]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_int[9223372036854775808-UInt64-Int64-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_int_to_categorical_deprecated[dtype0-cat]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_int_to_categorical_deprecated[dtype1-enum]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_int_to_string_unsets_sorted_flag_19424": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_integer_to_decimal": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype0-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype0-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype0-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype0-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype0-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype0-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype0-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype0-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype0-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype0-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype0-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype0-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype0-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype1-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype1-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype1-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype1-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype1-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype1-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype1-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype1-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype1-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype1-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype1-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype1-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype1-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype10-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype10-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype10-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype10-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype10-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype10-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype10-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype10-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype10-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype10-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype10-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype10-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype10-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype11-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype11-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype11-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype11-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype11-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype11-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype11-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype11-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype11-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype11-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype11-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype11-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype11-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype12-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype12-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype12-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype12-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype12-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype12-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype12-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype12-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype12-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype12-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype12-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype12-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype12-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype2-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype2-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype2-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype2-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype2-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype2-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype2-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype2-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype2-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype2-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype2-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype2-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype2-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype3-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype3-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype3-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype3-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype3-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype3-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype3-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype3-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype3-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype3-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype3-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype3-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype3-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype4-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype4-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype4-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype4-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype4-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype4-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype4-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype4-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype4-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype4-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype4-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype4-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype4-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype5-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype5-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype5-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype5-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype5-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype5-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype5-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype5-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype5-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype5-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype5-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype5-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype5-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype6-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype6-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype6-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype6-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype6-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype6-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype6-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype6-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype6-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype6-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype6-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype6-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype6-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype7-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype7-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype7-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype7-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype7-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype7-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype7-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype7-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype7-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype7-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype7-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype7-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype7-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype8-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype8-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype8-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype8-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype8-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype8-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype8-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype8-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype8-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype8-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype8-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype8-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype8-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype9-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype9-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype9-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype9-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype9-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype9-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype9-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype9-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype9-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype9-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype9-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype9-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[mul-inner_dtype9-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype0-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype0-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype0-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype0-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype0-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype0-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype0-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype0-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype0-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype0-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype0-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype0-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype0-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype1-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype1-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype1-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype1-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype1-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype1-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype1-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype1-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype1-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype1-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype1-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype1-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype1-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype10-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype10-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype10-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype10-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype10-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype10-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype10-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype10-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype10-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype10-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype10-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype10-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype10-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype11-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype11-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype11-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype11-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype11-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype11-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype11-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype11-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype11-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype11-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype11-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype11-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype11-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype12-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype12-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype12-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype12-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype12-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype12-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype12-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype12-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype12-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype12-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype12-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype12-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype12-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype2-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype2-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype2-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype2-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype2-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype2-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype2-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype2-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype2-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype2-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype2-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype2-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype2-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype3-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype3-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype3-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype3-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype3-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype3-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype3-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype3-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype3-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype3-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype3-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype3-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype3-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype4-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype4-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype4-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype4-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype4-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype4-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype4-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype4-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype4-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype4-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype4-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype4-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype4-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype5-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype5-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype5-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype5-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype5-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype5-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype5-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype5-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype5-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype5-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype5-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype5-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype5-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype6-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype6-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype6-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype6-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype6-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype6-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype6-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype6-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype6-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype6-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype6-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype6-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype6-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype7-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype7-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype7-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype7-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype7-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype7-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype7-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype7-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype7-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype7-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype7-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype7-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype7-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype8-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype8-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype8-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype8-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype8-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype8-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype8-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype8-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype8-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype8-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype8-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype8-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype8-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype9-target_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype9-target_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype9-target_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype9-target_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype9-target_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype9-target_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype9-target_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype9-target_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype9-target_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype9-target_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype9-target_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype9-target_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_optimizer_in_list_eval_23924[truediv-inner_dtype9-target_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_python_dtypes": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_string[1.0-String-Float32-1.0]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_string[1.0-String-Float64-1.0]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_string[127-String-Int8-127]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_string[128-String-Int8-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_string[2147483647-String-Int32-2147483647]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_string[2147483648-String-Int32-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_string[32767-String-Int16-32767]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_string[32768-String-Int16-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_string[9223372036854775807-String-Int64-9223372036854775807]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_string[9223372036854775808-String-Int64-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[-4611686018427387904-Int64-Date-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[100-Int16-Date-expected_value20]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[100-Int32-Date-expected_value21]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[100-Int64-Date-expected_value22]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[100-Int8-Date-expected_value19]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[100-UInt16-Date-expected_value16]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[100-UInt32-Date-expected_value17]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[100-UInt64-Date-expected_value18]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[100-UInt8-Date-expected_value15]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[9223372036854775807-Int64-Date-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value0-Date-to_dtype0-expected_value0]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value1-Date-to_dtype1-expected_value1]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value10-from_dtype10-Int64-1000000]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value11-from_dtype11-Int64-1000000000]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value12-Time-to_dtype12-expected_value12]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column a: times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_cast_temporal[value13-Time-to_dtype13-expected_value13]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column a: times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_cast_temporal[value14-Time-to_dtype14-expected_value14]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column a: times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_cast_temporal[value2-Date-to_dtype2-expected_value2]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value25-Date-Int8-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value26-Date-Int16-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value27-Datetime-Int8-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value28-Datetime-Int16-None]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value3-from_dtype3-Date-expected_value3]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value4-from_dtype4-Date-expected_value4]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value5-from_dtype5-Date-expected_value5]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value6-from_dtype6-Time-expected_value6]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value7-from_dtype7-Time-expected_value7]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value8-from_dtype8-Time-expected_value8]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal[value9-from_dtype9-Int32-1000]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_cast_temporal_in_range_keeps_sorted_flag_30077[values0-Date-to_dtype0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_temporal_in_range_keeps_sorted_flag_30077[values1-from_dtype1-to_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_cast_temporal_in_range_keeps_sorted_flag_30077[values2-from_dtype2-Date]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_cast_temporal_overflow_unsets_sorted_flag_30077[values0-Date-to_dtype0-expected0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_temporal_overflow_unsets_sorted_flag_30077[values1-from_dtype1-to_dtype1-expected1]": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_cast_temporal_overflow_unsets_sorted_flag_30077[values2-from_dtype2-Date-expected2]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_temporals_overflow_16039[s0-to0-False]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_temporals_overflow_16039[s1-to1-True]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_temporals_overflow_16039[s2-to2-True]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_temporals_overflow_16039[s3-to3-True]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_temporals_overflow_16039[s4-to4-False]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_temporals_overflow_16039[s5-to5-True]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_temporals_overflow_16039[s6-to6-False]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_temporals_overflow_16039[s7-to7-True]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_time_to_date": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_time_unit_overflow_expr_22878[s0-to0]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_cast_time_unit_overflow_expr_22878[s1-to1]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_cast_time_unit_overflow_expr_22878[s2-to2]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_cast_time_unit_overflow_expr_22878[s3-to3]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_cast_to_list_not_supported": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_cast_to_self_is_pruned": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[mul-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[mul-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[mul-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[mul-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[mul-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[mul-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[mul-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[mul-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[mul-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[mul-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[mul-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[mul-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[mul-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[truediv-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[truediv-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[truediv-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[truediv-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[truediv-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[truediv-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[truediv-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[truediv-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[truediv-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[truediv-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[truediv-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[truediv-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_cast_to_unknown_arithmetic_matrix_schema_24431[truediv-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_err_on_invalid_time_zone_cast": {
+      "outcome": "skipped",
+      "reason": "translator: Function TemporalExpr"
+    },
+    "test_err_on_time_datetime_cast": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_invalid_bool_to_cat[dtype0-False]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_invalid_bool_to_cat[dtype0-True]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_invalid_bool_to_cat[dtype1-False]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_invalid_bool_to_cat[dtype1-True]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_invalid_cast_float_to_decimal[inf]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_invalid_cast_float_to_decimal[nan]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_invalid_inner_type_cast_list": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_invalid_string_date": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_invalid_string_datetime": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_leading_plus_zero_float[Float32]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_leading_plus_zero_float[Float64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_leading_plus_zero_int[Int16]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_leading_plus_zero_int[Int32]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_leading_plus_zero_int[Int64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_leading_plus_zero_int[Int8]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_leading_plus_zero_uint[UInt16]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_leading_plus_zero_uint[UInt32]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_leading_plus_zero_uint[UInt64]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_leading_plus_zero_uint[UInt8]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_list_uint8_to_bytes[values0-result0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_list_uint8_to_bytes[values1-result1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_list_uint8_to_bytes[values2-result2]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_list_uint8_to_bytes[values3-result3]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_list_uint8_to_bytes_strict": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_lit_cast_arithmetic_23677": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-Unknown-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-Unknown-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-Unknown-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-Unknown-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-Unknown-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-Unknown-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-Unknown-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-Unknown-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-Unknown-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-Unknown-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-Unknown-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-Unknown-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-Unknown-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-Unknown-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype0-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype0-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype0-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype0-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype0-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype0-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype0-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype0-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype0-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype0-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype0-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype0-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype0-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype0-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype1-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype1-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype1-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype1-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype1-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype1-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype1-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype1-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype1-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype1-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype1-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype1-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype1-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype1-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype10-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype10-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype10-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype10-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype10-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype10-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype10-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype10-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype10-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype10-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype10-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype10-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype10-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype10-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype11-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype11-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype11-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype11-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype11-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype11-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype11-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype11-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype11-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype11-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype11-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype11-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype11-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype11-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype12-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype12-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype12-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype12-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype12-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype12-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype12-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype12-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype12-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype12-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype12-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype12-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype12-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype12-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype2-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype2-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype2-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype2-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype2-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype2-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype2-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype2-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype2-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype2-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype2-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype2-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype2-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype2-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype3-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype3-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype3-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype3-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype3-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype3-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype3-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype3-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype3-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype3-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype3-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype3-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype3-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype3-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype4-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype4-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype4-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype4-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype4-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype4-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype4-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype4-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype4-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype4-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype4-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype4-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype4-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype4-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype5-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype5-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype5-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype5-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype5-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype5-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype5-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype5-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype5-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype5-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype5-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype5-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype5-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype5-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype6-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype6-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype6-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype6-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype6-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype6-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype6-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype6-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype6-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype6-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype6-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype6-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype6-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype6-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype7-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype7-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype7-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype7-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype7-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype7-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype7-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype7-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype7-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype7-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype7-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype7-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype7-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype7-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype8-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype8-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype8-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype8-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype8-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype8-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype8-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype8-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype8-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype8-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype8-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype8-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype8-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype8-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype9-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype9-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype9-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype9-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype9-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype9-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype9-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype9-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype9-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype9-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype9-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype9-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype9-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[mul-lit_dtype9-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-Unknown-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-Unknown-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-Unknown-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-Unknown-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-Unknown-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-Unknown-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-Unknown-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-Unknown-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-Unknown-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-Unknown-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-Unknown-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-Unknown-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-Unknown-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-Unknown-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype0-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype0-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype0-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype0-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype0-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype0-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype0-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype0-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype0-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype0-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype0-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype0-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype0-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype0-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype1-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype1-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype1-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype1-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype1-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype1-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype1-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype1-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype1-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype1-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype1-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype1-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype1-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype1-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype10-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype10-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype10-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype10-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype10-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype10-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype10-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype10-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype10-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype10-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype10-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype10-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype10-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype10-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype11-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype11-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype11-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype11-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype11-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype11-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype11-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype11-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype11-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype11-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype11-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype11-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype11-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype11-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype12-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype12-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype12-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype12-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype12-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype12-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype12-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype12-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype12-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype12-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype12-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype12-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype12-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype12-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype2-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype2-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype2-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype2-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype2-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype2-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype2-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype2-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype2-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype2-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype2-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype2-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype2-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype2-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype3-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype3-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype3-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype3-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype3-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype3-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype3-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype3-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype3-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype3-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype3-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype3-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype3-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype3-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype4-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype4-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype4-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype4-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype4-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype4-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype4-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype4-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype4-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype4-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype4-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype4-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype4-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype4-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype5-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype5-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype5-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype5-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype5-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype5-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype5-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype5-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype5-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype5-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype5-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype5-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype5-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype5-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype6-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype6-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype6-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype6-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype6-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype6-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype6-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype6-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype6-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype6-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype6-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype6-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype6-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype6-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype7-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype7-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype7-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype7-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype7-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype7-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype7-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype7-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype7-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype7-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype7-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype7-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype7-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype7-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype8-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype8-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype8-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype8-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype8-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype8-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype8-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype8-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype8-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype8-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype8-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype8-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype8-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype8-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype9-Unknown]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype9-col_dtype0]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype9-col_dtype10]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype9-col_dtype11]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype9-col_dtype12]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype9-col_dtype1]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype9-col_dtype2]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype9-col_dtype3]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype9-col_dtype4]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype9-col_dtype5]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype9-col_dtype6]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype9-col_dtype7]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype9-col_dtype8]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_cast_arithmetic_matrix_schema[truediv-lit_dtype9-col_dtype9]": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_lit_unknown_dtype_consistency_24431": {
+      "outcome": "skipped",
+      "reason": "translator: IR"
+    },
+    "test_nested_strict_casts_failing[values0-from_dtype0-to_dtype0-None]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_nested_strict_casts_failing[values1-from_dtype1-to_dtype1-None]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_nested_strict_casts_failing[values2-from_dtype2-to_dtype2-None]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_nested_strict_casts_failing[values3-from_dtype3-to_dtype3-None]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_nested_strict_casts_succeeds[values0-from_dtype0-<lambda>-to0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_nested_strict_casts_succeeds[values1-from_dtype1-<lambda>-to1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_nested_strict_casts_succeeds[values2-from_dtype2-<lambda>-to2]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_nested_strict_casts_succeeds[values3-from_dtype3-<lambda>-to3]": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_nested_struct_cast_22744": {
+      "outcome": "skipped",
+      "reason": "translator: Cast that is not strict"
+    },
+    "test_not_prune_necessary_cast": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_overflowing_cast_literals_21023": {
+      "outcome": "skipped",
+      "reason": "translator: inputs: a frame with no columns"
+    },
+    "test_prune_superfluous_cast[dtype0]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_prune_superfluous_cast[dtype10]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_prune_superfluous_cast[dtype11]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_prune_superfluous_cast[dtype12]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_prune_superfluous_cast[dtype1]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_prune_superfluous_cast[dtype2]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_prune_superfluous_cast[dtype3]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_prune_superfluous_cast[dtype4]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_prune_superfluous_cast[dtype5]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_prune_superfluous_cast[dtype6]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_prune_superfluous_cast[dtype7]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_prune_superfluous_cast[dtype8]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_prune_superfluous_cast[dtype9]": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_strict_cast_int[-1-Int16-UInt16-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_int[-1-Int32-UInt32-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_int[-1-Int64-UInt64-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_int[-1-Int8-UInt8-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_int[127-UInt8-Int8-True-127]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 2
+    },
+    "test_strict_cast_int[128-UInt8-Int8-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_int[2147483647-UInt32-Int32-True-2147483647]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 2
+    },
+    "test_strict_cast_int[2147483648-UInt32-Int32-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_int[32767-UInt16-Int16-True-32767]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 2
+    },
+    "test_strict_cast_int[32768-UInt16-Int16-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_int[9223372036854775807-UInt64-Int64-True-9223372036854775807]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 2
+    },
+    "test_strict_cast_int[9223372036854775808-UInt64-Int64-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_nested": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_string[1.0-String-Float32-True-1.0]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: casts to FLOAT (fp32) are not modelled; they round to N bits. Lean's model does not cover it yet:",
+      "collects": 2
+    },
+    "test_strict_cast_string[1.0-String-Float64-True-1.0]": {
+      "outcome": "unproved",
+      "reason": "VARCHAR_DOUBLE(a)",
+      "collects": 2
+    },
+    "test_strict_cast_string[127-String-Int8-True-127]": {
+      "outcome": "unproved",
+      "reason": "VARCHAR_BIGINT(a)",
+      "collects": 2
+    },
+    "test_strict_cast_string[128-String-Int8-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_string[2147483647-String-Int32-True-2147483647]": {
+      "outcome": "unproved",
+      "reason": "VARCHAR_BIGINT(a)",
+      "collects": 2
+    },
+    "test_strict_cast_string[2147483648-String-Int32-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_string[32767-String-Int16-True-32767]": {
+      "outcome": "unproved",
+      "reason": "VARCHAR_BIGINT(a)",
+      "collects": 2
+    },
+    "test_strict_cast_string[32768-String-Int16-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_string[9223372036854775807-String-Int64-True-9223372036854775807]": {
+      "outcome": "unproved",
+      "reason": "VARCHAR_BIGINT(a)",
+      "collects": 2
+    },
+    "test_strict_cast_string[9223372036854775808-String-Int64-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_temporal[-4611686018427387904-Int64-Date-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_temporal[100-Int16-Date-True-expected_value20]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.int to Substrait.Kind.date. Lean's model does not cover it y",
+      "collects": 2
+    },
+    "test_strict_cast_temporal[100-Int32-Date-True-expected_value21]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.int to Substrait.Kind.date. Lean's model does not cover it y",
+      "collects": 2
+    },
+    "test_strict_cast_temporal[100-Int64-Date-True-expected_value22]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.int to Substrait.Kind.date. Lean's model does not cover it y",
+      "collects": 2
+    },
+    "test_strict_cast_temporal[100-Int8-Date-True-expected_value19]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: unsupported cast from Substrait.Kind.int to Substrait.Kind.date. Lean's model does not cover it y",
+      "collects": 2
+    },
+    "test_strict_cast_temporal[100-UInt16-Date-True-expected_value16]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint16) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 2
+    },
+    "test_strict_cast_temporal[100-UInt32-Date-True-expected_value17]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint32) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 2
+    },
+    "test_strict_cast_temporal[100-UInt64-Date-True-expected_value18]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint64) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a ",
+      "collects": 2
+    },
+    "test_strict_cast_temporal[100-UInt8-Date-True-expected_value15]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: unsigned integers (uint8) are not supported yet (#350); cast the column to a signed integer before sverify reads the table; only a c",
+      "collects": 2
+    },
+    "test_strict_cast_temporal[9223372036854775807-Int64-Date-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_temporal[value0-Date-to_dtype0-True-expected_value0]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, None]}}"
+    },
+    "test_strict_cast_temporal[value1-Date-to_dtype1-True-expected_value1]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, None]}}"
+    },
+    "test_strict_cast_temporal[value10-from_dtype10-Int64-True-1000000]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: type interval(…) is not supported; cast the column to a supported type in the source query; only a column the query never reads is l",
+      "collects": 4
+    },
+    "test_strict_cast_temporal[value11-from_dtype11-Int64-True-1000000000]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: type interval(…) is not supported; cast the column to a supported type in the source query; only a column the query never reads is l",
+      "collects": 4
+    },
+    "test_strict_cast_temporal[value12-Time-to_dtype12-True-expected_value12]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column a: times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_strict_cast_temporal[value13-Time-to_dtype13-True-expected_value13]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column a: times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_strict_cast_temporal[value14-Time-to_dtype14-True-expected_value14]": {
+      "outcome": "skipped",
+      "reason": "translator: Unsupported: column a: times in nanoseconds (time64[ns]) are not supported; cast them to microseconds (time64[us])"
+    },
+    "test_strict_cast_temporal[value2-Date-to_dtype2-True-expected_value2]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: {…: […, None]}}"
+    },
+    "test_strict_cast_temporal[value25-Date-Int8-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_temporal[value26-Date-Int16-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_temporal[value27-Datetime-Int8-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_temporal[value28-Datetime-Int16-False-None]": {
+      "outcome": "skipped",
+      "reason": "raises"
+    },
+    "test_strict_cast_temporal[value3-from_dtype3-Date-True-expected_value3]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_strict_cast_temporal[value4-from_dtype4-Date-True-expected_value4]": {
+      "outcome": "agree",
+      "collects": 5
+    },
+    "test_strict_cast_temporal[value5-from_dtype5-Date-True-expected_value5]": {
+      "outcome": "refused",
+      "construct": "UnsupportedError: substrait-check --contract refuses the plan: a cast to or from a timestamp in nanoseconds is not supported: a timestamp in nanoseconds (N-N-N ",
+      "collects": 5
+    },
+    "test_strict_cast_temporal[value6-from_dtype6-Time-True-expected_value6]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: …}"
+    },
+    "test_strict_cast_temporal[value7-from_dtype7-Time-True-expected_value7]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: …}"
+    },
+    "test_strict_cast_temporal[value8-from_dtype8-Time-True-expected_value8]": {
+      "outcome": "skipped",
+      "reason": "translator: Cast to {…: …}"
+    },
+    "test_strict_cast_temporal[value9-from_dtype9-Int32-True-1000]": {
+      "outcome": "refused",
+      "construct": "Unsupported: column … of …: type interval(…) is not supported; cast the column to a supported type in the source query; only a column the query never reads is l",
+      "collects": 4
+    },
+    "test_strict_struct_cast_field_count_mismatch": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_strict_struct_cast_field_name_mismatch": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    }
+  }
+}

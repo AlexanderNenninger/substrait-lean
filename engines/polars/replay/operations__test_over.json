@@ -1,0 +1,160 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/test_over.py",
+  "license": "MIT",
+  "module": "operations__test_over",
+  "summary": {
+    "agree": 1,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 35
+  },
+  "results": {
+    "test_count_over_aggregated_list_respects_inner_nulls_27031": {
+      "outcome": "skipped",
+      "reason": "translator: Function CumSum"
+    },
+    "test_first_last_over": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_implode_explode_list_over_24616[col0]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_implode_explode_list_over_24616[col1]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_implode_explode_over_22188": {
+      "outcome": "skipped",
+      "reason": "translator: Over of BinaryExpr"
+    },
+    "test_implode_in_over_22188": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Function"
+    },
+    "test_nested_over_row_mapping_28712": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Over"
+    },
+    "test_nulls_last_over_24989": {
+      "outcome": "skipped",
+      "reason": "translator: RenameAlias"
+    },
+    "test_over_duplicate_name_27443[expr0]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Column"
+    },
+    "test_over_duplicate_name_27443[expr1]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Function"
+    },
+    "test_over_duplicate_name_27443[expr2]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Literal"
+    },
+    "test_over_duplicate_name_27443[expr3]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Literal"
+    },
+    "test_over_duplicate_name_27443[expr4]": {
+      "outcome": "skipped",
+      "reason": "translator: Over of Literal"
+    },
+    "test_over_duplicate_name_27443[expr5]": {
+      "outcome": "skipped",
+      "reason": "lean: the data leaves a choice not listed"
+    },
+    "test_over_duplicate_name_27443[expr6]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg First"
+    },
+    "test_over_duplicate_name_27443[expr7]": {
+      "outcome": "skipped",
+      "reason": "translator: Agg Implode"
+    },
+    "test_over_empty_order_by_27067": {
+      "outcome": "agree",
+      "collects": 3
+    },
+    "test_over_explode_22770": {
+      "outcome": "skipped",
+      "reason": "translator: Function ListExpr"
+    },
+    "test_over_literal_dtype[expr0-expected0-0-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_over_literal_dtype[expr0-expected0-0-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_over_literal_dtype[expr0-expected0-2-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_over_literal_dtype[expr0-expected0-2-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_over_literal_dtype[expr1-expected1-0-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_over_literal_dtype[expr1-expected1-0-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_over_literal_dtype[expr1-expected1-2-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_over_literal_dtype[expr1-expected1-2-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_over_literal_dtype[expr2-expected2-0-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_over_literal_dtype[expr2-expected2-0-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_over_literal_dtype[expr2-expected2-2-in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_over_literal_dtype[expr2-expected2-2-streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Slice without a Sort below it"
+    },
+    "test_over_multi_key_order_by_directions[in-memory]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_over_multi_key_order_by_directions[streaming]": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_over_no_partition_by": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_over_no_partition_by_no_over": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_over_order_by_descending_nulls_agg_context": {
+      "outcome": "skipped",
+      "reason": "translator: Over with an order or another mapping"
+    },
+    "test_over_replace_strict_22870": {
+      "outcome": "skipped",
+      "reason": "translator: Function ReplaceStrict"
+    }
+  }
+}

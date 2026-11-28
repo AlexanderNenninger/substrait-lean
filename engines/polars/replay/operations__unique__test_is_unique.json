@@ -1,0 +1,60 @@
+{
+  "polars": "py-2.1.0",
+  "source": "https://github.com/pola-rs/polars/tree/py-2.1.0/py-polars/tests/unit/operations/unique/test_is_unique.py",
+  "license": "MIT",
+  "module": "operations__unique__test_is_unique",
+  "summary": {
+    "agree": 1,
+    "disagree": 0,
+    "unattributed": 0,
+    "refused": 0,
+    "unproved": 0,
+    "skipped": 10
+  },
+  "results": {
+    "test_is_duplicated_df": {
+      "outcome": "skipped",
+      "reason": "collects nothing"
+    },
+    "test_is_duplicated_lf": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsDuplicated"
+    },
+    "test_is_duplicated_null": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsDuplicated"
+    },
+    "test_is_duplicated_series": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsDuplicated"
+    },
+    "test_is_unique": {
+      "outcome": "agree",
+      "collects": 1
+    },
+    "test_is_unique2": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsUnique"
+    },
+    "test_is_unique_array": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsDuplicated"
+    },
+    "test_is_unique_list": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsDuplicated"
+    },
+    "test_is_unique_null": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsUnique"
+    },
+    "test_is_unique_series": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsDuplicated"
+    },
+    "test_is_unique_struct": {
+      "outcome": "skipped",
+      "reason": "translator: Function IsDuplicated"
+    }
+  }
+}
