@@ -161,8 +161,13 @@ def test_a_dialect_from_outside_is_lifted_through_the_seam(sql_dialects: None) -
 
 @pytest.mark.filterwarnings("ignore::sverify.profiles.ProfilePluginWarning")
 def test_an_unknown_dialect_names_the_installed_ones(sql_dialects: None) -> None:
+    from sverify.profiles import sql_front_ends
+
     t = ibis.table({"a": "int64"}, name="t")
-    with pytest.raises(ValueError, match="dialect must be 'bare', 'duckdb', 'toy', not 'postgres'"):
+    # Spark's package reads its SQL too, where it is installed (#866).
+    names = ", ".join(repr(n) for n in sorted(sql_front_ends()))
+    assert {"bare", "duckdb", "toy"} <= set(sql_front_ends())
+    with pytest.raises(ValueError, match=f"dialect must be {names}, not 'postgres'"):
         sv.sql("SELECT a FROM t", dialect="postgres", t=t)
 
 
