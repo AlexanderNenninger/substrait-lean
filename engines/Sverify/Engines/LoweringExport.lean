@@ -22,6 +22,8 @@ def unName : UnFn → String
   | .isNum _ => "isNum" | .isNull => "isNull" | .not => "not" | .ffloor => "ffloor"
   | .raise _ => "raise" | .fmath f => s!"fmath:{f.name}"
   | .fit m w => s!"fit:{m.name}:{w.bits}"
+  -- One name for every digit count: the translations write it themselves.
+  | .froundTo _ => "Substrait.UnFn.froundTo"
   | f => reprStr f
 
 def binName : BinFn → String

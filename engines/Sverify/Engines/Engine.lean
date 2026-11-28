@@ -86,14 +86,18 @@ any behaviour (`refAnyAt`), or the loose choice delivers the reference's
 (`obsAbsorbs`, C2, C3). Each engine checks the list against the pairs pending a
 ruling (`nativeOffIs`, a `#guard` in its `Engine.lean`), function by function, so
 a function newly native in a pending group fails it too. Polars's decimal rescale was one, where `Profile.polars` stated the
-reference's cast while its table picked `TIE_TO_EVEN`. -/
-def nativeOffReference (t : ProfileTable) (obs : ObsTable) (un : UnFn → Bool) (bin : BinFn → Bool) :
-    List (Functions.Ctor × String) :=
+reference's cast while its table picked `TIE_TO_EVEN`. An option the engine's rendering
+asks for (`asks`, ruling 282's C8: Polars's `round(d, mode=…)`, `Polars.asks`) is not
+listed: the engine gives that behaviour on request, and the reference picks it, as the
+engine's own `#guard` on its asks checks. -/
+def nativeOffReference (t : ProfileTable) (obs : ObsTable) (un : UnFn → Bool) (bin : BinFn → Bool)
+    (asks : List (Functions.Ctor × String × String) := []) : List (Functions.Ctor × String) :=
   (nativeFns un bin).flatMap fun c =>
     match Functions.rowOf c with
     | some r => (((Functions.groups.lookup r.group).getD []).filter (optionApplies · c)).filterMap fun o =>
       if extraAtB t c o && !refRaisesAt r.group o && !refAnyAt r.group o &&
-          !looseAtReference t r.group o && !obsAbsorbs obs r.group o then some (c, o)
+          !looseAtReference t r.group o && !obsAbsorbs obs r.group o &&
+          !asks.any (fun (c', o', _) => c' == c && o' == o) then some (c, o)
       else none
     | none => []
 
@@ -105,8 +109,9 @@ rescale, while Spark's may): reviewable, not pending. Each must still be found,
 so a C7 entry that no longer applies fails the check too. -/
 def nativeOffIs (t : ProfileTable) (obs : ObsTable) (un : UnFn → Bool) (bin : BinFn → Bool)
     (pending : List (Functions.Ctor × String))
-    (unexercised : List (Functions.Ctor × String × String) := []) : Bool :=
-  let off := nativeOffReference t obs un bin
+    (unexercised : List (Functions.Ctor × String × String) := [])
+    (asks : List (Functions.Ctor × String × String) := []) : Bool :=
+  let off := nativeOffReference t obs un bin asks
   let c7 := unexercised.map fun (c, o, _) => (c, o)
   let rest := off.filter (!c7.contains ·)
   c7.all off.contains && rest.length == pending.length && rest.all pending.contains

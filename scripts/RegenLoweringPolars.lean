@@ -17,8 +17,10 @@ attribute [local instance] Boxes.Ambient.none in
 generate_lowering polarsOn : Profile.polars
   unfolding [Profile.polars, UnFn.polarsTmpl, BinFn.polarsTmpl]
   using []
-  -- Polars has no shift (polars-int-shift): `&`, `|`, `^` are schemas of the native call.
-  excluding [BinFn.bit]
+  -- Polars has no shift (polars-int-shift): `&`, `|`, `^` are schemas of the native call. Its
+  -- `*` of decimals rounds (polars-decimal-arith): `dmul` is a hand-built entry. Its `round(x, d)`
+  -- is a partial hand-built entry (`Polars.froundToEntry`).
+  excluding [BinFn.bit, BinFn.dmul, UnFn.froundTo]
   hand_written LoweringSearch.polarsSchemas
   writing "engines/polars/Sverify/Polars/LoweringOn"
   refusing [BinFn.fmod, UnFn.ftod]

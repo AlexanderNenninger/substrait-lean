@@ -19,10 +19,10 @@ variable [Boxes.Ambient]
 
 local macro "native_tac" : tactic => `(tactic| lowering_native [Substrait.Profile.polars, Substrait.UnFn.polarsTmpl, Substrait.BinFn.polarsTmpl])
 local macro "un_tac" : tactic =>
-  `(tactic| lowering_template [Substrait.Profile.polars, Substrait.UnFn.polarsTmpl, Substrait.BinFn.polarsTmpl] [Substrait.polarsOn.not_native, Substrait.polarsOn.isNull_native, Substrait.polarsOn.ffloor_native, Substrait.polarsOn.raise_native, Substrait.polarsOn.isNum_native, Substrait.polarsOn.eq_native, Substrait.polarsOn.lt_native, Substrait.polarsOn.and_native, Substrait.polarsOn.or_native, Substrait.polarsOn.dadd_native, Substrait.polarsOn.dsub_native, Substrait.polarsOn.dmul_native]
+  `(tactic| lowering_template [Substrait.Profile.polars, Substrait.UnFn.polarsTmpl, Substrait.BinFn.polarsTmpl] [Substrait.polarsOn.not_native, Substrait.polarsOn.isNull_native, Substrait.polarsOn.ffloor_native, Substrait.polarsOn.raise_native, Substrait.polarsOn.isNum_native, Substrait.polarsOn.eq_native, Substrait.polarsOn.lt_native, Substrait.polarsOn.and_native, Substrait.polarsOn.or_native, Substrait.polarsOn.dadd_native, Substrait.polarsOn.dsub_native]
     [] unary)
 local macro "bin_tac" : tactic =>
-  `(tactic| lowering_template [Substrait.Profile.polars, Substrait.UnFn.polarsTmpl, Substrait.BinFn.polarsTmpl] [Substrait.polarsOn.not_native, Substrait.polarsOn.isNull_native, Substrait.polarsOn.ffloor_native, Substrait.polarsOn.raise_native, Substrait.polarsOn.isNum_native, Substrait.polarsOn.eq_native, Substrait.polarsOn.lt_native, Substrait.polarsOn.and_native, Substrait.polarsOn.or_native, Substrait.polarsOn.dadd_native, Substrait.polarsOn.dsub_native, Substrait.polarsOn.dmul_native]
+  `(tactic| lowering_template [Substrait.Profile.polars, Substrait.UnFn.polarsTmpl, Substrait.BinFn.polarsTmpl] [Substrait.polarsOn.not_native, Substrait.polarsOn.isNull_native, Substrait.polarsOn.ffloor_native, Substrait.polarsOn.raise_native, Substrait.polarsOn.isNum_native, Substrait.polarsOn.eq_native, Substrait.polarsOn.lt_native, Substrait.polarsOn.and_native, Substrait.polarsOn.or_native, Substrait.polarsOn.dadd_native, Substrait.polarsOn.dsub_native]
     [])
 
 theorem Substrait.polarsOn.idiv_agree : ∀ (x y : Substrait.Value),

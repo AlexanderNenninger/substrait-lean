@@ -9,8 +9,12 @@ The constructs the lowering search does not reach on `Profile.polars`, for
 (`scripts/RegenLoweringPolars.lean`): `round` and `ceil`, which give IEEE's
 `-0.0` on Polars, integer `//` and `%` and decimal `%`, which floor, and a decimal cast to a
 smaller scale, which rounds half to even (a hand-built entry, `Polars.droundEntry`,
-whose template's literals depend on the scale), and `<<` and `>>`, which Polars
-lacks (polars-int-shift). Each comes with its
+whose template's literals depend on the scale), `<<` and `>>`, which Polars
+lacks (polars-int-shift), and `round(x, d)`, Polars's own `round(d, mode=…)` for
+`0 ≤ d ≤ 22` and refused otherwise (a partial hand-built entry, `Polars.froundToEntry`).
+A product of decimals is a hand-built entry that is
+not exact (`Polars.dmulEntry`): its guard raises before Polars's Int128 `*`
+could leave 128 bits. Each comes with its
 proof, `Polars.<construct>_agree` (`Sverify.Polars.LoweringLemmas`,
 `Sverify.Polars.Profile`), which the kernel checks. `%` of doubles floors too
 and has no exact template from Polars's functions: the table has no entry
@@ -47,6 +51,7 @@ def polarsSchemas : Schemas where
         "shr: error outside 0-63, else (#0 & -1) // 2^#1 floored")
     | _ => none
   proofs := `Substrait.Polars
-  entries := [(``UnFn.dround, ``Polars.droundEntry)]
+  entries := [(``UnFn.dround, ``Polars.droundEntry), (``UnFn.froundTo, ``Polars.froundToEntry),
+    (``BinFn.dmul, ``Polars.dmulEntry)]
 
 end Substrait.LoweringSearch

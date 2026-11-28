@@ -226,8 +226,7 @@ whose constants are doubles, and either the first branch's (no IEEE division,
 `Engine.GuardFreeSide`) or the second's (Spark does not raise on the lowered
 plan, every guard kept). -/
 def Engine.SparkSide (cat : Catalog) (r : Rel) : Prop :=
-  cat.Dbl ∧ r.ConstsDbl ∧
-    ((r.ExactOnB Lowering.spark = true ∧ Engine.GuardFreeSide cat r) ∨ Engine.spark.NoRaiseSide cat r)
+  cat.Dbl ∧ r.ConstsDbl ∧ Engine.spark.ExactOrNoRaiseSide Lowering.spark cat r
 
 /-- **Spark's run is sound** under `Engine.SparkSide`: `Rel.spark_sound` on
 the first branch, `Rel.spark_sound_or_raises` on the second. -/

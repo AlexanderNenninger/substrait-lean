@@ -46,7 +46,7 @@ the project's one axiom (the trusted table below).
 | `ContractCheck.check_proved_sound` | What `substrait-check --contract` reports proved holds on the data's every allowed order | `ContractCheck.lean` | propext, Classical.choice, Quot.sound |
 | `ContractCheck.check_proved_on` | … on the rows an engine's model computes for the translated plan, for a plan without open measures (`closed`), under the engine's side condition | `ProvedOn.lean` | propext, Classical.choice, Quot.sound |
 | `ContractCheck.check_proved_on_duckdb` | … on DuckDB's model (default route: verified under the reference, lowered by `Lowering.duckdb`), its side condition from a guard-free report without issues under the reference | `ProvedOn.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
-| `ContractCheck.check_proved_on_polars` | … on Polars's model, its side condition from a guard-free report | `ProvedOn.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
+| `ContractCheck.check_proved_on_polars` | … on Polars's model, its side condition from a guard-free report whose plan Polars's table lowers exactly (`exact_lowering`) | `ProvedOn.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `ContractCheck.check_proved_on_spark` | … on Spark's model, its side condition from a guard-free report | `ProvedOn.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Rel.mayIssues_sound` | A plan with no reported issue raises no runtime error | `Safety.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Rel.mayIssues_sound_all` | … on every order of the ties the reference allows | `Safety.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
@@ -55,7 +55,7 @@ the project's one axiom (the trusted table below).
 | `Lowering.duckdb_exact` | Each generated lowering entry is exact | `DuckDB/LoweringOn.lean` | propext, Classical.choice, Quot.sound |
 | `liftDuckDB.total` | The lift of DuckDB's SQL covers every generated entry | `DuckDB/Lift/Duckdb.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.duckdb_sound` | A proved contract holds on the model of DuckDB (default settings), given `NoRaiseSide`, which an empty `Rel.mayIssues` discharges (`Engine.duckdb_noRaise_of_mayIssues`). The model differs from the reference only in its scalar functions: its relational behaviour is the reference's, and that the engine runs it is the assumption `Engine.Runs` ([below](#the-trusted-parts-in-detail)) | `DuckDB/Engine.lean` | propext, Classical.choice, Quot.sound |
-| `Engine.polars_sound` | … on the model of Polars, given `GuardFreeSide`, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`) (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
+| `Engine.polars_sound` | … on the model of Polars, given `PolarsSide`: the plan lowered by exact entries (`Rel.ExactOnB`, decided by the checker) and `GuardFreeSide`, or the lowered plan not raising (`NoRaiseSide`); `GuardFreeSide`'s plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`) (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Polars/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.spark_sound` | … on the model of Spark, given `SparkSide`: a catalog of doubles, a plan whose constants are doubles (the checker's check), and either `GuardFreeSide` for a plan without IEEE division, whose plan part the checker decides (`Engine.GuardFreePlan`) and whose data part is assumed of the data (`Engine.GuardFreeData`), or `NoRaiseSide`, every guard kept (scalar functions; the model's relational behaviour is the reference's, and that the engine runs it is `Engine.Runs`) | `Spark/Engine.lean` | propext, Classical.choice, Quot.sound, Substrait.FloatCode.exp_fin |
 | `Engine.contract_sound_runs` | … on an engine's run, given the engine runs its model (`Engine.Runs`) | `Sound.lean` | propext, Classical.choice, Quot.sound |
 | `Engine.contract_sound_runs_near` | … on an engine's run with open float rows, given `Rel.FloatOpenSafeP` over its table, which `Rel.floatOpenSafeP_aggregate` discharges for a root aggregate's double `SUM` and `AVG`, and `Rel.floatOpenSafeP_of_noDouble` for a closed plan without doubles; other shapes are #929's | `Sound.lean` | propext, Classical.choice, Quot.sound |
@@ -133,6 +133,8 @@ Sverify's words claim no more than these theorems give
   profiles that evaluate their own relational operators (joins, sorts, an
   empty `SUM`, `NULL` order), with no shared `Rel.eval`, are
   [#2539](https://github.com/AlexanderNenninger/substrait-lean/issues/2539).
+  On Polars, `round(x, d)` with `d < 0` or `d > 22` is refused: the generated
+  entry covers the digits polars-round's probes cover (`Polars.froundToEntry`).
 - The report's `ε` (`SubstraitLean/Epsilon.lean`, `robust`, `rows_exact`,
   `margin_checks`) has no theorem that it bounds an engine's doubles. The
   bounds hold over the reals in `float-bounds/`, which `StdModel` links to the
@@ -250,7 +252,13 @@ Sverify's words claim no more than these theorems give
   `IS NOT NULL` included, and the Polars translator. The interpreters of the
   generated lowering tables are among them: `sverify/sql/lowering.py` writes a
   DuckDB template as SQL, and `sverify_polars/lowering.py` a Polars template
-  as a `pl.Expr` (#271). Golden, round-trip and
+  as a `pl.Expr` (#271). Polars's writes rest on two claims about Int128,
+  where `Profile.polars` takes the reference's exact integers: `dadd` and
+  `dsub` are exact on 64-bit operands, and `dmul` is exact below `2¹²⁷`
+  ([polars-int-arith](../engines/polars/facts/polars-int-arith.json)). Every
+  template calls `dmul` within a proved bound (`Polars.dmul_bound`, and a
+  `#guard` that no other template calls it, `Polars/Engine.lean`; ruling 282).
+  Golden, round-trip and
   differential tests cover them
   ([the translations](engine-profiles.md#the-translations-today)).
 - The CLI's glue, `Main.lean`, `SubstraitCheck.lean`, `ContractCheck.lean` and `ShardCheck.lean`:

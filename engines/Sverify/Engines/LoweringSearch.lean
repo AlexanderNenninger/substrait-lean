@@ -1024,6 +1024,20 @@ def elabGenerateLowering : CommandElab := fun stx => do
   let missing := results.flatMap fun (c, r) => if refused.contains c then #[] else
     (r.getD #[]).filterMap fun (k, how, _) =>
       match how with | .error e => some s!"{k.label} ({e})" | .ok _ => none
+  -- An entry whose type is an `Option` (a partial hand-built entry, `none` where
+  -- it refuses) goes into the table as it is; every other entry under `some`.
+  -- The type decides, never the name.
+  let isPartial (n : Name) : CommandElabM Bool := liftTermElabM do
+    match (← getEnv).find? n with
+    | some ci => Meta.forallTelescope ci.type fun _ body => pure (body.isAppOfArity ``Option 1)
+    | none => pure false
+  let entryNames : Array Name := ctors.toArray.flatMap fun (c, _) => (entries c).filterMap
+    fun (k, how, _) => match how with
+      | .ok _ => some (tbl ++ (if k.args.isEmpty then c.componentsRev.head! else k.short))
+      | .error _ => none
+  let partials ← entryNames.filterM isPartial
+  let wrap (n : Name) (app : String) : String :=
+    if partials.contains n then app else s!"some {app}"
   -- The table: an arm for each constructor, or for each construct of one.
   let arms (ind : Name) : CommandElabM (Array (TSyntax ``Lean.Parser.Term.matchAlt)) := do
     (← getConstInfoInduct ind).ctors.toArray.flatMapM fun c => do
@@ -1034,12 +1048,16 @@ def elabGenerateLowering : CommandElab := fun stx => do
         if !k.args.isEmpty then
           return ← es.mapM fun (k, how, _) => do
             let pats ← k.args.mapM fun a => `($(mkIdent a):ident)
-            let rhs ← match how with
-              | .error _ => `(none)
-              | .ok _ => `(some $(mkIdent (tbl ++ k.short)))
+            let n := mkIdent (tbl ++ k.short)
+            let rhs ← match how, partials.contains (tbl ++ k.short) with
+              | .error _, _ => `(none)
+              | .ok _, true => `($n)
+              | .ok _, false => `(some $n)
             `(Lean.Parser.Term.matchAltExpr| | $(mkIdent c) $pats* => $rhs)
+      let n := mkIdent (tbl ++ c.componentsRev.head!)
       let rhs ← if es.any (·.2.1 matches .error _) || es.isEmpty then `(none)
-        else `(some ($(mkIdent (tbl ++ c.componentsRev.head!)) $xs*))
+        else if partials.contains (tbl ++ c.componentsRev.head!) then `(($n $xs*))
+        else `(some ($n $xs*))
       return #[← `(Lean.Parser.Term.matchAltExpr| | $(mkIdent c) $xs* => $rhs)]
   let unAlts ← arms ``UnFn
   let binAlts ← arms ``BinFn
@@ -1050,8 +1068,8 @@ def elabGenerateLowering : CommandElab := fun stx => do
     (k.label, (match how with | .ok h => h | .error e => e), ms)
   let rowStx ← rows.mapM fun (c, how, ms) => `(($(quote c), $(quote how), $(quote ms)))
   elabCommand (← `(def $(mkIdent (short ++ `coverage)) : List (String × String × Nat) := [$rowStx,*]))
-  -- A table with refused functions is partial: no `total`.
-  if missing.isEmpty && refused.isEmpty then
+  -- A table with refused functions or a partial entry is partial: no `total`.
+  if missing.isEmpty && refused.isEmpty && partials.isEmpty then
     elabCommand (← `(theorem $(mkIdent (short ++ `total)) : ($(mkIdent tbl)).Total :=
       ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
        fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩))
@@ -1122,13 +1140,13 @@ def elabGenerateLowering : CommandElab := fun stx => do
         if !k.args.isEmpty then
           return "\n".intercalate (es.toList.map fun (k, how, _) =>
             let pats := " ".intercalate (k.args.toList.map toString)
-            let rhs := match how with | .error _ => "none" | .ok _ => s!"some {tbl ++ k.short}"
+            let rhs := match how with | .error _ => "none" | .ok _ => wrap (tbl ++ k.short) s!"{tbl ++ k.short}"
             s!"    | {c} {pats} => {rhs}")
       let refusedHere := es.any (·.2.1 matches .error _) || es.isEmpty
       -- A refused constructor binds none of its arguments (`ftod _ => none`).
       let xs := " ".intercalate ((List.range nargs).map (if refusedHere then fun _ => "_" else (s!"a{·}")))
       let rhs := if refusedHere then "none"
-        else s!"some ({tbl ++ c.componentsRev.head!} {xs})"
+        else wrap (tbl ++ c.componentsRev.head!) s!"({tbl ++ c.componentsRev.head!} {xs})"
       return s!"    | {c} {xs} => {rhs}"
     return "\n".intercalate lines
   let covRows := rows.toList.map fun (c, how, _) => s!"  ({repr c}, {repr how}, 0)"
@@ -1138,8 +1156,8 @@ def elabGenerateLowering : CommandElab := fun stx => do
     s!"   fun f => match f with\n{← armText ``BinFn}⟩\n\n" ++
     s!"/-- How each construct is lowered (`--lowering-coverage`). -/\n" ++
     s!"def {tbl}.coverage : List (String × String × Nat) := [\n{",\n".intercalate covRows}]\n" ++
-    -- A table with refused functions is partial: no `total`.
-    (if !refused.isEmpty then "" else
+    -- A table with refused functions or a partial entry is partial: no `total`.
+    (if !refused.isEmpty || !partials.isEmpty then "" else
       s!"\ntheorem {tbl}.total : ({tbl}).Total :=\n" ++
       "  ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),\n" ++
       "   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩\n") ++

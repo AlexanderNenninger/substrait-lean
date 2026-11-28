@@ -453,6 +453,9 @@ def contract (es : List EngineProfile) (input : String) : IO UInt32 := do
         |>.setObjVal! "rows_exact" rowsExact |>.setObjVal! "robust" robust
         |>.setObjVal! "margin_checks" margins
         |>.setObjVal! "asof_checks" asofs
+        -- Whether each generated table lowers the plan exactly (ruling 282 Q2).
+        |>.setObjVal! "exact_lowering"
+          ((R.transform.map fun T => T.root.exactLoweringJson).getD Lean.Json.null)
         -- The black boxes the transformation calls, with their laws (#1484).
         |>.setObjVal! "black_boxes"
           ((R.transform.map fun T => blackBoxesOf T.root).getD (Lean.Json.arr #[]))
@@ -667,7 +670,8 @@ def commands (entries : List EngineEntry) : List (Flag (Unit → IO UInt32)) :=
    prints "--lowering-table" .tables
      "the DuckDB lowering's templates, Polars's under \"polars\" and Spark's under \"spark\", as JSON (#241, #271)" fun _ =>
      (((Lowering.duckdbTableJson.setObjVal! "polars" Lowering.polarsTableJson).setObjVal! "spark"
-       Lowering.sparkTableJson).setObjVal! "polars_asks" Lowering.polarsAsksJson).compress ++ "\n",
+       Lowering.sparkTableJson).setObjVal! "polars_asks" Lowering.polarsAsksJson
+       |>.setObjVal! "polars_round_digits" (Lean.toJson Polars.roundDigitsMax)).compress ++ "\n",
    prints "--lowering-cache" .tables "a new LoweringCache.lean from this build's coverage (#242)"
      fun _ => loweringCacheSource,
    prints "--lift-table" .tables "what each DuckDB SQL function lifts to, as JSON (#268)" fun _ =>

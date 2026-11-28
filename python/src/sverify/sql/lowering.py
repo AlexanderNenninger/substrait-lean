@@ -61,6 +61,15 @@ def asks(engine: str) -> Mapping[tuple[str, str], str]:
     return {(a["fn"], a["option"]): a["behaviour"] for a in _export().get(f"{engine}_asks", [])}
 
 
+def round_digits(engine: str) -> int | None:
+    """The most digits an engine's generated `round(x, d)` takes, from
+    `--lowering-table`'s `"<engine>_round_digits"` (`Polars.roundDigitsMax`):
+    the entry covers `0 ≤ d ≤` it and refuses any other `d`. None for an
+    engine without one."""
+    d = _export().get(f"{engine}_round_digits")
+    return None if d is None else int(d)
+
+
 def floor_table() -> Mapping[str, Json]:
     """The core's `FLOOR` templates as JSON by kind (`"div"`, `"mod"`, `"fmod"`),
     from the `"floor"` key (`LoweringExport.floorJson`)."""

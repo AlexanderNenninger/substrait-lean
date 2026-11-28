@@ -13,7 +13,11 @@ reference, an entry is a template over Polars's functions: `round` and `ceil`
 without IEEE's `-0.0` (`Lowering.froundTemplate`), the truncating `//` and
 `%` from Polars's floored ones (`Polars.idivTemplate`, `Polars.imodTemplate`),
 and a decimal cast to a smaller scale rounded half away from zero from
-Polars's truncation (`Polars.droundEntry`); elsewhere the native function. A
+Polars's truncation (`Polars.droundEntry`), `<<` and `>>` in Polars's 64-bit
+functions (`Polars.shlTemplate`, `Polars.shrTemplate`), and a product of
+decimals under a guard that raises before Polars's Int128 `*` could leave 128
+bits (`Polars.dmulEntry`, the one entry that is not exact,
+`Lowering.polars_exact_except`); elsewhere the native function. A
 double cast to a decimal has no entry (ruling 278). `%` of doubles floors and has no exact
 template: the table is partial, and `Lowering.lowerRel?` refuses a plan that
 calls it, naming it.
@@ -34,18 +38,27 @@ variable [Boxes.Ambient]
 /-- The generated lowering to Polars. -/
 def Lowering.polars : Lowering Profile.polars := polarsOn
 
-/-- Every entry is exact (`Lowering.AllExact`): the generator's own proof, which
-it leaves to a table with a hand-built entry (`Polars.droundEntry`). -/
-theorem Lowering.polars_allExact : Lowering.polars.AllExact :=
+/-- **The entries that are not exact** (ruling 282): the product of decimals
+alone (`Polars.dmulEntry`), whose guard raises where its Int128 product could
+leave 128 bits. -/
+theorem Lowering.polars_exact_except :
+    (∀ f, (Lowering.polars.un f).all (·.exact) = true) ∧
+      ∀ f, (Lowering.polars.bin f).all (·.exact) = true ∨ f = .dmul :=
   ⟨fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a)),
-   fun f => by cases f <;> repeat (first | rfl | (rename_i a; cases a))⟩
+   fun f => by cases f <;> repeat (first | exact .inl rfl | exact .inr rfl | (rename_i a; cases a))⟩
+
 
 -- The hand-written entries are in the table, not the native call: a regeneration
--- that drops `excluding [BinFn.bit]` (`scripts/RegenLoweringPolars.lean`) would
--- make Polars's shifts, which it lacks, native again, and fails here.
+-- that drops `excluding [BinFn.bit, BinFn.dmul, UnFn.froundTo]`
+-- (`scripts/RegenLoweringPolars.lean`) would make Polars's shifts, which it lacks, its
+-- rounding product of decimals and its `round(x, d)` for every `d` native again, and
+-- fails here. `round(x, d)` is `Polars.froundToEntry`: native for 0 ≤ d ≤ 22, none past.
 #guard letI := Boxes.Ambient.none
   (Lowering.polars.bin (.bit .shl)).any (·.tmpl == Polars.shlTemplate) &&
-    (Lowering.polars.bin (.bit .shr)).any (·.tmpl == Polars.shrTemplate)
+    (Lowering.polars.bin (.bit .shr)).any (·.tmpl == Polars.shrTemplate) &&
+    (Lowering.polars.bin .dmul).any (·.tmpl == Polars.dmulTemplate) &&
+    [0, 2, 22].all (fun d => (Lowering.polars.un (.froundTo d)).isSome) &&
+    [-1, 23].all (fun d => (Lowering.polars.un (.froundTo d)).isNone)
 
 /-- No entry is stated on doubles only (`Lowering.NoneOnDbl`). -/
 theorem Lowering.polars_noneOnDbl : Lowering.polars.NoneOnDbl :=
@@ -78,7 +91,7 @@ argument, which `Profile.polars` states (`Polars.negZeroT .fround`) and
 `sverify_polars.lowering` reads from this list (`--lowering-table`'s
 `"polars_asks"`). -/
 def Polars.asks : List (Functions.Ctor × String × Behaviour) :=
-  [(.un .fround, "rounding", "TIE_AWAY_FROM_ZERO")]
+  [(.un .fround, "rounding", "TIE_AWAY_FROM_ZERO"), (.un (.froundTo 0), "rounding", "TIE_AWAY_FROM_ZERO")]
 
 -- Each ask is a behaviour Polars gives when asked, and the reference's (M2): the
 -- table and the rendering agree.

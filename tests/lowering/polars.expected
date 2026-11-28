@@ -7,7 +7,7 @@ UnFn.ffloor	native
 UnFn.fceil	hand-written schema: ceil: 0.0 for a negative value that rounds to zero
 UnFn.fround	hand-written schema: round: 0.0 for a negative value that rounds to zero
 UnFn.froundEven	hand-written schema: round(mode='half_to_even'): 0.0 for a negative value that rounds to zero
-UnFn.froundTo	native
+UnFn.froundTo	hand-built entry: Substrait.Polars.froundToEntry
 UnFn.ftoi	native
 UnFn.narrow	native
 UnFn.ftoiOrNull	native
@@ -96,7 +96,7 @@ BinFn.bit .shl	hand-written schema: shl: error outside 0-63, else the low 63-k b
 BinFn.bit .shr	hand-written schema: shr: error outside 0-63, else (#0 & -1) // 2^#1 floored
 BinFn.dadd	native
 BinFn.dsub	native
-BinFn.dmul	native
+BinFn.dmul	hand-built entry: Substrait.Polars.dmulEntry
 BinFn.ddiv	native
 BinFn.dmod	hand-written schema: a % b of decimals truncated: Polars's % by -b where the signs differ
 BinFn.pair	native

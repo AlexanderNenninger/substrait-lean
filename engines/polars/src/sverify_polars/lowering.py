@@ -16,7 +16,8 @@ reference's.
 Each call is written as `Profile.polars` states Polars computes it: `//` and
 `%` floor, `round` rounds halves away from zero (the `rounding` shim's
 argument, as `shims.round_half_away` writes it), the 128-bit `dadd` and
-`dsub` are exact on 64-bit operands, and `&`, `+`, `-`, `*` and `**` of
+`dsub` are exact on 64-bit operands and the 128-bit `dmul` below `2¹²⁷`
+(ruling 282), and `&`, `+`, `-`, `*` and `**` of
 integers are Int64's, exact where the reference's do not raise. Native expressions only, no Python
 per row.
 
@@ -59,6 +60,9 @@ _BINARY: dict[str, Callable[[pl.Expr, pl.Expr], pl.Expr]] = {
     "dmod": lambda a, b: a % b,
     "dadd": lambda a, b: _wide(a) + _wide(b),
     "dsub": lambda a, b: _wide(a) - _wide(b),
+    # Exact below 2¹²⁷ (polars-int-arith): `Polars.dmulTemplate` calls it only
+    # where `Polars.dmul_bound` proves the product within 2¹²⁶ - 1.
+    "dmul": lambda a, b: _wide(a) * _wide(b),
     # Int64's `+`, `-`, `*`, which wrap past 64 bits (polars-int-arith): the
     # profile raises there, and the templates call them only inside 64 bits.
     "add": lambda a, b: a + b,
@@ -93,6 +97,18 @@ def _asked_mode(fn: str) -> RoundMode:
     from sverify.sql import lowering as table_export
 
     return _ROUND_MODES[table_export.asks("polars")[(fn, "rounding")]]
+
+
+def round_to(a: pl.Expr, d: int) -> pl.Expr | None:
+    """`round(x, d)` as `Polars.froundToEntry` writes it (ruling 282, #2586):
+    Polars's own `round(d, mode=…)` with the mode `Polars.asks` states, for
+    `0 ≤ d ≤ Polars.roundDigitsMax`; None where the entry refuses."""
+    from sverify.sql import lowering as table_export
+
+    top = table_export.round_digits("polars")
+    if top is None or not 0 <= d <= top:
+        return None
+    return a.round(d, mode=_asked_mode("Substrait.UnFn.froundTo"))
 
 
 #: A row condition, and Polars's for "every row".

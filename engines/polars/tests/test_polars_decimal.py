@@ -271,3 +271,84 @@ def test_decimal_add_and_subtract_never_rescale() -> None:
     assert out.schema["s"] == pl.Decimal(38, 2) and out.schema["d"] == pl.Decimal(38, 2)
     assert out["s"].to_list() == [D("13.85"), D("2.45")]
     assert out["d"].to_list() == [D("10.85"), D("-2.55")]
+
+
+@pytest.fixture
+def guard_free_calls(monkeypatch) -> list[str]:
+    """The engines `report.run` ran guard-free (`sverify.report.run_guard_free`)."""
+    from sverify import report as report_module
+
+    calls: list[str] = []
+    real = report_module.run_guard_free
+
+    def spy(con, plan_json, engine, *args, **kwargs):
+        calls.append(engine)
+        return real(con, plan_json, engine, *args, **kwargs)
+
+    monkeypatch.setattr(report_module, "run_guard_free", spy)
+    return calls
+
+
+def _decimal_report(query):
+    con = sv.connect()
+    con.put(
+        "t",
+        pa.table(
+            {
+                "a": pa.array([D("12.35"), D("-0.05"), None], pa.decimal128(10, 2)),
+                "b": pa.array([D("1.5"), D("2.5"), D("-3.5")], pa.decimal128(5, 1)),
+            }
+        ),
+    )
+    report = sv.verify(query(con.table("t")))
+    assert report.verdict == sv.Verdict.PROVED, str(report)
+    assert report._guard_free, str(report)
+    return report, con
+
+
+def test_a_decimal_product_keeps_its_guards_on_polars(guard_free_calls) -> None:
+    """Ruling 282 Q5: `dmul`'s entry is one-sided, so a plan with a decimal
+    multiply is not `ExactOnB` on Polars (`exact_lowering`) and runs with its
+    guards there, guard-free elsewhere."""
+    report, con = _decimal_report(lambda t: t.select(r=t.a * t.b))
+    assert report._exact_lowering is not None
+    assert report._exact_lowering.get("polars") is False
+    out = report.run(con, "polars")
+    assert report.routes["polars"].taken == "translated", report.routes["polars"]
+    assert out.column("r").to_pylist() == [D("18.525"), D("-0.125"), None]
+    assert "polars" not in guard_free_calls
+
+
+def test_a_plan_without_a_decimal_product_runs_guard_free_on_polars(guard_free_calls) -> None:
+    """Ruling 282 Q5: every other entry is exact, so a guard-free plan without
+    `dmul` runs guard-free on Polars (`Rel.polars_sound`). The sum is of one
+    scale: a sum of two scales brings one to the other by a `dmul` by `10ᵏ`."""
+    report, con = _decimal_report(lambda t: t.select(r=t.a + t.a))
+    assert report._exact_lowering is not None
+    assert report._exact_lowering.get("polars", True) is True
+    out = report.run(con, "polars")
+    assert report.routes["polars"].taken == "translated", report.routes["polars"]
+    assert out.column("r").to_pylist() == [D("24.70"), D("-0.10"), None]
+    assert guard_free_calls == ["polars"]
+
+
+def test_without_exact_lowering_polars_keeps_its_guards(guard_free_calls) -> None:
+    """The gate fails closed: a report whose checker wrote no `exact_lowering`
+    (an older one) runs with its guards on Polars, even for a plan without
+    `dmul`."""
+    report, con = _decimal_report(lambda t: t.select(r=t.a + t.a))
+    report._exact_lowering = report._run_exact_lowering = None
+    out = report.run(con, "polars")
+    assert out.column("r").to_pylist() == [D("24.70"), D("-0.10"), None]
+    assert guard_free_calls == []
+
+
+def test_a_product_past_2_127_raises_an_overflow() -> None:
+    """Ruling 282 Q5: unscaled values whose product passes `2¹²⁷` (here
+    `(10³⁸ − 1)²`) raise an overflow on Polars, before its Int128 `*` wraps."""
+    big = pa.table({"x": pa.array([D("9" * 38)], pa.decimal128(38, 0))})
+    c = connect()
+    put_table(c, "z", big)
+    plan = written_plan(plan_of(c, "SELECT x * x AS r FROM z"))
+    with pytest.raises(polars_engine.IntegerOverflow, match="multiply leaves DECIMAL"):
+        run_plan(c, plan, "polars")

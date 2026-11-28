@@ -496,9 +496,19 @@ def runPlanIn (K : KnowledgeEnv) : Except RunGate Rel :=
           | some g => .error g
           | none => .ok s
 
+/-- Per engine whose generated table has a one-sided entry, whether `r`'s
+expressions are lowered by exact entries (`Rel.ExactOnB`, ruling 277 Q2 and
+ruling 282 Q2): the report's `exact_lowering` of the plan as written and
+`run_exact_lowering` of the plan to run. A guard-free run on Polars needs it
+(`Engine.PolarsSide`), and Spark's first branch (`Engine.SparkSide`). -/
+def _root_.Substrait.Rel.exactLoweringJson (r : Rel) : Json :=
+  Json.mkObj [("polars", Lean.toJson (r.ExactOnB Lowering.polars)),
+    ("spark", Lean.toJson (r.ExactOnB Lowering.spark))]
+
 /-- The report's `run_plan` (the plan in the writer's JSON, or null),
-`run_gate` (the gate that kept the plan as written, or null) and
-`run_unchecked` (the plan's per-expression marks, as `unchecked`). -/
+`run_gate` (the gate that kept the plan as written, or null),
+`run_unchecked` (the plan's per-expression marks, as `unchecked`) and
+`run_exact_lowering` (`Rel.exactLoweringJson`). -/
 def runPlanJson : Except String (List (String × Json)) :=
   let K := R.kenv
   match R.transform, R.runPlanIn K with
@@ -514,10 +524,12 @@ def runPlanJson : Except String (List (String × Json)) :=
     let W := K.windows R.cat
     .ok [("run_plan", Write.writePlan (Write.planSchemas p) R.cat s p.names),
       ("run_gate", .null),
-      ("run_unchecked", if s.looseSub then s.marksJson (s.marks R.cat A F W R.caps false) else .null)]
-  | _, .error g => .ok [("run_plan", .null), ("run_gate", g.name), ("run_unchecked", .null)]
+      ("run_unchecked", if s.looseSub then s.marksJson (s.marks R.cat A F W R.caps false) else .null),
+      ("run_exact_lowering", s.exactLoweringJson)]
+  | _, .error g => .ok [("run_plan", .null), ("run_gate", g.name), ("run_unchecked", .null),
+      ("run_exact_lowering", .null)]
   | none, .ok _ => .ok [("run_plan", .null), ("run_gate", RunGate.noRewrite.name),
-      ("run_unchecked", .null)]
+      ("run_unchecked", .null), ("run_exact_lowering", .null)]
 
 end Request
 
