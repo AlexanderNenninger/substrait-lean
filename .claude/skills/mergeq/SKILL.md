@@ -9,7 +9,7 @@ Main takes changes through the mergeq service, the batch merge queue running on 
 
 ## How a PR gets merged
 
-1. A reviewer approves the PR and adds the `reviewed` label.
+1. A reviewer reviews the PR and adds the `reviewed` label. Every session posts as the same GitHub account, and GitHub won't let an account approve its own PR. So the review goes up as a comment (`gh pr review --comment` or `gh pr comment`), and the label is the approval mergeq reads.
 2. mergeq admits the PR when both hold:
    - its own `qa` check is green at the PR's head;
    - its base, the main commit it was last merged with, is under 6 hours old (`admission.max_base_age`).
