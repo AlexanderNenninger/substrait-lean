@@ -119,7 +119,7 @@ def test_semantics_needs_a_checker_with_the_profile(installed: None) -> None:
 
 def _toy_lift(query, schemas, semantics):
     """A toy dialect that reads DuckDB's text, as an engine's package would read its own."""
-    from sverify.sql_lift import lift
+    from sverify_duckdb.sql import lift_duckdb as lift
 
     return lift(query, schemas, "portable" if semantics == "toy" else semantics)
 

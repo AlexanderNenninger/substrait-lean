@@ -464,7 +464,7 @@ def lift_reason(query: str, schemas: dict[str, Any]) -> str:
 
     from sverify.engine import lift_sql_plan
     from sverify.errors import UnsupportedError
-    from sverify.sql_lift import full_name
+    from sverify_duckdb.sql import full_name_duckdb as full_name
 
     try:
         sql = sg.transpile(query, read="mysql", write="duckdb")[0]

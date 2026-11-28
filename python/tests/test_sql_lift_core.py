@@ -26,10 +26,11 @@ from sverify.engines import UnsupportedError
 from sverify.errors import VerificationError
 from sverify.io import StaticSource
 from sverify.plan_json import Unsupported as Refused
-from sverify.sql_lift import DUCKDB, PORTABLE, lift
+from sverify.sql_lift import DUCKDB, PORTABLE
 from sverify.testing import LeanRaised, lean_values
 from sverify_dev import catalogue, slt
 from sverify_dev.lift import check, duckdb_result, score
+from sverify_duckdb.sql import lift_duckdb as lift
 
 pytestmark = pytest.mark.backend("duckdb")
 

@@ -12,8 +12,8 @@ from _sql_lift import SCHEMAS, TABLES
 from sverify import Verdict
 from sverify.engine import run_checker
 from sverify.plan_json import Unsupported as Refused
-from sverify.sql_lift import lift
 from sverify_dev.lift import check
+from sverify_duckdb.sql import lift_duckdb as lift
 
 SCHEMA_T = ibis.schema({"s": "string", "a": "int64"})
 

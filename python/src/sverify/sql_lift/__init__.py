@@ -4,9 +4,9 @@ Internal: not part of sverify's public API (`docs/stability.md`); it may
 change in any release. Users
 reach it through `sv.sql(query, dialect="duckdb", semantics=...)`.
 
-    plan = lift("SELECT region, sum(amount) AS total FROM orders GROUP BY region",
-                {"orders": ibis.schema({"region": "string", "amount": "float64"})},
-                semantics="duckdb")
+    plan = lift_duckdb("SELECT region, sum(amount) AS total FROM orders GROUP BY region",
+                       {"orders": ibis.schema({"region": "string", "amount": "float64"})},
+                       semantics="duckdb")
 
 SQLGlot parses the query (`read="duckdb"`, strict) and resolves and types its
 names against the inputs' schemas (`qualify`). The lift then
@@ -17,9 +17,10 @@ the output type of every function, the options Substrait defines for them
 key. SQLGlot is trusted for parsing and name resolution only; the types of
 expressions come from the profile, not from SQLGlot's typing.
 
-How the SQL text reads is the dialect's `Surface`, which the dialect's front end
-passes to `lift` (`DUCKDB_SQL` by default; #866): the lift reads every dialect fact
-from it and from its profiles, never a dialect's name. DuckDB's text reads the
+How the SQL text reads is the dialect's `Surface`, which the dialect's front
+end passes to `lift` (DuckDB's is `sverify_duckdb.sql.DUCKDB_SQL`; #866): the
+lift reads every dialect fact from it and from its profiles, never a dialect's
+name. DuckDB's text reads the
 same in both modes (`engines/duckdb/facts/`, F1–F3): `/` divides as doubles,
 `//` divides integers, NULLs sort last, an integer literal has the narrowest
 type that holds it, `1.5` is a `DECIMAL(2, 1)`. The **semantics** (`Profile`) is
@@ -65,7 +66,6 @@ import importlib
 # Re-exported: what other modules, tests and tools import from `sverify.sql_lift`.
 from sverify.sql_lift._base import (  # noqa: F401
     DUCKDB,
-    DUCKDB_SQL,
     PORTABLE,
     RULES,
     Lifted,
@@ -77,10 +77,11 @@ from sverify.sql_lift._base import (  # noqa: F401
     lift,
     lift_table,
     parse,
+    reading,
     register,
 )
 
-__all__ = ["DUCKDB", "DUCKDB_SQL", "PORTABLE", "Lifted", "Profile", "Surface", "lift", "parse"]
+__all__ = ["DUCKDB", "PORTABLE", "Lifted", "Profile", "Surface", "lift", "parse", "reading"]
 
 #: The areas, each a module that registers its rules in `RULES`, imported in
 #: this order.

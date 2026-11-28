@@ -32,8 +32,8 @@ from sverify.engine import (
 )
 from sverify.errors import VerificationError
 from sverify.ibis_substrait import to_substrait_json
-from sverify.sql_lift import lift
 from sverify.testing import canonical, duckdb_rows, duckdb_sql, inline_tables, lean_values
+from sverify_duckdb.sql import lift_duckdb as lift
 
 R = ibis.schema({"a": "int64", "b": "int64"})
 MIN = -(2**63)

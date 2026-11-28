@@ -805,13 +805,17 @@ class Replay:
         import ibis
         import sqlglot as sg
 
-        from sverify.sql_lift import expand_table_shorthand, lift
+        from sverify.sql_lift import expand_table_shorthand, reading
+        from sverify_duckdb.sql import DUCKDB_SQL
+        from sverify_duckdb.sql import lift_duckdb as lift
 
         if self.null_order != "nulls_last":
             res.reason = "setting default_null_order"
             return res
         try:
-            tree = sg.parse_one(expand_table_shorthand(rec.sql), read="duckdb")
+            with reading(DUCKDB_SQL):
+                shown = expand_table_shorthand(rec.sql)
+            tree = sg.parse_one(shown, read="duckdb")
         except sg.errors.ParseError as e:
             res.cls, res.reason = "refused", f"lift: cannot parse ({_clip(str(e), 100)})"
             return res

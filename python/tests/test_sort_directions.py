@@ -11,7 +11,7 @@ import pytest
 from _engines import PROFILED
 from _sql_lift import TABLES
 from sverify.engine import connect, run_checker, run_plan, written_plan
-from sverify.sql_lift import lift
+from sverify_duckdb.sql import lift_duckdb as lift
 
 ORDERS = TABLES["orders"].select(["id", "price"])
 SCHEMAS = {"orders": ibis.Schema.from_pyarrow(ORDERS.schema)}

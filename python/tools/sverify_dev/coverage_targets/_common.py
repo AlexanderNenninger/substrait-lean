@@ -72,7 +72,7 @@ def probe_sql(query: str) -> str | None:
     import ibis
 
     from sverify.engine import run_checker
-    from sverify.sql_lift import lift
+    from sverify_duckdb.sql import lift_duckdb as lift
 
     schemas = {n: ibis.schema(s) for n, s in SCHEMAS.items()}
     try:

@@ -21,7 +21,6 @@ import ibis
 import ibis.expr.datatypes as dt
 import sqlglot as sg
 import sqlglot.expressions as sge
-from ibis.backends.sql.datatypes import DuckDBType
 from sqlglot.errors import ErrorLevel
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
@@ -55,10 +54,10 @@ from sverify.plan_json import (
 from sverify.plan_json import decimal_dtype as _decimal
 from sverify.plan_json import same_type as _same
 
-__all__ = ["DUCKDB", "DUCKDB_SQL", "PORTABLE", "Lifted", "Profile", "Surface", "lift", "parse"]
+__all__ = ["DUCKDB", "PORTABLE", "Lifted", "Profile", "Surface", "lift", "parse", "reading"]
 
 #: DuckDB's functions SQLGlot parses as `Anonymous`, which the lift reads
-#: (`DUCKDB_SQL.known`; the areas add theirs).
+#: (`sverify_duckdb.sql.DUCKDB_SQL.known`; the areas add theirs).
 _KNOWN = {"date_part", "datepart", "prefix", "suffix"}
 
 
@@ -136,6 +135,11 @@ class Surface:
             column types for `qualify`.
         catalog: The catalog of a table name that has none.
         db: The schema of a table name that has none.
+        generated: The generated lift table's semantics (`substrait-check
+            --lift-table`) by `semantics` name: the table's entries are proved
+            for this dialect only (DuckDB's: `{"duckdb": "duckdb", "portable":
+            "reference"}`). A dialect without one refuses every construct the
+            table lifts, naming #866.
         checks: Run on the text and its tokens before parsing: each refuses
             (`Unsupported`) a construct SQLGlot's tree cannot tell from another.
         rewrites: Run on the parsed tree before the areas' `PARSE_REWRITES`.
@@ -150,6 +154,7 @@ class Surface:
     types: Any
     catalog: str
     db: str
+    generated: Mapping[str, str] = dataclasses.field(default_factory=dict)
     checks: tuple[Callable[[str, Sequence[Any]], None], ...] = ()
     rewrites: tuple[Callable[[sge.Expr], sge.Expr], ...] = ()
     known: MutableSet[str] = dataclasses.field(default_factory=set)
@@ -173,22 +178,23 @@ class Surface:
         return found
 
 
-def table_semantics(profile: Profile) -> str:
-    """The lift table's name of `profile`'s semantics: Lean's `Semantics.reference`
-    is the portable profile (`engines/duckdb/Sverify/DuckDB/SQL.lean`)."""
-    return "reference" if profile is PORTABLE else profile.name
-
-
 _SURFACE: contextvars.ContextVar[Surface | None] = contextvars.ContextVar(
     "sverify_sql_surface", default=None
 )
 
 
 def _current() -> Surface:
-    """The surface of the lift running (`reading`), else DuckDB's: the helpers
-    that read the text (`_shown`, `_normalized`, `full_name`) read it from
-    here, as `plan_json`'s builders read the plan being compiled."""
-    return _SURFACE.get() or DUCKDB_SQL
+    """The surface of the lift running (`reading`): the helpers that read the
+    text (`_shown`, `_normalized`, `full_name`) read it from here, as
+    `plan_json`'s builders read the plan being compiled.
+
+    Raises:
+        RuntimeError: No `reading` block is open.
+    """
+    found = _SURFACE.get()
+    if found is None:
+        raise RuntimeError("the SQL is read outside `sverify.sql_lift.reading`")
+    return found
 
 
 @contextlib.contextmanager
@@ -218,7 +224,7 @@ class LiftTable:
     Attributes:
         functions: The templates' function anchors: the functions' names.
         scalars: By the table's semantics (`"duckdb"`, `"reference"`:
-            `table_semantics`), then by construct (`"DOUBLE / DOUBLE"`): the
+            `Surface.generated`), then by construct (`"DOUBLE / DOUBLE"`): the
             entry, with its `args` and `result` types and its `template` or
             why it is `refused`.
         aggregates: By the table's semantics, then by construct
@@ -319,14 +325,31 @@ def _instantiate(template: Any, args: Sequence[Json]) -> Any:
     return out
 
 
+def _table_semantics(lf: _Lift) -> str:
+    """The generated table's semantics of the lift's profile.
+
+    Raises:
+        Unsupported: The dialect has no generated lift table (#866).
+    """
+    found = lf.surface.generated.get(lf.profile.name)
+    if found is None:
+        raise SqlUnsupported(
+            f"{lf.surface.title} SQL reads this construct only through a generated lift, "
+            "which it does not have yet",
+            issue=866,
+            construct="GENERATED LIFT",
+        )
+    return found
+
+
 def _generated(lf: _Lift, construct: str, args: Sequence[E]) -> E:
     """`construct` of `args` as the generated table lifts it under the lift's
     semantics (the arguments brought to its types first). Each entry is proved
     to mean the function under that semantics; under the reference's it also
     gives DuckDB's value wherever it gives a value (D54,
     `liftReference_refines_duckdb`, #2008). Raises `Unsupported` where the
-    table refuses it."""
-    semantics = table_semantics(lf.profile)
+    table refuses it, and where the dialect has no generated table (#866)."""
+    semantics = _table_semantics(lf)
     entry = lift_table().scalars[semantics][construct]
     if "refused" in entry:
         raise SqlUnsupported(
@@ -442,7 +465,7 @@ def _generated_agg(lf: _Lift, name: str, a: E) -> Measures | None:
     else:
         return None
     table = lift_table()
-    agg = table.aggregates[table_semantics(lf.profile)][key]
+    agg = table.aggregates[_table_semantics(lf)][key]
     x = lf.to(a, arg).json
     parts = []
     for m in agg["measures"]:
@@ -622,26 +645,6 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     if not isinstance(tree, sge.Select | sge.SetOperation):
         raise Unsupported(_ONLY_SELECT.format(type(tree).__name__), construct=_keywords(tree))
     return tree
-
-
-def _builtin_schemas(tree: sge.Expr) -> sge.Expr:
-    """A call qualified by its built-in schema (`main.lower(x)`,
-    `system.main.lower(x)`) read as the bare function (#328). DuckDB reads
-    no other qualifier of a built-in function (`pg_catalog.lower(x)` and
-    `memory.main.lower(x)` are binder errors), so neither does the lift.
-    SQLGlot reads `lower(x)` as `Lower` but the qualified call as an
-    anonymous one, so the call is parsed again without its qualifier."""
-
-    def bare(n: sge.Expr) -> sge.Expr:
-        if isinstance(n, sge.Dot) and isinstance(n.expression, sge.Anonymous):
-            path = [n.this] if not isinstance(n.this, sge.Dot) else [n.this.this, n.this.expression]
-            names = [p.name.lower() if isinstance(p, sge.Identifier) else None for p in path]
-            if names in (["main"], ["system", "main"]):
-                read = _current().read
-                return sg.parse_one(n.expression.sql(read), read=read)
-        return n
-
-    return tree.transform(bare, copy=False)
 
 
 def full_name(table: sge.Table | str) -> tuple[str, str, str]:
@@ -3003,86 +3006,6 @@ def _count_star() -> Json:
     }
 
 
-#: Quoted text (strings, quoted names) and comments, which hold no numbers.
-_QUOTED = re.compile(r"'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"|--[^\n]*|/\*.*?\*/", re.S)
-#: A number as written, from its first digit (not inside a name).
-_NUMBER = re.compile(r"(?<![\w$.])\d[\w.]*")
-
-
-def _check_numbers(query: str, tokens: Sequence[Any]) -> None:
-    """Refuse a number with an underscore that is not between two digits
-    (`1__2`, `1._5`). DuckDB reads such an underscore as the start of an
-    alias (`1__2` is 1 named `__2`); SQLGlot reads every underscore as a digit
-    separator (12), upstream/bugs/SG-4.json."""
-    for m in _NUMBER.finditer(_QUOTED.sub(" ", query)):
-        if re.search(r"(?<!\d)_|_(?!\d)", m.group()):
-            raise Unsupported(
-                f"the number {m.group()!r}: an underscore not between two digits is read "
-                "differently by DuckDB and SQLGlot (SG-4); write the number without it",
-                construct="NUMERIC LITERAL",
-            )
-
-
-def _check_regex_operators(query: str, tokens: Sequence[Any]) -> None:
-    """Refuse `s ~ p` and `s !~ p`: DuckDB's `~` matches anywhere in `s`
-    (`regexp_matches`), but SQLGlot reads it as `regexp_full_match`, so the
-    tree cannot tell them apart (upstream/bugs/SG-10.json). A `~` before an
-    operand is the bitwise not."""
-    from sqlglot.tokens import TokenType
-
-    operand = {TokenType.STRING, TokenType.NUMBER, TokenType.VAR, TokenType.IDENTIFIER,
-               TokenType.R_PAREN, TokenType.R_BRACKET, TokenType.NULL, TokenType.TRUE,
-               TokenType.FALSE}  # fmt: skip
-    for k, tok in enumerate(tokens):
-        if tok.token_type != TokenType.TILDE or k == 0:
-            continue
-        before = tokens[k - 1]
-        if before.token_type == TokenType.NOT and before.text == "!" and k > 1:
-            before = tokens[k - 2]
-        if before.token_type in operand:
-            raise Unsupported(
-                "the regular expression operator ~ is not supported yet: SQLGlot reads it as "
-                "regexp_full_match, DuckDB as regexp_matches; write regexp_matches(s, p)",
-                construct="REGULAR EXPRESSION OPERATOR",
-            )
-
-
-def _check_date_bin(query: str, tokens: Sequence[Any]) -> None:
-    """Refuse `date_bin(...)`: DuckDB 2.0.0 has no such function, but SQLGlot reads it as the
-    node of `time_bucket`, so the tree cannot tell them apart."""
-    from sqlglot.tokens import TokenType
-
-    for tok, after in zip(tokens, tokens[1:], strict=False):
-        if (
-            tok.token_type == TokenType.VAR
-            and tok.text.lower() == "date_bin"
-            and after.token_type == TokenType.L_PAREN
-        ):
-            raise Unsupported(
-                "DuckDB has no function date_bin; write time_bucket(width, ts[, origin])",
-                construct="function date_bin",
-            )
-
-
-def _check_intervals(query: str, tokens: Sequence[Any]) -> None:
-    """Refuse `INTERVAL '… ago'`, which negates the interval in DuckDB.
-    SQLGlot drops the `ago` of a single unit (`'1 day ago'` reads as
-    `INTERVAL '1' DAY`), so the tree cannot tell (#626, upstream/bugs/SG-8.json)."""
-    from sqlglot.tokens import TokenType
-
-    for before, tok in zip(tokens, tokens[1:], strict=False):
-        if (
-            before.token_type == TokenType.INTERVAL
-            and tok.token_type == TokenType.STRING
-            and re.search(r"\bago\b", tok.text, re.I)
-        ):
-            raise Unsupported(
-                f"INTERVAL {tok.text!r}: an interval with `ago` is not supported yet (SG-8); "
-                "write a negative interval, INTERVAL '-1' DAY",
-                construct="INTERVAL",
-            )
-
-
 def _check_export_state(tree: Any) -> None:
     """DuckDB's `agg(x) EXPORT_STATE` gives the aggregate's state, which
     SQLGlot reads as the alias `EXPORT_STATE` of the aggregate's value
@@ -3140,12 +3063,12 @@ def lift(
     schemas: Mapping[str, Any],
     semantics: str = "duckdb",
     *,
-    surface: Surface | None = None,
+    surface: Surface,
 ) -> Lifted:
     """The plan of the SQL `query` over input tables of the Ibis schemas
     `schemas` (by table name), read as named tables, in the dialect of
-    `surface` (DuckDB's, `DUCKDB_SQL`, by default) with its `semantics`
-    profile (DuckDB's: "duckdb" or "portable").
+    `surface` (DuckDB's is `sverify_duckdb.sql.DUCKDB_SQL`) with its
+    `semantics` profile (DuckDB's: "duckdb" or "portable").
 
     Raises:
         Unsupported: The query is outside the subset, saying what; also a
@@ -3153,7 +3076,7 @@ def lift(
         ValueError: `semantics` is not a profile of the surface.
     """
     try:
-        with reading(surface or DUCKDB_SQL) as s:
+        with reading(surface) as s:
             return _lift(query, schemas, s.profile(semantics))
     except RecursionError:
         raise Unsupported(
@@ -3198,18 +3121,3 @@ def _lift(query: str, schemas: Mapping[str, Any], profile: Profile) -> Lifted:
         {c.name: (dt.int32 if c.type.is_null() else c.type.copy(nullable=True)) for c in cols}
     )
     return Lifted(out, schema, tuple(dict.fromkeys(lifter.differences)))
-
-
-#: DuckDB's SQL as the lift reads it: its own semantics is `DUCKDB`.
-DUCKDB_SQL = Surface(
-    "duckdb",
-    "DuckDB",
-    DUCKDB,
-    null_ordering="nulls_are_last",
-    types=DuckDBType,
-    catalog="memory",
-    db="main",
-    checks=(_check_numbers, _check_intervals, _check_regex_operators, _check_date_bin),
-    rewrites=(_builtin_schemas,),
-    known=_KNOWN,
-)

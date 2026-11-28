@@ -9,7 +9,7 @@ import ibis
 
 from sverify.engine import checker_path
 from sverify.ibis_substrait import to_substrait_json
-from sverify.sql_lift import lift
+from sverify_duckdb.sql import lift_duckdb as lift
 
 SCHEMAS = {"t": ibis.schema({"a": "int64", "b": "float64", "c": "int64"})}
 

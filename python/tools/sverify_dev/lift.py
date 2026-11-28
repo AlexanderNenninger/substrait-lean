@@ -76,9 +76,9 @@ def _same(a: pa.Table, b: pa.Table, ordered: bool, fmt: slt.Formatter) -> bool:
 def check(query: str, tables: Mapping[str, pa.Table], semantics: str = "duckdb") -> Check:
     """Oracles A and C on `query` over `tables` (Arrow tables by name)."""
     from sverify.engine import run_checker, written_plan
-    from sverify.sql_lift import lift
     from sverify.testing import lean_values
     from sverify_duckdb import engine as duckdb_engine
+    from sverify_duckdb.sql import lift_duckdb as lift
 
     try:
         expected = duckdb_result(query, tables)

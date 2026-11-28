@@ -9,8 +9,8 @@ import pytest
 from _repo import needs_repo
 from _sql_lift import TABLES
 from sverify.engine import connect, run_plan, written_plan
-from sverify.sql_lift import lift
 from sverify_dev import realizability
+from sverify_duckdb.sql import lift_duckdb as lift
 from sverify_polars.shims import SHIMS
 
 

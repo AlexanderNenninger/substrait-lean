@@ -2358,8 +2358,8 @@ def _lean(t: Target, e: Expr, rows: list[tuple]) -> list[Any] | None:
         return None
     import ibis
 
-    from sverify.sql_lift import lift
     from sverify.testing import inline_tables, lean_values
+    from sverify_duckdb.sql import lift_duckdb as lift
 
     try:
         names = list(t.ibis)

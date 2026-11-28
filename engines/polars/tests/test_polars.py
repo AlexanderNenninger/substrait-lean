@@ -734,7 +734,7 @@ def test_greatest_and_least_of_many_columns_run_in_one_pick():
     # and NULLs included.
     import time
 
-    from sverify.sql_lift import lift
+    from sverify_duckdb.sql import lift_duckdb as lift
 
     values = [None, 0.0, -0.0, 1.5, math.inf, -math.inf, math.nan]
     cols = {f"c{i}": pa.array(values[i % 7 :] + values[: i % 7], pa.float64()) for i in range(20)}
