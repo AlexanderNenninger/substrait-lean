@@ -305,7 +305,7 @@ leftmost `t`, or `s` where `t` does not occur. For an empty `t` it is `s`: the
 empty string occurs at the start, but a template that calls it guards that
 case first (`Polars.strposTemplate`). -/
 def splitFirst (s t : String) : String :=
-  if t.isEmpty then s else String.mk (splitFirstChars t.toList s.toList)
+  if t.isEmpty then s else String.ofList (splitFirstChars t.toList s.toList)
 
 def startsWith (s t : String) : Bool := t.toList.isPrefixOf s.toList
 

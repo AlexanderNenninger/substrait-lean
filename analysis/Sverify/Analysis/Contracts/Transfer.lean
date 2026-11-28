@@ -951,7 +951,7 @@ def BinFn.abs : BinFn → AVal → AVal → AVal
   | .fatan2, a, b => partialAbs₂ floatsOnly .fatan2 a b
   | .flogb, a, b => partialAbs₂ floatsOnly .flogb a b
   | .bit op, a, b => partialAbs₂ intsOnly (.bit op) a b
-  | .concat, a, b | .trim _ _, a, b =>
+  | .concat, a, b | .trim _ _, a, b | .splitFirst, a, b =>
       { null := a.nonStr || b.nonStr, str := a.str && b.str }
   | .strpos, a, b | .levenshtein, a, b =>
       { null := a.nonStr || b.nonStr,
