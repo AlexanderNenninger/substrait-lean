@@ -546,11 +546,12 @@ class Report:
     _run_unchecked: dict | None = field(default=None, repr=False)
     """`_unchecked` for `_run_plan`, as the checker writes it: the marks of
     its expressions (ruling 226)."""
-    _exact_lowering: dict[str, bool] = field(default_factory=dict, repr=False)
+    _exact_lowering: dict[str, bool] | None = field(default=None, repr=False)
     """Per engine whose generated table has a one-sided entry, whether the
     plan as written is lowered by exact entries (`Rel.ExactOnB`): Polars runs
-    it guard-free only where it is (`Engine.PolarsSide`, ruling 282)."""
-    _run_exact_lowering: dict[str, bool] = field(default_factory=dict, repr=False)
+    it guard-free only where it is (`Engine.PolarsSide`, ruling 282). None
+    where the checker wrote none (an older one)."""
+    _run_exact_lowering: dict[str, bool] | None = field(default=None, repr=False)
     """`_exact_lowering` for `_run_plan`."""
 
     _assumed_check: tuple[dict, list[tuple[str, str]]] | None = field(default=None, repr=False)
@@ -1027,15 +1028,19 @@ class Report:
         return marks
 
     def _lowered_exactly(self, plan: str, engine: str) -> bool:
-        """Whether `engine`'s generated table lowers `plan`, the plan a run
-        runs, by exact entries (`_exact_lowering`, `_run_exact_lowering`);
-        true for an engine the checker does not name, whose table has no
-        one-sided entry."""
+        """Whether Polars's generated table lowers `plan`, the plan a run runs,
+        by exact entries (`_exact_lowering`, `_run_exact_lowering`), as its
+        guard-free run needs (`Engine.PolarsSide`, ruling 282). Fails closed:
+        false where the checker wrote no such field. True for the other
+        engines, whose guard-free runs this gate leaves as they were (Spark
+        reads it after 1.0, ruling 282 Q2)."""
+        if engine != "polars":
+            return True
         if self._run_plan is not None and plan == json.dumps(self._run_plan):
             exact = self._run_exact_lowering
         else:
             exact = self._exact_lowering
-        return exact.get(engine, True)
+        return bool(exact) and exact.get(engine, True)
 
     def _with_plan(
         self,

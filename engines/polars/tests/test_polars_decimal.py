@@ -311,8 +311,8 @@ def test_a_decimal_product_keeps_its_guards_on_polars(guard_free_calls) -> None:
     multiply is not `ExactOnB` on Polars (`exact_lowering`) and runs with its
     guards there, guard-free elsewhere."""
     report, con = _decimal_report(lambda t: t.select(r=t.a * t.b))
+    assert report._exact_lowering is not None
     assert report._exact_lowering.get("polars") is False
-    assert report._exact_lowering.get("duckdb", True)
     out = report.run(con, "polars")
     assert report.routes["polars"].taken == "translated", report.routes["polars"]
     assert out.column("r").to_pylist() == [D("18.525"), D("-0.125"), None]
@@ -324,11 +324,23 @@ def test_a_plan_without_a_decimal_product_runs_guard_free_on_polars(guard_free_c
     `dmul` runs guard-free on Polars (`Rel.polars_sound`). The sum is of one
     scale: a sum of two scales brings one to the other by a `dmul` by `10ᵏ`."""
     report, con = _decimal_report(lambda t: t.select(r=t.a + t.a))
+    assert report._exact_lowering is not None
     assert report._exact_lowering.get("polars", True) is True
     out = report.run(con, "polars")
     assert report.routes["polars"].taken == "translated", report.routes["polars"]
     assert out.column("r").to_pylist() == [D("24.70"), D("-0.10"), None]
     assert guard_free_calls == ["polars"]
+
+
+def test_without_exact_lowering_polars_keeps_its_guards(guard_free_calls) -> None:
+    """The gate fails closed: a report whose checker wrote no `exact_lowering`
+    (an older one) runs with its guards on Polars, even for a plan without
+    `dmul`."""
+    report, con = _decimal_report(lambda t: t.select(r=t.a + t.a))
+    report._exact_lowering = report._run_exact_lowering = None
+    out = report.run(con, "polars")
+    assert out.column("r").to_pylist() == [D("24.70"), D("-0.10"), None]
+    assert guard_free_calls == []
 
 
 def test_a_product_past_2_127_raises_an_overflow() -> None:
