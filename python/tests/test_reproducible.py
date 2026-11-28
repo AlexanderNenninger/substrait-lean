@@ -54,7 +54,7 @@ def test_a_float_sum_on_polars_streaming(con) -> None:
     exact = routes.choose(report, "polars", reproducible=sv.equivalent())
     assert exact.refused
     assert "a rerun must give the same result" in exact.why
-    assert "total is within abs=111.023, rel=2.22045e-10 between runs" in exact.why
+    assert "each run's total is within abs=111.023, rel=2.22045e-10 of the reference" in exact.why
     assert exact.reproducible == sv.equivalent()
     # Without a requirement, the route only reports.
     assert routes.choose(report, "polars").taken == "translated"
@@ -158,7 +158,7 @@ def test_a_sink_states_what_a_rerun_must_reproduce(tmp_path) -> None:
     uncapped = mean_amount(orders).write(
         DeltaSink(str(tmp_path / "uncapped"), reproducible=tolerance)
     )
-    with pytest.raises(RouteError, match="mean has no bound on the plan's doubles"):
+    with pytest.raises(RouteError, match="mean has no bound on its distance to the reference"):
         uncapped.refresh(engine="polars")
     loose = capped_mean(orders).write(DeltaSink(str(tmp_path / "loose"), reproducible=tolerance))
     out = loose.refresh(engine="polars", route="auto")

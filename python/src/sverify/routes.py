@@ -1145,10 +1145,17 @@ def _rerun_problem(engine: str, p: Mapping[str, Any], report: Report, required: 
     want = str(required.floats) if isinstance(required.floats, Within) else "exact doubles"
     if code == "unbounded":
         why = f" ({p['why']})" if p.get("why") else ""
+        need = (
+            f"exact doubles on a rerun need doubles that are exact on {engine}"
+            if want == "exact doubles"
+            else f"{want} needs a bound on the column"
+        )
         return (
-            f"{where}: {p['column']} has no bound on the plan's doubles{why}, and a rerun must "
-            f'reproduce {want}: pass reproducible=sv.equivalent(floats="plan") (the sinks\' '
-            "default), or bound the column with sv.max_rows(n) in requires"
+            f"{where}: {p['column']} has no bound on its distance to the reference{why}, and "
+            f"a rerun must reproduce {want}: {need}; pass "
+            'reproducible=sv.equivalent(floats="plan") (the sinks\' default), or bound the '
+            "column with sv.max_rows(n) in requires and state a tolerance, "
+            "reproducible=sv.equivalent(floats=sv.within(...))"
         )
     if code == "not_met":
         bounds = {b["kind"]: (_up(b["value"]), bool(b["proved"])) for b in p["bounds"]}
@@ -1156,10 +1163,10 @@ def _rerun_problem(engine: str, p: Mapping[str, Any], report: Report, required: 
             f"{k}={v:g}" + ("" if ok else " (tested)") for k, (v, ok) in bounds.items()
         )
         return (
-            f"{where}: {p['column']} is within {shown} between runs, and a rerun must "
-            f"reproduce {want}: pass reproducible=sv.equivalent(floats={_smallest(bounds)}) "
-            'or looser, or sv.equivalent(floats="plan") (the sinks\' default) for the '
-            "plan's own bound"
+            f"{where}: each run's {p['column']} is within {shown} of the reference, and a "
+            f"rerun must reproduce {want}: pass "
+            f"reproducible=sv.equivalent(floats={_smallest(bounds)}) or looser, or "
+            "sv.equivalent(floats=\"plan\") (the sinks' default) for the plan's own bound"
         )
     return f"{where}: {code} on {engine}"
 
