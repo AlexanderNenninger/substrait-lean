@@ -1,0 +1,3 @@
+### Spark runs TRY_CAST to integers, dates as timestamps, interval arithmetic with columns and string comparisons
+
+Spark runs `try_cast` of a double or an integer to an integer, a date cast to a timestamp (and so to text), the difference of two timestamps as a number (Ibis `delta`), a timestamp plus a column's count of an interval, and `<`, `BETWEEN`, `greatest` and `least` of strings and booleans, in code point order ([spark-string-order](engines/spark/facts/spark-string-order.json)). `try_cast` of a string stays on DuckDB: it is DuckDB's own parse ([#2540](https://github.com/AlexanderNenninger/substrait-lean/issues/2540)).

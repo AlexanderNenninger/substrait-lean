@@ -9,7 +9,7 @@ from ibis import _
 
 from sverify_dev.coverage_cases._common import (
     DAY0,
-    DUCKDB_ONLY,
+    NOT_ON_POLARS,
     Case,
     R,
     V,
@@ -158,8 +158,8 @@ CASES: list[Case] = [
 #: big for Snowflake and Spark, and Polars has no lowering yet.
 DATE_GUARDS = {"polars": "see #2540", "snowflake": "208 MB", "spark": "heap"}
 REFUSED: dict[str, dict[str, str]] = {
-    "timestamp delta": DUCKDB_ONLY,
-    "timestamp + column interval": DUCKDB_ONLY,
+    "timestamp delta": NOT_ON_POLARS,
+    "timestamp + column interval": NOT_ON_POLARS,
     "time of day": {"spark": "spark-time-type"},
     "time parts": {"spark": "spark-time-type"},
     "compare times": {"spark": "spark-time-type"},

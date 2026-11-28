@@ -541,7 +541,8 @@ class Dialect:
     def narrow_or_null(self, x: str, bits: int) -> str:
         """`TRY_CAST(x AS INT)` to `bits` bits (`UnFn.narrowOrNull`, #58): `x`,
         or NULL where it does not fit."""
-        raise self.to_duckdb(f"TRY_CAST is not yet supported on {self.name}")
+        lo, hi = self.int_lit(-(2 ** (bits - 1))), self.int_lit(2 ** (bits - 1) - 1)
+        return f"(CASE WHEN {x} BETWEEN {lo} AND {hi} THEN {x} END)"
 
     def is_nan(self, x: str) -> str:
         """TRUE for NaN, NULL for NULL."""

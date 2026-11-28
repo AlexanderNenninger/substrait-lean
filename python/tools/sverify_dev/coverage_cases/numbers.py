@@ -7,7 +7,7 @@ from decimal import Decimal
 import ibis
 
 from sverify_dev.coverage_cases._common import (
-    DUCKDB_ONLY,
+    NOT_ON_POLARS,
     Case,
     V,
     case,
@@ -43,7 +43,7 @@ CASES: list[Case] = [
 
 REFUSED: dict[str, dict[str, str]] = {
     # The date's text goes through a Date to timestamp cast the engines lack (#271).
-    "cast date → string": DUCKDB_ONLY,
+    "cast date → string": NOT_ON_POLARS,
     # Snowflake's decimals are not the reference's yet (#27).
     "decimal mod": {"snowflake": "does not compute decimals as the reference does"},
 }

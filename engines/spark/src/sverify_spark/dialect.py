@@ -126,6 +126,8 @@ def _digits(k: Kind) -> tuple[int, int]:
 class SparkDialect(Dialect):
     # Decimals (#27), as the module's docstring says.
     decimals: bool = True
+    # Strings by code point, `false < true` (spark-string-order).
+    orders_text: bool = True
     # A `MIN` or `MAX` of mixed zeros depends on order and partitioning
     # (spark-zero-order); its keys are canonical already.
     canonical_zero_reps: ClassVar[frozenset[str]] = frozenset({"extreme"})
@@ -288,10 +290,30 @@ class SparkDialect(Dialect):
         fail = self.raise_("CAST to BIGINT out of range", x, "int", "badCast")
         return f"(CASE WHEN {x} >= {lo} AND {x} < {hi} THEN CAST({x} AS BIGINT) ELSE {fail} END)"
 
+    def float_to_int_or_null(self, x: str) -> str:
+        # `TRY_CAST` truncates and gives NULL for NaN, ±inf and values past
+        # 64 bits, but the double 2⁶³ itself becomes `MAX` (spark-cast-double-to-int,
+        # spark-try-variants): the range check is `float_to_int`'s.
+        lo, hi = self.float_lit(-(2.0**63)), self.float_lit(2.0**63)
+        return f"(CASE WHEN {x} >= {lo} AND {x} < {hi} THEN CAST({x} AS BIGINT) END)"
+
     def is_nan(self, x: str) -> str:
         return f"isnan({x})"
 
     # Temporal
+
+    def interval_micros(self, iv: str) -> str:
+        # A day-time interval cast to a decimal counts seconds of its end
+        # field, so it is made DAY TO SECOND first; 18 integer digits hold
+        # every interval Spark has, and the product is exact.
+        secs = f"CAST(CAST({iv} AS INTERVAL DAY TO SECOND) AS DECIMAL(24, 6))"
+        return f"CAST({secs} * 1000000 AS BIGINT)"
+
+    def time_add_micros(self, ts: str, us: str, sub: bool) -> str:
+        return f"timestampadd(MICROSECOND, {f'-({us})' if sub else us}, {ts})"
+
+    def date_time(self, d: str) -> str:
+        return f"CAST({d} AS TIMESTAMP_NTZ)"
 
     def date_part(self, part: str, ts: str) -> str:
         sec = f"extract(SECOND FROM {ts})"

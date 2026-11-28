@@ -7,6 +7,7 @@ import ibis
 
 from sverify_dev.coverage_cases._common import (
     DUCKDB_ONLY,
+    NOT_ON_POLARS,
     Case,
     R,
     V,
@@ -33,7 +34,7 @@ CASES: list[Case] = [
 
 REFUSED: dict[str, dict[str, str]] = {
     # DuckDB only until the generated lowerings (#271).
-    "try_cast": DUCKDB_ONLY,
+    "try_cast": NOT_ON_POLARS,
     "try_cast string": DUCKDB_ONLY,
 }
 
