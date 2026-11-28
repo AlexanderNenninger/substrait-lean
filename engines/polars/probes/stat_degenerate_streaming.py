@@ -155,6 +155,6 @@ if __name__ == "__main__":
                     check=True,
                 )
                 results.append(json.loads(done.stdout))
-        with open(sys.argv[2], "w") as f:
+        with open(sys.argv[2], "w", encoding="utf-8") as f:
             json.dump(results, f, indent=1)
         print("wrote", sys.argv[2])
