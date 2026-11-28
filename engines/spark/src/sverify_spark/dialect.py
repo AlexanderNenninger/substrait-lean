@@ -74,6 +74,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar
 
+from sverify._plan_read import capture_groups
 from sverify._unsupported import DUCKDB_ONLY, ISSUE_1725
 from sverify.sql.core import (
     I64_MAX,
@@ -87,6 +88,149 @@ from sverify.sql.core import (
     _timestamp_text,
     raised_issue,
 )
+
+#: RE2's `\s` (`Regex.perl`): Java's adds `\x0B`.
+_SPACE = "\\t\\n\\f\\r "
+
+
+_REPEATED_EMPTY = (
+    "the regular expression {!r} repeats a group that can match '' and holds a capture: "
+    "Spark captures one more, empty, iteration than the reference (spark-regex)"
+)
+
+
+def _empty_shapes(p: str) -> tuple[bool, bool]:
+    """Whether the reference's pattern `p` can match `''`, and whether a group
+    that can match `''` and holds a capture is repeated (`*`, `+`, `{…}`).
+    Java differs from RE2 on both: it does not skip an empty match right
+    after a match in a global replace, and it repeats a group once more
+    with an empty iteration, which then holds the capture (spark-regex).
+    `p` is in `Text.simpleRegex`'s syntax."""
+    k = 0
+    repeated = False
+
+    def quantifier() -> str | None:
+        nonlocal k
+        if k < len(p) and p[k] in "*+?":
+            k += 1
+            return p[k - 1]
+        if k < len(p) and p[k] == "{":
+            end = p.index("}", k)
+            q, k = p[k : end + 1], end + 1
+            return q
+        return None
+
+    def alternatives() -> tuple[bool, bool]:
+        nonlocal k
+        empty, capture = sequence()
+        while k < len(p) and p[k] == "|":
+            k += 1
+            e, c = sequence()
+            empty, capture = empty or e, capture or c
+        return empty, capture
+
+    def sequence() -> tuple[bool, bool]:
+        nonlocal k, repeated
+        empty, capture = True, False
+        while k < len(p) and p[k] not in "|)":
+            c = p[k]
+            atom_empty, atom_capture = False, False
+            if c in "^$":
+                k += 1
+                atom_empty = True
+            elif c == "\\":
+                atom_empty = p[k + 1] in "bB"
+                k += 2
+            elif c == "[":
+                # To the closing `]`, past escapes (`\\]` is a member).
+                k += 2 if p[k + 1 : k + 2] == "^" else 1
+                while p[k] != "]":
+                    k += 2 if p[k] == "\\" else 1
+                k += 1
+            elif c == "(":
+                capturing = p[k + 1 : k + 2] != "?"
+                k += 1 if capturing else 3
+                atom_empty, atom_capture = alternatives()
+                atom_capture = atom_capture or capturing
+                k += 1  # the `)`
+            else:
+                k += 1
+            q = quantifier()
+            if q is not None and q != "?" and atom_empty and atom_capture:
+                repeated = True
+            if q is not None and (q in "*?" or q.startswith(("{0}", "{0,"))):
+                atom_empty = True
+            empty, capture = empty and atom_empty, capture or atom_capture
+        return empty, capture
+
+    empty, _ = alternatives()
+    return empty, repeated
+
+
+def java_regex(p: str) -> str:
+    """The reference's pattern (`Text.simpleRegex`, RE2's meaning) as a
+    `java.util.regex` pattern that matches as RE2 does on ASCII text
+    (spark-regex): `.` stops only at `\\n` (Java's also at `\\r`), `$` is the
+    end of the text (Java's also before a final `\\n`), and `\\s` is
+    `[\\t\\n\\f\\r ]` (Java's adds `\\x0B`). The writer keeps class
+    patterns to ASCII text (`ascii_only`)."""
+    out: list[str] = []
+    k, in_class = 0, False
+    while k < len(p):
+        c = p[k]
+        if c == "\\" and k + 1 < len(p):
+            e, k = p[k + 1], k + 2
+            if e == "s":
+                out.append(_SPACE if in_class else f"[{_SPACE}]")
+            elif e == "S" and not in_class:
+                out.append(f"[^{_SPACE}]")
+            elif e == "S":
+                raise Unsupported(
+                    f"\\S inside a character class on Spark ({p!r}): write it as an "
+                    f"alternative outside the class, (?:[…]|\\S), or {DUCKDB_ONLY}"
+                )
+            else:
+                out.append("\\" + e)
+            continue
+        if in_class:
+            in_class = c != "]"
+            out.append(c)
+        elif c == "[":
+            in_class = True
+            out.append(c)
+            if p[k + 1 : k + 2] == "^":
+                out.append("^")
+                k += 1
+        elif c == ".":
+            out.append("[^\\n]")
+        elif c == "$":
+            out.append("\\z")
+        else:
+            out.append(c)
+        k += 1
+    return "".join(out)
+
+
+def java_rewrite(r: str, shift: int = 0, after_ref: bool = False) -> str:
+    """The reference's replacement (`Text.rewriteOk`: `\\0` … `\\9` are groups,
+    `\\\\` a backslash) as Java's, which names group `k` `$k`, reads as many
+    digits after `$` as name a group, and escapes `$` and `\\` with `\\`.
+    Group `k` is Java's `k + shift`; a digit right after a reference, or
+    after one before `r` (`after_ref`), is escaped so it stays a digit."""
+    out: list[str] = []
+    k, ref = 0, after_ref
+    while k < len(r):
+        c = r[k]
+        if c == "\\" and k + 1 < len(r) and r[k + 1].isdigit():
+            out.append(f"${int(r[k + 1]) + shift}")
+            k, ref = k + 2, True
+            continue
+        if c == "\\" and k + 1 < len(r):
+            c, k = r[k + 1], k + 1
+        out.append("\\" + c if c in "$\\" or (ref and c.isdigit()) else c)
+        k, ref = k + 1, False
+    return "".join(out)
+
 
 #: Session settings the SQL relies on; `SparkSession.builder.config` each.
 SPARK_CONF: dict[str, str] = {
@@ -505,6 +649,39 @@ class SparkDialect(Dialect):
 
     def regex_search(self, s: str, pattern: str) -> str:
         return f"({s} RLIKE {self.str_lit(pattern)})"
+
+    def regex_extract(self, s: str, pattern: str, group: int) -> str:
+        # `''` without a match or for a group that took no part, as the
+        # reference; a group past the pattern's raises on Spark (spark-regex),
+        # where the reference gives `''`.
+        if group > capture_groups(pattern, Unsupported):
+            return f"(CASE WHEN {s} IS NULL THEN NULL ELSE '' END)"
+        if _empty_shapes(pattern)[1]:
+            raise self.to_duckdb(_REPEATED_EMPTY.format(pattern))
+        return f"regexp_extract({s}, {self.str_lit(java_regex(pattern))}, {group})"
+
+    def regex_replace(self, s: str, pattern: str, replacement: str, every: bool) -> str:
+        empty, repeated = _empty_shapes(pattern)
+        if repeated:
+            raise self.to_duckdb(_REPEATED_EMPTY.format(pattern))
+        if every and empty:
+            raise self.to_duckdb(
+                f"regexp_replace(…, 'g') with {pattern!r}, which can match '': Spark "
+                "replaces an empty match right after a match, which the reference skips "
+                "(spark-regex)"
+            )
+        p = java_regex(pattern)
+        if every:
+            return (
+                f"regexp_replace({s}, {self.str_lit(p)}, {self.str_lit(java_rewrite(replacement))})"
+            )
+        # Spark replaces every match: the first alone is the whole text as
+        # prefix, match and rest, the prefix lazy, so the match is the
+        # leftmost and the pattern's own first choice there.
+        g = capture_groups(pattern, Unsupported)
+        whole = f"\\A([\\s\\S]*?)({p})([\\s\\S]*)\\z"
+        r = "$1" + java_rewrite(replacement, shift=2, after_ref=True) + f"${g + 3}"
+        return f"regexp_replace({s}, {self.str_lit(whole)}, {self.str_lit(r)})"
 
     # Windows
 

@@ -399,8 +399,13 @@ def simple_regex(p: str) -> bool:
 
 def regex_groups(p: str, err: Err = ValueError) -> int:
     """The entries `regexp_match(s, p)` has on a match: its capture groups, or
-    the whole match if there are none (`Text.regexGroups`). Groups are counted
-    as `(` outside classes and escapes, but `(?:`; any other `(?` is refused,
+    the whole match if there are none."""
+    return max(capture_groups(p, err), 1)
+
+
+def capture_groups(p: str, err: Err = ValueError) -> int:
+    """The capture groups of the pattern `p` (`Text.regexGroups`), counted as
+    `(` outside classes and escapes, but `(?:`; any other `(?` is refused,
     as `Text.simpleRegex` does."""
     groups, k, in_class = 0, 0, False
     while k < len(p):
@@ -426,4 +431,4 @@ def regex_groups(p: str, err: Err = ValueError) -> int:
             else:
                 groups += 1
         k += 1
-    return max(groups, 1)
+    return groups

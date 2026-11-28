@@ -32,7 +32,8 @@
   },
   "description": [
     "Patterns are `java.util.regex.Pattern`s: backreferences and lookaround work; `\\d` and `\\w` are ASCII (`'٣' RLIKE '^\\d$'` and `'é' RLIKE '^\\w$'` are false); `.` does not match `\\n`. `regexp_extract` returns `''` when the pattern does not match, or its group did not take part; a group index past the pattern's raises `INVALID_PARAMETER_VALUE.REGEX_GROUP_INDEX`. `regexp_replace` takes `$1` for a group (`\\1` is a literal 1). `regexp_count('aaa', 'aa')` counts non-overlapping matches (1).",
-    "A pattern that does not compile raises in both modes: `INVALID_PARAMETER_VALUE.PATTERN` on the folded path, and a bare `java.util.regex.PatternSyntaxException` with no error class on the codegen path (SP-4). A NULL pattern gives NULL."
+    "A pattern that does not compile raises in both modes: `INVALID_PARAMETER_VALUE.PATTERN` on the folded path, and a bare `java.util.regex.PatternSyntaxException` with no error class on the codegen path (SP-4). A NULL pattern gives NULL.",
+    "Inside RE2's syntax Java differs in five places, all on the reference's ASCII patterns: `.` also stops at `\\r` (and `\\u0085`, `\\u2028`, `\\u2029`); `$` also matches before a final `\\n`; `\\s` adds `\\x0B`; a repeated group that can match `''` takes one more, empty, iteration, so `regexp_extract('aaa', '(a*)*', 1)` is `''` where RE2 gives `'aaa'`; and `regexp_replace` does not skip an empty match right after a match, so `regexp_replace('abc', 'b*', '-')` is `-a--c-` where RE2 gives `-a-c-`. `SparkDialect` writes `.` as `[^\\n]`, `$` as `\\z` and `\\s` as `[\\t\\n\\f\\r ]`, refuses the last two shapes, and writes a first-match replace (Spark replaces every match) as one anchored match of prefix, pattern and rest."
   ],
   "reference": "`regexp_extract`, `regexp_replace` with a constant pattern (#50), RE2's syntax, which has no backreferences or lookaround; a pattern that does not match extracts `''`. Lean evaluates the classes on ASCII only (`Text.classesDiffer`). Java's syntax is a superset of RE2's for the constructs sverify writes; the replacement's syntax differs (`$1`).",
   "status": "open",
@@ -124,6 +125,24 @@
         "`python -m sverify_dev.spark_fuzz --rows 300 --seed 738`: random rows leaning on the fact's edges, each construct run with spark.sql.ansi.enabled on and off, on the folded and the codegen path, and compared with a model of this fact (value, result type, error class). 3600 of 3600 results as the fact says.",
         "regex[0]: 300 rows, `s RLIKE (CASE i WHEN 0 THEN '(\\\\d+)' WHEN 1 THEN '(\\\\w)(\\\\w)' WHEN 2 THEN 'a(b)?c' WHEN 3 THEN '(.)\\\\1' WHEN 4 THEN '^(\\\\s*)x' WHEN 5 THEN '(é+)' WHEN 6 THEN '([a-c]+)-(\\\\d)' WHEN 7 THEN '(?<=a)(b)' END)`, `regexp_extract(s, CASE i WHEN 0 THEN '(\\\\d+)' WHEN 1 THEN '(\\\\w)(\\\\w)' WHEN 2 THEN 'a(b)?c' W`, 3600 of 3600 results as the fact says.",
         "Spark 4.3.0, Java 21.0.12.1, Linux amd64, local[2], session time zone UTC."
+      ]
+    },
+    {
+      "checked_at": "2026-11-28",
+      "method": "probe",
+      "checked_by": "#2540 S1 (session types-casts-caff57), pyspark 4.3.0, Java 21.0.13, macOS arm64; engines/spark/tests/test_spark_regex.py against Rel.eval",
+      "evidence": [
+        {
+          "sql": "SELECT regexp_extract('aaa', '(a*)*', 1)",
+          "observed": "'' (RE2 and Rel.eval: 'aaa')"
+        },
+        {
+          "sql": "SELECT regexp_replace('abc', 'b*', '-')",
+          "observed": "-a--c- (RE2 and Rel.eval: -a-c-)"
+        },
+        {
+          "test": "engines/spark/tests/test_spark_regex.py::test_spark_is_the_reference"
+        }
       ]
     }
   ],
