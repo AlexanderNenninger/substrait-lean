@@ -71,7 +71,7 @@
       ],
       "notes": [
         "Polars 2.1.0 (Python 3.12), `collect(engine='streaming')`. Each case ran 50 times in a fresh process per setting: equal values 0.1, 1/3 and 1e8+0.3; 1, 2, 63, 64, 65, 127, 128, 129, 1000, 100 000 and 300 001 rows; ungrouped and grouped by `i % G` for G = 1, 4 and 1000; morsel size default, 64 and 1000 times thread count default, 1 and 4. That is 5,508 cells for `var`, `std` and `corr`, of which 98 varied within a setting and none changed kind within a setting, and 774 cells for `cov`, none varying.",
-        "The ungrouped table in the description is for x = 0.1; 1/3 and 1e8+0.3 behave alike. The full results are in the coordinator's notes (2628-stat-degenerate-probe.md) and are reproduced by the scripts."
+        "The ungrouped table in the description is for x = 0.1; 1/3 and 1e8+0.3 behave alike. The scripts reproduce the full results."
       ]
     }
   ],
