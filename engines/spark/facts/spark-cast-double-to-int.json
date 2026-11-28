@@ -174,7 +174,8 @@
       ],
       "notes": [
         "`CAST(x AS BIGINT)` and `TRY_CAST(x AS BIGINT)` at the edges of the 64-bit range (ruling 290, S1): 2^63, the next double above it, the largest double below it, -2^63, the next double below it, the smallest above it, NaN, +inf, -inf, -0.0, -1.5 and 2.5, against the reference's truncating cast.",
-        "Only 2^63 differs: both casts give 9223372036854775807 where the reference raises (`CAST`) or gives NULL (`TRY_CAST`). The next double above 2^63, the next below -2^63, NaN and both infinities raise `ArithmeticException` (`CAST`) or give NULL (`TRY_CAST`), as the reference does; -2^63 casts to `MIN`, and the rest truncate."
+        "Only 2^63 differs: both casts give 9223372036854775807 where the reference raises (`CAST`) or gives NULL (`TRY_CAST`). The next double above 2^63, the next below -2^63, NaN and both infinities raise `ArithmeticException` (`CAST`) or give NULL (`TRY_CAST`), as the reference does; -2^63 casts to `MIN`, and the rest truncate.",
+        "Ruling 290's P6: on the excepted input, 2^63, both casts return a value (9223372036854775807) and raise nowhere, so a lowering that evaluates the native cast there and discards its value is safe. Where `CAST` raises (past 2^63, NaN, ±inf), the template's own guard raises too; `TRY_CAST` raises nowhere."
       ]
     }
   ],

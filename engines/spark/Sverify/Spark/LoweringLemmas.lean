@@ -495,8 +495,10 @@ Spark's `CAST` and `TRY_CAST` saturate the double `2⁶³` (spark-cast-double-to
 which `Profile.spark` does not state (`Spark.ftoiExcepted`): the templates raise, or give
 NULL, at `2⁶³` and above before the native cast, so it is called only below `2⁶³`, where
 it is the reference's. The soundness does not rest on Spark evaluating only the `CASE`
-branch a row takes: the native branch's value is discarded where the guard holds, and it
-raises only where the reference raises (S4). -/
+branch a row takes (S4): the native branch's value is discarded where the guard holds.
+There the native cast returns at `2⁶³` (spark-cast-double-to-int, ruling 290's P6), and it
+raises only where the reference raises, past `2⁶³`, at NaN and `±∞`; `TRY_CAST` raises
+nowhere. -/
 
 /-- `#0` is a double of `2⁶³` or more, or NaN (canonical codes order NaN above `+∞`). -/
 def ftoiGuard : Expr :=
