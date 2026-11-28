@@ -167,6 +167,8 @@ def test_spark_has_no_generated_lift_yet() -> None:
         "SELECT min(b) AS r FROM t",
         "SELECT a FROM t ORDER BY b",
         "SELECT max(p) AS r FROM t",
+        # Spark counts no argument as 0 (count.sql.out L127).
+        "SELECT count() AS n FROM t",
         # A TINYINT: Spark widens `n + 100`, DuckDB's literal rule would not.
         "SELECT n + 100 AS r FROM s",
     ],

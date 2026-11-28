@@ -128,6 +128,23 @@ SYNTAX = frozenset(
 )
 
 
+def _count_of_nothing(tree: Any) -> Any:
+    """Refuse `count()`: Spark 4.3 counts no argument as 0 (the golden file
+    `count.sql.out` L127), where the lift reads it as `count(*)`."""
+    import sqlglot.expressions as sge
+
+    from sverify.plan_json import SqlUnsupported
+
+    for node in tree.find_all(sge.Count):
+        if node.this is None and not node.expressions:
+            raise SqlUnsupported(
+                "count() of no argument is 0 in Spark; write count(*) for the rows",
+                issue=866,
+                construct="function count",
+            )
+    return tree
+
+
 def values(t: Any) -> bool:
     """The types the lift reads Spark's SQL over: `INT`, `BIGINT`, booleans
     and strings (and NULL). A narrower integer is refused: the lift types an
@@ -167,6 +184,7 @@ def spark_sql() -> Surface:
         coerces=coerces,
         orders=orders,
         case_sensitive=True,
+        rewrites=(_count_of_nothing,),
     )
 
 
