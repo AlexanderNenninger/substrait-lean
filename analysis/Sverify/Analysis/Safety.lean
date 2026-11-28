@@ -409,6 +409,9 @@ def BinFn.mayIssue : BinFn → AVal → AVal → AVal → Bool → Option Nat �
   | .idiv, _, _, ar, nz, _ =>
     (if nz then [] else [.divByZero]) ++ (if ar.within minI64 maxI64 then [] else [.overflow])
   | .imod, _, _, _, nz, _ => if nz then [] else [.divByZero]
+  -- A decimal divisor of any scale (D62): by its interval alone, since `nz`
+  -- speaks of integers (`BinFn.divKind`).
+  | .dmod, _, ab, _, _, _ => if ab.int.all (!·.has0) then [] else [.divByZero]
   | .fdiv, aa, ab, _, nz, _ =>
     (if nz then [] else [.divByZero]) ++ (if BinFn.mayNan .fdiv aa ab then [.domain] else [])
   | .fmod, aa, ab, _, nz, _ =>
@@ -1530,6 +1533,20 @@ theorem BinFn.mayIssue_sound (f : BinFn) {aa ab ar : AVal} {v w : Value} {nz : B
         exact absurd this hn
       · simp
     · simp at hk
+  case dmod =>
+    simp only [BinFn.issue] at hk
+    split at hk <;> simp only [Option.some.injEq, reduceCtorEq] at hk
+    subst hk
+    rename_i hvw
+    simp only [BinFn.mayIssue]
+    split
+    · rename_i hs
+      obtain ⟨k, ⟨b, hb', hm, -⟩, hn⟩ := AVal.memNum_of_unscaled hb hvw.2
+      rw [hn] at hm
+      rw [hb'] at hs
+      simp only [Option.all_some, Bool.not_eq_true'] at hs
+      exact absurd rfl (Bound.ne_zero hm hs)
+    · simp
   all_goals (cases v <;> cases w <;> simp only [BinFn.issue, reduceCtorEq] at hk)
   case dateAdd.date.int i j =>
     have hr' := hr; simp only [BinFn.apply] at hr'

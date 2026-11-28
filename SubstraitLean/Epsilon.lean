@@ -706,8 +706,17 @@ def rowSites (es : List EngineProfile) (engine : String) (cat : Catalog) (A : St
   | .distinct r => rowSites es engine cat A F T r ++
       [((colEps es engine cat A F T r).any fun cs => cs.all exactP, (Rel.markDeps cat r).any id,
         "DISTINCT")]
-  | .fetch r _ _ | .emit r _ | .project r _ | .window r _ _ _ | .unnest r _ =>
+  | .fetch r _ _ | .emit r _ | .project r _ | .unnest r _ =>
     rowSites es engine cat A F T r
+  -- A window's partition and sort keys decide which rows its functions see and in what
+  -- order (#2573, ruling 283 E2): a rank over an inexact double depends on the order of
+  -- near-equal values.
+  | .window r part sort _ => rowSites es engine cat A F T r ++
+      [((colEps es engine cat A F T r).any fun cs =>
+        part.all (fun i => exactP (cs.getD i none)) && sort.all fun k => exactP (cs.getD k.col none),
+        part.any (fun i => (Rel.markDeps cat r).getD i true) ||
+          sort.any (fun k => (Rel.markDeps cat r).getD k.col true),
+        "a window's partition or sort key")]
   | .cross a b | .unionAll a b => rowSites es engine cat A F T a ++ rowSites es engine cat A F T b
   | .join a b _ on | .semi a b _ on =>
     rowSites es engine cat A F T a ++ rowSites es engine cat A F T b ++
@@ -1136,7 +1145,7 @@ it, and a tolerance that either bound meets is met.
 reads, on every engine, the same values in the same rows and groups as the
 reference (`colEps`), in a plan without single-precision columns, where
 every engine's `sum_order` is a proved order (`ordersProved`). -/
-def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
+def epsilonCore (es : List EngineProfile) (input : Json) : Except String Json := do
   let some ⟨tj, plan, cat, A, F, _, root, T⟩ ← inputs? input | return Json.mkObj []
   let wins := winSrcs es cat root
   let winNames := if plan.names.length == wins.length then plan.names
@@ -1217,6 +1226,32 @@ def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
   let known := cols ++ statJson.filter fun (n, _) => !cols.any (·.1 == n)
   return Json.mkObj (known.filter (fun (n, _) => !winCols.any (·.1 == n)) ++ winCols ++
     marked.filter fun (n, _) => !known.any (·.1 == n) && !winCols.any (·.1 == n))
+
+/-- `epsilonCore`'s answer, with an entry for every double output column it leaves out
+(#2573, ruling 283 E1): the column's error as `colEps` gives it, the largest over the engines
+(zero where every engine computes it exactly: a maximum, a passed-through input), and no bound
+where an engine's `colEps` gives none. An unhandled shape means no bound, never exact. -/
+def epsilon (es : List EngineProfile) (input : Json) : Except String Json := do
+  let core ← epsilonCore es input
+  let some ⟨_, plan, cat, A, F, _, root, T⟩ ← inputs? input | return core
+  let kinds := (Write.relKinds (Write.planSchemas plan) cat plan.root).map Write.WKind.toKind
+  let names := if plan.names.length == kinds.length then plan.names
+    else (List.range kinds.length).map (s!"#{·}")
+  let present : List String := match core with
+    | .obj kvs => kvs.toList.map (·.1)
+    | _ => []
+  let perEngine := (es.map (·.name)).map fun engine => colEps es engine cat A F T root
+  let extra := ((names.zip kinds).zipIdx).filterMap fun ((name, k), i) =>
+    if k != .float || present.contains name then none
+    else
+      let bs := perEngine.map fun cs? => cs?.bind (·.getD i none)
+      if bs.all Option.isSome && !bs.isEmpty then
+        let e := bs.foldl (fun acc b => max acc (b.map (·.1) |>.getD 0)) 0
+        some (name, boundJson e none (bs.all fun b => b.any (·.2)))
+      else some (name, Json.mkObj [("abs", Json.null)])
+  match core with
+  | .obj kvs => return Json.mkObj (kvs.toList ++ extra)
+  | _ => return core
 
 /-! ## The dependency report of a contract
 

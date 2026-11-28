@@ -1,1 +1,0 @@
-Added `dbt/scripts/measure.py` and `docs/dbt-measurements.md`: sverify-dbt measured on jaffle_shop and Cal-ITP's warehouse (models read, tests proved, test queries skipped), with the column types supplied for Cal-ITP.

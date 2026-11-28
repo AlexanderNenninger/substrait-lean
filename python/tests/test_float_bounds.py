@@ -413,7 +413,11 @@ def test_window_sums_have_the_aggregate_bound() -> None:
     derived = sv.verify(t.mutate(s=t.x.sum().over(w)).mutate(d=_.s * 2.0), requires=req)
     assert derived._epsilon is not None and derived._epsilon["d"]["unbounded"]
     uncapped = sv.verify(t.mutate(s=t.x.sum().over(w)), requires={"t": [_.x.between(-1, 1)]})
-    assert uncapped._epsilon == {"s": {"bounds": {}, "unbounded": True, "why": None}}
+    # The passed-through double `x` is named too, with a zero bound (#2573).
+    assert uncapped._epsilon == {
+        "s": {"bounds": {}, "unbounded": True, "why": None},
+        "x": {"bounds": {"abs": {"proved": True, "value": 0}}, "unbounded": False, "why": None},
+    }
 
 
 def test_statistics_have_proved_bounds_but_corr() -> None:

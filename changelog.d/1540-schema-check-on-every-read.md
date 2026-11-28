@@ -1,3 +1,0 @@
-### The schema check covers pipelines, incremental views and `run_sharded`
-
-The check `Report.run` makes on its tables (types, NULLs in a non-null column, integers outside their declared width) now also runs where a plan reads tables outside a report: `run_sharded` refuses a shard or broadcast table that differs from the plan's schema (`ValueError`), and an incremental view checks its tables when it is built and the rows each batch inserts (`PreconditionError`). On an Arrow table the width check is one native pass over the column's minimum and maximum instead of a counting plan on the engine: 5 million rows take 0.8 ms where the plan took 95 ms ([#1540](https://github.com/AlexanderNenninger/substrait-lean/issues/1540)).

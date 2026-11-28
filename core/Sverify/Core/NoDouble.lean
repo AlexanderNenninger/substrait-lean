@@ -161,8 +161,8 @@ def UnFn.mayDouble : UnFn → Bool
 def BinFn.mayDouble : BinFn → Bool
   | .add | .sub | .mul | .eq | .lt | .and | .or | .idiv | .imod | .ipow | .concat | .strpos
   | .startsWith | .endsWith | .like | .substr _ _ | .trim _ _ | .strRepeat | .ilike
-  | .levenshtein | .dateAdd | .dateDiff | .bit _ | .dadd | .dsub | .dmul | .ddiv | .greatest
-  | .least => false
+  | .levenshtein | .dateAdd | .dateDiff | .bit _ | .dadd | .dsub | .dmul | .ddiv | .dmod
+  | .greatest | .least => false
   | _ => true
 
 /-- Fail closed, as `UnFn.mayDouble`. `MIN`, `MAX`, `QUANTILE_DISC` and the

@@ -36,12 +36,12 @@ def run(exprs: dict[str, pl.Expr], cols: dict[str, pl.Series]) -> dict[str, list
 
 
 def test_the_table_covers_what_polars_computes_its_own_way():
-    """`round`, `round_even`, `ceil`, integer `//` and `%`, `<<`, `>>` and the product of
-    decimals have templates; `%` of doubles has no entry (refused); everything else is
-    native, and `render` gives None."""
+    """`round`, `round_even`, `ceil`, integer `//` and `%`, decimal `%`, `<<`, `>>` and the
+    product of decimals have templates; `%` of doubles has no entry (refused); everything else
+    is native, and `render` gives None."""
     assert set(table_export.table("polars")) == {
         "Substrait.UnFn.fround", "Substrait.UnFn.froundEven", "Substrait.UnFn.fceil",
-        "idiv", "imod", "bit:bitwise_shift_left", "bit:bitwise_shift_right", "dmul",
+        "idiv", "imod", "dmod", "bit:bitwise_shift_left", "bit:bitwise_shift_right", "dmul",
     }  # fmt: skip
     assert lowering.render("fadd", [pl.col("a"), pl.col("b")]) is None
 

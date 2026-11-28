@@ -7,7 +7,7 @@ import Sverify.Polars.LoweringLemmas
 The constructs the lowering search does not reach on `Profile.polars`, for
 `generate_lowering … hand_written polarsSchemas`
 (`scripts/RegenLoweringPolars.lean`): `round` and `ceil`, which give IEEE's
-`-0.0` on Polars, integer `//` and `%`, which floor, and a decimal cast to a
+`-0.0` on Polars, integer `//` and `%` and decimal `%`, which floor, and a decimal cast to a
 smaller scale, which rounds half to even (a hand-built entry, `Polars.droundEntry`,
 whose template's literals depend on the scale), and `<<` and `>>`, which Polars
 lacks (polars-int-shift). A product of decimals is a hand-built entry that is
@@ -38,6 +38,8 @@ def polarsSchemas : Schemas where
         "a // b truncated, from Polars's floored // of operands of one sign")
     | .imod => some (.expr Polars.imodTemplate (mkConst ``Polars.imodTemplate)
         "a % b truncated: Polars's % by -b where the signs differ")
+    | .dmod => some (.expr Polars.dmodTemplate (mkConst ``Polars.dmodTemplate)
+        "a % b of decimals truncated: Polars's % by -b where the signs differ")
     | .bit .and => some (.expr Polars.bitAndT (mkConst ``Polars.bitAndT) "native: #0 & #1")
     | .bit .or => some (.expr Polars.bitOrT (mkConst ``Polars.bitOrT) "native: #0 | #1")
     | .bit .xor => some (.expr Polars.bitXorT (mkConst ``Polars.bitXorT) "native: #0 ^ #1")

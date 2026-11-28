@@ -353,7 +353,7 @@ def _root_.Substrait.Expr.kind (cols : List Kind) : Expr → Kind
   | .bin .levenshtein _ _ | .bin (.bit _) _ _ => .int
   | .bin .dateAdd _ _ => .date
   | .bin .concat _ _ | .bin (.substr _ _) _ _ | .bin (.trim _ _) _ _ | .bin .strRepeat _ _ => .str
-  | .bin .dadd _ _ | .bin .dsub _ _ | .bin .dmul _ _ | .bin .ddiv _ _ => .int
+  | .bin .dadd _ _ | .bin .dsub _ _ | .bin .dmul _ _ | .bin .ddiv _ _ | .bin .dmod _ _ => .int
   | .bin .pair _ _ => .other
   | .bin (.bbox2 n) _ _ => bbScalarKind n
   -- An empty or `NULL` list says nothing of its elements' kind.
@@ -1776,9 +1776,11 @@ scale, `×` at the sum of the scales, as the backends compute them. The result
 has the plan's declared precision, else `max(p₁ - s₁, p₂ - s₂) + s + 1` (`+`,
 `-`) or `p₁ + p₂ + 1` (`×`), at most 38; `UnFn.decimal` reports a value of
 more digits as an overflow. An operand of `+` or `-` whose rescaled value can
-have more than 38 digits is checked on its own first (D56). -/
-def decimalCall (cols : List Kind) (name : String) (outTy : Json) (args : List Expr) :
-    J (Option Expr) := do
+have more than 38 digits is checked on its own first (D56). `%` (D62) is the
+truncated remainder at the larger scale, of type
+`DECIMAL(min(p₁ - s₁, p₂ - s₂) + s, s)`, under the call's options `opts`. -/
+def decimalCall (cols : List Kind) (name : String) (outTy : Json) (opts : List Json)
+    (args : List Expr) : J (Option Expr) := do
   let some tys := args.mapM (decType? cols)
     | throw s!"{name} of a DECIMAL and a non-number is not supported"
   let declared : Option Nat := match typeKind outTy with
@@ -1813,6 +1815,25 @@ def decimalCall (cols : List Kind) (name : String) (outTy : Json) (args : List E
     checkScale s
     let p := declared.getD (min 38 (p₁ + p₂ + 1))
     return some (.un (.decimal p s) (.bin .dmul a b))
+  -- D62: the truncated remainder at the larger scale, which fits
+  -- `min(p₁ - s₁, p₂ - s₂) + s` digits (`|r| ≤ |a|` and `|r| < |b|`), so the
+  -- precision check never fires. Past 38 digits at that scale the engines
+  -- disagree (DuckDB's result becomes a DOUBLE): refused (ruling 188).
+  | "modulus", [a, b], [(p₁, s₁), (p₂, s₂)] =>
+    let s := max s₁ s₂
+    checkScale s
+    if 38 < max (p₁ - s₁) (p₂ - s₂) + s then
+      throw ("% of decimals whose operands need more than 38 digits at the larger scale is " ++
+        "not supported; cast an operand to a DECIMAL with fewer digits")
+    let p := declared.getD (min (p₁ - s₁) (p₂ - s₂) + s)
+    -- `division_type` = `FLOOR`: Polars's `%`, which takes the divisor's sign;
+    -- `|r| < |b|` still, but not `|r| ≤ |a|`, so `p` digits can overflow.
+    let rem := if divisionTypeMode opts == "FLOOR" then Expr.floorDModOf else Expr.bin .dmod
+    let r : Expr := .un (.decimal p s) (rem (upscale (s - s₁) a) (upscale (s - s₂) b))
+    -- `on_division_by_zero` = `NULL`: a `CASE` on the divisor, as for integers
+    -- (`divByZero`), against the divisor's own zero.
+    if divByZeroMode opts == "ERROR" then return some r
+    return some (.ifThen (.un .not (.bin .eq b (zeroFor b))) r (.lit .null))
   -- sverify's own: `a / b`, a decimal by an integer, at the declared scale,
   -- rounded half away from zero; how a decimal `AVG` over a window is written
   -- (`Write.lean`).
@@ -2149,7 +2170,7 @@ partial def parseExpr (fns : List (Nat × String)) (cols : List Kind) (bits : Li
         throw s!"{baseName name}: overflow {optionPref "overflow" "ERROR" fopts} is only modelled for integers"
       if hasFloat then
         throw s!"{baseName name} of a DECIMAL and a double is not supported; cast one of them"
-      if let some e ← decimalCall cols (baseName name) outTy parsed then return e
+      if let some e ← decimalCall cols (baseName name) outTy fopts parsed then return e
     else if out matches .dec _ _ then
       throw s!"{name}: a DECIMAL result of non-decimal arguments is not supported"
     -- An integer constant next to a double, or in a double function, stands

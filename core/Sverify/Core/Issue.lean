@@ -298,6 +298,9 @@ def BinFn.issue : BinFn → Value → Value → Option Issue
   | .idiv, .int a, .int b =>
     if b = 0 then some .divByZero else if inI64 (a.tdiv b) then none else some .overflow
   | .imod, .int _, .int b | .imod, .tod _, .int b => if b = 0 then some .divByZero else none
+  -- Decimals at one scale (D62): a zero divisor raises, as for `imod`; a NULL
+  -- dividend gives NULL.
+  | .dmod, v, w => if v.unscaled?.isSome ∧ w.unscaled? = some 0 then some .divByZero else none
   -- A double divided by zero, `0.0` or `-0.0` (the one zero of `ONE_ZERO`,
   -- D31): Substrait's `on_division_by_zero` = ERROR. The parser writes the
   -- other options as a `CASE` around this (`Parse.divByZero`).

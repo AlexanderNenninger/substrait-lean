@@ -1,3 +1,0 @@
-### Decimal comparisons across scales and wide decimal averages no longer overflow DuckDB
-
-A comparison of decimals of different scales was proved but raised on DuckDB, which casts both sides to one `DECIMAL(38, s)` and fails where a value does not fit (#1498). The DuckDB writer now compares the unscaled integers, with the scale gap's floor and remainder, so no cast can fail. A decimal `AVG` over `DECIMAL(p, s)` with `p` above 34 is refused (its `DECIMAL(p + 4, s + 4)` result does not fit 38 digits and the model had no overflow check for it), and the writer's quotient for the rest no longer multiplies the sum past 38 digits (#1497). 

@@ -73,6 +73,7 @@ import pyarrow as pa
 from sverify import _decimals, _plan_read, _support
 from sverify._plan_read import REPEAT_MAX, SUBSTR_MAX, US_PER_DAY
 from sverify._support import DUCKDB_ONLY
+from sverify._unsupported import DECIMAL_MOD_38
 from sverify._unsupported import Unsupported as _Unsupported
 
 try:
@@ -562,6 +563,23 @@ def decimal_div(a: Val, b: Val, p: int, s: int) -> Val:
     u, bad = shims.decimal_div_half_away(x, n, s - s1)
     out = fit_decimal(u, p, s, "sverify_decimal_div", a, b, bad=bad.fill_null(False) & (n != 0))
     return Val(pl.when(n == 0).then(None).otherwise(out.expr), out.dtype, out.issues)
+
+
+def decimal_mod(a: Val, b: Val, p: int, s: int, floor: bool = False) -> Val:
+    """`a % b` of decimals at scale `s` (`BinFn.dmod`, D62): the remainder with
+    the dividend's sign, on the unscaled values at that scale. Polars's `%`
+    takes the divisor's (polars-decimal-modulus, polars-int128-remainder): the
+    generated table's template (`Polars.dmodTemplate`), or Polars's own with `floor`
+    (`division_type` FLOOR, `Profile.polars`). The types bound both operands to 38 digits at scale
+    `s` (`_decimals.mod`), so they fit 128 bits. Polars raises for a zero
+    divisor, which the issue raises as the reference does."""
+    (_, s1), (_, s2) = decimal_of(a.dtype, "modulus"), decimal_of(b.dtype, "modulus")
+    x, y = unscaled(a) * i128(10 ** (s - s1)), unscaled(b) * i128(10 ** (s - s2))
+    zero = y == 0
+    safe = pl.when(zero).then(i128(1)).otherwise(y)
+    u = x % safe if floor else lowered("dmod", x, safe)
+    out = fit_decimal(u, p, s, "modulus", a, b)
+    return Val(out.expr, out.dtype, (*out.issues, issue(zero, DivisionByZero, "modulus by zero")))
 
 
 #: The smallest normal double, 2⁻¹⁰²².
@@ -1197,6 +1215,10 @@ class Exprs:
                     )
                 p = dp if dp is not None else _decimals.mul((p1, s1), (p2, s2))[0]
                 return decimal_mul(a, b, p, sc)
+            case "modulus", [a, b], [d1, d2]:
+                if (t := _decimals.mod(d1, d2)) is None:
+                    raise Unsupported(DECIMAL_MOD_38)
+                return decimal_mod(a, b, dp if dp is not None else t[0], scale(t[1]))
             case (("negate" | "subtract"), [a], _):
                 return Val(-a.expr, a.dtype, a.issues)
             case "abs", [a], _:
@@ -1406,6 +1428,11 @@ class Exprs:
         with no shim (`Profile.polars`, `engines/polars/Sverify/Polars/Profile.lean`).
         A zero divisor and `MIN // -1` raise, as under `Profile.polars`; the
         guards check them."""
+        if name == "modulus" and (is_decimal(a.dtype) or is_decimal(b.dtype)):
+            d1, d2 = decimal_of(a.dtype, name), decimal_of(b.dtype, name)
+            if (t := _decimals.mod(d1, d2)) is None:
+                raise Unsupported(DECIMAL_MOD_38)
+            return decimal_mod(a, b, *t, floor=True)
         if unify(a.dtype, b.dtype, name) not in (pl.Int64, pl.Null):
             raise Unsupported(f"{name} with division_type FLOOR of {a.dtype} and {b.dtype}")
         x, y = a.expr.cast(pl.Int64), b.expr.cast(pl.Int64)

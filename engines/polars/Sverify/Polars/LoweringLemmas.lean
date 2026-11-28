@@ -346,6 +346,95 @@ theorem imod_agree (x y : Value) :
     all_goals exact imodTemplate_notInt (.inr fun _ h => by cases h)
   all_goals exact imodTemplate_notInt (.inl fun _ h => by cases h)
 
+/-! ## Decimal `%` (D62)
+
+Polars's decimal `%` floors (`Profile.polars_dmod`). The template takes the
+remainder by the negated divisor where the operands' signs differ, so that
+Polars's `%` sees operands of one sign, where floored and truncated agree: the
+`int_mod_trunc` shim on the unscaled integers. The signs are read on the
+unscaled integers (`a + 0`), since a decimal and the integer `0` do not
+compare. -/
+
+/-- `a % b` of decimals truncated, on Polars: Polars's `%` by `-b` where the
+signs differ, else Polars's `%`. -/
+def dmodTemplate : Expr :=
+  let a := Expr.field 0
+  let b := Expr.field 1
+  let z := Expr.lit (.int 0)
+  let x := Expr.bin .dadd a z
+  let y := Expr.bin .dadd b z
+  .ifThen (.bin .or (.bin .and (.bin .lt x z) (.bin .lt z y)) (.bin .and (.bin .lt y z) (.bin .lt z x)))
+    (.bin .dmod a (.bin .dsub z y)) (.bin .dmod a b)
+
+omit [Boxes.Ambient] in
+theorem dmodTemplate_must : 0 ∈ dmodTemplate.must ∧ 1 ∈ dmodTemplate.must := by
+  simp [Expr.must, dmodTemplate]
+
+theorem polars_dadd_zero_some {x : Value} {a : Int} (hx : x.unscaled? = some a) :
+    Profile.polars.bin .dadd x (.int 0) = .ok (.int a) := by
+  show Profile.reference.bin .dadd _ _ = _
+  rw [Lowering.ref_dadd]; simp only [BinFn.apply, hx]; simp
+
+/-- On two numbers. -/
+theorem dmodTemplate_num {x y : Value} {a b : Int} (hx : x.unscaled? = some a)
+    (hy : y.unscaled? = some b) :
+    (dmodTemplate.evalP Profile.polars [x, y]).Agree (Profile.reference.bin .dmod x y) := by
+  simp only [dmodTemplate, Expr.evalP, List.getD, List.getElem?_cons_zero, List.getElem?_cons_succ,
+    Option.getD_some, polars_dadd_zero_some hx, polars_dadd_zero_some hy, polars_lt_int,
+    polars_and_bool, polars_or_bool, polars_dsub_int, bind, Except.bind, isTrue_bool,
+    Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq]
+  by_cases c : (a < 0 ∧ 0 < b) ∨ (b < 0 ∧ 0 < a)
+  · have hb0 : b ≠ 0 := by omega
+    simp only [eq_true c, ↓reduceIte]
+    rw [Profile.polars_dmod hx (show (Value.int (0 - b)).unscaled? = some (0 - b) from rfl) (by omega),
+      Lowering.ref_dmod hx hy hb0, Polars.floorMod,
+      (Polars.fdiv_fmod_same (a := a) (b := 0 - b) (by omega) (by omega)).2,
+      show (0 : Int) - b = -b by omega, Int.tmod_neg]
+    exact Outcome.agree_refl _
+  · simp only [eq_false c, ↓reduceIte]
+    by_cases hb0 : b = 0
+    · subst hb0
+      rw [Profile.polars_dmod_zero hx hy, Lowering.ref_dmod_zero hx hy]
+      exact Outcome.agree_refl _
+    · rw [Profile.polars_dmod hx hy hb0, Lowering.ref_dmod hx hy hb0, Polars.floorMod,
+        (Polars.fdiv_fmod_same (a := a) (b := b) (by omega) (by omega)).2]
+      exact Outcome.agree_refl _
+
+/-- A guard of `dmodTemplate` with a `NULL` operand never holds. -/
+theorem isTrue_signs_null {u v : Value} (h : u = .null ∨ v = .null) :
+    (or3 (and3 (BinFn.apply .lt u (.int 0)) (BinFn.apply .lt (.int 0) v))
+      (and3 (BinFn.apply .lt v (.int 0)) (BinFn.apply .lt (.int 0) u))).isTrue = false := by
+  rcases h with rfl | rfl
+  · exact isTrue_or3_not (and3_null_l _) (and3_null_r _)
+  · exact isTrue_or3_not (and3_null_r _) (and3_null_l _)
+
+theorem polars_dadd : Profile.polars.bin .dadd = Profile.reference.bin .dadd := rfl
+
+/-- With an operand that is not a number (`NULL`). -/
+theorem dmodTemplate_null {x y : Value} (h : x.unscaled? = none ∨ y.unscaled? = none) :
+    (dmodTemplate.evalP Profile.polars [x, y]).Agree (Profile.reference.bin .dmod x y) := by
+  rw [Lowering.ref_dmod_null h]
+  have hn : BinFn.apply .dadd x (.int 0) = .null ∨ BinFn.apply .dadd y (.int 0) = .null := by
+    rcases h with h | h
+    · left; simp only [BinFn.apply, h]
+    · right; simp only [BinFn.apply, h]
+  simp only [dmodTemplate, Expr.evalP, List.getD, List.getElem?_cons_zero, List.getElem?_cons_succ,
+    Option.getD_some, polars_dadd, Lowering.ref_dadd, polars_lt, polars_and, polars_or,
+    Lowering.ref_lt, Lowering.ref_and, Lowering.ref_or, bind, Except.bind, isTrue_signs_null hn,
+    Bool.false_eq_true, ↓reduceIte, Profile.polars_dmod_null h]
+  exact Outcome.agree_refl _
+
+/-- **Polars's lowering of decimal `%`** (`dmodTemplate`) agrees with the
+reference's on every value. -/
+theorem dmod_agree (x y : Value) :
+    (dmodTemplate.evalP Profile.polars [x, y]).Agree (Profile.reference.bin .dmod x y) := by
+  cases hx : x.unscaled? with
+  | none => exact dmodTemplate_null (.inl hx)
+  | some a =>
+    cases hy : y.unscaled? with
+    | none => exact dmodTemplate_null (.inr hy)
+    | some b => exact dmodTemplate_num hx hy
+
 /-! ## A decimal cast to a smaller scale: half away from zero (ruling 278's addendum) -/
 
 /-- The reference's decimal cast to a scale `k` digits smaller, from Polars's

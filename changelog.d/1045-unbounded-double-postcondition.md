@@ -1,3 +1,0 @@
-### A postcondition that reads an unbounded double is refused with its exit
-
-A route to an engine ran a postcondition that read a double with no bound on its distance to the reference (a mean or `SUM` without a row cap) while refusing the same postcondition on a double with a bound, so `avg <= 100` ran uncapped and was refused with `sv.max_rows(1000)`. The checker's engine-robustness now keeps only the sign of such a column, and the route refuses what reads more, naming `sv.approx(...)` and the row cap. What reads only the sign (`_.total >= 0`) runs as before ([#1045](https://github.com/AlexanderNenninger/substrait-lean/issues/1045)).

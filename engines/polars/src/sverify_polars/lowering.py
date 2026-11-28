@@ -57,6 +57,7 @@ _BINARY: dict[str, Callable[[pl.Expr, pl.Expr], pl.Expr]] = {
     "or": lambda a, b: a | b,
     "idiv": lambda a, b: a // b,
     "imod": lambda a, b: a % b,
+    "dmod": lambda a, b: a % b,
     "dadd": lambda a, b: _wide(a) + _wide(b),
     "dsub": lambda a, b: _wide(a) - _wide(b),
     # Exact below 2¹²⁷ (polars-int-arith): `Polars.dmulTemplate` calls it only

@@ -1,1 +1,0 @@
-Ibis: a substring whose length comes from a column is refused with a message that says to use a constant length or `ifelse`. The replay ledgers are rewritten: the multi-quantile, mode, `count_distinct_star`, arbitrary, ordered first/last and expression-window rows now agree or are unproved.

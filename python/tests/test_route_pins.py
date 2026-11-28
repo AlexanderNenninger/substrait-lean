@@ -42,3 +42,19 @@ def test_every_route_is_as_pinned(engine: str) -> None:
         elif record[ident][engine] != per[engine]:
             changed.append(f"{ident} on {engine}")
     assert not changed, "routes changed: " + "; ".join(changed[:20])
+
+
+def test_epsilon_names_every_double_output_of_every_plan() -> None:
+    """#2573: over every catalogue query and coverage case that verifies, the checker's `ε`
+    names each double output column (zero where every engine computes it exactly, no bound where
+    it cannot bound it), so an unhandled shape never reads as exact."""
+    from sverify_dev import route_pins
+
+    missing = []
+    for ident, report in route_pins._reports():
+        if isinstance(report, str):
+            continue
+        doubles = {c for c, t in report.output.items() if t.is_floating()}
+        if not doubles <= set(report._epsilon or {}):
+            missing.append(f"{ident}: {sorted(doubles - set(report._epsilon or {}))}")
+    assert not missing, "; ".join(missing)
