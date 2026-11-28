@@ -84,34 +84,25 @@ permissions:
 # workflow on it (`workflow_dispatch`), which runs everything on its merge
 # with main.
 #
-# Most jobs run on the self-hosted AWS runners (ephemeral spot instances,
-# 4 vCPU, 16 GB, at most 8 at once; GitHub's hosted ones are the same size),
-# which leaves GitHub's 20 job slots free. `route` picks the runner: the AWS
-# runners only for pull requests from this repository (never a fork's; never
-# a batch branch `batch/*`, pushes, merge queue entries or dispatches, whose
-# `qa` the merge tooling waits for: a job queued for lack of a spot instance
-# would stall it), and only when `aws-probe` starts within 3 minutes;
-# otherwise ubuntu-latest. The repository variable `AWS_RUNNERS` set to `off`
-# skips the probe, so every job runs on GitHub's runners (`gh variable set
-# AWS_RUNNERS --body off`; delete it, or set it to anything else, to use AWS
-# again): with no runners left, the probe would queue for good.
-#
-# The longest jobs (`lean`, `evidence`, `dbt`, `outside-repo`) may run on the
-# fixed Hetzner hosts instead (agentic-tools/hetzner-runner: two x86 servers
-# in Helsinki, six slots of 4 vCPU and about 7.5 GB, each job in a fresh
-# container, label `hetzner`), when the repository variable `HETZNER_RUNNERS`
-# is `on` and `hetzner-probe` starts within the same 3 minutes; otherwise
-# they go where the other jobs go. Only those four: a whole run would take
-# every slot at once. `gh variable set HETZNER_RUNNERS --body on` turns it
-# on, `off` (or deleting it) off. (The checker and cache steps still handle
-# an ARM runner, from the first plan; on x86 those branches never run.)
+# Jobs run on GitHub's runners (`ubuntu-latest`). The longest jobs (`lean`,
+# `evidence`, `dbt`, `outside-repo`) may run on the fixed Hetzner hosts
+# instead (agentic-tools/hetzner-runner: two x86 servers in Helsinki, six
+# slots of 4 vCPU and about 7.5 GB, each job in a fresh container, label
+# `hetzner`): only for pull requests from this repository (never a fork's;
+# never a batch branch `batch/*`, pushes, merge queue entries or dispatches,
+# whose `qa` the merge tooling waits for: a job queued for a busy slot would
+# stall it), when the repository variable `HETZNER_RUNNERS` is `on` and
+# `hetzner-probe` starts within 3 minutes; otherwise they run on GitHub's
+# runners too. Only those four: a whole run would take every slot at once.
+# `gh variable set HETZNER_RUNNERS --body on` turns it on, `off` (or deleting
+# it) off. (The checker and cache steps still handle an ARM runner, from the
+# first plan; on x86 those branches never run.)
 #
 # `changes`, `qa`, the Spark tests, `bench` (its budgets assume
 # GitHub's CPUs) and `float-bounds` always run on GitHub's
 # runners.
 jobs:
-  # Where the jobs below run (see the header): GitHub's runners, or the
-  # self-hosted AWS runners when one picks `aws-probe` up in time (`runner`),
+  # Where the jobs below run (see the header): GitHub's runners (`runner`),
   # and for the four longest jobs the Hetzner host when it picks
   # `hetzner-probe` up in time (`heavy`, else the same as `runner`). Both are
   # a JSON `runs-on`. This job never fails: any doubt answers GitHub's runners.
@@ -119,7 +110,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      actions: read # to read the probes' status
+      actions: read # to read the probe's status
     outputs:
       runner: ${{ steps.pick.outputs.runner }}
       heavy: ${{ steps.pick.outputs.heavy }}
@@ -133,50 +124,29 @@ jobs:
           # GitHub's runners unless the loop below finds a self-hosted one.
           echo 'runner="ubuntu-latest"' >> "$GITHUB_OUTPUT"
           echo 'heavy="ubuntu-latest"' >> "$GITHUB_OUTPUT"
-          # The probes run only for this repository's own pull requests (they
-          # are skipped for forks, batch branches and other events, and when
-          # their repository variable is off). Spot launch and boot take about
-          # a minute; past 3 minutes a probe is still queued (no capacity,
-          # runners busy with other runs) and GitHub's runners take its jobs.
+          # The probe runs only for this repository's own pull requests (it is
+          # skipped for forks, batch branches and other events, and when
+          # HETZNER_RUNNERS is not `on`). Past 3 minutes it is still queued
+          # (every slot busy with other runs) and GitHub's runners take the
+          # long jobs.
           url="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs"
-          state() { # up, no or wait for probe $1, from $jobs
-            case "$(sed -n "s/^$1 //p" <<<"$jobs")" in
-              "in_progress "*|"completed success") echo up;;
-              "completed "*) echo no;;
-              *) echo wait;;
-            esac
-          }
-          aws=wait hz=wait
+          hz=wait
           for _ in $(seq 36); do
-            jobs=$(gh api "$url" --jq '.jobs[]|select(.name=="aws-probe" or .name=="hetzner-probe")|.name+" "+.status+" "+(.conclusion//"")') || jobs=
-            [ "$aws" = wait ] && aws=$(state aws-probe)
-            [ "$hz" = wait ] && hz=$(state hetzner-probe)
-            [ "$aws" != wait ] && [ "$hz" != wait ] && break
+            job=$(gh api "$url" --jq '.jobs[]|select(.name=="hetzner-probe")|.status+" "+(.conclusion//"")') || job=
+            case "$job" in
+              "in_progress"*|"completed success") hz=up;;
+              "completed "*) hz=no;;
+            esac
+            [ "$hz" != wait ] && break
             sleep 5
           done
-          echo "AWS probe: $aws; Hetzner probe: $hz."
-          light='"ubuntu-latest"'
-          [ "$aws" = up ] && light='["self-hosted","linux","x64","aws"]'
-          heavy=$light
-          [ "$hz" = up ] && heavy='["self-hosted","linux","X64","hetzner"]'
-          echo "runner=$light" >> "$GITHUB_OUTPUT"
-          echo "heavy=$heavy" >> "$GITHUB_OUTPUT"
-          [ "$aws" != wait ] || echo "::warning::No AWS runner picked up the probe in 3 minutes: those jobs run on GitHub's runners."
-          [ "$hz" != wait ] || echo "::warning::No Hetzner runner picked up the probe in 3 minutes: the long jobs run on $light."
+          echo "Hetzner probe: $hz."
+          [ "$hz" = up ] && echo 'heavy=["self-hosted","linux","X64","hetzner"]' >> "$GITHUB_OUTPUT"
+          [ "$hz" != wait ] || echo "::warning::No Hetzner runner picked up the probe in 3 minutes: the long jobs run on GitHub's runners."
 
-  # Starts an AWS runner (ephemeral: one job each) so `route` can tell whether
-  # one is available; it queues until one starts, and a run with no runner
-  # leaves it queued (GitHub has no queue timeout) until the next push to the
-  # branch cancels the run. No other job needs it.
-  aws-probe:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'batch/') && vars.AWS_RUNNERS != 'off'
-    runs-on: [self-hosted, linux, x64, aws]
-    timeout-minutes: 2
-    steps:
-      - run: echo "AWS runner $(hostname) is up"
-
-  # The same for the Hetzner hosts (fixed servers, each job in a fresh
-  # container): it queues until a slot is free. Off unless the repository
+  # Starts a job on the Hetzner hosts (fixed servers, each job in a fresh
+  # container) so `route` can tell whether a slot is free: it queues until
+  # one is, and no other job needs it. Off unless the repository
   # variable `HETZNER_RUNNERS` is `on`.
   hetzner-probe:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && !startsWith(github.head_ref, 'batch/') && vars.HETZNER_RUNNERS == 'on'
@@ -1028,7 +998,7 @@ jobs:
   # (Substrait 0.88.1) cannot share a process with sverify's. The wheel
   # lives in the workspace: actions/cache stores a path outside it relative
   # to the workspace, so `~` saved on one runner kind was restored elsewhere on
-  # another (GitHub's /home/runner, the AWS runners' /opt/actions-runner).
+  # another (GitHub's /home/runner, a self-hosted runner's own directory).
   evidence:
     needs: [route, changes, checker]
     if: needs.changes.outputs.code == 'true' && needs.changes.outputs.evidence == 'true'

@@ -1,0 +1,16 @@
+{
+  "id": "D73",
+  "date": "2026-11-28",
+  "decided_by": "fable",
+  "scope": "reference-semantics",
+  "status": "in-force",
+  "summary": "Every in-tree dialect's lifted SQL means what its engine's profile computes, at the profile's probed version and settings; D54's rule holds for each, and its DuckDB rounding-cast clause does not carry over.",
+  "issues": [
+    866
+  ],
+  "amends": [
+    "D54"
+  ],
+  "source": "docs/decisions.md",
+  "note": "Ruling 288, Q1, on the maintainer's ruling of 2026-11-28 that Spark SQL input is 1.0."
+}
