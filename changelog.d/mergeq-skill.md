@@ -1,0 +1,1 @@
+A `mergeq` skill (`.claude/skills/mergeq/SKILL.md`) covers merging through the batch merge queue: the labels, the admission rules, reading the queue, each refusal and its fix, dropped PRs, closing issues after a batch, and the cases mergeq doesn't handle.
