@@ -98,6 +98,8 @@ DUCKDB_ONLY = {
     "snowflake": "Snowflake is out of tree",
     "spark": "see #2540",
 }
+#: Functions Polars runs and the Spark writer does not run yet (#2540).
+NOT_ON_SPARK = {e: why for e, why in DUCKDB_ONLY.items() if e != "polars"}
 #: Windows with no ORDER BY, which Spark's and Snowflake's writers refuse.
 NO_ORDER_BY = {"snowflake": "need an ORDER BY", "spark": "need an ORDER BY"}
 #: Snowflake has no lists yet; DuckDB, Polars and Spark have (#94).

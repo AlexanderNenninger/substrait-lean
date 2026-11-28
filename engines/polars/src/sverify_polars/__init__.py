@@ -30,7 +30,7 @@ if getattr(_meta, "PLUGIN_API", None) != 5:
         "install both from the same release (`pip install -U sverify sverify-polars`)"
     )
 
-from sverify._unsupported import MIN_MOD_GUARD
+from sverify._unsupported import ISSUE_2540, MIN_MOD_GUARD
 from sverify.profiles import Finite, ProfilePlugin, Setting
 from sverify_polars.store import PolarsStore
 
@@ -172,7 +172,12 @@ PLUGIN = ProfilePlugin(
     run_tables=_run_tables,
     guard_free_theorem="Rel.polars_sound",
     fallbacks=_fallbacks,
-    functions=frozenset({"array_agg"}),
+    functions=frozenset({"array_agg", "regexp_extract", "regexp_replace"}),
+    # Polars has no digests, and engine paths compute nothing in Python.
+    refuses={
+        fn: (f"Polars has no {fn} (polars-string-functions-missing)", ISSUE_2540)
+        for fn in ("md5", "sha256")
+    },
     # Only the integer `%` guard (#2058); the date and RANGE guards stay refused.
     guards=(MIN_MOD_GUARD,),
     shim_text={
