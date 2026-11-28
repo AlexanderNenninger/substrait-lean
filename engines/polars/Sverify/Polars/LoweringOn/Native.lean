@@ -839,6 +839,15 @@ abbrev Substrait.polarsOn.ddiv : Substrait.BinEntry Substrait.Profile.polars Sub
   Substrait.BinEntry.native Substrait.BinFn.ddiv
   (Substrait.Lowering.bin_agree_of_eq Substrait.polarsOn.ddiv_native)
 
+theorem Substrait.polarsOn.splitFirst_native : ∀ (x y : Substrait.Value),
+  Substrait.Profile.bin Substrait.Profile.polars Substrait.BinFn.splitFirst x y =
+    Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.splitFirst x y := by
+  native_tac
+
+abbrev Substrait.polarsOn.splitFirst : Substrait.BinEntry Substrait.Profile.polars Substrait.BinFn.splitFirst :=
+  Substrait.BinEntry.native Substrait.BinFn.splitFirst
+  (Substrait.Lowering.bin_agree_of_eq Substrait.polarsOn.splitFirst_native)
+
 theorem Substrait.polarsOn.pair_native : ∀ (x y : Substrait.Value),
   Substrait.Profile.bin Substrait.Profile.polars Substrait.BinFn.pair x y =
     Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.pair x y := by

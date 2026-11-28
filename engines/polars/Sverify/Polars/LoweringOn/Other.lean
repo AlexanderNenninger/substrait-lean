@@ -53,14 +53,3 @@ abbrev Substrait.polarsOn.dmod : Substrait.BinEntry Substrait.Profile.polars Sub
   (Substrait.Polars.dmodTemplate)
   (by exact Substrait.Polars.dmodTemplate_must) Substrait.polarsOn.dmod_agree
 
-theorem Substrait.polarsOn.splitFirst_agree : ∀ (x y : Substrait.Value),
-  Substrait.Outcome.Agree
-    (Substrait.Expr.evalP Substrait.Profile.polars [x, y] Substrait.Polars.splitFirstSchemaT)
-    (Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.splitFirst x y) := by
-  intros; apply Substrait.Polars.splitFirst_agree
-
-abbrev Substrait.polarsOn.splitFirst : Substrait.BinEntry Substrait.Profile.polars Substrait.BinFn.splitFirst :=
-  Substrait.BinEntry.ofAgree
-  (Substrait.Polars.splitFirstSchemaT)
-  (by exact Substrait.Polars.splitFirstSchemaT_must) Substrait.polarsOn.splitFirst_agree
-

@@ -18,8 +18,9 @@ generate_lowering polarsOn : Profile.polars
   unfolding [Profile.polars, UnFn.polarsTmpl, BinFn.polarsTmpl]
   using []
   -- Polars has no shift (polars-int-shift): `&`, `|`, `^` are schemas of the native call.
-  -- Its `str.find` counts bytes (polars-strpos): `strpos` is a hand-built entry (ruling 286).
-  excluding [BinFn.bit, BinFn.strpos]
+  -- Its `str.find` counts bytes (polars-strpos): `strpos` is a hand-built entry; its split
+  -- is a schema that keeps an empty pattern unreached (rulings 286, 290).
+  excluding [BinFn.bit, BinFn.strpos, BinFn.splitFirst]
   hand_written LoweringSearch.polarsSchemas
   writing "engines/polars/Sverify/Polars/LoweringOn"
   refusing [BinFn.fmod, UnFn.ftod]

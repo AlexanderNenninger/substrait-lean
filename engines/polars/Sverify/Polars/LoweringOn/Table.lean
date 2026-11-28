@@ -243,7 +243,7 @@ def Substrait.polarsOn.coverage : List (String × String × Nat) := [
   ("BinFn.dmul", "native", 0),
   ("BinFn.ddiv", "native", 0),
   ("BinFn.dmod", "hand-written schema: a % b of decimals truncated: Polars's % by -b where the signs differ", 0),
-  ("BinFn.splitFirst", "hand-written schema: split_first: #0 for an empty #1, else Polars's split", 0),
+  ("BinFn.splitFirst", "native", 0),
   ("BinFn.pair", "native", 0),
   ("BinFn.greatest", "native", 0),
   ("BinFn.least", "native", 0),

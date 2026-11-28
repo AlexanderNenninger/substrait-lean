@@ -693,6 +693,14 @@ theorem Substrait.duckdbOn.bit_shr_guards : ∀ (x y : Substrait.Value),
         (Substrait.Expr.field 1))) := by
   guards_bin_tac Substrait.duckdbOn.bit_shr_agree
 
+set_option maxHeartbeats 1600000 in
+theorem Substrait.duckdbOn.splitFirst_guards : ∀ (x y : Substrait.Value),
+  Substrait.Expr.GuardsAt
+    (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+    (fun _ => Bool.false) (Substrait.BinFn.issue Substrait.BinFn.splitFirst x y) [x, y]
+    Substrait.Lowering.splitFirstSchemaT := by
+  guards_bin_tac Substrait.duckdbOn.splitFirst_agree
+
 /-- Each unary entry's guards are exact. -/
 theorem Substrait.duckdbOn.guardsUn : ∀ f : Substrait.UnFn,
     match (Substrait.duckdbOn).un f with

@@ -89,3 +89,17 @@ abbrev Substrait.duckdbOn.dtextFull : Substrait.UnEntry (Substrait.Profile.duckd
   (Substrait.Lowering.dtextFullTemplate)
   (by exact Substrait.Lowering.dtextFullTemplate_must) Substrait.duckdbOn.dtextFull_agree
 
+theorem Substrait.duckdbOn.splitFirst_agree : ∀ (x y : Substrait.Value),
+  Substrait.Outcome.Agree
+    (Substrait.Expr.evalP
+      (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true)) [x, y]
+      Substrait.Lowering.splitFirstSchemaT)
+    (Substrait.Profile.bin Substrait.Profile.reference Substrait.BinFn.splitFirst x y) := by
+  intros; apply Substrait.Lowering.splitFirst_agree
+
+abbrev Substrait.duckdbOn.splitFirst : Substrait.BinEntry (Substrait.Profile.duckdb (Substrait.DuckDBSettings.mk Bool.true Bool.true))
+  Substrait.BinFn.splitFirst :=
+  Substrait.BinEntry.ofAgree
+  (Substrait.Lowering.splitFirstSchemaT)
+  (by exact Substrait.Lowering.splitFirstSchemaT_must) Substrait.duckdbOn.splitFirst_agree
+
