@@ -174,12 +174,6 @@ KNOWN: dict[str, dict[tuple[str, str, str], tuple[str, str]]] = {
             "the sum of at most 2**63-magnitude values per row cannot reach infinity",
         ),
     },
-    "abs": {
-        ("sverify/sql/core/_base.py", "divByZero", "division by zero"): (
-            "dead",
-            "the negating branch divides by the literal -1",
-        ),
-    },
     "join": {
         ("sverify/sql/snowflake.py", "wraps", "integer overflow"): (
             "dead",
