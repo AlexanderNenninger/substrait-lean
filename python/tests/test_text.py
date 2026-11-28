@@ -358,7 +358,9 @@ def test_negative_substring_length_is_rejected():
         sv.verify("SELECT substring(name, 1, -1) AS x FROM t", tables={"t": T})
 
 
-@pytest.mark.parametrize("engine", ["polars", "duckdb"])
+@pytest.mark.parametrize(
+    "engine", ["polars", "duckdb", pytest.param("spark", marks=pytest.mark.backend("spark"))]
+)
 @pytest.mark.parametrize("sql", ORDER_QUERIES)
 def test_strings_order_by_code_point(engine, sql):
     """`U+FFFF` is below `U+1F600` by code point and above it by UTF-16
@@ -371,20 +373,19 @@ def test_strings_order_by_code_point(engine, sql):
     assert canonical(tuple(x.values()) for x in got.to_pylist()) == expected
 
 
-@pytest.mark.parametrize("dialect", ["spark", "snowflake"])
 @pytest.mark.parametrize("sql", ORDER_QUERIES)
-def test_dialects_without_an_order_fact_refuse_text_order(dialect, sql):
+def test_dialects_without_an_order_fact_refuse_text_order(sql):
     """Only a dialect with a fact on string and boolean order writes it
-    (`Dialect.orders_text`); Spark and Snowflake refuse until they have one."""
+    (`Dialect.orders_text`: duckdb-string-order, spark-string-order); Snowflake
+    refuses until it has one."""
     from sverify.sql import to_sql
     from sverify.sql.snowflake import SNOWFLAKE
-    from sverify_spark.dialect import SPARK
 
     con = connect()
     con.create("r", R, [("a", "b", 1)])
     plan = json.loads(plan_of(con, sql))
     with pytest.raises(UnsupportedError, match="ordering comparisons of (str|bool) values"):
-        to_sql(plan, {"spark": SPARK, "snowflake": SNOWFLAKE}[dialect])
+        to_sql(plan, SNOWFLAKE)
 
 
 @pytest.mark.parametrize("flags", [("--outcomes",), ("--eval-choices",), ("--rows",)])

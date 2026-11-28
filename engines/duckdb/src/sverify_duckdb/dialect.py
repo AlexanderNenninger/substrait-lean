@@ -136,10 +136,6 @@ class DuckDBDialect(Dialect):
         low = self.lowered("Substrait.UnFn.ftoiOrNull", [x], "float")
         return low if low is not None else f"TRY_CAST(trunc({x}) AS BIGINT)"
 
-    def narrow_or_null(self, x: str, bits: int) -> str:
-        lo, hi = self.int_lit(-(2 ** (bits - 1))), self.int_lit(2 ** (bits - 1) - 1)
-        return f"(CASE WHEN {x} BETWEEN {lo} AND {hi} THEN {x} END)"
-
     def lowered(
         self, fn: str, args: list[str], kind: Kind, consts: Sequence[float | int | None] = ()
     ) -> str | None:

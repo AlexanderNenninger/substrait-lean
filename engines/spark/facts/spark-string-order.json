@@ -1,0 +1,55 @@
+{
+ "id": "spark-string-order",
+ "engine": "spark",
+ "engine_version": "4.3.0",
+ "title": "Strings compare and sort by UTF-8 bytes; `false` before `true`",
+ "verdict": "code point order (UTF8_BINARY), not Java's UTF-16 order; booleans `false < true`",
+ "area": "strings",
+ "constructs": [
+  "<",
+  "BETWEEN",
+  "greatest",
+  "least",
+  "ORDER BY"
+ ],
+ "settings": {
+  "spark.sql.ansi.enabled": [
+   "true",
+   "false"
+  ],
+  "spark.sql.session.timeZone": "UTC",
+  "spark.sql.timestampType": "TIMESTAMP_NTZ"
+ },
+ "description": [
+  "Under the default collation (`UTF8_BINARY`) Spark compares strings by their UTF-8 bytes, unsigned, which is code point order: `''` < `U+0000` < `B` < `Z` < `a` < `ab` < `b` < `é` < `z` < `U+FFFF` < `U+10000` < `U+1F600`. A supplementary character sorts above `U+FFFF`, where Java's `String.compareTo` (UTF-16 units) would put it below. `<`, `BETWEEN`, `greatest`, `least` and `ORDER BY` agree, in both ANSI modes.",
+  "Booleans order `false` before `true` (`false < true`, `greatest(false, true)` is `true`). NULL placement is spark-null-order's."
+ ],
+ "reference": "Strings in code point order (Lean's `String` order); booleans `false < true` (#1492). `SparkDialect.orders_text` writes them natively.",
+ "status": "no-finding",
+ "evidence": "probe",
+ "provenance": [
+  {
+   "checked_at": "2026-11-28",
+   "method": "probe",
+   "checked_by": "#2540 S5 probe (session types-casts-caff57), pyspark 4.3.0, Java 21.0.13, macOS arm64, local[1]",
+   "evidence": [
+    {
+     "sql": "SELECT s FROM VALUES (''), ('\\u0000'), ('B'), ('Z'), ('a'), ('ab'), ('b'), ('é'), ('z'), ('\\uffff'), ('\\U00010000'), ('\\U0001F600'), (NULL) AS t(s) ORDER BY s ASC NULLS LAST",
+     "observed": "the values in Python's code point order, then NULL; ansi on and off"
+    },
+    {
+     "sql": "SELECT a.s, b.s FROM VALUES <the 12 values and NULL> AS a(s), VALUES <the same> AS b(s) WHERE a.s < b.s",
+     "observed": "66 pairs, exactly those with a < b in code point order; ansi on and off"
+    },
+    {
+     "sql": "SELECT greatest('\\uffff', '\\U00010000', 'é'), least('\\uffff', '\\U00010000', 'é'), 'é' BETWEEN 'a' AND '\\uffff'",
+     "observed": "U+10000, é, true"
+    },
+    {
+     "sql": "SELECT false < true, true < false, greatest(false, true), least(false, true)",
+     "observed": "true, false, true, false"
+    }
+   ]
+  }
+ ]
+}

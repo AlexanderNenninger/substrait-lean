@@ -80,8 +80,5 @@ CASES: list[Case] = [
 ]
 
 REFUSED: dict[str, dict[str, str]] = {
-    "non-equi join": {
-        "snowflake": "ordering comparisons of str values",
-        "spark": "ordering comparisons of str values",
-    },
+    "non-equi join": {"snowflake": "ordering comparisons of str values"},
 }
