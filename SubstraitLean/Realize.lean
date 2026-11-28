@@ -47,8 +47,10 @@ request names (`"engines"`) without a profile here gets a verdict too
 one.
 
 What the postcondition observes (the observation it states, a tolerance the
-plan's `ε` must meet, the columns it reads) is applied to `"observed"` in
-Python for now; a later step brings it here.
+plan's `ε` must meet, the columns it reads) is met against the rows here
+(`realizeJson`, `"realized"`). `"rerun"` says whether a rerun reproduces the
+result up to the sinks' default lenses, or the request's `"rerun_lenses"`
+(`rerunCheck`, ruling 281).
 -/
 
 namespace Substrait.Realize
@@ -612,6 +614,134 @@ def heldCols (doubles : List Nat) (names : List String) (conds : List Json) (pro
     i := i + 1
   return held
 
+/-! ### What a rerun reproduces (#1071, ruling 281)
+
+A stored node's sink commits each epoch once, so a rerun of the plan must reproduce its result
+up to the lenses the consumer requires (`reproducible=`, D20). `rerunCheck` decides it, and
+Python only words its problems (`sverify.routes.reproducibility`):
+
+* the result must be determined up to row order and the member of each class of doubles (D48):
+  otherwise no rerun reproduces it (`"not_determined"`);
+* where the plan picks a member of a class of doubles (a `-0.0` or a `0.0`, a NaN), lenses that
+  read the members (exact doubles and exact zeros) are not met (`"class_picks"`);
+* on each option the plan depends on, the engine's run-to-run variation (`ObsRow.rerun`) must
+  refine the lenses on every component but the doubles (`"rerun_missed"`), and a variation that
+  bounds the doubles per plan is met against the plan's `ε` as a postcondition's is
+  (`planBound`, with no column held).
+
+The evidence is `proved` only where every option has a row with a variation, each variation
+is proved (`ObsRow.rerunEvidence`), and the bound that meets the lenses is. -/
+
+/-- The lenses a rerun must reproduce by default, the sinks' (`PLAN_BOUND`): rows and list
+elements as multisets, one zero and one NaN, doubles within the plan's bound. -/
+def Seen.planBound : Seen :=
+  { q := { rows := .multiset, elements := .multiset, zeros := .canon }, floats := .plan }
+
+/-- Whether `s` reads the members of a class of doubles (`Lenses.reads_members`, D48): exact
+doubles and exact zeros. -/
+def Seen.readsMembers (s : Seen) : Bool := s.floats == .exact && s.q.zeros == .exact
+
+/-- The rerun check's problems, as data, and whether its answer is proved. `det` is the
+report's `class_determined`, `exact` its `deterministic`; `rows` pairs each dependency with
+the engine's row there, if it has one. -/
+def rerunCheck (det exact : Bool) (required : Seen) (eps : List (String × EpsCol))
+    (rows : List (Dep × Option ObsRow)) : List Json × Bool := Id.run do
+  let mut problems : List Json :=
+    if !det then [Json.mkObj [("code", toJson "not_determined")]]
+    else if !exact && required.readsMembers then [Json.mkObj [("code", toJson "class_picks")]]
+    else []
+  let mut proved := true
+  for (d, r?) in rows do
+    let some (r, v) := r?.bind fun r => r.rerun.map (r, ·)
+      | proved := false; continue
+    let (pb, unproved) :=
+      if v.floats != .exact then planBound required.floats eps [] else ([], false)
+    if unproved || r.rerunEvidence.theorem?.isNone then proved := false
+    let rest := { v with floats := .exact }
+    let missed := rest.coarserThan required.q
+    if !missed.isEmpty then
+      problems := problems ++ [Json.mkObj ([("code", toJson "rerun_missed"),
+        ("components", toJson missed), ("observed", rest.sparseJson)] ++ where_ d)]
+    problems := problems ++ pb.map fun p => (PProb.json p).mergeObj (Json.mkObj (where_ d))
+  return (problems, proved)
+
+/-- `rerunCheck` as the request's `"rerun"` per engine; an engine without a profile here has no
+rows, and its translation's tests stand for its reruns. -/
+def rerunJson (E : Option EngineProfile) (ds : List Dep) (det exact : Bool) (required : Seen)
+    (eps : List (String × EpsCol)) : Json :=
+  let (problems, proved) := rerunCheck det exact required eps
+    (ds.map fun d => (d, E.bind (·.obs.row? d.group d.option)))
+  Json.mkObj [("problems", Json.arr problems.toArray),
+    ("evidence", toJson (if proved then "proved" else "tested"))]
+
+section rerunExamples
+/-- A Polars `sum_order` dependency, with a row whose reruns give `rerun` on `ev`. -/
+private def sumDep : Dep := ⟨"", "sum_order", [], false⟩
+private def sumRow (rerun : Option Obs) (ev : Evidence := .proved "t" []) : Option ObsRow :=
+  some { cls := .refines, rerun := rerun, rerunEvidence := ev }
+private def codes (x : List Json × Bool) : List String × Bool :=
+  (x.1.map fun j => (j.getObjValAs? String "code").toOption.getD "", x.2)
+/-- A column within `abs` of the reference on `pa` and `rel` on `pr`. -/
+private def col (abs rel : Lean.JsonNumber) (pa pr : Bool) : List (String × EpsCol) :=
+  [("total", { bounds := [("abs", abs, pa), ("rel", rel, pr)] })]
+private def eps : List (String × EpsCol) := col ⟨1, 3⟩ ⟨1, 10⟩ true false
+private def within (t : Tol) : Seen := { Seen.planBound with floats := .within t }
+/-- `sv.equivalent()`: rows as a multiset, everything else exact. -/
+private def equivalent : Seen := { q := { rows := .multiset } }
+private def planVaries : Option ObsRow := sumRow (some { floats := .within "plan" })
+/-- The check of a sum whose order varies between runs, under `s`. -/
+private def sums (s : Seen) : List String × Bool :=
+  codes (rerunCheck true true s eps [(sumDep, planVaries)])
+
+-- A summation order that varies between runs (`test_a_float_sum_on_polars_streaming`): a
+-- tolerance the proved absolute bound meets is proved, one only the tested relative bound
+-- meets is tested, and exact doubles are refused.
+#guard sums (within { abs := some ⟨1, 2⟩ }) == ([], true)
+#guard sums (within { rel := some ⟨1, 9⟩ }) == ([], false)
+#guard sums equivalent == (["not_met"], true)
+-- Ruling 281's pair: a stated tolerance stricter than the plan's bound is refused, a looser
+-- one met; the plan's own bound (the sinks' default) is met.
+#guard sums (within { abs := some ⟨1, 4⟩ }) == (["not_met"], true)
+#guard sums (within { abs := some ⟨1, 0⟩ }) == ([], true)
+#guard sums Seen.planBound == ([], true)
+-- A column without a bound: the plan's own bound is met on a test, a tolerance or exact
+-- doubles are not (`test_a_sink_states_what_a_rerun_must_reproduce`).
+#guard codes (rerunCheck true true Seen.planBound [("m", { unbounded := true })]
+  [(sumDep, planVaries)]) == ([], false)
+#guard codes (rerunCheck true true equivalent [("m", { unbounded := true })]
+  [(sumDep, planVaries)]) == (["unbounded"], false)
+-- A variation fixed on rows (`test_a_fixed_variation`, on rows alone): a rerun that must give
+-- the rows in sequence is refused.
+#guard codes (rerunCheck true true { q := { rows := .sequence } } eps
+  [(sumDep, sumRow (some { rows := .multiset }))]) == (["rerun_missed"], true)
+#guard codes (rerunCheck true true equivalent eps
+  [(sumDep, sumRow (some { rows := .multiset }))]) ==
+  ([], true)
+-- Ties permuted sits between sequence and multiset (`test_ties_permuted_sits_between…`).
+#guard codes (rerunCheck true true equivalent eps
+  [(sumDep, sumRow (some { rows := .tiesPermuted }))]) ==
+  ([], true)
+#guard codes (rerunCheck true true { q := { rows := .sequence } } eps
+  [(sumDep, sumRow (some { rows := .tiesPermuted }))]) == (["rerun_missed"], true)
+-- No row, or a row without a variation, rests on a test
+-- (`test_a_missing_variation_reads_as_exact_on_a_test`).
+#guard codes (rerunCheck true true equivalent eps [(sumDep, none)]) == ([], false)
+#guard codes (rerunCheck true true equivalent eps [(sumDep, sumRow none)]) == ([], false)
+-- An exact variation carries its own evidence (`test_an_exact_variation_with_its_evidence`).
+#guard codes (rerunCheck true true equivalent eps [(sumDep, sumRow (some {}))]) ==
+  ([], true)
+#guard codes (rerunCheck true true equivalent eps
+  [(sumDep, sumRow (some {}) (.tested [] none))]) == ([], false)
+#guard codes (rerunCheck true true equivalent eps [(sumDep, sumRow (some {}) .none)]) ==
+  ([], false)
+-- A result not determined up to row order fails every requirement; a class pick fails lenses
+-- that read the members only.
+#guard codes (rerunCheck false false (within { abs := some ⟨1, 0⟩ }) eps []) ==
+  (["not_determined"], true)
+#guard codes (rerunCheck true false equivalent eps []) == (["class_picks"], true)
+#guard codes (rerunCheck true false Seen.planBound eps []) == ([], true)
+end rerunExamples
+
 variable [Boxes.Ambient]
 /-- `"engines"` and `"sorted"` of a `--contract` request, given its
 `"rows_exact"` (`Epsilon.rowsExactByEngine`), its report and `"robust"`
@@ -642,6 +772,12 @@ def enginesJson (es : List EngineProfile) (input : Json) (rowsExact : Json)
           (rep.keys.map (·.2))
       else []
     | none => []
+  -- What a rerun must reproduce (ruling 281): the sinks' default, or the lenses a run states.
+  let rerunLenses : Seen := ((input.getObjVal? "rerun_lenses").toOption.bind Seen.ofJson?).getD
+    Seen.planBound
+  let rerunEps := epsCols (epsilonBounds none eps)
+  let rerunOf (E : Option EngineProfile) :=
+    rerunJson E ds rep.classDetermined rep.deterministic rerunLenses rerunEps
   let profiled := es.map fun E =>
     let because := testedBecause E input rep robust
     let v := engineJson es E ds all (exact E.name)
@@ -652,6 +788,7 @@ def enginesJson (es : List EngineProfile) (input : Json) (rowsExact : Json)
       |>.setObjVal! "tested_because" (toJson because)
       |>.setObjVal! "translated_evidence"
         (toJson (if proved && because.isEmpty then "proved" else "tested"))
+      |>.setObjVal! "rerun" (rerunOf (some E))
     let v := match stated? with
       | some st =>
         let rows := rowsAt E ds
@@ -667,7 +804,8 @@ def enginesJson (es : List EngineProfile) (input : Json) (rowsExact : Json)
   let named : List String :=
     ((input.getObjValAs? (Array String) "engines").toOption.getD #[]).toList
   let others := named.eraseDups.filter (fun n => !es.any (·.name == n)) |>.map fun n =>
-    (n, unprofiledJson.setObjVal! "epsilon" (epsilonBounds (some n) eps))
+    (n, unprofiledJson.setObjVal! "epsilon" (epsilonBounds (some n) eps)
+      |>.setObjVal! "rerun" (rerunOf none))
   return [("engines", Json.mkObj (profiled ++ others)),
     ("seen", Json.mkObj [("held", Json.mkObj (held.map fun (c, i) => (c, toJson i)))]),
     ("epsilon_bounds", epsilonBounds none eps),

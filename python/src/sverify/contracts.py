@@ -310,26 +310,6 @@ def _result_schema(transform: Transform, schemas: Mapping[str, Any], semantics: 
     return transform.schema()
 
 
-def _observation_json(obs: _observation.Lenses) -> dict[str, Any]:
-    """The observation as the checker reads it (`Seen.ofJson?`): each component by name,
-    a tolerance on doubles as the exact decimal of each double the run compares with."""
-    from decimal import Decimal
-
-    out: dict[str, Any] = {
-        name: getattr(obs, name) for name, _ in _observation._COMPONENTS if name != "floats"
-    }
-    f = obs.floats
-    out["floats"] = (
-        f
-        if isinstance(f, str)
-        else {
-            **{k: str(Decimal(v)) for k in ("abs", "rel") if (v := getattr(f, k)) is not None},
-            **({"ulps": f.ulps} if f.ulps is not None else {}),
-        }
-    )
-    return out
-
-
 def _declared_text(columns: Sequence[str], conds: Sequence[Condition]) -> dict[str, list[str]]:
     """The facts `conds` declare about the text columns, by column position, for the
     request (#1506, D51): the inferred conditions', or those of the user's own copy of
@@ -1456,7 +1436,7 @@ def _prove_once(
         # The observation the checker meets each engine's rows against, and what each
         # postcondition reads (`Realize.lean`, #1071). A tolerance goes as the exact
         # decimal of the double the run compares with.
-        "lenses": _observation_json(obs),
+        "lenses": obs.checker_json(),
         "ensures_meta": [
             {
                 "kind": "unique"

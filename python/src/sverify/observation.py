@@ -239,6 +239,21 @@ class Lenses:
         tolerance (D48)."""
         return self.floats == "exact" and self.zeros == "exact"
 
+    def checker_json(self) -> dict[str, Any]:
+        """These lenses as the checker reads them (`Realize.Seen.ofJson?`): each
+        component by name, a tolerance on doubles as the exact decimal of each double
+        the run compares with."""
+        from decimal import Decimal
+
+        out: dict[str, Any] = {name: getattr(self, name) for name, _ in _COMPONENTS}
+        f = self.floats
+        if not isinstance(f, str):
+            out["floats"] = {
+                **{k: str(Decimal(v)) for k in ("abs", "rel") if (v := getattr(f, k)) is not None},
+                **({"ulps": f.ulps} if f.ulps is not None else {}),
+            }
+        return out
+
     def ignored(self) -> list[str]:
         """The components this observation ignores: where it is coarser
         than the identity, the finest observation."""
