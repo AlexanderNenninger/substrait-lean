@@ -3113,7 +3113,7 @@ def _check_set_precedence(tree: Any) -> None:
             raise SqlUnsupported(
                 f"INTERSECT after {_keywords(node.this)} without parentheses: SQLGlot reads "
                 "it left to right, where INTERSECT binds first (SG-11)",
-                hint="parenthesise the INTERSECT: a UNION (b INTERSECT c)",
+                hint="write the INTERSECT in parentheses: a UNION (b INTERSECT c)",
                 construct="INTERSECT",
             )
 
