@@ -1,6 +1,6 @@
 ---
 name: mergeq
-description: Get a reviewed pull request merged through the mergeq service, the batch merge queue for main. Covers the labels (`reviewed`, `queued`, `mergeq-dropped`, `queue-first`, `queue-alone`, `do-not-batch`, and `on-hold`, which mergeq doesn't read), the admission gate, reading the queue's status, what each refusal means and fixes, batches, rebuilds, serial bisection and the repo-wide pause, closing issues by hand, and the cases mergeq doesn't handle. Use when labelling a PR, when a PR is refused, dropped or not batched, when a batch fails or the queue pauses, when the mergeq bot comments on a PR, or when asked why a PR hasn't merged.
+description: Get a reviewed pull request merged through the mergeq service, the batch merge queue for main. Covers the labels (`reviewed`, `queued`, `mergeq-dropped`, `do-not-batch`, `mergeq-paused`), the admission gate, reading the queue's status, what each refusal means and fixes, batches, rebuilds, serial bisection and the repo-wide pause, closing issues by hand, and the cases mergeq doesn't handle. Use when labelling a PR, when a PR is refused, dropped or not batched, when a batch fails or the queue pauses, when the mergeq bot comments on a PR, or when asked why a PR hasn't merged.
 ---
 
 # Merging through mergeq
@@ -16,11 +16,10 @@ Every session posts as the same GitHub account, and GitHub won't let an account 
 | `reviewed` | a reviewer | Ready. mergeq admits the PR once the gate below passes, and swaps the label for `queued`. |
 | `queued` | mergeq | In the queue, the running batch or a bisection. |
 | `mergeq-dropped` | mergeq, with a comment | A bisection found it failing on the base, or its push was refused. Out of the queue until it's fixed and labelled `reviewed` again. |
-| `queue-first` | the coordinator | Ahead of every other queued PR. The repository has no such label yet: create it once (`gh label create queue-first`) before the first use. |
-| `queue-alone` | the coordinator | Tested and merged in a batch of its own. No such label yet either: `gh label create queue-alone` first. |
-| `do-not-batch` | anyone | Kept out: never admitted, and a queued PR that gets it leaves the next batch. |
+| `do-not-batch` | anyone | Kept out: never admitted, and a queued PR that gets it leaves the next batch. To hold a reviewed PR, add it, or remove `reviewed`. |
+| `mergeq-paused` | mergeq, on an issue | The queue is paused after a repo-wide failure: nothing is batched or merged while the issue is open (below). |
 
-mergeq also reads `do-not-merge` the same way, but the repository has no such label, so `gh pr edit --add-label do-not-merge` fails: use `do-not-batch`. The repository's `on-hold` label is not read by mergeq, so a PR with `on-hold` and `reviewed` is admitted. To hold a reviewed PR, add `do-not-batch` or remove `reviewed`. mergeq's labels are in its code (`SKIP`, `QUEUED`, `DROPPED`, `ALONE` and `FIRST` in `mergeq/src/mergeq/queue.py` in the homelab repository); `.github/mergeq.yml` names only `ready_label`.
+mergeq's labels are in its code (`mergeq/src/mergeq/queue.py` in the homelab repository); `.github/mergeq.yml` names only `ready_label`.
 
 ## The admission gate
 
