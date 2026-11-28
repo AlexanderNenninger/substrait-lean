@@ -593,6 +593,7 @@ def parse(query: str, schemas: Mapping[str, Any]) -> sge.Select | sge.SetOperati
     _resolve_tables(tree, schemas)
     _check_aliases(tree, schemas)
     _check_using_stars(tree)
+    _check_set_precedence(tree)
     _check_export_state(tree)
     catalog: dict[str, object] = {
         name: {col: _sql_type(s, t) for col, t in schema.items()}
@@ -3098,6 +3099,22 @@ def _check_export_state(tree: Any) -> None:
                 f"{_shown(a)}: EXPORT_STATE is not supported (SG-9); drop it to read the "
                 "aggregate's value",
                 construct="EXPORT STATE",
+            )
+
+
+def _check_set_precedence(tree: Any) -> None:
+    """Refuse `a UNION b INTERSECT c` (and with EXCEPT): SQLGlot reads the
+    chain left to right, `(a UNION b) INTERSECT c`, where SQL, DuckDB and
+    Spark bind INTERSECT first, `a UNION (b INTERSECT c)`
+    (upstream/bugs/SG-11.json). A parenthesised operand is a subquery to
+    SQLGlot, and is read as written."""
+    for node in tree.find_all(sge.Intersect):
+        if isinstance(node.this, sge.Union | sge.Except):
+            raise SqlUnsupported(
+                f"INTERSECT after {_keywords(node.this)} without parentheses: SQLGlot reads "
+                "it left to right, where INTERSECT binds first (SG-11)",
+                hint="parenthesise the INTERSECT: a UNION (b INTERSECT c)",
+                construct="INTERSECT",
             )
 
 

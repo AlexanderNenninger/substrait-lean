@@ -540,3 +540,36 @@ def test_a_query_nested_beyond_the_recursion_limit_is_refused_not_a_crash():
     query = "SELECT " + "(" * 3000 + "1" + ")" * 3000 + " AS x"
     with pytest.raises(Refused, match="nested too deeply"):
         lift(query, SCHEMAS)
+
+
+#: Two tables for the precedence of set operations (SG-11).
+_SETS = {"a": ibis.schema({"x": "int32"}), "b": ibis.schema({"x": "int32"})}
+_SET_ROWS = {"a": [(1,), (1,), (2,), (3,)], "b": [(1,), (2,), (2,)]}
+
+
+@pytest.mark.parametrize("first", ["UNION ALL", "EXCEPT"])
+def test_intersect_after_union_needs_parentheses(first):
+    """SQLGlot reads `a UNION b INTERSECT c` left to right, where DuckDB binds
+    INTERSECT first (upstream/bugs/SG-11.json): the lift refuses it."""
+    q = f"SELECT x FROM a {first} SELECT x FROM b INTERSECT ALL SELECT x FROM a"
+    with pytest.raises(Refused, match="SG-11"):
+        lift(q, _SETS)
+
+
+def test_parenthesised_set_operations_mean_what_duckdb_computes():
+    import duckdb
+
+    from sverify._lean_eval import with_tables
+    from sverify.testing import lean_values
+
+    q = (
+        "SELECT x FROM a EXCEPT SELECT x FROM b UNION ALL "
+        "(SELECT x FROM a INTERSECT ALL SELECT x FROM b)"
+    )
+    con = duckdb.connect()
+    for name, rows in _SET_ROWS.items():
+        values = ", ".join(f"({r[0]})" for r in rows)
+        con.execute(f"CREATE TABLE {name} AS SELECT * FROM (VALUES {values}) t(x)")
+    want = sorted(con.execute(q).fetchall())
+    got = sorted(lean_values(json.dumps(with_tables(lift(q, _SETS).plan, _SET_ROWS))))
+    assert got == want == [(1,), (2,), (3,)]
