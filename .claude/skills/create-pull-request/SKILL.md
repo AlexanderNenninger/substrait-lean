@@ -62,3 +62,4 @@ Never use a plain `uv run`: after a `pyproject.toml` or `uv.lock` change it rebu
 - **The label:** the reviewer adds `reviewed`. mergeq admits the PR once `qa` is green at its head and its base is under 6 h old, swaps the label for `queued`, batches it with others and bisects a failed batch.
 - **Pushes after approval:** a push after the approval is let back in on green `qa` without a new review. After a substantive push, tell the reviewer, who removes the label until they have looked. A clean merge of `main` needs nothing.
 - **Cancelled runs:** a red `qa` whose other jobs were cancelled means a batch is testing the PR. Don't rerun it or "fix" it.
+- **Refusals, drops and batches:** the `mergeq` skill covers reading the queue, each refusal and its fix, dropped PRs, and closing issues after a batch.

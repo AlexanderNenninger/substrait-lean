@@ -321,8 +321,9 @@ Task recipes live in `.claude/skills/` and load when needed: `add-function`
 functions"), `engine-fact` (formerly "Engine facts"), `upstream-bug`,
 `upstream-report`, `prove-lean`, `chaos-run`, `query-semantics`,
 `release-sverify`, `create-pull-request` (branch, checks, `Fixes #N`, the
-review and mergeq) and `write-docs` (any change to a README, `docs/`, the
-tour's markdown cells or a docstring).
+review), `mergeq` (the labels, admission, refusals and batches) and
+`write-docs` (any change to a README, `docs/`, the tour's markdown cells or
+a docstring).
 
 ## sverify-dbt
 
