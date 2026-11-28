@@ -276,6 +276,8 @@ TIES_OPEN = {
     "rolling mean (interval)",
     "min over a sliding frame",
     "window sum of an expression",
+    "stddev over group",
+    "rolling variance (rows)",
     "last, nth",
     "max, count over frame",
     "scalar subquery, one row",
