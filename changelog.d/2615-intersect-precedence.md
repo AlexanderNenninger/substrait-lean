@@ -1,0 +1,3 @@
+### `INTERSECT` after an unparenthesised `UNION` or `EXCEPT` is refused
+
+SQLGlot reads `a UNION ALL b INTERSECT ALL c` left to right, as `(a UNION ALL b) INTERSECT ALL c`, where DuckDB and Spark bind `INTERSECT` first. Sverify's SQL lift read the query as SQLGlot does, so a plan could mean other rows than DuckDB gives for the same text. The lift now refuses the chain and names the parentheses that keep its meaning, `a UNION ALL (b INTERSECT ALL c)` ([upstream/bugs/SG-11.json](upstream/bugs/SG-11.json), found by the replay of Spark's golden files, [#2615](https://github.com/AlexanderNenninger/substrait-lean/issues/2615)).

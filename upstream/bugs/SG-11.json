@@ -1,0 +1,30 @@
+{
+  "id": "SG-11",
+  "project": "sqlglot",
+  "version": "30.22.0",
+  "status": "unverified",
+  "status_note": "Seen on 30.22.0, the release uv.lock pins; not yet checked against the latest release or searched upstream.",
+  "summary": "SQLGlot parses a chain of set operations left to right at one level of precedence: `a UNION ALL b INTERSECT ALL c` reads as `(a UNION ALL b) INTERSECT ALL c`. SQL, DuckDB and Spark bind INTERSECT tighter than UNION and EXCEPT, `a UNION ALL (b INTERSECT ALL c)`, so the tree means other rows than the engines give. The DuckDB and Spark dialects both read it so.",
+  "repro": [
+    "```python\nimport sqlglot\nt = sqlglot.parse_one(\"SELECT x FROM a EXCEPT SELECT x FROM b UNION ALL SELECT x FROM a INTERSECT ALL SELECT x FROM b\", read=\"duckdb\")\ntype(t).__name__, type(t.this).__name__  # ('Intersect', 'Union')\n```",
+    "observed: the root is the INTERSECT. With a = {1, 1, 2, 3} and b = {1, 2, 2}, DuckDB 2.0.0 gives {1, 2, 3} (INTERSECT first) and the left-to-right reading gives {1, 2}."
+  ],
+  "handling": "The SQL lift refuses an INTERSECT whose left operand is an unparenthesised UNION or EXCEPT, naming the parentheses that keep the meaning (`_check_set_precedence`); a parenthesised operand is a subquery to SQLGlot and lifts as written.",
+  "found_by": "the replay of Spark's golden files through the Spark SQL lift (`results/intersect-all.sql.out` L162 and L181, #2615), then checked on DuckDB",
+  "issues": [
+    2615
+  ],
+  "files": [
+    "python/src/sverify/sql_lift/_base.py",
+    "python/tests/test_sql_lift_relations.py"
+  ],
+  "checked": [
+    {
+      "checked_at": "2026-11-28",
+      "against": {
+        "sqlglot": "30.22.0",
+        "duckdb": "2.0.0"
+      }
+    }
+  ]
+}
