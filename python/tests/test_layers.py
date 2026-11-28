@@ -28,6 +28,7 @@ LAYERS: list[tuple[str, list[str]]] = [
             "_asof_cap",
             "_plan_read",
             "_user_text",
+            "_renamed",
             "_vacuity",
             "_functions",
             "_case_tables",

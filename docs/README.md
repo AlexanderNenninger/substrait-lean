@@ -72,6 +72,7 @@ A page of this kind runs its Python examples in `tests/test_readme.py`, and the 
 | [The API reference](https://alexandernenninger.github.io/substrait-lean/reference/) | Every public function and class, from the docstrings | Reference |
 | [reference-semantics.md](reference-semantics.md) | What a plan means, row by row: the open choices, every option's value, the Ibis frontend and how the model holds a plan | Semantics |
 | [stability.md](stability.md) | What 1.x keeps: the formats, the proofs, the API, the engines | Semantics |
+| [upgrading-0.9.md](upgrading-0.9.md) | Upgrading from 0.8 to 0.9: a migration note with an example for each breaking change, and the evidence of each soundness fix | |
 | [realizability.md](realizability.md) | Each engine's class on every option, generated | Ledgers |
 | The ledgers | Upstream bugs, spec gaps, engine facts, the checklist's coverage | Ledgers |
 

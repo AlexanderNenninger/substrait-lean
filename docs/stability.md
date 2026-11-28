@@ -278,6 +278,10 @@ Each release is checked against these rules: the format fixtures, the "Breaking 
 section and its migration notes, and the facts or upstream records of each
 soundness fix.
 
+[Upgrading from 0.8 to 0.9](upgrading-0.9.md) gives 0.9.0's breaking
+changes their migration notes with examples, and names the fact or upstream
+record behind each of its soundness fixes.
+
 ## Status
 
 Sverify is a working prototype of a pipeline tool: it proves contracts and runs the checked plan. Production shouldn't depend on it yet, as the API will change (sometimes drastically) between minor releases. A name that goes is gone in that release, with no alias, and [the changelog](../CHANGELOG.md) lists each move and what replaces it ([#1288](https://github.com/AlexanderNenninger/substrait-lean/issues/1288)). It describes each engine as observed at pinned versions, without certifying or ranking it, and isn't affiliated with any engine's project or vendor.

@@ -571,8 +571,19 @@ def cmd_explain(args: argparse.Namespace) -> int:
     return _emit(args, ExitCode.PROVED, result, lambda: f"[{code}] {text}")
 
 
+#: The flags 0.9.0 removed, each with what to write instead (#881 S5, #2345).
+_REMOVED_FLAGS = {"--output-format": "--format X", "--json": "--format json"}
+
+
 class _Parser(argparse.ArgumentParser):
     def error(self, message: str) -> NoReturn:
+        if message.startswith("unrecognized arguments:"):
+            words = message.split(":", 1)[1].split()
+            message += "".join(
+                f"; sverify 0.9.0 removed {old}: write {new}"
+                for old, new in _REMOVED_FLAGS.items()
+                if any(w.split("=")[0] == old for w in words)
+            )
         self.print_usage(sys.stderr)
         self.exit(ExitCode.USAGE, f"{self.prog}: error: {message}\n")
 

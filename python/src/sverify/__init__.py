@@ -47,7 +47,7 @@ import types as _types
 from typing import TYPE_CHECKING as _TYPE_CHECKING
 from typing import Any as _Any
 
-from sverify import _meta
+from sverify import _meta, _renamed
 
 if _TYPE_CHECKING:
     from sverify.asof import asof_join
@@ -109,7 +109,7 @@ def __getattr__(name: str) -> _Any:
     except ModuleNotFoundError as e:
         if e.name != f"{__name__}.{name}":
             raise
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+        raise _renamed.missing(__name__, name) from None
 
 
 class _Module(_types.ModuleType):

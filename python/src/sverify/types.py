@@ -90,3 +90,9 @@ __all__ = [
     "Unique",
     "Within",
 ]
+
+
+def __getattr__(name: str) -> object:
+    from sverify._renamed import missing
+
+    raise missing(__name__, name)

@@ -158,6 +158,8 @@ def sql(
                 "inside a transform (@sv.transform), which gets its inputs as tables"
             )
         if not isinstance(t, ir.Table):
+            if table_name == "as_":  # removed in 0.9.0 (#2081)
+                raise TypeError("sverify.sql takes name= since 0.9.0: sql(query, name=...)")
             raise TypeError(f"sverify.sql: {table_name} is not a table: {t!r}")
     names = tuple(tables)
     schemas = {n: t.schema() for n, t in tables.items()}
